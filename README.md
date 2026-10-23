@@ -2,6 +2,8 @@
 
 SJD · 本地单人装修项目工作台。React 19 + TypeScript + Vite，保留第一阶段架构、IndexedDB 和 JSON 备份。初始数据为空，统计来自实际记录。
 
+长期路线图、未来数据关系、员工私密信息权限及开发约定统一见 [PROJECT_GUIDE.md](PROJECT_GUIDE.md)。其中规划能力尚未实现；当前本地模式没有真实账号与服务端安全权限隔离。
+
 ## 运行与验证
 
 需要 Node.js 22.12+（当前环境使用 24）和 npm。
