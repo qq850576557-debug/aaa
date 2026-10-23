@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { ArrowDown, ArrowUp, CalendarDays, Plus, Settings2 } from 'lucide-react';
+import { CalendarDays, GripVertical, MoreHorizontal, Plus, Settings2 } from 'lucide-react';
 import {
   days,
   distance,
@@ -15,13 +15,17 @@ import {
   type Task,
   type Trade,
 } from '../lib/model';
-export const CELL = 44;
+import type { Anchor } from './Modal';
+export const CELL = 56;
+const LANE = 48;
 interface Props {
   data: Data;
   project: Project;
-  onTask: (task?: Task, trade?: Trade, start?: string, end?: string) => void;
+  onTask: (task?: Task, trade?: Trade, start?: string, end?: string, anchor?: Anchor) => void;
   onDay: (date: string) => void;
-  onTrade: (trade?: Trade) => void;
+  onTrade: (trade?: Trade, index?: number) => void;
+  onReorder: (source: string, before: string | null) => void;
+  onColor: (trade: Trade, anchor: Anchor) => void;
   onOrder: (trade: Trade, dir: number) => void;
   onMove: (task: Task) => void;
 }
@@ -31,17 +35,32 @@ type Drag = {
   x: number;
   scroll: number;
   delta: number;
+  dayWidth: number;
 };
-export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }: Props) {
+export function Gantt({
+  data,
+  project,
+  onTask,
+  onDay,
+  onTrade,
+  onOrder,
+  onMove,
+  onReorder,
+  onColor,
+}: Props) {
   const [start, end] = projectRange(data, project);
   const dates = days(start, end);
   const trades = data.trades
     .filter((g) => g.projectId === project.id)
     .sort((a, b) => a.order - b.order);
+  const [draggedTrade, setDraggedTrade] = useState<string | null>(null);
+  const [dropBefore, setDropBefore] = useState<string | null>(null);
+  const taskClick = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAnchor = useRef<Anchor>({ x: 0, y: 0 });
   const scroller = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragging = useRef<Drag | null>(null);
-  const lastDrag = useRef(0);
+  const lastDrag = useRef(-Infinity);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [range, setRange] = useState<{
     trade: string;
@@ -49,28 +68,39 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
     b: number;
     x: number;
     scroll: number;
+    dayWidth: number;
   } | null>(null);
   const selecting = useRef<typeof range>(null);
   useEffect(
     () => () => {
       if (clickTimer.current) clearTimeout(clickTimer.current);
+      if (taskClick.current) clearTimeout(taskClick.current);
     },
     [],
   );
   const pendingDay = (date: string) => {
-    if (Date.now() - lastDrag.current < 350) return;
+    if (performance.now() - lastDrag.current < 350) return;
     if (clickTimer.current) clearTimeout(clickTimer.current);
     clickTimer.current = setTimeout(() => onDay(date), 260);
   };
   const clearClick = () => {
     if (clickTimer.current) clearTimeout(clickTimer.current);
+    if (taskClick.current) clearTimeout(taskClick.current);
   };
   function barDown(e: PointerEvent, task: Task, mode: Drag['mode']) {
     if (e.button !== 0) return;
     e.stopPropagation();
     clearClick();
+    lastAnchor.current = { x: e.clientX, y: e.clientY };
     e.currentTarget.setPointerCapture(e.pointerId);
-    const d = { task, mode, x: e.clientX, scroll: scroller.current!.scrollLeft, delta: 0 };
+    const d = {
+      task,
+      mode,
+      x: e.clientX,
+      scroll: scroller.current!.scrollLeft,
+      delta: 0,
+      dayWidth: scroller.current!.querySelector('.date-cell')!.getBoundingClientRect().width,
+    };
     dragging.current = d;
     setDrag(d);
   }
@@ -88,7 +118,9 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
   function barMove(e: PointerEvent) {
     const d = dragging.current;
     if (!d) return;
-    const delta = Math.round((e.clientX - d.x + scroller.current!.scrollLeft - d.scroll) / CELL);
+    const delta = Math.round(
+      (e.clientX - d.x) / d.dayWidth + (scroller.current!.scrollLeft - d.scroll) / CELL,
+    );
     dragging.current = { ...d, delta };
     setDrag(dragging.current);
   }
@@ -99,7 +131,8 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
     dragging.current = null;
     setDrag(null);
     if (d.delta) {
-      lastDrag.current = Date.now();
+      lastDrag.current = performance.now();
+      if (taskClick.current) clearTimeout(taskClick.current);
       onMove(moved(d));
     }
   }
@@ -110,8 +143,17 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
       !(e.target as HTMLElement).hasAttribute('data-date')
     )
       return;
+    clearClick();
+    lastAnchor.current = { x: e.clientX, y: e.clientY };
     const a = Number((e.target as HTMLElement).dataset.index);
-    const r = { trade: g.id, a, b: a, x: e.clientX, scroll: scroller.current!.scrollLeft };
+    const r = {
+      trade: g.id,
+      a,
+      b: a,
+      x: e.clientX,
+      scroll: scroller.current!.scrollLeft,
+      dayWidth: scroller.current!.querySelector('.date-cell')!.getBoundingClientRect().width,
+    };
     selecting.current = r;
     setRange(r);
   }
@@ -122,7 +164,10 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
       0,
       Math.min(
         dates.length - 1,
-        r.a + Math.round((e.clientX - r.x + scroller.current!.scrollLeft - r.scroll) / CELL),
+        r.a +
+          Math.round(
+            (e.clientX - r.x) / r.dayWidth + (scroller.current!.scrollLeft - r.scroll) / CELL,
+          ),
       ),
     );
     if (b !== r.a && !e.currentTarget.hasPointerCapture(e.pointerId))
@@ -136,12 +181,13 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
     setRange(null);
     if (r && r.a !== r.b) {
       clearClick();
-      lastDrag.current = Date.now();
+      lastDrag.current = performance.now();
       onTask(
         undefined,
         trades.find((g) => g.id === r.trade),
         dates[Math.min(r.a, r.b)],
         dates[Math.max(r.a, r.b)],
+        lastAnchor.current,
       );
     }
   }
@@ -174,10 +220,6 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
           <button onClick={jumpToday} disabled={today() < start || today() > end}>
             今天
           </button>
-          <button onClick={() => onTrade()}>
-            <Plus size={15} />
-            工种
-          </button>
           <button className="primary" onClick={() => onTask()} disabled={!trades.length}>
             <Plus size={15} />
             施工任务
@@ -186,14 +228,17 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
       </div>
       <div className="legend">
         {trades.map((g) => (
-          <button key={g.id} onClick={() => onTrade(g)}>
+          <button key={g.id} onClick={(e) => onColor(g, { x: e.clientX, y: e.clientY })}>
             <i style={{ background: g.color }} />
             {g.name}
           </button>
         ))}
       </div>
       <div className="gantt-scroll" ref={scroller} data-testid="gantt-scroll">
-        <div className="gantt" style={{ width: 190 + dates.length * CELL }}>
+        <div
+          className="gantt"
+          style={{ width: `calc(var(--gantt-label) + ${dates.length * CELL}px)` }}
+        >
           <div className="month-row">
             <div className="sticky-label month-label">施工工种 / 日期</div>
             <div className="month-cells">
@@ -236,12 +281,62 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
             const rows = lanes(
               data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id),
             );
-            const height = Math.max(82, rows.length * 40 + 20);
+            const height = Math.max(100, rows.length * LANE + 24);
             return (
-              <div key={g.id} className="trade-row" style={{ height }}>
+              <div
+                key={g.id}
+                className={`trade-row ${draggedTrade === g.id ? 'sorting' : ''} ${draggedTrade && dropBefore === g.id ? 'drop-before' : ''} ${draggedTrade && dropBefore === null && index === trades.length - 1 ? 'drop-after' : ''}`}
+                data-trade-id={g.id}
+                style={{ height }}
+                onDragOver={(e) => {
+                  if (!draggedTrade) return;
+                  e.preventDefault();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  setDropBefore(
+                    e.clientY < r.top + r.height / 2 ? g.id : (trades[index + 1]?.id ?? null),
+                  );
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (draggedTrade) onReorder(draggedTrade, dropBefore);
+                  setDraggedTrade(null);
+                }}
+              >
                 <div className="sticky-label trade-label">
+                  <button
+                    className="insert-trade"
+                    aria-label={`在${g.name}前新增工种`}
+                    onClick={() => onTrade(undefined, index)}
+                  >
+                    <Plus size={14} />
+                  </button>
                   <div className="trade-title">
-                    <i style={{ background: g.color }} />
+                    <button
+                      className="drag-handle"
+                      draggable
+                      aria-label={`拖动工种${g.name}`}
+                      title="拖放排序；也可按 Alt + 上下方向键"
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', g.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                        setDraggedTrade(g.id);
+                      }}
+                      onDragEnd={() => setDraggedTrade(null)}
+                      onKeyDown={(e) => {
+                        if (e.altKey && ['ArrowUp', 'ArrowDown'].includes(e.key)) {
+                          e.preventDefault();
+                          onOrder(g, e.key === 'ArrowUp' ? -1 : 1);
+                        }
+                      }}
+                    >
+                      <GripVertical size={17} />
+                    </button>
+                    <button
+                      className="trade-color"
+                      aria-label={`设置${g.name}颜色`}
+                      style={{ background: g.color }}
+                      onClick={(e) => onColor(g, { x: e.clientX, y: e.clientY })}
+                    />
                     <button onClick={() => onTrade(g)} title="编辑工种">
                       {g.name}
                     </button>
@@ -253,25 +348,42 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
                         .reduce((n, t) => n + duration(t.start, t.end), 0)}{' '}
                       任务天
                     </span>
-                    <div>
-                      <button
-                        aria-label={`上移${g.name}`}
-                        disabled={index === 0}
-                        onClick={() => onOrder(g, -1)}
-                      >
-                        <ArrowUp size={14} />
-                      </button>
-                      <button
-                        aria-label={`下移${g.name}`}
-                        disabled={index === trades.length - 1}
-                        onClick={() => onOrder(g, 1)}
-                      >
-                        <ArrowDown size={14} />
-                      </button>
-                      <button aria-label={`编辑${g.name}`} onClick={() => onTrade(g)}>
-                        <Settings2 size={13} />
-                      </button>
-                    </div>
+                    <details className="trade-menu">
+                      <summary aria-label={`工种操作${g.name}`}>
+                        <MoreHorizontal size={18} />
+                      </summary>
+                      <div>
+                        <button
+                          disabled={index === 0}
+                          onClick={(e) => {
+                            onOrder(g, -1);
+                            e.currentTarget.closest('details')?.removeAttribute('open');
+                          }}
+                        >
+                          上移
+                        </button>
+                        <button
+                          disabled={index === trades.length - 1}
+                          onClick={(e) => {
+                            onOrder(g, 1);
+                            e.currentTarget.closest('details')?.removeAttribute('open');
+                          }}
+                        >
+                          下移
+                        </button>
+                        <button onClick={() => onTrade(g)}>编辑工种</button>
+                        <button onClick={() => onTrade(undefined, index + 1)}>
+                          在下方新增工种
+                        </button>
+                      </div>
+                    </details>
+                    <button
+                      className="trade-settings"
+                      aria-label={`编辑${g.name}`}
+                      onClick={() => onTrade(g)}
+                    >
+                      <Settings2 size={16} />
+                    </button>
                   </div>
                 </div>
                 <div
@@ -292,9 +404,10 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
                         data-index={i}
                         className={`track-cell ${['六', '日'].includes(weekday(date)) ? 'weekend' : ''} ${date === today() ? 'today' : ''}`}
                         onClick={() => pendingDay(date)}
-                        onDoubleClick={() => {
+                        onDoubleClick={(e) => {
                           clearClick();
-                          if (Date.now() - lastDrag.current > 350) onTask(undefined, g, date, date);
+                          if (performance.now() - lastDrag.current > 350)
+                            onTask(undefined, g, date, date, { x: e.clientX, y: e.clientY });
                         }}
                       />
                     ))}
@@ -316,12 +429,13 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
                         <button
                           key={t.id}
                           data-testid="task-bar"
+                          title={`${t.name} · ${t.start} — ${t.end}${data.tasks.filter((x) => (x.groupId ?? x.id) === (t.groupId ?? t.id)).length > 1 ? ' · 同任务多段' : ''}`}
                           aria-label={`${t.name}，${t.start} 至 ${t.end}，${duration(t.start, t.end)} 天`}
-                          className={`task-bar ${t.status === '已完成' ? 'completed' : ''} ${t.end < today() && t.status !== '已完成' ? 'overdue' : ''}`}
+                          className={`task-bar ${drag?.task.id === t.id ? 'dragging' : ''} ${t.status === '已完成' ? 'completed' : ''} ${t.end < today() && t.status !== '已完成' ? 'overdue' : ''}`}
                           style={{
                             left: distance(start, t.start) * CELL + 4,
                             width: duration(t.start, t.end) * CELL - 8,
-                            top: 15 + lane * 40,
+                            top: 16 + lane * LANE,
                             background: `${g.color}26`,
                             borderColor: g.color,
                             color: '#273c34',
@@ -333,8 +447,27 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
                             dragging.current = null;
                             setDrag(null);
                           }}
-                          onClick={() => {
-                            if (Date.now() - lastDrag.current > 350) onTask(original);
+                          onClick={(e) => {
+                            if (performance.now() - lastDrag.current <= 350) return;
+                            if (taskClick.current) clearTimeout(taskClick.current);
+                            const anchor = { x: e.clientX, y: e.clientY };
+                            if (e.detail === 0) {
+                              onTask(original);
+                              return;
+                            }
+                            taskClick.current = setTimeout(
+                              () => onTask(original, undefined, undefined, undefined, anchor),
+                              220,
+                            );
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            clearClick();
+                            if (taskClick.current) clearTimeout(taskClick.current);
+                            onTask(original, undefined, undefined, undefined, {
+                              x: e.clientX,
+                              y: e.clientY,
+                            });
                           }}
                         >
                           <span
@@ -344,10 +477,24 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
                             title="拖动调整开始日期"
                           />
                           <span className="bar-title">
+                            {data.tasks.filter(
+                              (x) =>
+                                x.projectId === t.projectId &&
+                                (x.groupId ?? x.id) === (t.groupId ?? t.id),
+                            ).length > 1
+                              ? '↔ '
+                              : ''}
                             {t.status === '已完成' ? '✓ ' : ''}
                             {t.name}
                           </span>
-                          <span className="bar-duration">{duration(t.start, t.end)}天</span>
+                          {duration(t.start, t.end) > 2 && (
+                            <span className="bar-duration">{duration(t.start, t.end)}天</span>
+                          )}
+                          {drag?.task.id === t.id && (
+                            <span className="drag-dates">
+                              {t.start} — {t.end}
+                            </span>
+                          )}
                           <span
                             className="resize-handle right"
                             data-testid="resize-end"
@@ -362,7 +509,13 @@ export function Gantt({ data, project, onTask, onDay, onTrade, onOrder, onMove }
               </div>
             );
           })}
-          {!trades.length && <p className="empty-text">添加工种，开始安排施工。</p>}
+          <div className="trade-list-add">
+            <button onClick={() => onTrade(undefined, trades.length)}>
+              <Plus size={17} />
+              在列表末尾新增工种
+            </button>
+            <span>拖动工种左侧手柄排序 · 更多菜单提供键盘替代操作</span>
+          </div>
         </div>
       </div>
       <div className="gantt-footer">

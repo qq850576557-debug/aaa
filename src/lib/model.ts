@@ -69,6 +69,8 @@ export const taskSchema = z
     owner: text,
     status: z.enum(['未开始', '进行中', '已完成', '已延期']),
     notes: text,
+    groupId: uid.optional(),
+    dependsOn: z.array(uid).max(100).optional(),
   })
   .strict()
   .refine((t) => t.end >= t.start, { message: '结束日期不能早于开始日期', path: ['end'] })
@@ -93,6 +95,7 @@ export const noteSchema = z
     content: text,
     done: z.boolean(),
     pinned: z.boolean(),
+    taskId: uid.optional(),
   })
   .strict()
   .refine((n) => n.kind === '项目备忘' || !!n.date, {
@@ -107,6 +110,8 @@ export const purchaseSchema = z
     taskId: z.string().max(100),
     due: date,
     leadDays: z.number().int().min(0).max(365),
+    quantity: z.string().max(100).optional(),
+    specification: text.optional(),
     status: z.enum(['待采购', '已下单', '已到货']),
     owner: text,
     notes: text,
@@ -140,6 +145,29 @@ export const dataSchema = z
     for (const t of d.tasks)
       if (!d.trades.some((g) => g.id === t.tradeId && g.projectId === t.projectId))
         ctx.addIssue({ code: 'custom', message: '任务的工种关联无效' });
+    for (const n of d.notes)
+      if (n.taskId && !d.tasks.some((t) => t.id === n.taskId && t.projectId === n.projectId))
+        ctx.addIssue({ code: 'custom', message: '事项的任务关联无效' });
+    const byId = new Map(d.tasks.map((t) => [t.id, t]));
+    const visiting = new Set<string>(),
+      visited = new Set<string>();
+    function visit(t: z.infer<typeof taskSchema>) {
+      if (visiting.has(t.id)) {
+        ctx.addIssue({ code: 'custom', message: '前序任务存在循环依赖' });
+        return;
+      }
+      if (visited.has(t.id)) return;
+      visiting.add(t.id);
+      for (const dep of t.dependsOn ?? []) {
+        const parent = byId.get(dep);
+        if (!parent || parent.projectId !== t.projectId)
+          ctx.addIssue({ code: 'custom', message: '前序任务关联无效' });
+        else visit(parent);
+      }
+      visiting.delete(t.id);
+      visited.add(t.id);
+    }
+    d.tasks.forEach(visit);
     for (const p of d.purchases)
       if (p.taskId && !d.tasks.some((t) => t.id === p.taskId && t.projectId === p.projectId))
         ctx.addIssue({ code: 'custom', message: '采购的任务关联无效' });
@@ -215,11 +243,12 @@ export function purchaseDue(p: Purchase, d: Data) {
   const t = d.tasks.find((t) => t.id === p.taskId && t.projectId === p.projectId);
   return t ? plus(t.start, -p.leadDays) : p.due;
 }
+export const isHistorical = (p: Project) => p.archived || p.status === '已完工';
 export function stats(d: Data, now = today()) {
-  const active = new Set(d.projects.filter((p) => !p.archived).map((p) => p.id));
+  const active = new Set(d.projects.filter((p) => !isHistorical(p)).map((p) => p.id));
   const purchases = d.purchases.filter((p) => active.has(p.projectId) && p.status !== '已到货');
   return {
-    total: active.size,
+    total: d.projects.length,
     ongoing: d.projects.filter((p) => active.has(p.id) && p.status === '进行中').length,
     todos: d.notes.filter(
       (n) => active.has(n.projectId) && !n.done && (n.date === now || n.reminder === now),
@@ -257,6 +286,11 @@ export function copyProject(d: Data, source: Project): { data: Data; project: Pr
   const taskMap = new Map(
     d.tasks.filter((x) => x.projectId === source.id).map((x) => [x.id, id()]),
   );
+  const groups = new Map(
+    d.tasks
+      .filter((t) => t.projectId === source.id)
+      .map((t) => [t.groupId ?? t.id, taskMap.get(t.groupId ?? t.id) ?? id()]),
+  );
   return {
     project,
     data: {
@@ -275,6 +309,8 @@ export function copyProject(d: Data, source: Project): { data: Data; project: Pr
           .map((x) => ({
             ...x,
             id: taskMap.get(x.id)!,
+            ...(x.groupId ? { groupId: groups.get(x.groupId)! } : {}),
+            ...(x.dependsOn ? { dependsOn: x.dependsOn.map((dep) => taskMap.get(dep)!) } : {}),
             tradeId: tradeMap.get(x.tradeId)!,
             projectId: project.id,
           })),
@@ -283,7 +319,12 @@ export function copyProject(d: Data, source: Project): { data: Data; project: Pr
         ...d.notes,
         ...d.notes
           .filter((x) => x.projectId === source.id)
-          .map((x) => ({ ...x, id: id(), projectId: project.id })),
+          .map((x) => ({
+            ...x,
+            id: id(),
+            projectId: project.id,
+            ...(x.taskId ? { taskId: taskMap.get(x.taskId)! } : {}),
+          })),
       ],
       purchases: [
         ...d.purchases,

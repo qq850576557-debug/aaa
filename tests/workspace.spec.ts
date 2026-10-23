@@ -1,135 +1,8 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
-import { emptyData, newProject, defaultTrades, id, type Data } from '../src/lib/model';
+import { emptyData } from '../src/lib/model';
 
-function fixture(): Data {
-  const d = emptyData(),
-    p = newProject();
-  p.id = 'p-home';
-  p.name = '栖桐里 · 理想之家';
-  p.address = '上海市 · 徐汇区';
-  p.owner = '林女士';
-  p.manager = '沈设计';
-  p.start = '2026-10-22';
-  p.end = '2026-12-31';
-  p.status = '进行中';
-  p.notes = '施工前注意成品保护；每周五向业主同步进度。';
-  d.projects = [p];
-  d.trades = defaultTrades(p.id);
-  d.tasks = [
-    {
-      id: 't-first',
-      projectId: p.id,
-      tradeId: d.trades[0].id,
-      name: '现场保护与拆改',
-      start: '2026-10-22',
-      end: '2026-10-25',
-      status: '进行中',
-      owner: '张师傅',
-      notes: '',
-    },
-    {
-      id: 't-water',
-      projectId: p.id,
-      tradeId: d.trades[1].id,
-      name: '水电定位与布线',
-      start: '2026-10-26',
-      end: '2026-11-05',
-      status: '未开始',
-      owner: '王师傅',
-      notes: '',
-    },
-    {
-      id: 't-last',
-      projectId: p.id,
-      tradeId: d.trades[7].id,
-      name: '竣工联合验收',
-      start: '2026-12-28',
-      end: '2026-12-31',
-      status: '未开始',
-      owner: '沈设计',
-      notes: '',
-    },
-  ];
-  d.notes = [
-    {
-      id: id(),
-      projectId: p.id,
-      title: '确认厨房插座定位',
-      kind: '业主确认',
-      date: '2026-10-23',
-      reminder: '2026-10-23',
-      owner: '沈设计',
-      content: '与业主确认小家电使用位置，复核台面尺寸。',
-      done: false,
-      pinned: true,
-    },
-    {
-      id: id(),
-      projectId: p.id,
-      title: '材料与施工注意事项',
-      kind: '项目备忘',
-      date: '',
-      reminder: '',
-      owner: '',
-      content: '墙面采用暖白色；木饰面进场前核对色板。',
-      done: false,
-      pinned: true,
-    },
-  ];
-  d.purchases = [
-    {
-      id: id(),
-      projectId: p.id,
-      name: '电线及线管',
-      taskId: 't-water',
-      due: '2026-10-23',
-      leadDays: 3,
-      status: '待采购',
-      owner: '张师傅',
-      notes: '按水电清单核对规格',
-    },
-  ];
-  return d;
-}
-async function state(page: Page): Promise<Data> {
-  return page.evaluate(async () => {
-    return await new Promise((resolve, reject) => {
-      const r = indexedDB.open('chunmo-workspace', 1);
-      r.onsuccess = () => {
-        const db = r.result,
-          q = db.transaction('workspace').objectStore('workspace').get('data');
-        q.onsuccess = () => {
-          resolve(q.result);
-          db.close();
-        };
-        q.onerror = () => reject(q.error);
-      };
-      r.onerror = () => reject(r.error);
-    });
-  });
-}
-async function boot(page: Page) {
-  await page.goto('/');
-  await expect(page.locator('.save-state')).toContainText('已保存');
-}
-async function restore(page: Page, d = fixture()) {
-  const b = page.getByRole('button', { name: '数据与备份' });
-  if (await b.isVisible()) await b.click();
-  else await page.getByRole('button', { name: '备份数据' }).click();
-  await page.locator('input[type=file]').setInputFiles({
-    name: 'project.json',
-    mimeType: 'application/json',
-    buffer: Buffer.from(JSON.stringify(d)),
-  });
-  await expect(page.getByRole('heading', { name: '覆盖当前全部项目数据？' })).toBeVisible();
-  await page.getByRole('button', { name: '确认操作', exact: true }).click();
-  await expect.poll(async () => (await state(page))?.projects.length).toBe(d.projects.length);
-}
-async function closeToast(page: Page) {
-  const b = page.getByRole('button', { name: '关闭提示' });
-  if (await b.isVisible()) await b.click();
-}
+import { state, boot, restore, closeToast } from './helpers';
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-23T04:00:00Z'));
 });
@@ -203,24 +76,26 @@ test('date click, double click, range select, move and both resize handles have 
   let box = await water.boundingBox();
   await page.mouse.move(box!.x + 30, box!.y + 15);
   await page.mouse.down();
-  await page.mouse.move(box!.x + 118, box!.y + 15, { steps: 12 });
+  await page.mouse.move(box!.x + 142, box!.y + 15, { steps: 12 });
   await page.mouse.up();
   await expect
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
     .toBe('2026-10-28');
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  await water.getByTestId('resize-end').scrollIntoViewIfNeeded();
   let handle = await water.getByTestId('resize-end').boundingBox();
   await page.mouse.move(handle!.x + 4, handle!.y + 14);
   await page.mouse.down();
-  await page.mouse.move(handle!.x + 48, handle!.y + 14, { steps: 8 });
+  await page.mouse.move(handle!.x + 60, handle!.y + 14, { steps: 8 });
   await page.mouse.up();
   await expect
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.end)
     .toBe('2026-11-08');
+  await water.getByTestId('resize-start').scrollIntoViewIfNeeded();
   handle = await water.getByTestId('resize-start').boundingBox();
   await page.mouse.move(handle!.x + 4, handle!.y + 14);
   await page.mouse.down();
-  await page.mouse.move(handle!.x + 48, handle!.y + 14, { steps: 8 });
+  await page.mouse.move(handle!.x + 60, handle!.y + 14, { steps: 8 });
   await page.mouse.up();
   await expect
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
@@ -229,11 +104,13 @@ test('date click, double click, range select, move and both resize handles have 
   await expect(page.locator('.purchase-row')).toContainText('2026-10-26 前采购');
 });
 
-test('continuous creation, order arrows, color wheel and default colors', async ({ page }) => {
+test('continuous creation, accessible ordering, color wheel and default colors', async ({
+  page,
+}) => {
   await boot(page);
   await restore(page);
   await page.getByRole('button', { name: '施工计划', exact: true }).click();
-  await page.getByRole('button', { name: '上移水电改造', exact: true }).click();
+  await page.getByRole('button', { name: '拖动工种水电改造', exact: true }).press('Alt+ArrowUp');
   await expect(page.locator('.trade-title').first()).toContainText('水电改造');
   await page.getByRole('button', { name: '编辑水电改造', exact: true }).click();
   let modal = page.getByRole('dialog');
@@ -262,7 +139,7 @@ test('continuous creation, order arrows, color wheel and default colors', async 
     .toBe(2);
 });
 
-test('notes, completion, search, pin, copy, archive, restore and confirmed deletion', async ({
+test('notes, completion, search, pin, project copy/completion/recovery and confirmed deletion', async ({
   page,
 }) => {
   await boot(page);
@@ -271,7 +148,7 @@ test('notes, completion, search, pin, copy, archive, restore and confirmed delet
   await page.getByRole('button', { name: '新增事项', exact: true }).click();
   let modal = page.getByRole('dialog');
   await modal.getByLabel('事项标题', { exact: true }).fill('核对门洞尺寸');
-  await modal.getByLabel('事项日期（备忘可留空）').fill('2026-10-23');
+  await modal.getByLabel('事项日期（备忘可留空）', { exact: true }).fill('2026-10-23');
   await modal.getByLabel('负责人', { exact: true }).fill('小陈');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('button', { name: '置顶核对门洞尺寸', exact: true }).click();
@@ -287,18 +164,16 @@ test('notes, completion, search, pin, copy, archive, restore and confirmed delet
   await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
   await expect.poll(async () => (await state(page)).projects.length).toBe(2);
   await expect(page.getByLabel('切换项目')).toHaveValue(/.+/);
-  await page.getByRole('button', { name: '归档', exact: true }).click();
+  await page.getByRole('button', { name: '标记完工', exact: true }).click();
   await page.getByRole('button', { name: '确认', exact: true }).click();
   await expect
-    .poll(async () => (await state(page)).projects.filter((p) => p.archived).length)
+    .poll(async () => (await state(page)).projects.filter((p) => p.status === '已完工').length)
     .toBe(1);
-  await page.getByRole('button', { name: '归档项目', exact: true }).click();
-  await page.getByRole('button', { name: '恢复归档', exact: true }).click();
+  await page.getByRole('button', { name: '恢复进行中', exact: true }).click();
   await page.getByRole('button', { name: '确认', exact: true }).click();
   await expect
-    .poll(async () => (await state(page)).projects.filter((p) => p.archived).length)
+    .poll(async () => (await state(page)).projects.filter((p) => p.status === '已完工').length)
     .toBe(0);
-  await page.getByRole('button', { name: '返回活跃项目', exact: true }).click();
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
   await page.getByRole('button', { name: '取消', exact: true }).last().click();
@@ -334,12 +209,13 @@ test('JSON validation, overwrite cancellation and complete PNG beyond viewport',
   expect((await state(page)).projects).toHaveLength(1);
   await page.getByRole('button', { name: '关闭浮窗' }).click();
   const imageDownload = page.waitForEvent('download');
-  await page.getByRole('button', { name: '导出施工工期长图' }).click();
+  await page.getByRole('button', { name: '导出施工工期长图', exact: true }).click();
+  await page.getByRole('button', { name: '生成并导出', exact: true }).click();
   const image = await imageDownload;
   expect(image.suggestedFilename()).toContain('施工工期.png');
   const buf = await readFile((await image.path())!);
   expect(buf.subarray(1, 4).toString()).toBe('PNG');
-  expect(buf.readUInt32BE(16)).toBe(3294);
+  expect(buf.readUInt32BE(16)).toBe(9768);
   expect(buf.readUInt32BE(20)).toBeGreaterThan(2300);
   await image.saveAs('test-results/full-schedule.png');
   await page.getByRole('button', { name: '施工计划', exact: true }).click();
@@ -457,18 +333,19 @@ test('task copy/delete, procurement CRUD, project settings validation and scroll
   await modal.getByLabel('采购截止日期', { exact: true }).fill('2026-10-20');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).purchases.length).toBe(2);
-  await expect(page.locator('.stat-card').filter({ hasText: '已逾期采购' })).toContainText('01');
+  await expect(page.locator('.stat-card').filter({ hasText: '已逾期采购' })).toContainText('1');
   await page.locator('.purchase-row').filter({ hasText: '实木地板' }).click();
   modal = page.getByRole('dialog');
   await modal.getByRole('combobox', { name: '采购状态', exact: true }).selectOption('已到货');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(page.locator('.stat-card').filter({ hasText: '已逾期采购' })).toContainText('00');
+  await expect(page.locator('.stat-card').filter({ hasText: '已逾期采购' })).toContainText('暂无');
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   modal = page.getByRole('dialog');
   await modal.getByLabel('计划完工日期', { exact: true }).fill('2026-10-01');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect(modal.getByRole('alert')).toContainText('完工日期不能早于开工日期');
   await modal.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '确认操作', exact: true }).click();
   await page.getByRole('button', { name: '施工计划', exact: true }).click();
   await page.getByTestId('gantt-scroll').evaluate((e) => {
     e.scrollLeft = e.scrollWidth;

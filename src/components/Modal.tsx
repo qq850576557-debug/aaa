@@ -1,17 +1,20 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+export type Anchor = { x: number; y: number };
 export function Modal({
   title,
   subtitle,
   children,
   onClose,
   wide = false,
+  anchor,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  anchor?: Anchor;
 }) {
   const headingId = useId();
   const ref = useRef<HTMLDialogElement>(null);
@@ -21,9 +24,19 @@ export function Modal({
     const previous = document.activeElement as HTMLElement | null;
     const d = ref.current!;
     d.showModal();
+    const position = () => {
+      if (!anchor || window.innerWidth < 640) return;
+      const rect = d.getBoundingClientRect();
+      d.style.margin = '0';
+      d.style.left = `${Math.max(12, Math.min(anchor.x + 12, window.innerWidth - rect.width - 12))}px`;
+      d.style.top = `${Math.max(12, Math.min(anchor.y + 12, window.innerHeight - rect.height - 12))}px`;
+    };
+    position();
+    window.addEventListener('resize', position);
     const old = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
+      window.removeEventListener('resize', position);
       d.close();
       document.body.style.overflow = old;
       previous?.focus({ preventScroll: true });
@@ -32,7 +45,7 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      className={`modal ${wide ? 'wide' : ''}`}
+      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''}`}
       onCancel={(e) => {
         e.preventDefault();
         closeRef.current();

@@ -1,10 +1,11 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import Wheel from '@uiw/react-color-wheel';
+import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
-import { Modal } from './Modal';
+import { Confirm, Modal, type Anchor } from './Modal';
+import { DateField } from './DateField';
+import { ColorControls } from './ColorPopover';
 import {
+  dateOK,
   duration,
-  palette,
   plus,
   purchaseDue,
   projectSchema,
@@ -19,12 +20,13 @@ import {
   type Note,
   type Purchase,
 } from '../lib/model';
-export type Edit =
+export type Edit = (
   | { kind: 'project'; value: Project }
   | { kind: 'trade'; value: Trade }
   | { kind: 'task'; value: Task }
   | { kind: 'note'; value: Note }
-  | { kind: 'purchase'; value: Purchase };
+  | { kind: 'purchase'; value: Purchase }
+) & { anchor?: Anchor };
 export type Entity = Project | Trade | Task | Note | Purchase;
 export function Editor({
   edit,
@@ -34,6 +36,7 @@ export function Editor({
   onDelete,
   onCopy,
   onContinue,
+  onSegment,
 }: {
   edit: Edit;
   data: Data;
@@ -42,27 +45,72 @@ export function Editor({
   onDelete?: () => void;
   onCopy?: () => void;
   onContinue?: (t: Task) => void;
+  onSegment?: (t: Task) => void;
 }) {
   const [v, set] = useState<Record<string, unknown>>({ ...edit.value });
   const [error, setError] = useState('');
+  const uid = useId();
+  const [discard, setDiscard] = useState(false);
+  const dirty = JSON.stringify(v) !== JSON.stringify(edit.value);
+  const close = () => (dirty ? setDiscard(true) : onClose());
   const [again, setAgain] = useState(false);
   const change = (key: string, value: unknown) => set((old) => ({ ...old, [key]: value }));
-  const input = (key: string, label: string, type = 'text', required = false) => (
-    <label key={key}>
-      {label}
-      <input
-        type={type}
-        required={required}
-        maxLength={['name', 'title'].includes(key) ? 100 : 4000}
+  const dateChange = (key: string, value: string) =>
+    set((old) => {
+      if (
+        edit.kind === 'task' &&
+        key === 'start' &&
+        dateOK(value) &&
+        dateOK(String(old.start)) &&
+        dateOK(String(old.end))
+      )
+        return {
+          ...old,
+          start: value,
+          end: plus(value, duration(String(old.start), String(old.end)) - 1),
+        };
+      return { ...old, [key]: value };
+    });
+  const input = (key: string, label: string, type = 'text', required = false) =>
+    type === 'date' ? (
+      <DateField
+        key={key}
+        label={label}
         value={String(v[key] ?? '')}
-        onChange={(e) => change(key, e.target.value)}
+        required={required}
+        onChange={(date) => dateChange(key, date)}
+        rangeStart={String(v.start ?? '')}
+        rangeEnd={String(v.end ?? '')}
       />
-    </label>
-  );
+    ) : (
+      <div className="form-field" key={key}>
+        <label htmlFor={`${uid}-${key}`}>{label}</label>
+        <input
+          id={`${uid}-${key}`}
+          type={type}
+          required={required}
+          maxLength={['name', 'title'].includes(key) ? 100 : 4000}
+          value={String(v[key] ?? '')}
+          onChange={(e) => change(key, e.target.value)}
+        />
+      </div>
+    );
   const select = (key: string, label: string, options: (string | [string, string])[]) => (
-    <label>
-      {label}
-      <select value={String(v[key])} onChange={(e) => change(key, e.target.value)}>
+    <div className="form-field">
+      <label htmlFor={`${uid}-${key}`}>{label}</label>
+      <select
+        id={`${uid}-${key}`}
+        value={
+          key === 'dependency'
+            ? String((v.dependsOn as string[] | undefined)?.[0] ?? '')
+            : String(v[key] ?? '')
+        }
+        onChange={(e) =>
+          key === 'dependency'
+            ? change('dependsOn', e.target.value ? [e.target.value] : [])
+            : change(key, e.target.value)
+        }
+      >
         {options.map((o) => {
           const [value, text] = Array.isArray(o) ? o : [o, o];
           return (
@@ -72,7 +120,7 @@ export function Editor({
           );
         })}
       </select>
-    </label>
+    </div>
   );
   const area = (key: string, label: string) => (
     <label className="span2">
@@ -103,7 +151,9 @@ export function Editor({
   function submit(e: FormEvent) {
     e.preventDefault();
     try {
-      const value = schemas[kind].parse(v);
+      const payload = { ...v };
+      if (kind === 'note' && !payload.taskId) delete payload.taskId;
+      const value = schemas[kind].parse(payload);
       onSave(kind, value);
       if (again && kind === 'task' && onContinue) {
         onContinue(value as Task);
@@ -159,7 +209,42 @@ export function Editor({
             天
           </strong>{' '}
           · 包含开始与结束当天 · 允许交叉施工
+          <span className="segment-info">
+            同任务时间段：
+            {Math.max(
+              1,
+              data.tasks.filter(
+                (t) => t.projectId === v.projectId && (t.groupId ?? t.id) === (v.groupId ?? v.id),
+              ).length + (isNew ? 1 : 0),
+            )}{' '}
+            段。新增时间段会保留逻辑关联。
+          </span>
         </div>
+        <label>
+          持续天数
+          <input
+            aria-label="持续天数"
+            type="number"
+            min={1}
+            max={1096}
+            value={
+              dateOK(String(v.start)) && dateOK(String(v.end))
+                ? Math.max(1, duration(String(v.start), String(v.end)))
+                : 1
+            }
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (n >= 1 && n <= 1096 && dateOK(String(v.start)))
+                change('end', plus(String(v.start), n - 1));
+            }}
+          />
+        </label>
+        {select('dependency', '前序任务（可选）', [
+          ['', '无明确依赖'],
+          ...data.tasks
+            .filter((t) => t.projectId === v.projectId && t.id !== v.id)
+            .map((t) => [t.id, t.name] as [string, string]),
+        ])}
         {input('owner', '负责人')}
         {select('status', '任务状态', ['未开始', '进行中', '已完成', '已延期'])}
         {area('notes', '施工备注')}
@@ -176,62 +261,13 @@ export function Editor({
       <>
         {input('name', '工种名称', 'text', true)}
         <div />
-        <div className="color-editor span2">
-          <div>
-            <Wheel
-              color={String(v.color)}
-              width={170}
-              height={170}
-              onChange={(c) => change('color', c.hex)}
-            />
-          </div>
-          <div>
-            <label>
-              自定义颜色
-              <input
-                aria-label="自定义颜色"
-                pattern="#[0-9a-fA-F]{6}"
-                value={String(v.color)}
-                onChange={(e) => change('color', e.target.value)}
-              />
-            </label>
-            <p>品牌推荐与常用配色</p>
-            <div className="swatches">
-              {['#244e42', '#8fa979', ...palette].map((c) => (
-                <button
-                  type="button"
-                  key={c}
-                  aria-label={`选择颜色 ${c}`}
-                  onClick={() => change('color', c)}
-                  style={{ background: c }}
-                  className={v.color === c ? 'selected' : ''}
-                />
-              ))}
-            </div>
-            {data.recentColors.length > 0 && (
-              <>
-                <p>最近使用</p>
-                <div className="swatches">
-                  {data.recentColors.map((c) => (
-                    <button
-                      type="button"
-                      key={c}
-                      aria-label={`最近颜色 ${c}`}
-                      style={{ background: c }}
-                      onClick={() => change('color', c)}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
-            <button
-              type="button"
-              className="text-btn"
-              onClick={() => change('color', v.defaultColor)}
-            >
-              恢复默认颜色
-            </button>
-          </div>
+        <div className="span2">
+          <ColorControls
+            color={String(v.color)}
+            defaultColor={String(v.defaultColor)}
+            recent={data.recentColors}
+            onChange={(color) => change('color', color)}
+          />
         </div>
       </>
     );
@@ -250,8 +286,39 @@ export function Editor({
         ])}
         {input('date', '事项日期（备忘可留空）', 'date')}
         {input('reminder', '提醒日期', 'date')}
+        <label>
+          持续天数
+          <input
+            aria-label="持续天数"
+            type="number"
+            min={1}
+            max={1096}
+            value={
+              dateOK(String(v.start)) && dateOK(String(v.end))
+                ? Math.max(1, duration(String(v.start), String(v.end)))
+                : 1
+            }
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (n >= 1 && n <= 1096 && dateOK(String(v.start)))
+                change('end', plus(String(v.start), n - 1));
+            }}
+          />
+        </label>
+        {select('dependency', '前序任务（可选）', [
+          ['', '无明确依赖'],
+          ...data.tasks
+            .filter((t) => t.projectId === v.projectId && t.id !== v.id)
+            .map((t) => [t.id, t.name] as [string, string]),
+        ])}
         {input('owner', '负责人')}
         <div />
+        {select('taskId', '关联施工任务（可选）', [
+          ['', '不关联任务'],
+          ...data.tasks
+            .filter((t) => t.projectId === v.projectId)
+            .map((t) => [t.id, t.name] as [string, string]),
+        ])}
         {area('content', '详细内容')}
         <label className="check">
           <input
@@ -302,48 +369,85 @@ export function Editor({
             动态采购截止日：{purchaseDue(v as unknown as Purchase, data)}。施工任务调整后自动更新。
           </p>
         )}
+        {input('quantity', '采购数量（含单位）')}
+        {input('specification', '材料规格')}
         {input('owner', '采购负责人')}
         {area('notes', '规格、数量与采购备注')}
       </>
     );
   return (
-    <Modal
-      title={`${isNew ? '新建' : '编辑'}${labels[kind]}`}
-      subtitle="每一处细节，都让项目更有序。"
-      onClose={onClose}
-      wide
-    >
-      <form onSubmit={submit}>
-        <div className="modal-body">
-          <div className="form-grid">{fields}</div>
-          {error && (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          )}
-        </div>
-        <footer className="modal-foot">
-          <div className="left-actions">
-            {onDelete && (
-              <button type="button" className="text-btn destructive" onClick={onDelete}>
-                删除
-              </button>
-            )}
-            {onCopy && (
-              <button type="button" onClick={onCopy}>
-                复制
-              </button>
+    <>
+      {' '}
+      <Modal
+        title={`${isNew ? '新建' : '编辑'}${labels[kind]}`}
+        subtitle="每一处细节，都让项目更有序。"
+        onClose={close}
+        anchor={edit.anchor}
+        wide
+      >
+        <form onSubmit={submit}>
+          <div className="modal-body">
+            <div className="form-grid">{fields}</div>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
             )}
           </div>
-          <button type="button" onClick={onClose}>
-            取消
-          </button>
-          <button type="submit" className="primary">
-            {again ? '保存并继续' : '保存'}
-          </button>
-        </footer>
-      </form>
-    </Modal>
+          <footer className="modal-foot">
+            <div className="left-actions">
+              {onDelete && (
+                <button type="button" className="text-btn destructive" onClick={onDelete}>
+                  删除
+                </button>
+              )}
+              {onCopy && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (dirty) {
+                      setError('请先保存当前修改，再复制。');
+                      return;
+                    }
+                    onCopy();
+                  }}
+                >
+                  复制
+                </button>
+              )}
+            </div>
+            <button type="button" onClick={close}>
+              取消
+            </button>
+            {onSegment && kind === 'task' && !isNew && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (dirty) {
+                    setError('请先保存当前修改，再新增时间段。');
+                    return;
+                  }
+                  onSegment(edit.value as Task);
+                }}
+              >
+                新增时间段
+              </button>
+            )}
+            <button type="submit" className="primary">
+              {again ? '保存并继续' : '保存'}
+            </button>
+          </footer>
+        </form>
+      </Modal>
+      {discard && (
+        <Confirm
+          title="放弃未保存的修改？"
+          message="当前表单有尚未保存的内容。返回可继续编辑，确认后丢弃本次表单修改。"
+          onCancel={() => setDiscard(false)}
+          onConfirm={onClose}
+        />
+      )}
+    </>
   );
 }
 export const nextTask = (t: Task): Task => ({

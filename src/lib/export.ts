@@ -8,9 +8,10 @@ import {
   type Data,
   type Project,
 } from './model';
+import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_INITIALS, BRAND_SLOGAN } from './brand';
 export function downloadBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const url = URL.createObjectURL(blob),
+    a = document.createElement('a');
   a.href = url;
   a.download = name;
   a.click();
@@ -24,29 +25,37 @@ export function backupJSON(data: Data) {
 }
 export const exportFilename = (name: string) =>
   `${name.replace(/[\\/:*?"<>|]/g, '-')}-施工工期.png`;
-// Render the entire schedule from data. Horizontal viewport and UI scroll positions are irrelevant.
-// Fixed-size date panels keep long, cross-year schedules within browser canvas limits.
-export async function schedulePNG(data: Data, project: Project): Promise<Blob> {
+export type PNGOptions = { scale?: 1 | 2; start?: string; end?: string };
+export function monthRanges(start: string, end: string) {
+  const result: { start: string; end: string }[] = [];
+  for (const d of days(start, end)) {
+    const last = result.at(-1);
+    if (last && last.start.slice(0, 7) === d.slice(0, 7)) last.end = d;
+    else result.push({ start: d, end: d });
+  }
+  return result;
+}
+// No viewport capture or downscaling: every day has a fixed readable 64px column.
+// Month exports call this same renderer with a date subset and retain consistent row heights.
+export async function schedulePNG(
+  data: Data,
+  project: Project,
+  options: PNGOptions = {},
+): Promise<Blob> {
   await document.fonts.ready;
-  const [start, end] = projectRange(data, project);
+  const range = projectRange(data, project),
+    start = options.start ?? range[0],
+    end = options.end ?? range[1];
   const dates = days(start, end);
-  const trades = data.trades
-    .filter((g) => g.projectId === project.id)
-    .sort((a, b) => a.order - b.order);
-  const groups = trades.map((g) => ({
-    g,
-    rows: lanes(data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id)),
-  }));
-  const perPanel = 45,
-    cell = 42,
-    label = 210,
-    margin = 48,
-    width = margin * 2 + label + Math.min(perPanel, dates.length) * cell;
-  const rowHeights = groups.map((x) => Math.max(64, x.rows.length * 34 + 16));
-  const chartHeight = 68 + rowHeights.reduce((a, b) => a + b, 0);
-  const panels = Math.ceil(dates.length / perPanel);
-  const temp = document.createElement('canvas').getContext('2d')!;
-  temp.font = '14px sans-serif';
+  if (!dates.length) throw new Error('导出日期范围无效');
+  const scale = options.scale ?? 2,
+    cell = 64,
+    label = 260,
+    margin = 40,
+    width = Math.max(1000, margin * 2 + label + dates.length * cell);
+  const temp = document.createElement('canvas').getContext('2d');
+  if (!temp) throw new Error('浏览器不支持图片生成');
+  temp.font = '16px "PingFang SC", "Microsoft YaHei", sans-serif';
   const wrap = (s: string, max: number) => {
     const out: string[] = [];
     let line = '';
@@ -64,8 +73,21 @@ export async function schedulePNG(data: Data, project: Project): Promise<Blob> {
     if (line || !out.length) out.push(line);
     return out;
   };
+  const trades = data.trades
+      .filter((g) => g.projectId === project.id)
+      .sort((a, b) => a.order - b.order),
+    tasks = data.tasks.filter((t) => t.projectId === project.id);
+  const groups = trades.map((g) => ({
+    g,
+    rows: lanes(tasks.filter((t) => t.tradeId === g.id)),
+    lines: wrap(g.name, label - 50),
+  }));
+  const rowHeights = groups.map((g) =>
+    Math.max(82, g.rows.length * 48 + 24, g.lines.length * 24 + 30),
+  );
+  const chartHeight = 100 + rowHeights.reduce((a, b) => a + b, 0);
   const notes = data.notes
-    .filter((n) => n.projectId === project.id)
+    .filter((n) => n.projectId === project.id && (!n.date || (n.date >= start && n.date <= end)))
     .sort((a, b) => a.date.localeCompare(b.date))
     .flatMap((n) =>
       wrap(
@@ -73,134 +95,158 @@ export async function schedulePNG(data: Data, project: Project): Promise<Blob> {
         width - margin * 2,
       ),
     );
+  const details = tasks
+    .filter((t) => t.start <= end && t.end >= start)
+    .flatMap((t) =>
+      wrap(
+        `T${tasks.findIndex((x) => x.id === t.id) + 1} · ${trades.find((g) => g.id === t.tradeId)?.name} / ${t.name} · ${t.start} — ${t.end} · ${duration(t.start, t.end)}天 · ${t.status}${t.owner ? ' · ' + t.owner : ''}${t.notes ? ' · ' + t.notes : ''}`,
+        width - margin * 2,
+      ),
+    );
   const projectNotes = project.notes ? wrap(`项目备注：${project.notes}`, width - margin * 2) : [];
-  const legendRows = Math.max(1, Math.ceil(trades.length / 5));
-  const header = 190 + legendRows * 28;
+  const columns = Math.max(1, Math.floor((width - margin * 2) / 240)),
+    legendRows = Math.max(1, Math.ceil(trades.length / columns)),
+    header = 240 + legendRows * 32;
   const height =
-    header + panels * (chartHeight + 50) + 80 + (notes.length + projectNotes.length) * 24;
-  const scale = 1.5;
-  if (width * height * scale * scale > 50000000 || height * scale > 32000)
+    header + chartHeight + 130 + (details.length + notes.length + projectNotes.length) * 27;
+  if (width * scale > 32000 || height * scale > 32000 || width * height * scale * scale > 60000000)
     throw new Error(
-      '项目记录过多，超出浏览器单张 PNG 安全尺寸。请减少导出事项或拆分项目后重试；数据未更改。',
+      '当前范围超出浏览器安全画布尺寸。请改用按月份分段或 1 倍清晰度；不会缩小字体或遗漏日期。',
     );
   const canvas = document.createElement('canvas');
   canvas.width = Math.ceil(width * scale);
   canvas.height = Math.ceil(height * scale);
   const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('浏览器不支持图片生成');
+  if (!ctx) throw new Error('无法创建画布');
   ctx.scale(scale, scale);
-  ctx.fillStyle = '#faf9f5';
+  ctx.fillStyle = '#fafbf6';
   ctx.fillRect(0, 0, width, height);
   ctx.textBaseline = 'middle';
   const text = (
     s: string,
     x: number,
     y: number,
-    size = 14,
-    color = '#293f35',
+    size = 16,
+    color = '#304c35',
     bold = false,
     max?: number,
   ) => {
     ctx.fillStyle = color;
     ctx.font = `${bold ? '600' : '400'} ${size}px "PingFang SC", "Microsoft YaHei", sans-serif`;
     if (max && ctx.measureText(s).width > max) {
-      let v = s;
-      while (v && ctx.measureText(v + '…').width > max) v = v.slice(0, -1);
-      s = v + '…';
+      while (s && ctx.measureText(s + '…').width > max) s = s.slice(0, -1);
+      s += '…';
     }
     ctx.fillText(s, x, y);
   };
-  const line = (x: number, y: number, w: number, h: number, color = '#e4e8e1') => {
+  const rect = (x: number, y: number, w: number, h: number, color = '#e2e8db') => {
     ctx.fillStyle = color;
     ctx.fillRect(x, y, w, h);
   };
-  const logo = new Image();
-  logo.src = '/brand.svg';
-  await logo.decode();
-  ctx.drawImage(logo, margin, 24, 48, 56);
-  text('春茉空间设计', margin + 64, 44, 23, '#244e42', true);
-  text('CHUNMO SPACE DESIGN  /  施工工期计划', margin + 64, 70, 11, '#748277');
-  text(project.name, margin, 116, 26, '#244e42', true, width - margin * 2);
+  let brandX = margin;
+  if (BRAND_LOGO_SRC) {
+    const img = new Image();
+    img.src = BRAND_LOGO_SRC;
+    await img.decode();
+    ctx.drawImage(img, margin, 25, 150, 68);
+    brandX += 170;
+  }
+  text(`${BRAND_NAME} · ${BRAND_INITIALS}`, brandX, 46, 24, '#244e42', true);
+  text(BRAND_SLOGAN, brandX, 78, 15, '#68835e');
+  if (!BRAND_LOGO_SRC)
+    text('原始品牌 Logo 尚未提供 · 此处为项目名称文字', brandX, 104, 12, '#74846b');
+  text(project.name, margin, 144, 28, '#244e42', true, width - margin * 2);
   text(
-    `${project.start} — ${project.end}  ·  计划 ${duration(project.start, project.end)} 天（含首尾）  ·  ${project.status}`,
+    `计划 ${project.start} — ${project.end}  /  ${duration(project.start, project.end)} 天（自然日，含首尾）  /  ${project.status}`,
     margin,
-    153,
+    181,
+    17,
+  );
+  text(
+    `本图日期 ${start} — ${end}  ·  ${dates.length} 天  ·  ${scale}× 清晰度`,
+    margin,
+    212,
     15,
+    '#687f5f',
   );
   trades.forEach((g, i) => {
-    const x = margin + ((i % 5) * (width - margin * 2)) / 5,
-      y = 189 + Math.floor(i / 5) * 28;
-    line(x, y - 5, 10, 10, g.color);
-    text(g.name, x + 18, y, 13, '#4c5e53', false, (width - margin * 2) / 5 - 26);
+    const x = margin + ((i % columns) * (width - margin * 2)) / columns,
+      y = 244 + Math.floor(i / columns) * 32;
+    rect(x, y - 6, 12, 12, g.color);
+    text(g.name, x + 22, y, 15, '#4e6b43', false, (width - margin * 2) / columns - 30);
   });
-  let y = header;
-  for (let panel = 0; panel < panels; panel++) {
-    const ds = dates.slice(panel * perPanel, (panel + 1) * perPanel);
-    text(`${ds[0]} — ${ds.at(-1)}   /   ${panel + 1} · ${panels}`, margin, y + 12, 13, '#6b7b70');
-    y += 32;
-    line(margin, y, width - margin * 2, chartHeight, '#ffffff');
-    text('施工工种 / 日期', margin + 14, y + 32, 13, '#56695b', true);
-    ds.forEach((d, i) => {
-      const x = margin + label + i * cell;
-      const weekend = ['六', '日'].includes(weekday(d));
-      if (weekend) line(x, y, cell, chartHeight, '#f3f5ef');
-      line(x, y, 1, chartHeight);
-      text(d.slice(5, 7) + '/' + d.slice(8), x + 5, y + 22, 11);
-      text('周' + weekday(d), x + 10, y + 46, 11, '#849087');
-    });
-    line(margin, y + 67, width - margin * 2, 1);
-    let rowY = y + 68;
-    groups.forEach(({ g, rows }, ri) => {
-      const rh = rowHeights[ri];
-      line(margin + 14, rowY + 24, 8, 8, g.color);
-      text(g.name, margin + 30, rowY + 28, 13, '#344c3e', true, label - 40);
-      rows.forEach((row, lane) =>
-        row.forEach((t) => {
-          if (t.start > ds.at(-1)! || t.end < ds[0]) return;
-          const a = t.start < ds[0] ? ds[0] : t.start,
-            b = t.end > ds.at(-1)! ? ds.at(-1)! : t.end;
-          const x = margin + label + distance(ds[0], a) * cell + 3,
-            w = duration(a, b) * cell - 6,
-            ty = rowY + 10 + lane * 34;
-          ctx.fillStyle = g.color + '40';
-          ctx.strokeStyle = g.color;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.roundRect(x, ty, w, 27, 4);
-          ctx.fill();
-          ctx.stroke();
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(x + 3, ty, w - 6, 27);
-          ctx.clip();
-          text(
-            `${t.status === '已完成' ? '✓ ' : ''}${t.name} · ${duration(t.start, t.end)}天`,
-            x + 7,
-            ty + 14,
-            12,
-            '#2a3f33',
-            false,
-            w - 12,
-          );
-          ctx.restore();
-        }),
-      );
-      rowY += rh;
-      line(margin, rowY - 1, width - margin * 2, 1);
-    });
-    y += chartHeight + 18;
-  }
-  y += 14;
-  for (const n of [...projectNotes, ...notes]) {
-    text(n, margin, y, 14);
-    y += 24;
+  const y = header;
+  rect(margin, y, width - margin * 2, chartHeight, '#fff');
+  text('施工工种 / 日期', margin + 16, y + 50, 16, '#4e6b43', true);
+  const months: { start: number; count: number; label: string }[] = [];
+  dates.forEach((d, i) => {
+    if (months.at(-1)?.label === d.slice(0, 7)) months.at(-1)!.count++;
+    else months.push({ start: i, count: 1, label: d.slice(0, 7) });
+  });
+  months.forEach((m) => {
+    const x = margin + label + m.start * cell;
+    rect(x, y, m.count * cell, 30, '#eef3e6');
+    text(m.label, x + 8, y + 15, 14);
+  });
+  dates.forEach((d, i) => {
+    const x = margin + label + i * cell;
+    if (['六', '日'].includes(weekday(d))) rect(x, y + 30, cell, chartHeight - 30, '#f3f6ed');
+    rect(x, y + 30, 1, chartHeight - 30);
+    text(d.slice(5).replace('-', '/'), x + 9, y + 52, 15);
+    text('周' + weekday(d), x + 14, y + 79, 14, '#6e8464');
+  });
+  rect(margin, y + 99, width - margin * 2, 1);
+  let rowY = y + 100;
+  groups.forEach(({ g, rows, lines }, ri) => {
+    const rh = rowHeights[ri];
+    rect(margin + 16, rowY + 28, 10, 10, g.color);
+    lines.forEach((s, i) => text(s, margin + 36, rowY + 34 + i * 24, 16, '#39572d', true));
+    rows.forEach((row, lane) =>
+      row.forEach((t) => {
+        if (t.start > end || t.end < start) return;
+        const a = t.start < start ? start : t.start,
+          b = t.end > end ? end : t.end,
+          x = margin + label + distance(start, a) * cell + 4,
+          w = duration(a, b) * cell - 8,
+          ty = rowY + 14 + lane * 48;
+        ctx.fillStyle = g.color + '38';
+        ctx.strokeStyle = g.color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(x, ty, w, 34, 5);
+        ctx.fill();
+        ctx.stroke();
+        const index = tasks.findIndex((x) => x.id === t.id) + 1;
+        const title = `${t.start < start ? '← ' : ''}${t.name}${t.end > end ? ' →' : ''}`;
+        const fontSize = 15;
+        ctx.font = `400 ${fontSize}px sans-serif`;
+        text(
+          ctx.measureText(title).width <= w - 14 ? title : `T${index}${t.end > end ? ' →' : ''}`,
+          x + 7,
+          ty + 17,
+          fontSize,
+          '#2c472b',
+          false,
+          w - 14,
+        );
+      }),
+    );
+    rowY += rh;
+    rect(margin, rowY - 1, width - margin * 2, 1);
+  });
+  let noteY = y + chartHeight + 31;
+  text('任务明细与事项', margin, noteY, 18, '#244e42', true);
+  noteY += 31;
+  for (const line of [...details, ...projectNotes, ...notes]) {
+    text(line, margin, noteY, 16);
+    noteY += 27;
   }
   text(
-    `春茉空间设计 · 本地项目计划 · 导出于 ${new Date().toLocaleString('zh-CN')}`,
+    `SJD · 导出于 ${new Date().toLocaleString('zh-CN')} · 完整记录以 JSON 备份为准`,
     margin,
-    height - 24,
-    11,
-    '#839085',
+    height - 28,
+    13,
+    '#718366',
   );
   return new Promise((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('PNG 生成失败'))), 'image/png'),
