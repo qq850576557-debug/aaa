@@ -92,7 +92,17 @@ test('phase 3: workspace stays unified, project cards drag with insertion line a
     'data-project-id',
     original.id,
   );
+  // Verify cancellation independently before using Playwright's native dragTo action.
+  await page.keyboard.press('Escape');
   await page.mouse.up();
+  await expect(page.locator('.project-card.sorting')).toHaveCount(0);
+  expect((await state(page)).projects).toEqual(d.projects);
+  await page
+    .locator(`[data-project-id="${second.id}"]`)
+    .dragTo(page.locator(`[data-project-id="${original.id}"]`), {
+      sourcePosition: { x: 50, y: 20 },
+      targetPosition: { x: 15, y: 20 },
+    });
   await expect.poll(async () => (await state(page)).projects[0].id).toBe(second.id);
   expect((await state(page)).tasks).toEqual(d.tasks);
   expect((await state(page)).notes).toEqual(d.notes);

@@ -41,7 +41,7 @@ import { Editor, nextTask, type Edit, type Entity } from './components/Forms';
 import { useWorkspace } from './lib/useWorkspace';
 import { backupJSON } from './lib/export';
 import { ExportDialog } from './components/ExportDialog';
-import { BRAND_LOGO_SRC } from './lib/brand';
+import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_INITIALS, BRAND_SLOGAN } from './lib/brand';
 import {
   copyProject,
   reorderProjects,
@@ -604,9 +604,9 @@ export default function App() {
         >
           {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉空间设计原始 Logo" />}
           <div>
-            <strong>春茉空间设计</strong>
-            <span>SJD</span>
-            <span className="brand-slogan">功能与美，共生</span>
+            <strong className="brand-name">{BRAND_NAME}</strong>
+            <span className="brand-initials">{BRAND_INITIALS}</span>
+            <span className="brand-slogan">{BRAND_SLOGAN}</span>
             {!BRAND_LOGO_SRC && <span className="brand-pending">原始 Logo 文件待接入</span>}
           </div>
         </a>
@@ -638,8 +638,8 @@ export default function App() {
       <div className="main-shell">
         <header className="topbar">
           <div className="mobile-brand">
-            <strong>春茉空间设计</strong>
-            <span>SJD</span>
+            <strong className="brand-name">{BRAND_NAME}</strong>
+            <span className="brand-initials">{BRAND_INITIALS}</span>
           </div>
           <div className="breadcrumb">
             工作空间 <span>/</span>

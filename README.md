@@ -78,11 +78,13 @@ npm run build
 
 ## 品牌素材和字体
 
-第三阶段成功读取用户上传的 `方正启体简体.ttf`，从原字体提取“春茉空间设计”六字为 `public/fonts/chunmo-brand.ttf`（约 5.5KB），通过 `@font-face` 用于桌面、手机品牌名称及 PNG 品牌标题，导出等待字体加载。正文不使用书法字体，保持无衬线字体可读性。SJD 与唯一品牌标语「功能与美，共生」保持不变。
+上传的 `方正启体简体.ttf` 可正常读取，完整原文件保存在 `public/fonts/fangzheng-qiti.ttf`，与上传文件逐字节相同。网页优先加载从原字体无损提取的六字 WOFF 子集 `public/fonts/chunmo-brand.woff`（3,260 字节），无法加载时回退到完整原 TTF；旧的六字 TTF 子集继续保留。`index.html` 预加载 WOFF，`src/style.css` 配置 `@font-face`，只将字体用于桌面、手机的 `.brand-name` 中文品牌名称及 PNG 品牌标题。字重固定为 400、禁用合成粗体，保留原字形；SJD 明确使用无衬线字体。正文、输入框和按钮继续使用现代无衬线字体，标语仍为「功能与美，共生」。
 
 **原始 Logo 图形仍未接入。** 用户已在对话中明确给出图形，但当前工具能下载的第三阶段附件只有需求文本和 TTF，没有可读取的原始 Logo 图片文件。已检查资源目录；`public/brand.svg` 是第一阶段参考稿，绝不作为正式 Logo 展示、导出或重绘替代。字体接入不等于原图接入。
 
 请将原始透明 PNG 或 SVG 作为文件附件提供，或存放到 `public/brand/chunmo-logo.png`（SVG 可用对应扩展名），在 `src/lib/brand.ts` 的 `BRAND_LOGO_SRC` 指向该真实文件后，UI 和 PNG 共用原图。当前值仍为 `null`，页面明确显示「原始 Logo 文件待接入」。已修正未来图片导出的等比缩放，不拉伸原图。
+
+浏览器真实渲染字体、原 TTF 回退、生产构建及 Windows 本地验收方法见 [品牌字体验证记录](docs/brand-validation.md)。当前云端是 Linux，不能将此处的 Chromium 验证等同于 Windows 实机测试。
 
 ## 人员登记和姓名历史
 

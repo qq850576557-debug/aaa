@@ -3534,21 +3534,33 @@ nav button {
 /* Phase 3: compact workspace, without shrinking task text or pointer targets. */
 @font-face {
   font-family: ChunmoBrand;
-  src: url('/fonts/chunmo-brand.ttf') format('truetype');
+  src:
+    url('/fonts/chunmo-brand.woff') format('woff'),
+    url('/fonts/fangzheng-qiti.ttf') format('truetype');
   font-style: normal;
   font-weight: 400;
   font-display: swap;
+  unicode-range: U+6625, U+8309, U+7A7A, U+95F4, U+8BBE, U+8BA1;
 }
 :root {
   --muted: #65776c;
 }
-.brand strong,
-.mobile-brand strong {
+.brand .brand-name,
+.mobile-brand .brand-name {
   font-family: ChunmoBrand, 'PingFang SC', 'Microsoft YaHei', sans-serif;
   font-weight: 400;
   font-size: 28px;
+  font-style: normal;
+  font-synthesis: none;
   white-space: nowrap;
   letter-spacing: 1px;
+  line-height: 1.35;
+  font-kerning: normal;
+}
+.brand-initials {
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-style: normal;
+  font-weight: 500;
 }
 .brand img {
   object-fit: contain;
@@ -3842,8 +3854,8 @@ nav button {
   .personnel-summary button {
     margin-left: 0;
   }
-  .brand strong,
-  .mobile-brand strong {
+  .brand .brand-name,
+  .mobile-brand .brand-name {
     font-size: 24px;
   }
   .trade-label {
@@ -4001,7 +4013,7 @@ nav button {
   .active-project span {
     display: none;
   }
-  .mobile-brand strong {
+  .mobile-brand .brand-name {
     font-size: 22px;
   }
   .save-state {
