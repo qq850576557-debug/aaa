@@ -1,3 +1,4 @@
+import { editTask } from './helpers';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { boot, closeToast, fixture, restore, state } from './helpers';
@@ -31,7 +32,7 @@ test('dirty form protection, anchored quick create, real calendar and duration s
   await cell.dblclick();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
-  await page.getByTestId('task-bar').filter({ hasText: '现场拆改' }).dblclick();
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: '现场拆改' }));
   let modal = page.getByRole('dialog', { name: '编辑施工任务', exact: true });
   await expect(modal).toHaveClass(/anchored/);
   const rect = await modal.boundingBox();
@@ -54,7 +55,7 @@ test('dirty form protection, anchored quick create, real calendar and duration s
   await page.getByRole('button', { name: '关闭浮窗' }).click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
   expect((await state(page)).tasks).toHaveLength(4);
-  await page.getByTestId('task-bar').filter({ hasText: '现场保护与拆改' }).dblclick();
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: '现场保护与拆改' }));
   await expect(page.getByRole('heading', { name: '编辑施工任务' })).toBeVisible();
   modal = page.getByRole('dialog');
   await modal.getByLabel('任务名称', { exact: true }).fill('未保存的名称');
@@ -79,7 +80,8 @@ test('linked segments merge only on date adjustment; undo restores purchases and
   await restore(page, d);
   await schedule(page);
   await dragBar(page, '现场保护与拆改', 0);
-  await expect(page.getByRole('heading', { name: '编辑施工任务' })).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: '现场保护与拆改' }).first());
   expect((await state(page)).tasks).toHaveLength(4);
   await page.getByRole('button', { name: '关闭浮窗' }).click(); // no-op opens edit but must not merge
   const second = page.getByTestId('task-bar').filter({ hasText: '现场保护与拆改' }).nth(1);
@@ -123,7 +125,7 @@ test('reschedule preview offers atomic cancel/current-only/propagation, preserve
   await restore(page, d);
   await schedule(page);
   async function extend() {
-    await page.getByTestId('task-bar').filter({ hasText: '现场保护与拆改' }).dblclick();
+    await editTask(page, page.getByTestId('task-bar').filter({ hasText: '现场保护与拆改' }));
     const m = page.getByRole('dialog');
     await m.getByLabel('结束日期', { exact: true }).fill('2026-10-28');
     await m.getByRole('button', { name: '保存', exact: true }).click();
@@ -206,13 +208,13 @@ test('legacy archived and completed history is retained, zero metrics say 暂无
   await page.getByRole('button', { name: '已完工项目', exact: true }).first().click();
   await expect(page.locator('.project-info h2')).toHaveText(d.projects[0].name);
   expect((await state(page)).tasks).toHaveLength(3);
-  await page.getByRole('button', { name: '恢复进行中' }).click();
+  await page.getByRole('button', { name: '恢复施工中' }).click();
   await page.getByRole('button', { name: '确认', exact: true }).click();
   await expect.poll(async () => (await state(page)).projects[0].archived).toBe(false);
   await page.locator('.stat-card').filter({ hasText: '未来 15 天采购' }).click();
   await expect(page.locator('.project-filter')).toContainText('未来 15 天采购');
   await expect(page.locator('.reminder-columns .panel:visible')).toHaveCount(1);
-  await expect(page.locator('.panel:visible .reminder-item')).toContainText('电线及线管');
+  await expect(page.locator('.panel:visible .purchase-card')).toContainText('电线及线管');
 });
 
 test('monthly 2x export produces independent titled PNGs and top success feedback expires', async ({

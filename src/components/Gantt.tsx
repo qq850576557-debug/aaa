@@ -7,6 +7,8 @@ import {
   lanes,
   plus,
   projectRange,
+  purchaseDue,
+  purchaseComplete,
   shortDate,
   today,
   weekday,
@@ -15,6 +17,7 @@ import {
   type Task,
   type Trade,
 } from '../lib/model';
+import { TaskContextMenu } from './TaskContextMenu';
 import type { Anchor } from './Modal';
 import { useReorderMotion } from '../lib/useReorderMotion';
 export const CELL = 56;
@@ -30,6 +33,7 @@ interface Props {
   onColor: (trade: Trade, anchor: Anchor) => void;
   onOrder: (trade: Trade, dir: number) => void;
   onMove: (task: Task) => void;
+  onDeleteTask: (task: Task) => void;
 }
 type Drag = {
   task: Task;
@@ -48,6 +52,7 @@ export function Gantt({
   onTrade,
   onOrder,
   onMove,
+  onDeleteTask,
   onReorder,
   onColor,
 }: Props) {
@@ -58,7 +63,7 @@ export function Gantt({
     .sort((a, b) => a.order - b.order);
   const [draggedTrade, setDraggedTrade] = useState<string | null>(null);
   const [dropBefore, setDropBefore] = useState<string | null>(null);
-  const taskClick = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const lastAnchor = useRef<Anchor>({ x: 0, y: 0 });
   const scroller = useRef<HTMLDivElement>(null);
   useReorderMotion(scroller, '.trade-row', trades.map((g) => g.id).join('|'));
@@ -78,7 +83,6 @@ export function Gantt({
   useEffect(
     () => () => {
       if (clickTimer.current) clearTimeout(clickTimer.current);
-      if (taskClick.current) clearTimeout(taskClick.current);
     },
     [],
   );
@@ -89,7 +93,6 @@ export function Gantt({
   };
   const clearClick = () => {
     if (clickTimer.current) clearTimeout(clickTimer.current);
-    if (taskClick.current) clearTimeout(taskClick.current);
   };
   function barDown(e: PointerEvent, task: Task, mode: Drag['mode']) {
     if (e.button !== 0) return;
@@ -136,7 +139,6 @@ export function Gantt({
     setDrag(null);
     if (d.delta) {
       lastDrag.current = performance.now();
-      if (taskClick.current) clearTimeout(taskClick.current);
       onMove(moved(d));
     }
   }
@@ -266,7 +268,10 @@ export function Gantt({
                   (n) => n.projectId === project.id && n.date === date && !n.done,
                 ).length;
                 const p = data.purchases.filter(
-                  (p) => p.projectId === project.id && p.status !== '已到货',
+                  (p) =>
+                    p.projectId === project.id &&
+                    !purchaseComplete(p) &&
+                    purchaseDue(p, data) === date,
                 );
                 return (
                   <button
@@ -277,8 +282,10 @@ export function Gantt({
                   >
                     <strong>{Number(date.slice(8))}</strong>
                     <span>周{weekday(date)}</span>
-                    {n > 0 && <i title={`${n} 条待办`} />}
-                    {p.length > 0 && <span className="sr-only">可在采购页查看采购安排</span>}
+                    {n + p.length > 0 && (
+                      <i title={`${n + p.length} 条待办（采购 ${p.length} 条）`} />
+                    )}
+                    {p.length > 0 && <span className="sr-only">{p.length} 条采购到期</span>}
                   </button>
                 );
               })}
@@ -473,26 +480,29 @@ export function Gantt({
                             setDrag(null);
                           }}
                           onClick={(e) => {
-                            if (performance.now() - lastDrag.current <= 350) return;
-                            if (taskClick.current) clearTimeout(taskClick.current);
-                            const anchor = { x: e.clientX, y: e.clientY, element: e.currentTarget };
+                            e.stopPropagation();
                             if (e.detail === 0) {
-                              onTask(original);
-                              return;
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setMenu({ id: original.id, x: r.left, y: r.bottom });
                             }
-                            taskClick.current = setTimeout(
-                              () => onTask(original, undefined, undefined, undefined, anchor),
-                              220,
-                            );
                           }}
                           onDoubleClick={(e) => {
+                            e.preventDefault();
                             e.stopPropagation();
                             clearClick();
-                            if (taskClick.current) clearTimeout(taskClick.current);
-                            onTask(original, undefined, undefined, undefined, {
-                              x: e.clientX,
-                              y: e.clientY,
-                            });
+                          }}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            clearClick();
+                            setMenu({ id: original.id, x: e.clientX, y: e.clientY });
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                              e.preventDefault();
+                              const r = e.currentTarget.getBoundingClientRect();
+                              setMenu({ id: original.id, x: r.left, y: r.bottom });
+                            }
                           }}
                         >
                           <span
@@ -548,8 +558,38 @@ export function Gantt({
           项目日期：{shortDate(project.start)} — {shortDate(project.end)} ·
           超出计划的任务也会完整展示
         </span>
-        <span>手机 / 键盘操作：使用「施工任务」按钮创建，点击时间条编辑日期</span>
+        <span>拖动时间条及两端调整 · 右键操作 · 手机 / 键盘可使用下方任务详情入口</span>
       </div>
+      <details className="task-details-list">
+        <summary>任务详情与多段管理</summary>
+        {data.tasks
+          .filter((t) => t.projectId === project.id)
+          .map((t) => (
+            <button key={t.id} aria-label={`编辑任务${t.name}`} onClick={() => onTask(t)}>
+              {t.name} · {t.start} — {t.end} · {t.status}
+            </button>
+          ))}
+        {!data.tasks.some((t) => t.projectId === project.id) && (
+          <p>暂无施工任务，可在空白日期双击创建。</p>
+        )}
+      </details>
+      {menu && data.tasks.find((t) => t.id === menu.id) && (
+        <TaskContextMenu
+          task={data.tasks.find((t) => t.id === menu.id)!}
+          point={menu}
+          onClose={() => setMenu(null)}
+          onEdit={() =>
+            onTask(
+              data.tasks.find((t) => t.id === menu.id)!,
+              undefined,
+              undefined,
+              undefined,
+              { x: menu.x, y: menu.y },
+            )
+          }
+          onDelete={() => onDeleteTask(data.tasks.find((t) => t.id === menu.id)!)}
+        />
+      )}
     </section>
   );
 }

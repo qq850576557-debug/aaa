@@ -9,6 +9,8 @@ import {
   duration,
   plus,
   purchaseDue,
+  purchaseCeiling,
+  projectStatus,
   projectSchema,
   tradeSchema,
   taskSchema,
@@ -41,6 +43,7 @@ export function Editor({
   onContinue,
   onSegment,
   onForgetName,
+  onDeadlineChange,
 }: {
   edit: Edit;
   data: Data;
@@ -51,12 +54,18 @@ export function Editor({
   onContinue?: (t: Task) => void;
   onSegment?: (t: Task) => void;
   onForgetName: (name: string) => void;
+  onDeadlineChange?: (purchase: Purchase) => void;
 }) {
-  const [v, set] = useState<Record<string, unknown>>({ ...edit.value });
+  const initial = {
+    ...edit.value,
+    ...(edit.kind === 'project' ? { status: projectStatus(edit.value.status) } : {}),
+    ...(edit.kind === 'purchase' ? { due: purchaseDue(edit.value, data) } : {}),
+  };
+  const [v, set] = useState<Record<string, unknown>>(initial);
   const [error, setError] = useState('');
   const uid = useId();
   const [discard, setDiscard] = useState(false);
-  const dirty = JSON.stringify(v) !== JSON.stringify(edit.value);
+  const dirty = JSON.stringify(v) !== JSON.stringify(initial);
   const close = () => (dirty ? setDiscard(true) : onClose());
   const [again, setAgain] = useState(false);
   const change = (key: string, value: unknown) => set((old) => ({ ...old, [key]: value }));
@@ -86,6 +95,11 @@ export function Editor({
         onChange={(date) => dateChange(key, date)}
         rangeStart={String(v.start ?? '')}
         rangeEnd={String(v.end ?? '')}
+        max={
+          edit.kind === 'purchase' && data.purchases.some((p) => p.id === v.id)
+            ? purchaseCeiling(edit.value as Purchase, data)
+            : undefined
+        }
       />
     ) : (
       <div className="form-field" key={key}>
@@ -211,14 +225,14 @@ export function Editor({
     trade: '工种',
     task: '施工任务',
     note: v.kind === '项目备忘' ? '项目备忘' : '每日事项',
-    purchase: '采购记录',
+    purchase: '采购事项',
   };
   let fields: ReactNode;
   if (kind === 'project')
     fields = (
       <>
         {input('name', '项目名称', 'text', true)}
-        {select('status', '项目状态', ['筹备中', '进行中', '已完工', '暂停'])}
+        {select('status', '项目状态', ['施工中', '已完工', '暂停'])}
         {input('address', '项目地址')}
         {input('owner', '业主称呼')}
         {input('start', '计划开工日期', 'date', true)}
@@ -313,105 +327,47 @@ export function Editor({
   else if (kind === 'note')
     fields = (
       <>
-        {input('title', '事项标题', 'text', true)}
-        {select('kind', '事项类型', [
-          '施工安排',
-          '材料采购',
-          '业主确认',
-          '现场复核',
-          '到货验收',
-          '其他事项',
-          '项目备忘',
-        ])}
-        {input('date', '事项日期（备忘可留空）', 'date')}
-        {input('reminder', '提醒日期', 'date')}
-        <label>
-          持续天数
-          <input
-            aria-label="持续天数"
-            type="number"
-            min={1}
-            max={1096}
-            value={
-              dateOK(String(v.start)) && dateOK(String(v.end))
-                ? Math.max(1, duration(String(v.start), String(v.end)))
-                : 1
-            }
-            onChange={(e) => {
-              const n = Number(e.target.value);
-              if (n >= 1 && n <= 1096 && dateOK(String(v.start)))
-                change('end', plus(String(v.start), n - 1));
-            }}
-          />
-        </label>
-        {select('dependency', '前序任务（可选）', [
-          ['', '无明确依赖'],
-          ...data.tasks
-            .filter((t) => t.projectId === v.projectId && t.id !== v.id)
-            .map((t) => [t.id, t.name] as [string, string]),
-        ])}
-        {input('owner', '负责人')}
-        <div />
-        {select('taskId', '关联施工任务（可选）', [
-          ['', '不关联任务'],
-          ...data.tasks
-            .filter((t) => t.projectId === v.projectId)
-            .map((t) => [t.id, t.name] as [string, string]),
-        ])}
-        {area('content', '详细内容')}
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={Boolean(v.done)}
-            onChange={(e) => change('done', e.target.checked)}
-          />
-          已完成
-        </label>
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={Boolean(v.pinned)}
-            onChange={(e) => change('pinned', e.target.checked)}
-          />
-          置顶
-        </label>
+        {input('title', v.kind === '项目备忘' ? '备忘标题' : '事项标题', 'text', true)}
+        {select(
+          'projectId',
+          '所属项目',
+          data.projects.filter((p) => p.id === v.projectId).map((p) => [p.id, p.name]),
+        )}
+        {v.kind !== '项目备忘' && input('date', '事项截止日期', 'date', true)}
+        {area('content', '详细备注（可选）')}
       </>
     );
   else
     fields = (
       <>
-        {input('name', '材料 / 采购名称', 'text', true)}
-        {select('status', '采购状态', ['待采购', '已下单', '已到货'])}
-        {select('taskId', '关联施工任务（可选）', [
-          ['', '不关联，使用指定截止日'],
-          ...data.tasks
-            .filter((t) => t.projectId === v.projectId)
-            .map((t) => [t.id, t.name] as [string, string]),
-        ])}
-        {v.taskId ? (
-          <label>
-            开工前提前采购天数
-            <input
-              type="number"
-              min={0}
-              max={365}
-              required
-              value={Number(v.leadDays)}
-              onChange={(e) => change('leadDays', Number(e.target.value))}
-            />
-          </label>
-        ) : (
-          input('due', '采购截止日期', 'date', true)
+        {input('name', '采购内容 / 事项标题', 'text', true)}
+        {select(
+          'projectId',
+          '所属项目',
+          data.projects.filter((p) => isNew || p.id === v.projectId).map((p) => [p.id, p.name]),
         )}
-        {v.taskId && (
-          <p className="form-info span2">
-            动态采购截止日：{purchaseDue(v as unknown as Purchase, data)}。施工任务调整后自动更新。
-          </p>
+        {input('due', '采购截止日期', 'date', true)}
+        {area('notes', '详细备注（可选）')}
+        {!isNew && (
+          <div className="form-info span2">
+            原始截止：
+            {(edit.value as Purchase).originalDue ?? purchaseDue(edit.value as Purchase, data)}
+            ；普通编辑最晚：{purchaseCeiling(edit.value as Purchase, data)}。
+            {(edit.value as Purchase).taskId && (
+              <span>已有关联保留。手动修改截止日后采用固定采购计划，施工日期不会因此顺延。</span>
+            )}
+            {!!(edit.value as Purchase).deadlineHistory?.length && (
+              <details>
+                <summary>期限变更记录</summary>
+                {(edit.value as Purchase).deadlineHistory!.map((h, i) => (
+                  <p key={i}>
+                    {h.from} → {h.to} · {h.reason} · {h.at}
+                  </p>
+                ))}
+              </details>
+            )}
+          </div>
         )}
-        {input('quantity', '采购数量（含单位）')}
-        {input('specification', '材料规格')}
-        {input('owner', '采购负责人')}
-        {area('notes', '规格、数量与采购备注')}
       </>
     );
   return (
@@ -458,6 +414,20 @@ export function Editor({
                 </button>
               )}
             </div>
+            {kind === 'purchase' && !isNew && onDeadlineChange && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (dirty) {
+                    setError('请先保存当前修改，再变更原定期限。');
+                    return;
+                  }
+                  onDeadlineChange(edit.value as Purchase);
+                }}
+              >
+                变更原定期限
+              </button>
+            )}
             <button type="button" onClick={close}>
               取消
             </button>

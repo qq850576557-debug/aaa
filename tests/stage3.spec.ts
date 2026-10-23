@@ -1,3 +1,4 @@
+import { editTask } from './helpers';
 import { test, expect, type Page } from '@playwright/test';
 import { mkdir, readFile } from 'node:fs/promises';
 import { boot, closeToast, fixture, restore, state } from './helpers';
@@ -196,7 +197,7 @@ test('phase 3: trade/task personnel stays associated, and untouched deleted cand
   await panel.getByLabel('施工人员姓名', { exact: true }).fill('赵师傅');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).trades[1].personnel?.worker).toBe('赵师傅');
-  await page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' }).dblclick();
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' }));
   panel = page.getByRole('dialog');
   await panel.getByLabel('执行设计姓名', { exact: true }).focus();
   await panel.getByRole('option', { name: '陈设计', exact: true }).click();

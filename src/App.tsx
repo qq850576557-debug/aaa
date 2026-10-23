@@ -13,7 +13,6 @@ import {
   LayoutDashboard,
   Leaf,
   Loader2,
-  MoreHorizontal,
   Package,
   Pin,
   Plus,
@@ -23,8 +22,14 @@ import {
   StickyNote,
   TriangleAlert,
   Upload,
+  Users,
   X,
 } from 'lucide-react';
+import { PurchaseCard } from './components/PurchaseCard';
+import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
+import { PeoplePanel } from './components/PeoplePanel';
+import { useCurrentDate } from './lib/useCurrentDate';
+import { savePurchase, confirmPurchaseDeadline } from './lib/procurement';
 import { Gantt } from './components/Gantt';
 import { ProjectCards } from './components/ProjectCards';
 import { Confirm, Modal, type Anchor } from './components/Modal';
@@ -56,9 +61,14 @@ import {
   parseBackup,
   plus,
   purchaseDue,
+  purchaseComplete,
+  procurementView,
+  projectStatus,
+  todayNotes,
+  noteDue,
+  remainingTime,
   removeProject,
   stats,
-  today,
   type Data,
   type Project,
   type Trade,
@@ -67,7 +77,7 @@ import {
   type Purchase,
 } from './lib/model';
 
-type View = 'overview' | 'schedule' | 'notes' | 'purchases' | 'reminders' | 'completed';
+type View = 'overview' | 'schedule' | 'notes' | 'purchases' | 'reminders' | 'completed' | 'people';
 type Confirmation = { title: string; message: string; run: () => void; danger?: boolean };
 const navigation: [View, string, ReactNode][] = [
   ['overview', '项目工作空间', <LayoutDashboard size={19} />],
@@ -75,9 +85,12 @@ const navigation: [View, string, ReactNode][] = [
   ['purchases', '采购管理', <Package size={19} />],
   ['reminders', '提醒中心', <ClipboardList size={19} />],
   ['completed', '已完工项目', <Archive size={19} />],
+  ['people', '人员管理', <Users size={19} />],
 ];
 export default function App() {
   const { data, ready, status, error, update, retry } = useWorkspace();
+  const now = useCurrentDate();
+  const [deadlineChange, setDeadlineChange] = useState<string | null>(null);
   const [scheduleProposal, setScheduleProposal] = useState<ScheduleProposal | null>(null);
   const [undo, setUndo] = useState<{ before: Data; label: string } | null>(null);
   const [colorEdit, setColorEdit] = useState<{ id: string; anchor: Anchor } | null>(null);
@@ -101,10 +114,12 @@ export default function App() {
   const projects = data.projects.filter(
     (p) =>
       (showAllProjects || isHistorical(p) === archived) &&
-      (!projectStatusFilter || p.status === '进行中'),
+      (!projectStatusFilter || projectStatus(p.status) === '施工中'),
   );
   const p = projects.find((p) => p.id === selected) ?? projects[0];
-  const count = stats(data);
+  const count = stats(data, now);
+  const procurement = procurementView(data, p?.id, now);
+  const dailyNotes = todayNotes(data, p?.id, now);
   const projectTasks = data.tasks.filter((t) => t.projectId === p?.id);
   const projectTrades = data.trades
     .filter((t) => t.projectId === p?.id)
@@ -154,6 +169,11 @@ export default function App() {
     );
   }
   function save(kind: Edit['kind'], value: Entity) {
+    if (kind === 'purchase') {
+      const purchase = value as Purchase;
+      mutate((d) => savePurchase(d, purchase), purchase.projectId);
+      return;
+    }
     if (kind === 'task') {
       changeTask(value as Task);
       return;
@@ -216,7 +236,7 @@ export default function App() {
       setView('overview');
     }
   }
-  function taskEditor(t?: Task, g?: Trade, start = today(), end = start, anchor?: Anchor) {
+  function taskEditor(t?: Task, g?: Trade, start = now, end = start, anchor?: Anchor) {
     if (!p) return;
     const trade = g ?? projectTrades[0];
     if (!trade) {
@@ -254,8 +274,13 @@ export default function App() {
       },
     });
   }
-  function noteEditor(n?: Note, date = day ?? today(), memo = false) {
+  function noteEditor(n?: Note, date = day ?? now, memo = false) {
     if (!p) return;
+    if (!n && !memo) {
+      setDay(null);
+      purchaseEditor(undefined, date);
+      return;
+    }
     setDay(null);
     setEdit({
       kind: 'note',
@@ -273,7 +298,7 @@ export default function App() {
       },
     });
   }
-  function purchaseEditor(v?: Purchase) {
+  function purchaseEditor(v?: Purchase, date = now) {
     if (!p) return;
     setEdit({
       kind: 'purchase',
@@ -282,8 +307,8 @@ export default function App() {
         projectId: p.id,
         name: '',
         taskId: '',
-        due: today(),
-        leadDays: 7,
+        due: date,
+        leadDays: 0,
         status: '待采购',
         owner: '',
         notes: '',
@@ -303,9 +328,8 @@ export default function App() {
       ),
     }));
   }
-  function deleteEntity() {
-    if (!edit) return;
-    const current = edit;
+  function deleteEntity(current = edit) {
+    if (!current) return;
     const name = 'name' in current.value ? current.value.name : (current.value as Note).title;
     setConfirmation({
       title: `删除「${name}」？`,
@@ -314,7 +338,9 @@ export default function App() {
           ? '项目及其工种、施工任务、事项与采购记录都会删除。建议先备份，删除后无法撤销。'
           : current.kind === 'trade'
             ? '该工种及其施工任务将被删除，关联采购将保留当前计算的截止日期。操作无法撤销。'
-            : '此记录将永久删除。操作无法撤销。',
+            : current.kind === 'task'
+              ? '该时间条将删除。采购保留当前截止日期并解除关联，事项与备注内容保留，前序引用将清理。操作无法撤销。'
+              : '此记录将永久删除。操作无法撤销。',
       run: () => {
         mutate((d) => {
           if (current.kind === 'project') return removeProject(d, current.value.id);
@@ -328,7 +354,9 @@ export default function App() {
           const next = {
             ...d,
             purchases: d.purchases.map((x) =>
-              removedTasks.includes(x.taskId) ? { ...x, due: purchaseDue(x, d), taskId: '' } : x,
+              removedTasks.includes(x.taskId)
+                ? { ...x, due: purchaseDue(x, d), taskId: '', deadlineMode: 'fixed' as const }
+                : x,
             ),
           };
           if (current.kind === 'trade') {
@@ -388,16 +416,16 @@ export default function App() {
     if (!p) return;
     const historical = isHistorical(p);
     setConfirmation({
-      title: historical ? '恢复为进行中项目？' : '确认项目已完工？',
+      title: historical ? '恢复为施工中项目？' : '确认项目已完工？',
       message: historical
-        ? '项目将恢复为进行中，原有工期、日期、事项、备忘与采购记录全部保留。'
-        : '项目将移入已完工项目区域，保留全部历史记录，并从进行中项目和待办提醒中移除。',
+        ? '项目将恢复为施工中，原有工期、日期、事项、备忘与采购记录全部保留。'
+        : '项目将移入已完工项目区域，保留全部历史记录，并从施工中项目和待办提醒中移除。',
       danger: false,
       run: () => {
         mutate((d) => ({
           ...d,
           projects: d.projects.map((x) =>
-            x.id === p.id ? { ...x, status: historical ? '进行中' : '已完工', archived: false } : x,
+            x.id === p.id ? { ...x, status: historical ? '施工中' : '已完工', archived: false } : x,
           ),
         }));
         setArchived(!historical);
@@ -448,16 +476,28 @@ export default function App() {
         Number(a.done) - Number(b.done) ||
         a.date.localeCompare(b.date),
     );
-  const projectPurchases = data.purchases
+  const projectPurchases = procurement.all
     .filter(
       (x) =>
         x.projectId === p?.id &&
-        (!onlyOpen || x.status !== '已到货') &&
+        (!onlyOpen || !purchaseComplete(x)) &&
         `${x.name} ${x.notes} ${x.owner} ${x.quantity ?? ''} ${x.specification ?? ''}`
           .toLowerCase()
           .includes(search.toLowerCase()),
     )
     .sort((a, b) => purchaseDue(a, data).localeCompare(purchaseDue(b, data)));
+  function purchaseCard(x: Purchase) {
+    return (
+      <PurchaseCard
+        key={x.id}
+        purchase={x}
+        data={data}
+        now={now}
+        onEdit={() => purchaseEditor(x)}
+        onStatus={(status) => save('purchase', { ...x, due: purchaseDue(x, data), status })}
+      />
+    );
+  }
   function go(v: View) {
     setView(v);
     if (v === 'completed') {
@@ -491,7 +531,7 @@ export default function App() {
             逾期施工
           </h3>
           {data.tasks
-            .filter((t) => active.has(t.projectId) && t.status !== '已完成' && t.end < today())
+            .filter((t) => active.has(t.projectId) && t.status !== '已完成' && t.end < now)
             .map((t) => (
               <button
                 className="reminder-item"
@@ -515,7 +555,9 @@ export default function App() {
         </div>
         <div
           className="panel"
-          hidden={!!metricFilter && !['未来 15 天采购', '已逾期采购'].includes(metricFilter)}
+          hidden={
+            !!metricFilter && !['未来 15 天采购', '已逾期采购', '今日待办'].includes(metricFilter)
+          }
         >
           <h3>
             <Package size={18} />
@@ -525,32 +567,16 @@ export default function App() {
             .filter(
               (x) =>
                 active.has(x.projectId) &&
-                x.status !== '已到货' &&
-                purchaseDue(x, data) <= plus(today(), 15) &&
+                !purchaseComplete(x) &&
+                purchaseDue(x, data) <= plus(now, 15) &&
                 (!metricFilter ||
-                  (metricFilter === '已逾期采购'
-                    ? purchaseDue(x, data) < today()
-                    : purchaseDue(x, data) >= today())),
+                  (metricFilter === '今日待办'
+                    ? purchaseDue(x, data) <= now
+                    : metricFilter === '已逾期采购'
+                      ? purchaseDue(x, data) < now
+                      : purchaseDue(x, data) >= now)),
             )
-            .map((x) => (
-              <button
-                className="reminder-item"
-                key={x.id}
-                onClick={() => {
-                  setSelected(x.projectId);
-                  setArchived(false);
-                  setEdit({ kind: 'purchase', value: x });
-                }}
-              >
-                <span>
-                  <strong>{x.name}</strong>
-                  <small>{data.projects.find((p) => p.id === x.projectId)?.name}</small>
-                </span>
-                <em className={purchaseDue(x, data) < today() ? 'red' : ''}>
-                  {purchaseDue(x, data)} {purchaseDue(x, data) < today() ? '逾期' : '前采购'}
-                </em>
-              </button>
-            ))}
+            .map(purchaseCard)}
           {count.upcoming + count.overduePurchases === 0 && (
             <Empty small title="暂无采购提醒" text="创建采购记录后，提醒会出现在这里。" />
           )}
@@ -560,15 +586,8 @@ export default function App() {
             <ClipboardList size={18} />
             事项提醒 · 今日及逾期
           </h3>
-          {data.notes
-            .filter(
-              (n) =>
-                active.has(n.projectId) &&
-                !n.done &&
-                (metricFilter === '今日待办'
-                  ? n.reminder === today() || n.date === today()
-                  : (n.reminder && n.reminder <= today()) || (n.date && n.date <= today())),
-            )
+          {todayNotes(data, undefined, now)
+            .filter((n) => active.has(n.projectId) && !n.done)
             .sort((a, b) => a.date.localeCompare(b.date))
             .map((n) => (
               <button
@@ -584,7 +603,9 @@ export default function App() {
                   <strong>{n.title}</strong>
                   <small>{data.projects.find((x) => x.id === n.projectId)?.name}</small>
                 </span>
-                <em>{n.reminder || n.date}</em>
+                <em>
+                  {noteDue(n)} · {remainingTime(noteDue(n), now)}
+                </em>
               </button>
             ))}
         </div>
@@ -646,9 +667,9 @@ export default function App() {
             <strong>{navigation.find((x) => x[0] === view)?.[1]}</strong>
           </div>
           {p && (
-            <div className="active-project" title={`${p.name} · ${p.status}`}>
+            <div className="active-project" title={`${p.name} · ${projectStatus(p.status)}`}>
               <strong>{p.name}</strong>
-              <span>{p.status}</span>
+              <span>{projectStatus(p.status)}</span>
             </div>
           )}
           <div className={`save-state ${status.includes('失败') ? 'red' : ''}`} role="status">
@@ -715,7 +736,9 @@ export default function App() {
                         ? '材料采购管理'
                         : view === 'completed'
                           ? '已完工项目'
-                          : '项目提醒中心'}
+                          : view === 'people'
+                            ? '人员管理'
+                            : '项目提醒中心'}
               </h1>
               <p>
                 {view === 'overview'
@@ -726,7 +749,9 @@ export default function App() {
                       ? '记录现场的每个细节，让重要的事不再遗漏。'
                       : view === 'purchases'
                         ? '把材料安排在施工之前，让进度从容向前。'
-                        : '及时关注待办与风险，让计划保持在轨道上。'}
+                        : view === 'people'
+                          ? '人员登记与业务分离，敏感资料等待真实后端权限。'
+                          : '及时关注待办与风险，让计划保持在轨道上。'}
               </p>
             </div>
             <div className="heading-actions">
@@ -757,7 +782,7 @@ export default function App() {
                   target: 'overview',
                 },
                 {
-                  label: '进行中的项目',
+                  label: '施工中的项目',
                   value: count.ongoing,
                   unit: '正在推进',
                   icon: <CalendarDays />,
@@ -799,7 +824,7 @@ export default function App() {
                 onClick={() => {
                   go(s.target);
                   if (s.label === '项目总数') setShowAllProjects(true);
-                  if (s.label === '进行中的项目') setProjectStatusFilter(true);
+                  if (s.label === '施工中的项目') setProjectStatusFilter(true);
                   else setProjectStatusFilter(false);
                   if (s.target === 'reminders') setMetricFilter(s.label);
                 }}
@@ -820,11 +845,13 @@ export default function App() {
             </div>
           ) : view === 'reminders' ? (
             reminderItems()
+          ) : view === 'people' ? (
+            <PeoplePanel data={data} />
           ) : (
             <>
               {projectStatusFilter && (
                 <div className="project-filter">
-                  仅显示进行中的项目
+                  仅显示施工中的项目
                   <button className="text-btn" onClick={() => setProjectStatusFilter(false)}>
                     查看全部项目
                   </button>
@@ -859,7 +886,7 @@ export default function App() {
                     }}
                   >
                     <Archive size={15} />
-                    {archived ? '进行中项目' : '已完工项目'}
+                    {archived ? '施工中项目' : '已完工项目'}
                   </button>
                   {p && (
                     <>
@@ -872,7 +899,7 @@ export default function App() {
                       </button>
                       <button onClick={archiveProject}>
                         <Archive size={15} />
-                        {isHistorical(p) ? '恢复进行中' : '标记完工'}
+                        {isHistorical(p) ? '恢复施工中' : '标记完工'}
                       </button>
                     </>
                   )}
@@ -883,7 +910,7 @@ export default function App() {
                   title={archived ? '暂无已完工项目' : '一个理想的家，从一份好计划开始。'}
                   text={
                     archived
-                      ? '完成后的项目会完整保留，也可随时恢复为进行中。'
+                      ? '完成后的项目会完整保留，也可随时恢复为施工中。'
                       : '新建第一个项目，安排工期、记录事项，让每个施工细节井然有序。'
                   }
                   action={
@@ -935,7 +962,7 @@ export default function App() {
                     <div className="project-info">
                       <div>
                         <span className="project-status">
-                          {p.status}
+                          {projectStatus(p.status)}
                           {p.archived ? ' · 原归档记录' : ''}
                         </span>
                         <span className="project-code">
@@ -999,68 +1026,38 @@ export default function App() {
                   </div>
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <div className="lower-grid" id="project-today">
-                      <section className="panel">
+                      <section className="panel" data-testid="today-panel">
                         <div className="section-heading">
                           <h2>
                             今日事项{' '}
                             <span className="count">
-                              {
-                                data.notes.filter(
-                                  (n) =>
-                                    n.projectId === p.id &&
-                                    (n.date === today() || n.reminder === today()),
-                                ).length
-                              }
+                              {procurement.today.length + dailyNotes.filter((n) => !n.done).length}
                             </span>
                           </h2>
                           <button className="text-btn" onClick={() => noteEditor()}>
                             <Plus size={15} />
-                            添加
+                            添加采购事项
                           </button>
                         </div>
                         <p className="today-summary">
-                          {
-                            data.notes.filter(
-                              (n) =>
-                                n.projectId === p.id &&
-                                (n.date === today() || n.reminder === today()) &&
-                                !n.done,
-                            ).length
-                          }{' '}
-                          条待处理 ·{' '}
-                          {
-                            data.notes.filter(
-                              (n) =>
-                                n.projectId === p.id &&
-                                (n.date === today() || n.reminder === today()) &&
-                                n.done,
-                            ).length
-                          }{' '}
-                          条已完成
+                          {procurement.today.length + dailyNotes.filter((n) => !n.done).length}{' '}
+                          条待处理 · 包含逾期采购，完成后不再重复提醒
                         </p>
-                        {data.notes
-                          .filter(
-                            (n) =>
-                              n.projectId === p.id &&
-                              (n.date === today() || n.reminder === today()),
-                          )
-                          .map((n) => (
-                            <NoteCard
-                              key={n.id}
-                              note={n}
-                              onEdit={() => noteEditor(n)}
-                              onToggle={() => save('note', { ...n, done: !n.done })}
-                              onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                            />
-                          ))}
-                        {!data.notes.some(
-                          (n) =>
-                            n.projectId === p.id && (n.date === today() || n.reminder === today()),
-                        ) && (
+                        {procurement.today.map(purchaseCard)}
+                        {dailyNotes.map((n) => (
+                          <NoteCard
+                            key={n.id}
+                            note={n}
+                            onEdit={() => noteEditor(n)}
+                            onToggle={() => save('note', { ...n, done: !n.done })}
+                            onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                          />
+                        ))}
+                        {!procurement.today.length && !dailyNotes.length && (
                           <Empty
                             small
                             title="今天暂时没有事项"
-                            text="留一点从容，也记得安排下一步。"
+                            text="今天到期或逾期的未完成采购将在此自动显示。"
                           />
                         )}
                       </section>
@@ -1104,42 +1101,12 @@ export default function App() {
                   )}
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <div className="project-alerts" id="project-procurement">
-                      <section className="panel">
+                      <section className="panel" data-testid="upcoming-panel">
                         <h3>未来 15 天采购</h3>
-                        {projectPurchases
-                          .filter(
-                            (x) =>
-                              x.status !== '已到货' &&
-                              purchaseDue(x, data) >= today() &&
-                              purchaseDue(x, data) <= plus(today(), 15),
-                          )
-                          .map((x) => (
-                            <button
-                              key={x.id}
-                              className="reminder-item"
-                              onClick={() => purchaseEditor(x)}
-                            >
-                              <span>
-                                <strong>{x.name}</strong>
-                                <small>
-                                  {x.quantity || '数量未填写'}
-                                  {x.specification ? ` · ${x.specification}` : ''}
-                                  {x.taskId
-                                    ? ` · ${projectTasks.find((t) => t.id === x.taskId)?.name ?? ''}`
-                                    : ''}
-                                </small>
-                              </span>
-                              <em>
-                                {purchaseDue(x, data)} 前采购 · {x.status}
-                              </em>
-                            </button>
-                          ))}
-                        {!projectPurchases.some(
-                          (x) =>
-                            x.status !== '已到货' &&
-                            purchaseDue(x, data) >= today() &&
-                            purchaseDue(x, data) <= plus(today(), 15),
-                        ) && <p className="muted">暂无未来 15 天采购安排。</p>}
+                        {procurement.upcoming.map(purchaseCard)}
+                        {!procurement.upcoming.length && (
+                          <p className="muted">暂无未来 15 天采购安排。</p>
+                        )}
                         <button className="text-btn" onClick={() => purchaseEditor()}>
                           <Plus size={15} />
                           添加采购
@@ -1147,20 +1114,9 @@ export default function App() {
                       </section>
                       <section className="panel">
                         <h3>逾期提醒</h3>
-                        {projectPurchases
-                          .filter((x) => x.status !== '已到货' && purchaseDue(x, data) < today())
-                          .map((x) => (
-                            <button
-                              key={x.id}
-                              className="reminder-item"
-                              onClick={() => purchaseEditor(x)}
-                            >
-                              <strong>{x.name} · 采购逾期</strong>
-                              <em>{purchaseDue(x, data)}</em>
-                            </button>
-                          ))}
+                        {procurement.overdue.map(purchaseCard)}
                         {projectTasks
-                          .filter((t) => t.status !== '已完成' && t.end < today())
+                          .filter((t) => t.status !== '已完成' && t.end < now)
                           .map((t) => (
                             <button
                               key={t.id}
@@ -1172,9 +1128,9 @@ export default function App() {
                             </button>
                           ))}
                         {!projectPurchases.some(
-                          (x) => x.status !== '已到货' && purchaseDue(x, data) < today(),
+                          (x) => !purchaseComplete(x) && purchaseDue(x, data) < now,
                         ) &&
-                          !projectTasks.some((t) => t.status !== '已完成' && t.end < today()) && (
+                          !projectTasks.some((t) => t.status !== '已完成' && t.end < now) && (
                             <p className="muted">暂无逾期采购或施工任务。</p>
                           )}
                       </section>
@@ -1186,6 +1142,7 @@ export default function App() {
                       data={data}
                       project={p}
                       onTask={taskEditor}
+                      onDeleteTask={(t) => deleteEntity({ kind: 'task', value: t })}
                       onQuickCreate={(g, date) => {
                         try {
                           changeTask({
@@ -1231,7 +1188,9 @@ export default function App() {
                         <h2>
                           {view === 'notes' ? '事项与备忘' : '采购清单'}{' '}
                           <span className="count">
-                            {view === 'notes' ? matchingNotes.length : projectPurchases.length}{' '}
+                            {view === 'notes'
+                              ? matchingNotes.length + projectPurchases.length
+                              : projectPurchases.length}{' '}
                             条记录
                           </span>
                         </h2>
@@ -1275,6 +1234,7 @@ export default function App() {
                       </div>
                       {view === 'notes' ? (
                         <div className="notes-grid">
+                          {projectPurchases.map(purchaseCard)}
                           {matchingNotes.map((n) => (
                             <NoteCard
                               key={n.id}
@@ -1284,7 +1244,7 @@ export default function App() {
                               onPin={() => save('note', { ...n, pinned: !n.pinned })}
                             />
                           ))}
-                          {!matchingNotes.length && (
+                          {!matchingNotes.length && !projectPurchases.length && (
                             <Empty
                               small
                               title="暂无匹配事项"
@@ -1294,43 +1254,7 @@ export default function App() {
                         </div>
                       ) : (
                         <div className="purchase-list">
-                          {projectPurchases.map((x) => (
-                            <button
-                              className="purchase-row"
-                              key={x.id}
-                              onClick={() => purchaseEditor(x)}
-                            >
-                              <div className="material-icon">
-                                <Package size={22} />
-                              </div>
-                              <div>
-                                <h3>{x.name}</h3>
-                                <p>
-                                  {x.owner || '未指定负责人'}
-                                  {x.taskId ? ' · 随关联施工日期自动调整' : ''}
-                                </p>
-                                {(x.quantity || x.specification) && (
-                                  <small>
-                                    {x.quantity} {x.specification}
-                                  </small>
-                                )}
-                                {x.notes && <small>{x.notes}</small>}
-                              </div>
-                              <span
-                                className={
-                                  x.status !== '已到货' && purchaseDue(x, data) < today()
-                                    ? 'due overdue'
-                                    : 'due'
-                                }
-                              >
-                                {purchaseDue(x, data)} 前采购
-                              </span>
-                              <span className={`badge ${x.status === '已到货' ? 'green' : ''}`}>
-                                {x.status}
-                              </span>
-                              <MoreHorizontal size={18} />
-                            </button>
-                          ))}
+                          {projectPurchases.map(purchaseCard)}
                           {!projectPurchases.length && (
                             <Empty
                               small
@@ -1391,9 +1315,10 @@ export default function App() {
             });
           }}
           data={data}
+          onDeadlineChange={(p) => setDeadlineChange(p.id)}
           onClose={() => setEdit(null)}
           onSave={save}
-          onDelete={isExisting ? deleteEntity : undefined}
+          onDelete={isExisting ? () => deleteEntity() : undefined}
           onCopy={
             isExisting && (edit.kind === 'task' || edit.kind === 'project') ? duplicate : undefined
           }
@@ -1455,21 +1380,10 @@ export default function App() {
               ))}
             <h3>采购截止</h3>
             {data.purchases
-              .filter((x) => x.projectId === p.id && purchaseDue(x, data) === day)
-              .map((x) => (
-                <button
-                  className="day-task"
-                  key={x.id}
-                  onClick={() => {
-                    setDay(null);
-                    purchaseEditor(x);
-                  }}
-                >
-                  <Package size={16} />
-                  {x.name}
-                  <span>{x.status}</span>
-                </button>
-              ))}
+              .filter(
+                (x) => x.projectId === p.id && !purchaseComplete(x) && purchaseDue(x, data) === day,
+              )
+              .map(purchaseCard)}
           </div>
           <footer className="modal-foot">
             <button onClick={() => setDay(null)}>关闭</button>
@@ -1597,6 +1511,19 @@ export default function App() {
           }}
         />
       )}
+      {deadlineChange && data.purchases.find((x) => x.id === deadlineChange) && (
+        <PurchaseDeadlineDialog
+          purchase={data.purchases.find((x) => x.id === deadlineChange)!}
+          data={data}
+          onClose={() => setDeadlineChange(null)}
+          onConfirm={(date, reason) => {
+            mutate((d) => confirmPurchaseDeadline(d, deadlineChange, date, reason));
+            setDeadlineChange(null);
+            setEdit(null);
+            notify('采购期限已明确变更，原始截止和原因已保留。');
+          }}
+        />
+      )}
       {confirmation && (
         <Confirm
           title={confirmation.title}
@@ -1653,7 +1580,8 @@ function NoteCard({
       </button>
       <button className="note-main" onClick={onEdit}>
         <span className="note-kind">
-          {n.kind} {n.date && `· ${n.date}`}
+          {n.kind} {n.date && `· ${n.date}`}{' '}
+          {noteDue(n) && !n.done && `· ${remainingTime(noteDue(n))}`}
         </span>
         <h3>{n.title}</h3>
         {n.content && <p>{n.content}</p>}

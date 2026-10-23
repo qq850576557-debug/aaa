@@ -1,4 +1,12 @@
-import { distance, duration, parseBackup, plus, type Data, type Task } from './model';
+import {
+  distance,
+  duration,
+  parseBackup,
+  prepareWorkspace,
+  plus,
+  type Data,
+  type Task,
+} from './model';
 export type TaskChange = { before: Task; after: Task };
 export type ScheduleProposal = {
   base: Data;
@@ -92,7 +100,7 @@ function expandProject(data: Data, pid: string): Data {
 export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
   const old = base.tasks.find((t) => t.id === value.id);
   let current = {
-    ...base,
+    ...prepareWorkspace(base),
     tasks: old ? base.tasks.map((t) => (t.id === value.id ? value : t)) : [...base.tasks, value],
   };
   let mergedIds: string[] = [];

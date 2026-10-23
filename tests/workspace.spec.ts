@@ -1,3 +1,4 @@
+import { editTask } from './helpers';
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { emptyData } from '../src/lib/model';
@@ -58,7 +59,7 @@ test('date click, double click, range select, move and both resize handles have 
   await cell.dblclick();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
-  await page.getByTestId('task-bar').filter({ hasText: '现场拆改' }).dblclick();
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: '现场拆改' }));
   let modal = page.getByRole('dialog');
   await expect(modal.getByRole('heading', { name: '编辑施工任务' })).toBeVisible();
   await expect(modal.getByLabel('开始日期', { exact: true })).toHaveValue('2026-10-27');
@@ -104,7 +105,7 @@ test('date click, double click, range select, move and both resize handles have 
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
     .toBe('2026-10-29');
   await page.getByRole('button', { name: '采购管理', exact: true }).click();
-  await expect(page.locator('.purchase-row')).toContainText('2026-10-26 前采购');
+  await expect(page.locator('.purchase-row')).toContainText('2026-10-23 前采购');
 });
 
 test('continuous creation, accessible ordering, color wheel and default colors', async ({
@@ -148,11 +149,10 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
   await boot(page);
   await restore(page);
   await page.getByRole('button', { name: '事项与备忘', exact: true }).click();
-  await page.getByRole('button', { name: '新增事项', exact: true }).click();
+  await page.getByRole('button', { name: '项目备忘', exact: true }).click();
   let modal = page.getByRole('dialog');
-  await modal.getByLabel('事项标题', { exact: true }).fill('核对门洞尺寸');
-  await modal.getByLabel('事项日期（备忘可留空）', { exact: true }).fill('2026-10-23');
-  await modal.getByLabel('负责人', { exact: true }).fill('小陈');
+  await modal.getByLabel('备忘标题', { exact: true }).fill('核对门洞尺寸');
+  await modal.getByLabel('详细备注（可选）', { exact: true }).fill('小陈负责现场复核');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('button', { name: '置顶核对门洞尺寸', exact: true }).click();
   await page.getByRole('button', { name: '完成核对门洞尺寸', exact: true }).click();
@@ -166,13 +166,13 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
   await expect.poll(async () => (await state(page)).projects.length).toBe(2);
-  await expect(page.getByLabel('切换项目')).toHaveValue(/.+/);
+  await expect(page.getByLabel('切换项目', { exact: true })).toHaveValue(/.+/);
   await page.getByRole('button', { name: '标记完工', exact: true }).click();
   await page.getByRole('button', { name: '确认', exact: true }).click();
   await expect
     .poll(async () => (await state(page)).projects.filter((p) => p.status === '已完工').length)
     .toBe(1);
-  await page.getByRole('button', { name: '恢复进行中', exact: true }).click();
+  await page.getByRole('button', { name: '恢复施工中', exact: true }).click();
   await page.getByRole('button', { name: '确认', exact: true }).click();
   await expect
     .poll(async () => (await state(page)).projects.filter((p) => p.status === '已完工').length)
@@ -319,28 +319,29 @@ test('task copy/delete, procurement CRUD, project settings validation and scroll
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   const bar = page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' });
-  await bar.click();
+  await editTask(page, bar);
   await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
   let modal = page.getByRole('dialog');
   await expect(modal.getByRole('heading', { name: '新建施工任务' })).toBeVisible();
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
-  await page.getByTestId('task-bar').filter({ hasText: '水电定位与布线（副本）' }).click();
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: '水电定位与布线（副本）' }));
   await page.getByRole('dialog').getByRole('button', { name: '删除', exact: true }).click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
   await expect.poll(async () => (await state(page)).tasks.length).toBe(3);
   await page.getByRole('button', { name: '采购管理', exact: true }).click();
   await page.getByRole('button', { name: '新增采购', exact: true }).click();
   modal = page.getByRole('dialog');
-  await modal.getByLabel('材料 / 采购名称', { exact: true }).fill('实木地板');
+  await modal.getByLabel('采购内容 / 事项标题', { exact: true }).fill('实木地板');
   await modal.getByLabel('采购截止日期', { exact: true }).fill('2026-10-20');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).purchases.length).toBe(2);
   await expect(page.locator('.stat-card').filter({ hasText: '已逾期采购' })).toContainText('1');
-  await page.locator('.purchase-row').filter({ hasText: '实木地板' }).click();
-  modal = page.getByRole('dialog');
-  await modal.getByRole('combobox', { name: '采购状态', exact: true }).selectOption('已到货');
-  await modal.getByRole('button', { name: '保存', exact: true }).click();
+  await page
+    .locator('.purchase-row')
+    .filter({ hasText: '实木地板' })
+    .getByRole('button', { name: '完成采购实木地板', exact: true })
+    .click();
   await expect(page.locator('.stat-card').filter({ hasText: '已逾期采购' })).toContainText('暂无');
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   modal = page.getByRole('dialog');

@@ -9,6 +9,7 @@ export function DateField({
   required = false,
   rangeStart,
   rangeEnd,
+  max,
 }: {
   label: string;
   value: string;
@@ -16,6 +17,7 @@ export function DateField({
   required?: boolean;
   rangeStart?: string;
   rangeEnd?: string;
+  max?: string;
 }) {
   const uid = useId(),
     popover = useRef<HTMLDivElement>(null),
@@ -101,7 +103,7 @@ export function DateField({
               type="button"
               aria-label={`选择 ${d}`}
               aria-pressed={d === value}
-              disabled={!dateOK(d)}
+              disabled={!dateOK(d) || !!(max && d > max)}
               className={`${d.slice(0, 7) !== format(month, 'yyyy-MM') ? 'outside' : ''} ${d === value ? 'selected' : ''} ${rangeStart && rangeEnd && d >= rangeStart && d <= rangeEnd ? 'in-range' : ''}`}
               onClick={() => {
                 onChange(d);
@@ -117,6 +119,7 @@ export function DateField({
         <footer>
           <button
             type="button"
+            disabled={!!max && today() > max}
             onClick={() => {
               onChange(today());
               popover.current?.hidePopover();

@@ -4,6 +4,7 @@ import {
   duration,
   lanes,
   projectRange,
+  projectStatus,
   weekday,
   type Data,
   type Project,
@@ -162,7 +163,7 @@ export async function schedulePNG(
     text('原始品牌 Logo 尚未提供 · 此处为项目名称文字', brandX, 104, 12, '#74846b');
   text(project.name, margin, 144, 28, '#244e42', true, width - margin * 2);
   text(
-    `计划 ${project.start} — ${project.end}  /  ${duration(project.start, project.end)} 天（自然日，含首尾）  /  ${project.status}`,
+    `计划 ${project.start} — ${project.end}  /  ${duration(project.start, project.end)} 天（自然日，含首尾）  /  ${projectStatus(project.status)}`,
     margin,
     181,
     17,

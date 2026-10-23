@@ -1,3 +1,4 @@
+import { editTask } from './helpers';
 import { test, expect } from '@playwright/test';
 import { readFile, mkdir } from 'node:fs/promises';
 import { boot, restore, fixture, state, closeToast } from './helpers';
@@ -29,7 +30,7 @@ test('review: color and editors are nonblocking panels; confirmation remains mod
   await page.screenshot({ path: '/workspace/chunmo-review/after/color.png' });
   await page.mouse.click(8, 8);
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' }).dblclick();
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' }));
   panel = page.getByRole('dialog');
   await expect(panel).toHaveAttribute('aria-modal', 'false');
   await panel.getByRole('button', { name: '选择开始日期', exact: true }).click();
@@ -71,7 +72,7 @@ test('review: merged predecessor prompts before moving related tasks and updates
   await restore(page, d);
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   const segment = page.getByTestId('task-bar').filter({ hasText: root.name }).nth(1);
-  await segment.dblclick();
+  await editTask(page, segment);
   let panel = page.getByRole('dialog');
   await panel.getByLabel('开始日期', { exact: true }).fill('2026-10-26');
   await panel.getByLabel('结束日期', { exact: true }).fill('2026-10-27');
@@ -110,7 +111,7 @@ test('review: an invalid downstream shift cannot block valid current-only edits'
   await boot(page);
   await restore(page, d);
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
-  await page.getByTestId('task-bar').first().dblclick();
+  await editTask(page, page.getByTestId('task-bar').first());
   let panel = page.getByRole('dialog');
   await panel.getByLabel('结束日期', { exact: true }).fill('2200-12-31');
   await panel.getByRole('button', { name: '保存', exact: true }).click();

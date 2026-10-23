@@ -37,7 +37,7 @@ export const projectSchema = z
     address: text,
     owner: text,
     manager: text,
-    status: z.enum(['筹备中', '进行中', '已完工', '暂停']),
+    status: z.enum(['施工中', '筹备中', '进行中', '已完工', '暂停']),
     start: date,
     end: date,
     actualStart: optionalDate,
@@ -123,7 +123,23 @@ export const purchaseSchema = z
     leadDays: z.number().int().min(0).max(365),
     quantity: z.string().max(100).optional(),
     specification: text.optional(),
-    status: z.enum(['待采购', '已下单', '已到货']),
+    status: z.enum(['待采购', '已下单', '已到货', '已完成']),
+    originalDue: date.optional(),
+    deadlineMode: z.enum(['fixed', 'linked']).optional(),
+    approvedDue: date.optional(),
+    deadlineHistory: z
+      .array(
+        z
+          .object({
+            from: date,
+            to: date,
+            at: z.string().datetime(),
+            reason: z.string().trim().min(1).max(4000),
+          })
+          .strict(),
+      )
+      .max(1000)
+      .optional(),
     owner: text,
     notes: text,
   })
@@ -160,6 +176,24 @@ export const dataSchema = z
     for (const n of d.notes)
       if (n.taskId && !d.tasks.some((t) => t.id === n.taskId && t.projectId === n.projectId))
         ctx.addIssue({ code: 'custom', message: '事项的任务关联无效' });
+    for (const p of d.purchases) {
+      const history = p.deadlineHistory ?? [];
+      if (
+        p.approvedDue &&
+        (!p.originalDue || !history.length || history.at(-1)?.to !== p.approvedDue)
+      )
+        ctx.addIssue({ code: 'custom', message: '采购期限变更缺少完整确认记录' });
+      if (
+        history.length &&
+        (!p.originalDue ||
+          !p.approvedDue ||
+          history[0].from !== p.originalDue ||
+          history.some((h, i) => i > 0 && h.from !== history[i - 1].to))
+      )
+        ctx.addIssue({ code: 'custom', message: '采购原始期限与变更记录不一致' });
+      if (p.deadlineMode === 'fixed' && p.originalDue && p.due > (p.approvedDue ?? p.originalDue))
+        ctx.addIssue({ code: 'custom', message: '采购日期超过原定或已确认期限' });
+    }
     const byId = new Map(d.tasks.map((t) => [t.id, t]));
     const visiting = new Set<string>(),
       visited = new Set<string>();
@@ -235,7 +269,7 @@ export const newProject = (): Project => ({
   address: '',
   owner: '',
   manager: '',
-  status: '筹备中',
+  status: '施工中',
   start: today(),
   end: plus(today(), 59),
   actualStart: '',
@@ -251,20 +285,85 @@ export function projectRange(d: Data, p: Project): [string, string] {
     [p.end, ...ts.map((t) => t.end)].sort().at(-1)!,
   ];
 }
-export function purchaseDue(p: Purchase, d: Data) {
-  const t = d.tasks.find((t) => t.id === p.taskId && t.projectId === p.projectId);
+export function rawPurchaseDue(p: Purchase, d: Data) {
+  const t =
+    p.deadlineMode !== 'fixed' &&
+    d.tasks.find((t) => t.id === p.taskId && t.projectId === p.projectId);
   return t ? plus(t.start, -p.leadDays) : p.due;
+}
+export function purchaseCeiling(p: Purchase, d: Data) {
+  return p.approvedDue ?? p.originalDue ?? rawPurchaseDue(p, d);
+}
+export function purchaseDue(p: Purchase, d: Data) {
+  const planned = rawPurchaseDue(p, d);
+  return [planned, purchaseCeiling(p, d)].sort()[0];
+}
+export const purchaseComplete = (p: Purchase) => p.status === '已完成' || p.status === '已到货';
+export const projectStatus = (status: Project['status']) =>
+  status === '筹备中' || status === '进行中' ? '施工中' : status;
+export function remainingTime(due: string, now = today()) {
+  const n = distance(now, due);
+  return n === 0 ? '今日到期' : n > 0 ? `剩余${n}天` : `已逾期${-n}天`;
+}
+// Add a baseline to legacy records in memory, never clear or replace the database.
+// The baseline is the effective deadline at first read by this version; unavailable older history is not invented.
+export function prepareWorkspace(data: Data): Data {
+  return {
+    ...data,
+    purchases: data.purchases.map((p) =>
+      p.originalDue
+        ? p
+        : {
+            ...p,
+            originalDue: rawPurchaseDue(p, data),
+            deadlineMode: p.taskId ? ('linked' as const) : ('fixed' as const),
+          },
+    ),
+  };
+}
+export function procurementView(data: Data, projectId?: string, now = today()) {
+  const all = data.purchases
+    .filter((p) => !projectId || p.projectId === projectId)
+    .sort(
+      (a, b) =>
+        purchaseDue(a, data).localeCompare(purchaseDue(b, data)) || a.id.localeCompare(b.id),
+    );
+  const pending = all.filter((p) => !purchaseComplete(p));
+  return {
+    all,
+    pending,
+    today: pending.filter((p) => purchaseDue(p, data) <= now),
+    upcoming: pending.filter(
+      (p) => purchaseDue(p, data) >= now && purchaseDue(p, data) <= plus(now, 15),
+    ),
+    overdue: pending.filter((p) => purchaseDue(p, data) < now),
+  };
+}
+export const noteDue = (n: Note) => n.date || n.reminder;
+export function todayNotes(data: Data, projectId?: string, now = today()) {
+  return data.notes.filter(
+    (n) =>
+      (!projectId || n.projectId === projectId) &&
+      !!noteDue(n) &&
+      (!n.done ? noteDue(n) <= now : noteDue(n) === now),
+  );
 }
 export const isHistorical = (p: Project) => p.archived || p.status === '已完工';
 export function stats(d: Data, now = today()) {
   const active = new Set(d.projects.filter((p) => !isHistorical(p)).map((p) => p.id));
-  const purchases = d.purchases.filter((p) => active.has(p.projectId) && p.status !== '已到货');
+  const visible = {
+    ...d,
+    purchases: d.purchases.filter((p) => active.has(p.projectId)),
+    notes: d.notes.filter((n) => active.has(n.projectId)),
+  };
+  const procurement = procurementView(visible, undefined, now);
+  const purchases = procurement.pending;
   return {
     total: d.projects.length,
-    ongoing: d.projects.filter((p) => active.has(p.id) && p.status === '进行中').length,
-    todos: d.notes.filter(
-      (n) => active.has(n.projectId) && !n.done && (n.date === now || n.reminder === now),
-    ).length,
+    ongoing: d.projects.filter((p) => active.has(p.id) && projectStatus(p.status) === '施工中')
+      .length,
+    todos:
+      todayNotes(visible, undefined, now).filter((n) => !n.done).length + procurement.today.length,
     upcoming: purchases.filter(
       (p) => purchaseDue(p, d) >= now && purchaseDue(p, d) <= plus(now, 15),
     ).length,

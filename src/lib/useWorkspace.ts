@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { emptyData, type Data } from './model';
+import { emptyData, prepareWorkspace, type Data } from './model';
 import { loadData, saveData } from './storage';
 export function useWorkspace() {
   const [data, setData] = useState<Data>(emptyData);
@@ -13,7 +13,8 @@ export function useWorkspace() {
   useEffect(() => {
     let active = true;
     loadData()
-      .then((d) => {
+      .then((loaded) => {
+        const d = prepareWorkspace(loaded);
         if (active) {
           current.current = d;
           setData(d);
@@ -57,7 +58,7 @@ export function useWorkspace() {
   const update = useCallback(
     (fn: (d: Data) => Data) => {
       if (!ready) return;
-      const d = fn(current.current);
+      const d = prepareWorkspace(fn(current.current));
       current.current = d;
       setData(d);
       void persist(d);

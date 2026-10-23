@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Page, type Locator } from '@playwright/test';
 import { emptyData, newProject, defaultTrades, id, type Data } from '../src/lib/model';
 export function fixture(): Data {
   const d = emptyData(),
@@ -127,4 +127,9 @@ export async function restore(page: Page, d = fixture()) {
 export async function closeToast(page: Page) {
   for (const b of await page.getByRole('button', { name: '关闭提示' }).all())
     if (await b.isVisible()) await b.click();
+}
+
+export async function editTask(page: Page, target: Locator) {
+  await target.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '编辑任务详情', exact: true }).click();
 }

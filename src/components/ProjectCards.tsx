@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useReorderMotion } from '../lib/useReorderMotion';
 import { ArrowRight, GripVertical } from 'lucide-react';
-import { shortDate, type Data, type Project } from '../lib/model';
+import { shortDate, projectStatus, type Data, type Project } from '../lib/model';
 
 export function ProjectCards({
   data,
@@ -72,7 +72,7 @@ export function ProjectCards({
             }}
           >
             <div>
-              <span className="project-status">{p.status}</span>
+              <span className="project-status">{projectStatus(p.status)}</span>
               <GripVertical size={16} />
               <ArrowRight size={17} />
             </div>
