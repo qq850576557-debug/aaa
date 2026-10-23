@@ -14,11 +14,21 @@ export function useNotices() {
     (message: string) => {
       const id = ++sequence.current,
         error = /失败|无法|错误/.test(message);
-      setNotices((items) => [...items, { id, message, error }].slice(-4));
-      timers.current.set(
-        id,
-        setTimeout(() => dismiss(id), error ? 8000 : 3000),
-      );
+      setNotices((items) => {
+        const all = [...items, { id, message, error }];
+        const recent = new Set(
+          all
+            .filter((n) => !n.error)
+            .slice(-4)
+            .map((n) => n.id),
+        );
+        return all.filter((n) => n.error || recent.has(n.id));
+      });
+      if (!error)
+        timers.current.set(
+          id,
+          setTimeout(() => dismiss(id), 3000),
+        );
     },
     [dismiss],
   );

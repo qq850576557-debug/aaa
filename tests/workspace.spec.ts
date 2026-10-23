@@ -38,7 +38,7 @@ test('create projects and tasks through validated modals; persistence and indepe
   await modal.getByLabel('项目名称', { exact: true }).fill('另一个家');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByTestId('task-bar')).toHaveCount(0);
-  await page.getByLabel('切换项目').selectOption({ label: '跨年新居' });
+  await page.getByLabel('切换项目', { exact: true }).selectOption({ label: '跨年新居' });
   await expect(page.getByTestId('task-bar')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
@@ -48,7 +48,7 @@ test('date click, double click, range select, move and both resize handles have 
 }) => {
   await boot(page);
   await restore(page);
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   const cells = page.locator('.trade-row').first().locator('.track-cell');
   const cell = cells.nth(5);
@@ -56,8 +56,11 @@ test('date click, double click, range select, move and both resize handles have 
   await expect(page.getByRole('heading', { name: '2026-10-27 · 每日事项' })).toBeVisible();
   await page.getByRole('button', { name: '关闭浮窗' }).click();
   await cell.dblclick();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
+  await page.getByTestId('task-bar').filter({ hasText: '现场拆改' }).dblclick();
   let modal = page.getByRole('dialog');
-  await expect(modal.getByRole('heading', { name: '新建施工任务' })).toBeVisible();
+  await expect(modal.getByRole('heading', { name: '编辑施工任务' })).toBeVisible();
   await expect(modal.getByLabel('开始日期', { exact: true })).toHaveValue('2026-10-27');
   await modal.getByLabel('任务名称', { exact: true }).fill('第二段拆改');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
@@ -109,7 +112,7 @@ test('continuous creation, accessible ordering, color wheel and default colors',
 }) => {
   await boot(page);
   await restore(page);
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByRole('button', { name: '拖动工种水电改造', exact: true }).press('Alt+ArrowUp');
   await expect(page.locator('.trade-title').first()).toContainText('水电改造');
   await page.getByRole('button', { name: '编辑水电改造', exact: true }).click();
@@ -218,7 +221,7 @@ test('JSON validation, overwrite cancellation and complete PNG beyond viewport',
   expect(buf.readUInt32BE(16)).toBe(9768);
   expect(buf.readUInt32BE(20)).toBeGreaterThan(2300);
   await image.saveAs('test-results/full-schedule.png');
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   await page.screenshot({ path: 'test-results/desktop-workspace.png', fullPage: true });
 });
@@ -290,7 +293,7 @@ test('mobile touch workflow uses modals and fits viewport', async ({ browser }) 
   const page = await context.newPage();
   await boot(page);
   await restore(page);
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
@@ -313,7 +316,7 @@ test('task copy/delete, procurement CRUD, project settings validation and scroll
 }) => {
   await boot(page);
   await restore(page);
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   const bar = page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' });
   await bar.click();
@@ -346,7 +349,7 @@ test('task copy/delete, procurement CRUD, project settings validation and scroll
   await expect(modal.getByRole('alert')).toContainText('完工日期不能早于开工日期');
   await modal.getByRole('button', { name: '取消', exact: true }).click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByTestId('gantt-scroll').evaluate((e) => {
     e.scrollLeft = e.scrollWidth;
   });

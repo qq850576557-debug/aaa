@@ -16,13 +16,15 @@ import {
   type Trade,
 } from '../lib/model';
 import type { Anchor } from './Modal';
+import { useReorderMotion } from '../lib/useReorderMotion';
 export const CELL = 56;
-const LANE = 48;
+const LANE = 40;
 interface Props {
   data: Data;
   project: Project;
   onTask: (task?: Task, trade?: Trade, start?: string, end?: string, anchor?: Anchor) => void;
   onDay: (date: string) => void;
+  onQuickCreate: (trade: Trade, date: string) => void;
   onTrade: (trade?: Trade, index?: number) => void;
   onReorder: (source: string, before: string | null) => void;
   onColor: (trade: Trade, anchor: Anchor) => void;
@@ -41,6 +43,7 @@ export function Gantt({
   data,
   project,
   onTask,
+  onQuickCreate,
   onDay,
   onTrade,
   onOrder,
@@ -58,6 +61,7 @@ export function Gantt({
   const taskClick = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAnchor = useRef<Anchor>({ x: 0, y: 0 });
   const scroller = useRef<HTMLDivElement>(null);
+  useReorderMotion(scroller, '.trade-row', trades.map((g) => g.id).join('|'));
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragging = useRef<Drag | null>(null);
   const lastDrag = useRef(-Infinity);
@@ -203,7 +207,7 @@ export function Gantt({
     else months.push({ label, count: 1 });
   }
   return (
-    <section className="schedule-section">
+    <section className="schedule-section" id="project-timeline">
       <div className="section-heading">
         <div>
           <h2>
@@ -284,7 +288,7 @@ export function Gantt({
             const rows = lanes(
               data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id),
             );
-            const height = Math.max(100, rows.length * LANE + 24);
+            const height = Math.max(56, rows.length * LANE + 16);
             return (
               <div
                 key={g.id}
@@ -301,11 +305,31 @@ export function Gantt({
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
-                  if (draggedTrade) onReorder(draggedTrade, dropBefore);
+                  const source = e.dataTransfer.getData('text/plain');
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const target =
+                    e.clientY < r.top + r.height / 2 ? g.id : (trades[index + 1]?.id ?? null);
+                  if (source === draggedTrade) onReorder(source, target);
                   setDraggedTrade(null);
                 }}
               >
-                <div className="sticky-label trade-label">
+                <div
+                  className="sticky-label trade-label"
+                  draggable
+                  onDragStart={(e) => {
+                    if ((e.target as HTMLElement).closest('button:not(.drag-handle), summary')) {
+                      e.preventDefault();
+                      return;
+                    }
+                    e.dataTransfer.setData('text/plain', g.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDraggedTrade(g.id);
+                  }}
+                  onDragEnd={() => {
+                    setDraggedTrade(null);
+                    setDropBefore(null);
+                  }}
+                >
                   <button
                     className="insert-trade"
                     aria-label={`在${g.name}前新增工种`}
@@ -377,9 +401,6 @@ export function Gantt({
                           下移
                         </button>
                         <button onClick={() => onTrade(g)}>编辑工种</button>
-                        <button onClick={() => onTrade(undefined, index + 1)}>
-                          在下方新增工种
-                        </button>
                       </div>
                     </details>
                     <button
@@ -409,10 +430,9 @@ export function Gantt({
                         data-index={i}
                         className={`track-cell ${['六', '日'].includes(weekday(date)) ? 'weekend' : ''} ${date === today() ? 'today' : ''}`}
                         onClick={() => pendingDay(date)}
-                        onDoubleClick={(e) => {
+                        onDoubleClick={() => {
                           clearClick();
-                          if (performance.now() - lastDrag.current > 350)
-                            onTask(undefined, g, date, date, { x: e.clientX, y: e.clientY });
+                          if (performance.now() - lastDrag.current > 350) onQuickCreate(g, date);
                         }}
                       />
                     ))}
@@ -440,7 +460,7 @@ export function Gantt({
                           style={{
                             left: distance(start, t.start) * CELL + 4,
                             width: duration(t.start, t.end) * CELL - 8,
-                            top: 16 + lane * LANE,
+                            top: 10 + lane * LANE,
                             background: `${g.color}26`,
                             borderColor: g.color,
                             color: '#273c34',

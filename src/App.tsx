@@ -26,6 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { Gantt } from './components/Gantt';
+import { ProjectCards } from './components/ProjectCards';
 import { Confirm, Modal, type Anchor } from './components/Modal';
 import { Notifications, useNotices } from './components/Notifications';
 import { ColorPopover } from './components/ColorPopover';
@@ -43,6 +44,9 @@ import { ExportDialog } from './components/ExportDialog';
 import { BRAND_LOGO_SRC } from './lib/brand';
 import {
   copyProject,
+  reorderProjects,
+  rememberNames,
+  usedNames,
   defaultTrades,
   duration,
   id,
@@ -53,7 +57,6 @@ import {
   plus,
   purchaseDue,
   removeProject,
-  shortDate,
   stats,
   today,
   type Data,
@@ -67,8 +70,7 @@ import {
 type View = 'overview' | 'schedule' | 'notes' | 'purchases' | 'reminders' | 'completed';
 type Confirmation = { title: string; message: string; run: () => void; danger?: boolean };
 const navigation: [View, string, ReactNode][] = [
-  ['overview', '项目总览', <LayoutDashboard size={19} />],
-  ['schedule', '施工计划', <CalendarDays size={19} />],
+  ['overview', '项目工作空间', <LayoutDashboard size={19} />],
   ['notes', '事项与备忘', <StickyNote size={19} />],
   ['purchases', '采购管理', <Package size={19} />],
   ['reminders', '提醒中心', <ClipboardList size={19} />],
@@ -134,6 +136,11 @@ export default function App() {
   }
   function changeTask(value: Task) {
     const plan = proposeTaskChange(data, value);
+    const prior = data.tasks.find((t) => t.id === value.id);
+    const previous =
+      prior?.personnel ?? (prior ? { worker: prior.owner, manager: '', designer: '' } : undefined);
+    plan.current = rememberNames(plan.current, value.personnel, previous);
+    plan.shifted = rememberNames(plan.shifted, value.personnel, previous);
     if (plan.affected.length) {
       setScheduleProposal(plan);
       return;
@@ -153,7 +160,21 @@ export default function App() {
     }
 
     const pid = kind === 'project' ? value.id : (value as Trade).projectId;
-    mutate((d) => {
+    mutate((base) => {
+      const previous =
+        kind === 'project'
+          ? base.projects.find((x) => x.id === value.id)
+          : kind === 'trade'
+            ? base.trades.find((x) => x.id === value.id)
+            : undefined;
+      const d = rememberNames(
+        base,
+        'personnel' in value ? value.personnel : undefined,
+        previous?.personnel ??
+          (previous
+            ? { worker: '', manager: 'manager' in previous ? previous.manager : '', designer: '' }
+            : undefined),
+      );
       if (kind === 'project') {
         const v = value as Project;
         const exists = d.projects.some((p) => p.id === v.id);
@@ -192,7 +213,7 @@ export default function App() {
     if (kind === 'project') {
       setSelected(pid);
       setArchived(isHistorical(value as Project));
-      setView('schedule');
+      setView('overview');
     }
   }
   function taskEditor(t?: Task, g?: Trade, start = today(), end = start, anchor?: Anchor) {
@@ -380,7 +401,7 @@ export default function App() {
           ),
         }));
         setArchived(!historical);
-        setView(historical ? 'schedule' : 'completed');
+        setView(historical ? 'overview' : 'completed');
         setConfirmation(null);
       },
     });
@@ -586,7 +607,7 @@ export default function App() {
             <strong>春茉空间设计</strong>
             <span>SJD</span>
             <span className="brand-slogan">功能与美，共生</span>
-            {!BRAND_LOGO_SRC && <span className="brand-pending">原始 Logo 待提供</span>}
+            {!BRAND_LOGO_SRC && <span className="brand-pending">原始 Logo 文件待接入</span>}
           </div>
         </a>
         <div className="sidebar-section">
@@ -624,6 +645,12 @@ export default function App() {
             工作空间 <span>/</span>
             <strong>{navigation.find((x) => x[0] === view)?.[1]}</strong>
           </div>
+          {p && (
+            <div className="active-project" title={`${p.name} · ${p.status}`}>
+              <strong>{p.name}</strong>
+              <span>{p.status}</span>
+            </div>
+          )}
           <div className={`save-state ${status.includes('失败') ? 'red' : ''}`} role="status">
             {status === '正在保存' ? (
               <Loader2 size={14} className="spin" />
@@ -679,7 +706,7 @@ export default function App() {
               <div className="eyebrow">RENOVATION WORKSPACE</div>
               <h1>
                 {view === 'overview'
-                  ? '项目工作台'
+                  ? '项目工作空间'
                   : view === 'schedule'
                     ? '施工计划'
                     : view === 'notes'
@@ -877,50 +904,28 @@ export default function App() {
                     <section className="recent-section">
                       <div className="section-heading">
                         <h2>
-                          {archived ? '已完工项目' : '最近更新的项目'}{' '}
+                          {archived ? '已完工项目' : '项目列表 · 拖动排序'}{' '}
                           <span className="count">{projects.length}</span>
                         </h2>
                       </div>
-                      <div className="project-cards">
-                        {[...projects]
-                          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-                          .map((x) => {
-                            const ts = data.tasks.filter((t) => t.projectId === x.id),
-                              done = ts.filter((t) => t.status === '已完成').length;
-                            return (
-                              <button
-                                className={`project-card ${p.id === x.id ? 'chosen' : ''}`}
-                                key={x.id}
-                                onClick={() => {
-                                  setSelected(x.id);
-                                  setView('schedule');
-                                }}
-                              >
-                                <div>
-                                  <span className="project-status">{x.status}</span>
-                                  <ArrowRight size={17} />
-                                </div>
-                                <h3>{x.name}</h3>
-                                <p>{x.address || '地址待补充'}</p>
-                                <div className="progress-track">
-                                  <i
-                                    style={{
-                                      width: `${ts.length ? (done / ts.length) * 100 : 0}%`,
-                                    }}
-                                  />
-                                </div>
-                                <footer>
-                                  <span>
-                                    {shortDate(x.start)} — {shortDate(x.end)}
-                                  </span>
-                                  <span>
-                                    {done}/{ts.length} 已完成
-                                  </span>
-                                </footer>
-                              </button>
-                            );
-                          })}
-                      </div>
+                      <ProjectCards
+                        data={data}
+                        projects={projects}
+                        selected={p.id}
+                        onSelect={setSelected}
+                        onReorder={(source, before) =>
+                          commitSchedule(
+                            reorderProjects(
+                              data,
+                              source,
+                              before,
+                              projects.map((x) => x.id),
+                            ),
+                            data,
+                            '项目顺序已保存，可撤销。',
+                          )
+                        }
+                      />
                     </section>
                   )}
                   <section className="project-summary">
@@ -965,8 +970,35 @@ export default function App() {
                       <span>计划总工期 · 自然日</span>
                     </div>
                   </section>
+                  <nav className="workspace-anchors" aria-label="当前项目分区">
+                    <a href="#project-today">今日事项与备忘</a>
+                    <a href="#project-procurement">采购与风险</a>
+                    <a href="#project-timeline">施工时间轴</a>
+                  </nav>
+                  <div className="personnel-summary">
+                    <span>
+                      施工人员 <strong>{p.personnel?.worker || '待登记'}</strong>
+                    </span>
+                    <span>
+                      项目经理 <strong>{p.personnel?.manager || p.manager || '待登记'}</strong>
+                    </span>
+                    <span>
+                      执行设计 <strong>{p.personnel?.designer || '待登记'}</strong>
+                    </span>
+                    <button
+                      onClick={(e) =>
+                        setEdit({
+                          kind: 'project',
+                          value: p,
+                          anchor: { x: e.clientX, y: e.clientY, element: e.currentTarget },
+                        })
+                      }
+                    >
+                      登记人员
+                    </button>
+                  </div>
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <div className="lower-grid">
+                    <div className="lower-grid" id="project-today">
                       <section className="panel">
                         <div className="section-heading">
                           <h2>
@@ -1071,7 +1103,7 @@ export default function App() {
                     </div>
                   )}
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <div className="project-alerts">
+                    <div className="project-alerts" id="project-procurement">
                       <section className="panel">
                         <h3>未来 15 天采购</h3>
                         {projectPurchases
@@ -1154,6 +1186,24 @@ export default function App() {
                       data={data}
                       project={p}
                       onTask={taskEditor}
+                      onQuickCreate={(g, date) => {
+                        try {
+                          changeTask({
+                            id: id(),
+                            projectId: p.id,
+                            tradeId: g.id,
+                            name: g.name,
+                            start: date,
+                            end: date,
+                            status: '未开始',
+                            owner: g.personnel?.worker ?? '',
+                            notes: '',
+                            ...(g.personnel ? { personnel: { ...g.personnel } } : {}),
+                          });
+                        } catch (e) {
+                          notify(`创建失败：${e instanceof Error ? e.message : String(e)}`);
+                        }
+                      }}
                       onDay={setDay}
                       onTrade={tradeEditor}
                       onOrder={order}
@@ -1308,6 +1358,38 @@ export default function App() {
         <Editor
           key={`${edit.kind}-${edit.value.id}`}
           edit={edit}
+          onForgetName={(name) => {
+            const projectsUsing = data.projects.filter(
+              (project) =>
+                project.manager === name ||
+                Object.values(project.personnel ?? {}).includes(name) ||
+                [...data.trades, ...data.tasks].some(
+                  (x) =>
+                    x.projectId === project.id &&
+                    (Object.values(x.personnel ?? {}).includes(name) ||
+                      ('owner' in x && x.owner === name)),
+                ),
+            );
+            setConfirmation({
+              title: '删除历史姓名？',
+              message: `${name}${
+                projectsUsing.length
+                  ? `正在 ${projectsUsing.length} 个项目中使用（${projectsUsing
+                      .slice(0, 3)
+                      .map((x) => x.name)
+                      .join('、')}）。`
+                  : '暂无项目使用。'
+              }仅移出历史候选库，不修改任何人员登记或施工记录。`,
+              run: () => {
+                mutate((d) => ({
+                  ...d,
+                  nameHistory: (d.nameHistory ?? usedNames(d)).filter((n) => n !== name),
+                }));
+                setConfirmation(null);
+                notify('历史姓名已移除，已有登记保持完整。');
+              },
+            });
+          }}
           data={data}
           onClose={() => setEdit(null)}
           onSave={save}
@@ -1501,6 +1583,11 @@ export default function App() {
             notify('已取消工期调整，所有日期保持不变。');
           }}
           onApply={(shift) => {
+            if (data !== scheduleProposal.base) {
+              setScheduleProposal(null);
+              notify('无法应用过期预览：数据已变化，请重新调整工期。');
+              return;
+            }
             commitSchedule(
               shift ? scheduleProposal.shifted : scheduleProposal.current,
               scheduleProposal.base,

@@ -22,6 +22,14 @@ const name = z.string().trim().min(1, '请输入名称').max(100);
 const date = z.string().refine(dateOK, '日期无效（支持 1900—2200 年）');
 const optionalDate = z.union([date, z.literal('')]);
 const uid = z.string().min(1).max(100);
+export const personnelSchema = z
+  .object({
+    worker: z.string().trim().max(4000),
+    manager: z.string().trim().max(4000),
+    designer: z.string().trim().max(4000),
+  })
+  .strict();
+export type Personnel = z.infer<typeof personnelSchema>;
 export const projectSchema = z
   .object({
     id: uid,
@@ -36,6 +44,7 @@ export const projectSchema = z
     actualEnd: optionalDate,
     notes: text,
     archived: z.boolean(),
+    personnel: personnelSchema.optional(),
     updatedAt: z.string().datetime(),
   })
   .strict()
@@ -56,6 +65,7 @@ export const tradeSchema = z
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     defaultColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     order: z.number().int().nonnegative(),
+    personnel: personnelSchema.optional(),
   })
   .strict();
 export const taskSchema = z
@@ -70,6 +80,7 @@ export const taskSchema = z
     status: z.enum(['未开始', '进行中', '已完成', '已延期']),
     notes: text,
     groupId: uid.optional(),
+    personnel: personnelSchema.optional(),
     dependsOn: z.array(uid).max(100).optional(),
   })
   .strict()
@@ -120,6 +131,7 @@ export const purchaseSchema = z
 export const dataSchema = z
   .object({
     version: z.literal(1),
+    nameHistory: z.array(z.string().trim().min(1).max(100)).max(2000).optional(),
     projects: z.array(projectSchema).max(500),
     trades: z.array(tradeSchema).max(5000),
     tasks: z.array(taskSchema).max(20000),
@@ -362,4 +374,52 @@ export function parseBackup(input: unknown): Data {
         .join('；'),
     );
   return parsed.data;
+}
+
+export function usedNames(data: Data): string[] {
+  return [
+    ...new Set(
+      [
+        ...data.projects.flatMap((p) => [p.manager]),
+        ...data.tasks.map((t) => t.owner),
+        ...[...data.projects, ...data.trades, ...data.tasks].flatMap((x) =>
+          x.personnel ? Object.values(x.personnel) : [],
+        ),
+      ]
+        .map((n) => n.trim())
+        .filter((n) => n.length > 0 && n.length <= 100),
+    ),
+  ];
+}
+export function rememberNames(data: Data, people?: Personnel, previous?: Personnel): Data {
+  if (!people) return data;
+  return {
+    ...data,
+    nameHistory: [
+      ...new Set([
+        ...(data.nameHistory ?? usedNames(data)),
+        ...Object.entries(people)
+          .filter(([role, value]) => !previous || previous[role as keyof Personnel] !== value)
+          .map(([, n]) => n.trim())
+          .filter((n) => n.length > 0 && n.length <= 100),
+      ]),
+    ].slice(-2000),
+  };
+}
+// Array order is the canonical project order: older backups already have a stable order.
+export function reorderProjects(
+  data: Data,
+  source: string,
+  before: string | null,
+  scope: string[],
+): Data {
+  const item = data.projects.find((p) => p.id === source);
+  if (!item || !scope.includes(source) || source === before) return data;
+  const rest = data.projects.filter((p) => p.id !== source);
+  const last = rest.reduce((last, p, i) => (scope.includes(p.id) ? i : last), -1);
+  const index =
+    before === null ? last + 1 : rest.findIndex((p) => p.id === before && scope.includes(p.id));
+  if (index < 0) return data;
+  rest.splice(index, 0, item);
+  return { ...data, projects: rest };
 }

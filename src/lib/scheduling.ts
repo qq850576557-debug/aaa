@@ -37,7 +37,7 @@ function mergeSegments(data: Data, changed: Task): { data: Data; removed: string
               [
                 survivor.notes,
                 t.notes,
-                `合并段记录：${t.name}（${t.start} — ${t.end}；${t.status}${t.owner ? '；负责人 ' + t.owner : ''}）`,
+                `合并段记录：${t.name}（${t.start} — ${t.end}；${t.status}${t.owner ? '；负责人 ' + t.owner : ''}${t.personnel ? '；人员 ' + Object.values(t.personnel).filter(Boolean).join(' / ') : ''}）`,
               ].filter(Boolean),
             ),
           ].join('\n'),
@@ -144,10 +144,14 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
           !t.dependsOn?.length &&
           (order.get(t.tradeId) ?? 0) > (order.get(parent.tradeId) ?? 0) &&
           !baselines.some((before) => dependsTransitively(before.id, t.id)) &&
-          baselines.some(
+          (baselines.some(
             (before) =>
               parent.end > before.end && was.start > before.end && was.start <= parent.end,
-          );
+          ) ||
+            (!old &&
+              parent.id === changed.id &&
+              was.start >= changed.start &&
+              was.start <= changed.end));
         if (explicitGrowth || ordered) {
           const next = plus(parent.end, 1);
           if (next > earliest) {

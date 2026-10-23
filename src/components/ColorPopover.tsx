@@ -23,8 +23,8 @@ export function ColorControls({
       <div className="color-wheel">
         <Wheel
           color={hsva}
-          width={compact ? 150 : 180}
-          height={compact ? 150 : 180}
+          width={compact ? 116 : 140}
+          height={compact ? 116 : 140}
           onChange={(c) => onChange(c.hex)}
         />
       </div>
@@ -122,7 +122,7 @@ export function ColorPopover({
     <Modal
       title={`${trade.name} · 工种颜色`}
       className="color-panel"
-      subtitle="选择后即时保存，同步到时间条、图例和导出。"
+      subtitle="即时保存 · 同步时间轴与导出"
       anchor={anchor}
       onClose={onClose}
     >

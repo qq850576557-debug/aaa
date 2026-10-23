@@ -15,7 +15,6 @@ export function ScheduleConfirm({
   return (
     <Modal
       title="是否顺延后续工期？"
-      blocking
       subtitle="本次调整可能影响后续施工安排。确认前尚未保存任何日期变化。"
       onClose={onCancel}
       wide
@@ -27,7 +26,7 @@ export function ScheduleConfirm({
         </p>
         <p className="form-info">
           {proposal.inferred
-            ? '无明确依赖的任务按工种顺序保守建议：仅包含原本在前序任务之后、现在受到延长覆盖的后续任务。原有交叉施工不移动。'
+            ? '无明确依赖的任务按工种顺序保守建议：仅建议调整被新增时间段覆盖，或原本在前序之后、现受到延长影响的后续任务。原有任务间的交叉施工不移动。'
             : '根据你设置的前序任务关系计算受影响范围。'}
         </p>
         {proposal.shiftError && (

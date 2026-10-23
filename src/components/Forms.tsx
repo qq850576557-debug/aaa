@@ -2,6 +2,7 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
 import { Confirm, Modal, type Anchor } from './Modal';
 import { DateField } from './DateField';
+import { NameField } from './NameField';
 import { ColorControls } from './ColorPopover';
 import {
   dateOK,
@@ -14,6 +15,8 @@ import {
   noteSchema,
   purchaseSchema,
   type Data,
+  type Personnel,
+  usedNames,
   type Project,
   type Trade,
   type Task,
@@ -37,6 +40,7 @@ export function Editor({
   onCopy,
   onContinue,
   onSegment,
+  onForgetName,
 }: {
   edit: Edit;
   data: Data;
@@ -46,6 +50,7 @@ export function Editor({
   onCopy?: () => void;
   onContinue?: (t: Task) => void;
   onSegment?: (t: Task) => void;
+  onForgetName: (name: string) => void;
 }) {
   const [v, set] = useState<Record<string, unknown>>({ ...edit.value });
   const [error, setError] = useState('');
@@ -123,15 +128,45 @@ export function Editor({
     </div>
   );
   const area = (key: string, label: string) => (
-    <label className="span2">
-      {label}
+    <div className="form-field span2">
+      <label htmlFor={`${uid}-${key}`}>{label}</label>
       <textarea
+        id={`${uid}-${key}`}
         maxLength={4000}
         rows={3}
         value={String(v[key] ?? '')}
         onChange={(e) => change(key, e.target.value)}
       />
-    </label>
+    </div>
+  );
+  const people = (v.personnel ?? {
+    worker: edit.kind === 'task' ? String(v.owner ?? '') : '',
+    manager: edit.kind === 'project' ? String(v.manager ?? '') : '',
+    designer: '',
+  }) as Personnel;
+  const peopleFields = ['project', 'trade', 'task'].includes(edit.kind) && (
+    <fieldset className="personnel-fields span2">
+      <legend>
+        人员登记 <span>可输入新姓名或复用历史姓名</span>
+      </legend>
+      {(['worker', 'manager', 'designer'] as const).map((role, index) => (
+        <NameField
+          key={role}
+          label={['施工人员姓名', '项目经理姓名', '执行设计姓名'][index]}
+          value={people[role]}
+          history={data.nameHistory ?? usedNames(data)}
+          onChange={(name) =>
+            set((old) => ({
+              ...old,
+              personnel: { ...people, [role]: name },
+              ...(edit.kind === 'project' && role === 'manager' ? { manager: name } : {}),
+              ...(edit.kind === 'task' && role === 'worker' ? { owner: name } : {}),
+            }))
+          }
+          onForget={onForgetName}
+        />
+      ))}
+    </fieldset>
   );
   const kind = edit.kind;
   const isNew = !{
@@ -152,6 +187,13 @@ export function Editor({
     e.preventDefault();
     try {
       const payload = { ...v };
+      if (['project', 'trade', 'task'].includes(kind) && v.personnel) {
+        payload.personnel = {
+          ...people,
+          ...(kind === 'task' ? { worker: String(v.owner ?? '') } : {}),
+          ...(kind === 'project' ? { manager: String(v.manager ?? '') } : {}),
+        };
+      }
       if (kind === 'note' && !payload.taskId) delete payload.taskId;
       const value = schemas[kind].parse(payload);
       onSave(kind, value);
@@ -179,8 +221,6 @@ export function Editor({
         {select('status', '项目状态', ['筹备中', '进行中', '已完工', '暂停'])}
         {input('address', '项目地址')}
         {input('owner', '业主称呼')}
-        {input('manager', '项目负责人')}
-        {<div />}
         {input('start', '计划开工日期', 'date', true)}
         {input('end', '计划完工日期', 'date', true)}
         {input('actualStart', '实际开工日期', 'date')}
@@ -245,7 +285,6 @@ export function Editor({
             .filter((t) => t.projectId === v.projectId && t.id !== v.id)
             .map((t) => [t.id, t.name] as [string, string]),
         ])}
-        {input('owner', '负责人')}
         {select('status', '任务状态', ['未开始', '进行中', '已完成', '已延期'])}
         {area('notes', '施工备注')}
         {isNew && (
@@ -387,7 +426,10 @@ export function Editor({
       >
         <form onSubmit={submit}>
           <div className="modal-body">
-            <div className="form-grid">{fields}</div>
+            <div className="form-grid">
+              {fields}
+              {peopleFields}
+            </div>
             {error && (
               <p className="error" role="alert">
                 {error}

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { boot, closeToast, fixture, restore, state } from './helpers';
 import { id } from '../src/lib/model';
 async function schedule(page: Page) {
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   await page.locator('.schedule-section').scrollIntoViewIfNeeded();
 }
@@ -29,7 +29,10 @@ test('dirty form protection, anchored quick create, real calendar and duration s
   const cell = page.locator('.trade-row').first().locator('[data-date="2026-10-27"]');
   const point = await cell.boundingBox();
   await cell.dblclick();
-  let modal = page.getByRole('dialog', { name: '新建施工任务', exact: true });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
+  await page.getByTestId('task-bar').filter({ hasText: '现场拆改' }).dblclick();
+  let modal = page.getByRole('dialog', { name: '编辑施工任务', exact: true });
   await expect(modal).toHaveClass(/anchored/);
   const rect = await modal.boundingBox();
   expect(rect!.x).toBeGreaterThan(12);
@@ -50,7 +53,7 @@ test('dirty form protection, anchored quick create, real calendar and duration s
   await expect(modal).toBeVisible();
   await page.getByRole('button', { name: '关闭浮窗' }).click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
-  expect((await state(page)).tasks).toHaveLength(3);
+  expect((await state(page)).tasks).toHaveLength(4);
   await page.getByTestId('task-bar').filter({ hasText: '现场保护与拆改' }).dblclick();
   await expect(page.getByRole('heading', { name: '编辑施工任务' })).toBeVisible();
   modal = page.getByRole('dialog');

@@ -12,7 +12,7 @@ test('review: color and editors are nonblocking panels; confirmation remains mod
   await boot(page);
   await restore(page);
   await closeToast(page);
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByRole('button', { name: '设置水电改造颜色', exact: true }).click();
   let panel = page.getByRole('dialog');
   await expect(panel).toHaveAttribute('aria-modal', 'false');
@@ -69,7 +69,7 @@ test('review: merged predecessor prompts before moving related tasks and updates
   d.purchases[0].taskId = root.id;
   await boot(page);
   await restore(page, d);
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   const segment = page.getByTestId('task-bar').filter({ hasText: root.name }).nth(1);
   await segment.dblclick();
   let panel = page.getByRole('dialog');
@@ -109,7 +109,7 @@ test('review: an invalid downstream shift cannot block valid current-only edits'
   d.purchases = [];
   await boot(page);
   await restore(page, d);
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByTestId('task-bar').first().dblclick();
   let panel = page.getByRole('dialog');
   await panel.getByLabel('结束日期', { exact: true }).fill('2200-12-31');
@@ -174,7 +174,7 @@ test('review: export locks options, invalidates stale files and draws all dates 
   expect(draws.some((x) => x.text === '周四' && x.font.includes('14px'))).toBe(true);
   await mkdir('/workspace/chunmo-review/after', { recursive: true });
   await file.saveAs('/workspace/chunmo-review/after/full-schedule.png');
-  await page.getByRole('button', { name: '施工计划', exact: true }).click();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   await page.screenshot({ path: '/workspace/chunmo-review/after/desktop.png', fullPage: true });
 });

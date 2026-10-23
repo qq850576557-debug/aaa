@@ -42,6 +42,7 @@ export async function schedulePNG(
   project: Project,
   options: PNGOptions = {},
 ): Promise<Blob> {
+  await document.fonts.load('24px ChunmoBrand', BRAND_NAME);
   await document.fonts.ready;
   const range = projectRange(data, project),
     start = options.start ?? range[0],
@@ -148,10 +149,14 @@ export async function schedulePNG(
     const img = new Image();
     img.src = BRAND_LOGO_SRC;
     await img.decode();
-    ctx.drawImage(img, margin, 25, 150, 68);
-    brandX += 170;
+    const ratio = Math.min(68 / img.naturalWidth, 68 / img.naturalHeight);
+    ctx.drawImage(img, margin, 25, img.naturalWidth * ratio, img.naturalHeight * ratio);
+    brandX += img.naturalWidth * ratio + 20;
   }
-  text(`${BRAND_NAME} · ${BRAND_INITIALS}`, brandX, 46, 24, '#244e42', true);
+  ctx.font = '32px ChunmoBrand';
+  ctx.fillStyle = '#244e42';
+  ctx.fillText(BRAND_NAME, brandX, 46);
+  text(BRAND_INITIALS, brandX + ctx.measureText(BRAND_NAME).width + 18, 46, 20, '#244e42');
   text(BRAND_SLOGAN, brandX, 78, 15, '#68835e');
   if (!BRAND_LOGO_SRC)
     text('原始品牌 Logo 尚未提供 · 此处为项目名称文字', brandX, 104, 12, '#74846b');
