@@ -146,3 +146,42 @@ describe('copying new optional fields', () => {
     expect(() => parseBackup(result.data)).not.toThrow();
   });
 });
+
+describe('review regressions: merged predecessors and unsupported shift ranges', () => {
+  it('detects growth of a retired predecessor after dependency remapping', () => {
+    const { d, t } = setup();
+    const root = t('原始段', '2026-12-22', '2026-12-25'),
+      segment = { ...t('后续段', '2026-12-28', '2026-12-29'), groupId: root.id },
+      dependent = { ...t('水电', '2026-12-26', '2026-12-28', 1), dependsOn: [root.id] };
+    d.tasks = [root, segment, dependent];
+    const plan = proposeTaskChange(d, { ...segment, start: '2026-12-26', end: '2026-12-27' });
+    expect(plan.mergedIds).toEqual([root.id]);
+    expect(plan.current.tasks.find((x) => x.id === dependent.id)?.dependsOn).toEqual([segment.id]);
+    expect(plan.affected.map((x) => x.after.id)).toEqual([dependent.id]);
+    expect(plan.shifted.tasks.find((x) => x.id === dependent.id)?.start).toBe('2026-12-28');
+    expect(plan.base).toEqual(d);
+  });
+  it('keeps current-only changes valid when the proposed downstream shift exceeds 2200', () => {
+    const { d, p, t } = setup();
+    p.start = '2200-12-20';
+    p.end = '2200-12-31';
+    const a = t('前序', '2200-12-28', '2200-12-29'),
+      b = { ...t('后序', '2200-12-30', '2200-12-31', 1), dependsOn: [a.id] };
+    d.tasks = [a, b];
+    const plan = proposeTaskChange(d, { ...a, end: '2200-12-31' });
+    expect(plan.shiftError).toContain('日期无效');
+    expect(() => parseBackup(plan.current)).not.toThrow();
+    expect(plan.current.tasks[1]).toEqual(b);
+    expect(d.tasks[0].end).toBe('2200-12-29');
+  });
+  it('does not infer a delay for a dependent whose own referenced segment became earlier', () => {
+    const { d, t } = setup();
+    const root = t('早段', '2026-12-22', '2026-12-25'),
+      segment = { ...t('晚段', '2026-12-28', '2026-12-29'), groupId: root.id },
+      dependent = { ...t('后序', '2026-12-30', '2027-01-01', 1), dependsOn: [segment.id] };
+    d.tasks = [root, segment, dependent];
+    const plan = proposeTaskChange(d, { ...segment, start: '2026-12-26', end: '2026-12-27' });
+    expect(plan.affected).toEqual([]);
+    expect(plan.shifted.tasks.find((x) => x.id === dependent.id)).toEqual(dependent);
+  });
+});

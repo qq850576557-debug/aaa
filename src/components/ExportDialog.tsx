@@ -24,6 +24,10 @@ export function ExportDialog({
     [progress, setProgress] = useState(''),
     [error, setError] = useState(''),
     [files, setFiles] = useState<{ blob: Blob; name: string }[]>([]);
+  const invalidate = () => {
+    setFiles([]);
+    setError('');
+  };
   async function generate() {
     if (!dateOK(start) || !dateOK(end) || start > end || start < a || end > b) {
       setError('请选择项目完整日期范围内的有效起止日期。');
@@ -75,12 +79,15 @@ export function ExportDialog({
       wide
     >
       <div className="modal-body">
-        <div className="form-grid">
+        <fieldset disabled={busy} className="form-grid export-options">
           <DateField
             label="导出开始日期"
             value={start}
             required
-            onChange={setStart}
+            onChange={(value) => {
+              invalidate();
+              setStart(value);
+            }}
             rangeStart={start}
             rangeEnd={end}
           />
@@ -88,7 +95,10 @@ export function ExportDialog({
             label="导出结束日期"
             value={end}
             required
-            onChange={setEnd}
+            onChange={(value) => {
+              invalidate();
+              setEnd(value);
+            }}
             rangeStart={start}
             rangeEnd={end}
           />
@@ -98,7 +108,10 @@ export function ExportDialog({
               aria-label="导出方式"
               disabled={busy}
               value={mode}
-              onChange={(e) => setMode(e.target.value)}
+              onChange={(e) => {
+                invalidate();
+                setMode(e.target.value);
+              }}
             >
               <option value="full">完整长图 · 连续宽图</option>
               <option value="month">按月份分段导出</option>
@@ -110,13 +123,16 @@ export function ExportDialog({
               aria-label="清晰度"
               disabled={busy}
               value={scale}
-              onChange={(e) => setScale(Number(e.target.value) as 1 | 2)}
+              onChange={(e) => {
+                invalidate();
+                setScale(Number(e.target.value) as 1 | 2);
+              }}
             >
               <option value="2">2 倍 · 推荐</option>
               <option value="1">1 倍 · 标准</option>
             </select>
           </label>
-        </div>
+        </fieldset>
         <p className="form-info">
           每日固定 64px，不缩小字体。短任务条以 T
           编号对应完整明细。较长项目可选月份分段，超出浏览器尺寸时会明确提示。

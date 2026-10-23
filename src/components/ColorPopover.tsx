@@ -8,18 +8,25 @@ export function ColorControls({
   defaultColor,
   recent,
   onChange,
+  compact = false,
 }: {
   color: string;
   defaultColor: string;
   recent: string[];
   onChange: (color: string) => void;
+  compact?: boolean;
 }) {
   const valid = /^#[0-9a-fA-F]{6}$/.test(color);
   const hsva = hexToHsva(valid ? color : defaultColor);
   return (
     <div className="color-controls">
       <div className="color-wheel">
-        <Wheel color={hsva} width={180} height={180} onChange={(c) => onChange(c.hex)} />
+        <Wheel
+          color={hsva}
+          width={compact ? 150 : 180}
+          height={compact ? 150 : 180}
+          onChange={(c) => onChange(c.hex)}
+        />
       </div>
       <div className="color-settings">
         <label>
@@ -114,12 +121,14 @@ export function ColorPopover({
   return (
     <Modal
       title={`${trade.name} · 工种颜色`}
+      className="color-panel"
       subtitle="选择后即时保存，同步到时间条、图例和导出。"
       anchor={anchor}
       onClose={onClose}
     >
       <div className="modal-body">
         <ColorControls
+          compact
           color={draft}
           defaultColor={trade.defaultColor}
           recent={recent}

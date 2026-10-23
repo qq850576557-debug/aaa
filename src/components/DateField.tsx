@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { addMonths, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
 import { dateOK, days, plus, today, weekday } from '../lib/model';
@@ -21,14 +21,26 @@ export function DateField({
     popover = useRef<HTMLDivElement>(null),
     button = useRef<HTMLButtonElement>(null);
   const [month, setMonth] = useState(() => startOfMonth(parseISO(dateOK(value) ? value : today())));
-  function open() {
-    const el = popover.current!,
-      rect = button.current!.getBoundingClientRect();
-    setMonth(startOfMonth(parseISO(dateOK(value) ? value : today())));
-    el.showPopover();
-    const bounds = el.getBoundingClientRect();
+  function position() {
+    const el = popover.current;
+    if (!el?.matches(':popover-open') || !button.current) return;
+    const rect = button.current.getBoundingClientRect(),
+      bounds = el.getBoundingClientRect();
     el.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - bounds.width - 8))}px`;
-    el.style.top = `${Math.max(8, rect.bottom + bounds.height + 8 > window.innerHeight ? rect.top - bounds.height - 8 : rect.bottom + 8)}px`;
+    el.style.top = `${Math.max(8, Math.min(rect.bottom + bounds.height + 8 > window.innerHeight ? rect.top - bounds.height - 8 : rect.bottom + 8, window.innerHeight - bounds.height - 8))}px`;
+  }
+  useEffect(() => {
+    window.addEventListener('resize', position);
+    document.addEventListener('scroll', position, true);
+    return () => {
+      window.removeEventListener('resize', position);
+      document.removeEventListener('scroll', position, true);
+    };
+  }, []);
+  function open() {
+    setMonth(startOfMonth(parseISO(dateOK(value) ? value : today())));
+    popover.current!.showPopover();
+    position();
   }
   const first = format(startOfWeek(month, { weekStartsOn: 1 }), 'yyyy-MM-dd');
   const grid = days(first, plus(first, 41));

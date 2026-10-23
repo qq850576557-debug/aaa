@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-export type Anchor = { x: number; y: number };
+export type Anchor = { x: number; y: number; element?: HTMLElement };
 export function Modal({
   title,
   subtitle,
@@ -8,6 +8,8 @@ export function Modal({
   onClose,
   wide = false,
   anchor,
+  blocking = false,
+  className = '',
 }: {
   title: string;
   subtitle?: string;
@@ -15,54 +17,101 @@ export function Modal({
   onClose: () => void;
   wide?: boolean;
   anchor?: Anchor;
+  blocking?: boolean;
+  className?: string;
 }) {
-  const headingId = useId();
-  const ref = useRef<HTMLDialogElement>(null);
-  const closeRef = useRef(onClose);
+  const headingId = useId(),
+    ref = useRef<HTMLDialogElement>(null),
+    closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const d = ref.current!;
-    d.showModal();
+    const d = ref.current!,
+      previous = document.activeElement as HTMLElement | null,
+      oldOverflow = document.body.style.overflow;
+    if (blocking) {
+      d.showModal();
+      document.body.style.overflow = 'hidden';
+    } else d.show();
+    const initial = anchor?.element?.getBoundingClientRect();
     const position = () => {
-      if (!anchor || window.innerWidth < 640) return;
-      const rect = d.getBoundingClientRect();
-      d.style.margin = '0';
-      d.style.left = `${Math.max(12, Math.min(anchor.x + 12, window.innerWidth - rect.width - 12))}px`;
-      d.style.top = `${Math.max(12, Math.min(anchor.y + 12, window.innerHeight - rect.height - 12))}px`;
+      const rect = d.getBoundingClientRect(),
+        w = window.innerWidth,
+        h = window.innerHeight;
+      const source = anchor?.element?.isConnected ? anchor.element.getBoundingClientRect() : null;
+      const x = anchor ? anchor.x + (source && initial ? source.left - initial.left : 0) : w / 2;
+      const y = anchor ? anchor.y + (source && initial ? source.top - initial.top : 0) : h / 2;
+      const useAnchor = !!anchor && w >= 640;
+      d.style.left = `${Math.max(12, Math.min(useAnchor ? x + 12 : (w - rect.width) / 2, w - rect.width - 12))}px`;
+      d.style.top = `${Math.max(12, Math.min(useAnchor ? y + 12 : (h - rect.height) / 2, h - rect.height - 12))}px`;
     };
     position();
+    const observer = new ResizeObserver(position);
+    observer.observe(d);
+    // A range editor mounts on pointerup. Its following click belongs to the
+    // opening gesture, not an outside press; never dismiss that new panel.
+    let outsidePress = false;
+    const pointerDown = (e: PointerEvent) => {
+      outsidePress = !d.contains(e.target as Node);
+    };
+    const outside = (e: MouseEvent) => {
+      if (e.detail > 0 && !outsidePress) return;
+      outsidePress = false;
+      if (blocking || d.contains(e.target as Node) || document.querySelector('dialog:modal'))
+        return;
+      const last = [...document.querySelectorAll('dialog[open]')].at(-1);
+      if (last !== d) return;
+      e.preventDefault();
+      e.stopPropagation();
+      closeRef.current();
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (
+        blocking ||
+        e.key !== 'Escape' ||
+        e.defaultPrevented ||
+        document.querySelector('dialog:modal') ||
+        document.querySelector('[popover]:popover-open')
+      )
+        return;
+      const last = [...document.querySelectorAll('dialog[open]')].at(-1);
+      if (last === d) {
+        e.preventDefault();
+        closeRef.current();
+      }
+    };
     window.addEventListener('resize', position);
-    const old = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    document.addEventListener('scroll', position, true);
+    document.addEventListener('pointerdown', pointerDown, true);
+    document.addEventListener('click', outside, true);
+    document.addEventListener('keydown', escape);
     return () => {
+      observer.disconnect();
       window.removeEventListener('resize', position);
+      document.removeEventListener('scroll', position, true);
+      document.removeEventListener('pointerdown', pointerDown, true);
+      document.removeEventListener('click', outside, true);
+      document.removeEventListener('keydown', escape);
       d.close();
-      document.body.style.overflow = old;
-      previous?.focus({ preventScroll: true });
+      if (blocking) document.body.style.overflow = oldOverflow;
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, []);
   return (
     <dialog
       ref={ref}
-      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''}`}
+      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${className}`}
+      aria-modal={blocking}
+      aria-labelledby={headingId}
       onCancel={(e) => {
         e.preventDefault();
         closeRef.current();
       }}
       onClick={(e) => {
-        if (e.target === ref.current) {
-          const r = ref.current.getBoundingClientRect();
-          if (
-            e.clientX < r.left ||
-            e.clientX > r.right ||
-            e.clientY < r.top ||
-            e.clientY > r.bottom
-          )
-            onClose();
-        }
+        if (!blocking || e.target !== ref.current) return;
+        const r = ref.current.getBoundingClientRect();
+        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
+          onClose();
       }}
-      aria-labelledby={headingId}
     >
       <header className="modal-head">
         <div>
@@ -91,7 +140,7 @@ export function Confirm({
   danger?: boolean;
 }) {
   return (
-    <Modal title={title} onClose={onCancel}>
+    <Modal title={title} onClose={onCancel} blocking>
       <div className="modal-body">
         <p className="confirm-message">{message}</p>
       </div>

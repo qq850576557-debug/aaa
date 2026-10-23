@@ -91,7 +91,7 @@ export function Gantt({
     if (e.button !== 0) return;
     e.stopPropagation();
     clearClick();
-    lastAnchor.current = { x: e.clientX, y: e.clientY };
+    lastAnchor.current = { x: e.clientX, y: e.clientY, element: e.currentTarget as HTMLElement };
     e.currentTarget.setPointerCapture(e.pointerId);
     const d = {
       task,
@@ -144,7 +144,7 @@ export function Gantt({
     )
       return;
     clearClick();
-    lastAnchor.current = { x: e.clientX, y: e.clientY };
+    lastAnchor.current = { x: e.clientX, y: e.clientY, element: e.currentTarget as HTMLElement };
     const a = Number((e.target as HTMLElement).dataset.index);
     const r = {
       trade: g.id,
@@ -228,7 +228,10 @@ export function Gantt({
       </div>
       <div className="legend">
         {trades.map((g) => (
-          <button key={g.id} onClick={(e) => onColor(g, { x: e.clientX, y: e.clientY })}>
+          <button
+            key={g.id}
+            onClick={(e) => onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget })}
+          >
             <i style={{ background: g.color }} />
             {g.name}
           </button>
@@ -335,7 +338,9 @@ export function Gantt({
                       className="trade-color"
                       aria-label={`设置${g.name}颜色`}
                       style={{ background: g.color }}
-                      onClick={(e) => onColor(g, { x: e.clientX, y: e.clientY })}
+                      onClick={(e) =>
+                        onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget })
+                      }
                     />
                     <button onClick={() => onTrade(g)} title="编辑工种">
                       {g.name}
@@ -450,7 +455,7 @@ export function Gantt({
                           onClick={(e) => {
                             if (performance.now() - lastDrag.current <= 350) return;
                             if (taskClick.current) clearTimeout(taskClick.current);
-                            const anchor = { x: e.clientX, y: e.clientY };
+                            const anchor = { x: e.clientX, y: e.clientY, element: e.currentTarget };
                             if (e.detail === 0) {
                               onTask(original);
                               return;

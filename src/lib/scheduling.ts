@@ -7,6 +7,7 @@ export type ScheduleProposal = {
   affected: TaskChange[];
   mergedIds: string[];
   inferred: boolean;
+  shiftError?: string;
 };
 const logicalId = (t: Task) => t.groupId ?? t.id;
 // Merge only explicitly linked segments. Equal names never establish a logical relationship.
@@ -130,16 +131,24 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
       let earliest = t.start;
       for (const parent of shifted.tasks) {
         if (parent.id === t.id || parent.projectId !== t.projectId) continue;
-        const before = original.get(parent.id);
-        if (!before || parent.end <= before.end) continue;
-        const explicit = t.dependsOn?.includes(parent.id);
+        // A surviving segment may represent several retired predecessors. Compare
+        // against the predecessor each dependent actually referenced before merging.
+        const baselines = [parent.id, ...(parent.id === changed.id ? mergedIds : [])]
+          .map((id) => original.get(id))
+          .filter((item): item is Task => !!item);
+        const explicit = !!t.dependsOn?.includes(parent.id);
+        const explicitGrowth =
+          explicit &&
+          baselines.some((before) => was.dependsOn?.includes(before.id) && parent.end > before.end);
         const ordered =
           !t.dependsOn?.length &&
-          !dependsTransitively(parent.id, t.id) &&
           (order.get(t.tradeId) ?? 0) > (order.get(parent.tradeId) ?? 0) &&
-          was.start > before.end &&
-          was.start <= parent.end;
-        if (explicit || ordered) {
+          !baselines.some((before) => dependsTransitively(before.id, t.id)) &&
+          baselines.some(
+            (before) =>
+              parent.end > before.end && was.start > before.end && was.start <= parent.end,
+          );
+        if (explicitGrowth || ordered) {
           const next = plus(parent.end, 1);
           if (next > earliest) {
             earliest = next;
@@ -156,7 +165,12 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
     if (!progressed) break;
   }
   shifted = expandProject(shifted, value.projectId);
-  parseBackup(shifted);
+  let shiftError: string | undefined;
+  try {
+    parseBackup(shifted);
+  } catch (error) {
+    shiftError = error instanceof Error ? error.message : String(error);
+  }
   const affected = shifted.tasks
     .filter(
       (t) =>
@@ -165,7 +179,15 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
         (t.start !== original.get(t.id)!.start || t.end !== original.get(t.id)!.end),
     )
     .map((t) => ({ before: original.get(t.id)!, after: t }));
-  return { base, current, shifted, affected, mergedIds, inferred };
+  return {
+    base,
+    current,
+    shifted,
+    affected,
+    mergedIds,
+    inferred,
+    ...(shiftError ? { shiftError } : {}),
+  };
 }
 export function reorderTrades(
   data: Data,

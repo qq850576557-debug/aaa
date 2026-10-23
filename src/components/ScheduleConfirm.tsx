@@ -15,6 +15,7 @@ export function ScheduleConfirm({
   return (
     <Modal
       title="是否顺延后续工期？"
+      blocking
       subtitle="本次调整可能影响后续施工安排。确认前尚未保存任何日期变化。"
       onClose={onCancel}
       wide
@@ -29,6 +30,11 @@ export function ScheduleConfirm({
             ? '无明确依赖的任务按工种顺序保守建议：仅包含原本在前序任务之后、现在受到延长覆盖的后续任务。原有交叉施工不移动。'
             : '根据你设置的前序任务关系计算受影响范围。'}
         </p>
+        {proposal.shiftError && (
+          <p className="error" role="alert">
+            顺延方案超出可保存范围：{proposal.shiftError}。可以仅调整当前工序，或取消本次操作。
+          </p>
+        )}
         <div className="shift-preview">
           {proposal.affected.map(({ before, after }) => (
             <div key={after.id}>
@@ -46,7 +52,7 @@ export function ScheduleConfirm({
       <footer className="modal-foot">
         <button onClick={onCancel}>取消本次操作</button>
         <button onClick={() => onApply(false)}>仅调整当前工序</button>
-        <button className="primary" onClick={() => onApply(true)}>
+        <button className="primary" disabled={!!proposal.shiftError} onClick={() => onApply(true)}>
           顺延后续工期
         </button>
       </footer>
