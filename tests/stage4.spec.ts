@@ -366,3 +366,24 @@ test('stage 4: mobile has separate people navigation and compact procurement; ta
   await page.getByRole('button', { name: '关闭浮窗' }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('stage 4: global reminders edit the purchase owner project after visiting an empty completed workspace', async ({
+  page,
+}) => {
+  await boot(page);
+  await restore(page);
+  await closeToast(page);
+  await page.getByRole('button', { name: '已完工项目', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: '暂无已完工项目', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '提醒中心', exact: true }).click();
+  await page.getByRole('button', { name: '编辑采购电线及线管', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: '编辑采购事项', exact: true });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByLabel('所属项目', { exact: true })).toHaveValue('p-home');
+  await panel.getByLabel('详细备注（可选）', { exact: true }).fill('从全局提醒更新采购备注');
+  await panel.getByRole('button', { name: '保存', exact: true }).click();
+  await expect
+    .poll(async () => (await state(page)).purchases[0].notes)
+    .toBe('从全局提醒更新采购备注');
+  expect((await state(page)).purchases[0].projectId).toBe('p-home');
+});

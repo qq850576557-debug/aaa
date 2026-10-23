@@ -299,12 +299,20 @@ export default function App() {
     });
   }
   function purchaseEditor(v?: Purchase, date = now) {
-    if (!p) return;
+    if (!p && !v) return;
+    if (v) {
+      const project = data.projects.find((x) => x.id === v.projectId);
+      if (!project) return;
+      setSelected(project.id);
+      setArchived(isHistorical(project));
+      setProjectStatusFilter(false);
+    }
+    setDay(null);
     setEdit({
       kind: 'purchase',
       value: v ?? {
         id: id(),
-        projectId: p.id,
+        projectId: p!.id,
         name: '',
         taskId: '',
         due: date,
