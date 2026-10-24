@@ -34,3 +34,30 @@ export function staffWork(data: Data, personId: string, now = today()) {
     ];
   });
 }
+
+export function staffConflicts(data: Data) {
+  return (data.people ?? []).flatMap((person) => {
+    const tasks = staffWork(data, person.id)
+      .filter((w) => !isHistorical(w.project))
+      .flatMap((w) =>
+        w.tasks.filter((t) => t.status !== '已完成').map((task) => ({ task, project: w.project })),
+      );
+    const conflicts = [];
+    for (let i = 0; i < tasks.length; i++)
+      for (let j = i + 1; j < tasks.length; j++) {
+        const a = tasks[i],
+          b = tasks[j];
+        if (a.project.id === b.project.id || a.task.end < b.task.start || b.task.end < a.task.start)
+          continue;
+        conflicts.push({
+          id: [person.id, a.task.id, b.task.id].join(':'),
+          person,
+          a,
+          b,
+          start: [a.task.start, b.task.start].sort()[1],
+          end: [a.task.end, b.task.end].sort()[0],
+        });
+      }
+    return conflicts;
+  });
+}

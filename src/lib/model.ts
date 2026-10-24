@@ -147,12 +147,25 @@ export const purchaseSchema = z
     notes: text,
   })
   .strict();
+export const dictionarySchema = z
+  .object({
+    id: uid,
+    kind: z.enum(['category', 'trade']),
+    label: name,
+    active: z.boolean(),
+    deleted: z.boolean().optional(),
+    order: z.number().int().nonnegative(),
+  })
+  .strict();
+export type DictionaryItem = z.infer<typeof dictionarySchema>;
 export const personSchema = z
   .object({
     id: uid,
     name,
     role: z.enum(['施工人员', '项目经理', '设计人员', '监理']),
     trade: z.string().max(100),
+    categoryId: uid.optional(),
+    tradeIds: z.array(uid).max(100).optional(),
     notes: text,
     active: z.boolean(),
     deleted: z.boolean().optional(),
@@ -163,6 +176,7 @@ export const dataSchema = z
   .object({
     version: z.literal(1),
     people: z.array(personSchema).max(2000).optional(),
+    dictionaries: z.array(dictionarySchema).max(2000).optional(),
     nameHistory: z.array(z.string().trim().min(1).max(100)).max(2000).optional(),
     projects: z.array(projectSchema).max(500),
     trades: z.array(tradeSchema).max(5000),
@@ -176,6 +190,23 @@ export const dataSchema = z
     for (const list of [d.projects, d.trades, d.tasks, d.notes, d.purchases, d.people ?? []]) {
       if (new Set(list.map((x) => x.id)).size !== list.length)
         ctx.addIssue({ code: 'custom', message: '备份中存在重复 ID' });
+    }
+    const dictionaries = d.dictionaries ?? [];
+    if (new Set(dictionaries.map((x) => x.id)).size !== dictionaries.length)
+      ctx.addIssue({ code: 'custom', message: '字典ID重复' });
+    for (const person of d.people ?? []) {
+      if (
+        person.categoryId &&
+        !dictionaries.some((x) => x.id === person.categoryId && x.kind === 'category')
+      )
+        ctx.addIssue({ code: 'custom', message: '人员类别引用无效，请先恢复字典' });
+      if (
+        person.tradeIds?.some(
+          (id) => !dictionaries.some((x) => x.id === id && x.kind === 'trade'),
+        ) ||
+        new Set(person.tradeIds).size !== (person.tradeIds?.length ?? 0)
+      )
+        ctx.addIssue({ code: 'custom', message: '人员工种引用无效或重复，请先恢复字典' });
     }
     const people = new Set((d.people ?? []).map((p) => p.id));
     for (const item of [...d.projects, ...d.trades, ...d.tasks])

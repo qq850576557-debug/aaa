@@ -146,7 +146,7 @@ export function HistoryPanel({
       {target && (
         <Confirm
           title="恢复到此次修改之前？"
-          message={`将恢复「${target.name}」在 ${localTime(target.at)} 该次修改前的完整状态。涉及：${[...new Set(target.changes.map((c) => c.module))].join('、') || '版本数据'}。${target.scope === GLOBAL_SCOPE ? '仅恢复全局人员、姓名候选、颜色偏好和项目顺序，不覆盖项目内容；若人员关联不完整将拒绝恢复。' : '仅替换该项目的基本资料、人员关联、工种、施工任务、事项与采购，不改其他项目。'}当前状态将在同一事务中保留为新历史，后续历史不会删除。`}
+          message={`将恢复「${target.name}」在 ${localTime(target.at)} 该次修改前的完整状态。涉及：${[...new Set(target.changes.map((c) => c.module))].join('、') || '版本数据'}。${target.scope === GLOBAL_SCOPE ? '仅恢复全局人员、人员字典、姓名候选、颜色偏好和项目顺序，不覆盖项目内容；若人员关联不完整将拒绝恢复。' : '仅替换该项目的基本资料、人员关联、工种、施工任务、事项与采购，不改其他项目。'}当前状态将在同一事务中保留为新历史，后续历史不会删除。`}
           onCancel={() => !busy && setTarget(null)}
           onConfirm={() => {
             if (busy) return;

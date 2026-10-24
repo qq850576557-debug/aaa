@@ -6,7 +6,10 @@ export const GLOBAL_SCOPE = '@global';
 const MAX_BYTES = 128 * 1024 * 1024;
 const MAX_RECORDS = 10000;
 export type ProjectSnapshot = Pick<Data, 'projects' | 'trades' | 'tasks' | 'notes' | 'purchases'>;
-export type GlobalSnapshot = Pick<Data, 'people' | 'nameHistory' | 'recentColors'> & {
+export type GlobalSnapshot = Pick<
+  Data,
+  'people' | 'nameHistory' | 'recentColors' | 'dictionaries'
+> & {
   projectOrder: string[];
 };
 export type Snapshot =
@@ -43,6 +46,7 @@ export function snapshot(data: Data, scope: string): Snapshot {
       kind: 'global',
       data: {
         ...(data.people ? { people: data.people } : {}),
+        ...(data.dictionaries ? { dictionaries: data.dictionaries } : {}),
         ...(data.nameHistory ? { nameHistory: data.nameHistory } : {}),
         recentColors: data.recentColors,
         projectOrder: data.projects.map((p) => p.id),
@@ -94,6 +98,10 @@ const fields: Record<string, string> = {
   groupId: '多段关联',
   personnel: '原有人员登记',
   staffIds: '人员关联',
+  categoryId: '人员类别',
+  tradeIds: '人员工种',
+  label: '选项名称',
+  kind: '类型',
   due: '采购截止日期',
   originalDue: '原始采购期限',
   approvedDue: '确认期限',
@@ -112,10 +120,21 @@ const printable = (v: unknown) =>
 export function differences(a: Snapshot, b: Snapshot): Change[] {
   const result: Change[] = [];
   if (a.kind === 'global' && b.kind === 'global') {
-    for (const key of ['people', 'nameHistory', 'recentColors', 'projectOrder'] as const)
+    for (const key of [
+      'people',
+      'dictionaries',
+      'nameHistory',
+      'recentColors',
+      'projectOrder',
+    ] as const)
       if (canonical(a.data[key]) !== canonical(b.data[key])) {
-        if (key === 'people')
-          compareRows(a.data.people ?? [], b.data.people ?? [], '人员档案', result);
+        if (key === 'people' || key === 'dictionaries')
+          compareRows(
+            a.data[key] ?? [],
+            b.data[key] ?? [],
+            key === 'people' ? '人员档案' : '人员字典',
+            result,
+          );
         else
           result.push({
             module: '工作空间',
@@ -151,7 +170,9 @@ function compareRows(
   for (const key of new Set([...a.keys(), ...b.keys()])) {
     const old = a.get(key) as Record<string, unknown> | undefined,
       next = b.get(key) as Record<string, unknown> | undefined;
-    const name = String(next?.name ?? next?.title ?? old?.name ?? old?.title ?? key);
+    const name = String(
+      next?.name ?? next?.title ?? next?.label ?? old?.name ?? old?.title ?? old?.label ?? key,
+    );
     if (!old || !next)
       out.push({
         module,
@@ -235,6 +256,7 @@ export function validateHistory(raw: unknown): History {
       const g = z
         .object({
           people: z.array(z.unknown()).optional(),
+          dictionaries: z.array(z.unknown()).optional(),
           nameHistory: z.array(z.string()).optional(),
           recentColors: z.array(z.string()),
           projectOrder: z.array(z.string()).max(500),
@@ -244,6 +266,7 @@ export function validateHistory(raw: unknown): History {
       const d = parseBackup({
         ...emptyData(),
         ...(g.people ? { people: g.people } : {}),
+        ...(g.dictionaries ? { dictionaries: g.dictionaries } : {}),
         ...(g.nameHistory ? { nameHistory: g.nameHistory } : {}),
         recentColors: g.recentColors,
       });
@@ -252,6 +275,7 @@ export function validateHistory(raw: unknown): History {
         kind: 'global',
         data: {
           ...(d.people ? { people: d.people } : {}),
+          ...(d.dictionaries ? { dictionaries: d.dictionaries } : {}),
           ...(d.nameHistory ? { nameHistory: d.nameHistory } : {}),
           recentColors: d.recentColors,
           projectOrder: g.projectOrder,
@@ -409,6 +433,7 @@ export function restoreBefore(
     next = {
       ...data,
       people: g.people,
+      dictionaries: g.dictionaries,
       nameHistory: g.nameHistory,
       recentColors: g.recentColors,
       projects: [...data.projects].sort(

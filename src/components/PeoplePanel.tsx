@@ -1,3 +1,6 @@
+import { DictionaryPanel } from './DictionaryPanel';
+import { ConflictPanel } from './ConflictPanel';
+import { categoryName, tradeNames } from '../lib/dictionaries';
 import { staffWork } from '../lib/readiness';
 import { useCurrentDate } from '../lib/useCurrentDate';
 import { useState, type FormEvent } from 'react';
@@ -17,6 +20,8 @@ export function PeoplePanel({
     [target, setTarget] = useState('project');
   const [error, setError] = useState(''),
     [filter, setFilter] = useState('');
+  const [dictionaryOpen, setDictionaryOpen] = useState(false),
+    [removeAssignment, setRemoveAssignment] = useState(false);
   const now = useCurrentDate();
   const people = data.people ?? [];
   const names = data.nameHistory ?? usedNames(data);
@@ -47,7 +52,7 @@ export function PeoplePanel({
       onChange((d) => {
         const key =
           target === 'project' ? 'projects' : target.startsWith('trade:') ? 'trades' : 'tasks';
-        const entity = target === 'project' ? project : target.split(':')[1];
+        const entity = target === 'project' ? project : target.slice(target.indexOf(':') + 1);
         const list = d[key];
         if (!list.some((x) => x.id === entity)) throw Error('所选关联已不存在');
         return {
@@ -65,7 +70,7 @@ export function PeoplePanel({
     }
   }
   const registered = people.filter(
-    (p) => !p.deleted && `${p.name}${p.role}${p.trade}`.includes(filter),
+    (p) => !p.deleted && `${p.name}${categoryName(data, p)}${tradeNames(data, p)}`.includes(filter),
   );
   return (
     <section className="panel people-panel">
@@ -74,6 +79,7 @@ export function PeoplePanel({
           <h2>人员档案</h2>
           <p>统一维护人员，并分配至项目、工种或施工任务。</p>
         </div>
+        <button onClick={() => setDictionaryOpen(true)}>类别与工种字典</button>
         <button className="primary" onClick={() => add()}>
           新增人员
         </button>
@@ -89,15 +95,22 @@ export function PeoplePanel({
           placeholder="姓名、类别或工种"
         />
       </label>
+      <ConflictPanel data={data} />
       <div className="people-grid">
         {registered.map((p) => (
           <article className="person-card" key={p.id} data-person-id={p.id}>
             <strong>{p.name}</strong>
             <span>
-              {p.role} · {p.trade || '未设置工种'} · {p.active ? '在用' : '已停用'}
+              {categoryName(data, p)} · {tradeNames(data, p) || '未设置工种'} ·{' '}
+              {p.active ? '在用' : '已停用'}
             </span>
             <p>{p.notes}</p>
-            <small>暂无评价</small>
+            <details>
+              <summary>内部评价</summary>
+              <p>
+                尚未开放。没有真实账号与服务端授权前不采集或展示内部评价；项目普通备份不含评价。
+              </p>
+            </details>
             <details className="staff-projects">
               <summary>项目履历 · {staffWork(data, p.id, now).length} 个项目</summary>
               <p>
@@ -117,8 +130,8 @@ export function PeoplePanel({
                   {w.tasks.length ? (
                     w.tasks.map((t) => (
                       <p key={t.id}>
-                        {data.trades.find((g) => g.id === t.tradeId)?.name} · {t.name} · {t.start} —{' '}
-                        {t.end}
+                        {data.trades.find((g) => g.id === t.tradeId)?.name} · {t.name} · 计划进场{' '}
+                        {t.start} — 计划结束 {t.end}
                       </p>
                     ))
                   ) : (
@@ -204,6 +217,37 @@ export function PeoplePanel({
             </p>
           ))}
       </details>
+      {dictionaryOpen && (
+        <DictionaryPanel data={data} onChange={onChange} onClose={() => setDictionaryOpen(false)} />
+      )}
+      {removeAssignment && assigning && (
+        <Confirm
+          title="解除人员分配？"
+          message="只移除所选项目/工种/任务的这一位人员；其他项目、其他人员、工期及原有档案保持不变。"
+          onCancel={() => setRemoveAssignment(false)}
+          onConfirm={() => {
+            onChange((d) => {
+              const key =
+                target === 'project'
+                  ? 'projects'
+                  : target.startsWith('trade:')
+                    ? 'trades'
+                    : 'tasks';
+              const entity = target === 'project' ? project : target.slice(target.indexOf(':') + 1);
+              return {
+                ...d,
+                [key]: d[key].map((x) =>
+                  x.id === entity
+                    ? { ...x, staffIds: (x.staffIds ?? []).filter((id) => id !== assigning.id) }
+                    : x,
+                ),
+              };
+            });
+            setRemoveAssignment(false);
+            setAssigning(null);
+          }}
+        />
+      )}
       {editing && (
         <Modal
           title={people.some((x) => x.id === editing.id) ? '编辑人员档案' : '新增人员档案'}
@@ -221,9 +265,9 @@ export function PeoplePanel({
                 />
               </label>
               <label>
-                人员类别
+                工作职责（兼容原角色）
                 <select
-                  aria-label="人员类别"
+                  aria-label="工作职责"
                   value={editing.role}
                   onChange={(e) =>
                     setEditing({ ...editing, role: e.target.value as Person['role'] })
@@ -235,7 +279,62 @@ export function PeoplePanel({
                 </select>
               </label>
               <label>
-                所属工种
+                人员类别
+                <select
+                  aria-label="人员类别"
+                  value={editing.categoryId ?? ''}
+                  onChange={(e) =>
+                    setEditing({ ...editing, categoryId: e.target.value || undefined })
+                  }
+                >
+                  <option value="">沿用原类别：{editing.role}</option>
+                  {data.dictionaries
+                    ?.filter(
+                      (x) =>
+                        x.kind === 'category' &&
+                        !x.deleted &&
+                        (x.active || x.id === editing.categoryId),
+                    )
+                    .map((x) => (
+                      <option key={x.id} value={x.id} disabled={!x.active}>
+                        {x.label}
+                        {!x.active ? '（停用）' : ''}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <fieldset className="span2">
+                <legend>所属工种多选</legend>
+                {data.dictionaries
+                  ?.filter(
+                    (x) =>
+                      x.kind === 'trade' &&
+                      !x.deleted &&
+                      (x.active || editing.tradeIds?.includes(x.id)),
+                  )
+                  .map((x) => (
+                    <label className="check" key={x.id}>
+                      <input
+                        type="checkbox"
+                        aria-label={`人员工种${x.label}`}
+                        checked={editing.tradeIds?.includes(x.id) ?? false}
+                        disabled={!x.active && !editing.tradeIds?.includes(x.id)}
+                        onChange={(e) =>
+                          setEditing({
+                            ...editing,
+                            tradeIds: e.target.checked
+                              ? [...(editing.tradeIds ?? []), x.id]
+                              : (editing.tradeIds ?? []).filter((id) => id !== x.id),
+                          })
+                        }
+                      />
+                      {x.label}
+                      {!x.active ? '（停用）' : ''}
+                    </label>
+                  ))}
+              </fieldset>
+              <label>
+                原工种文字（兼容保留）
                 <input
                   maxLength={100}
                   list="known-trade-names"
@@ -331,6 +430,9 @@ export function PeoplePanel({
               </button>
               <button className="primary" type="submit">
                 确认分配
+              </button>
+              <button type="button" onClick={() => setRemoveAssignment(true)}>
+                解除此处分配
               </button>
             </footer>
           </form>

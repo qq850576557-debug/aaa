@@ -4573,3 +4573,30 @@ nav button {
 .trade-row.drop-after {
   transform: none;
 }
+.dictionary-row {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.dictionary-row .toolbar {
+  flex-wrap: wrap;
+}
+.conflict-panel {
+  border: 1px solid #e4ba9e;
+  background: #fff5eb;
+  border-radius: 12px;
+  padding: 14px;
+  margin: 16px 0;
+  font-size: 14px;
+}
+.conflict-panel details {
+  padding: 6px 0;
+}
+.conflict-panel summary {
+  cursor: pointer;
+}
+.conflict-panel p {
+  overflow-wrap: anywhere;
+}

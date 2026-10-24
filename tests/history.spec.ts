@@ -224,7 +224,7 @@ test('people: central safe profile CRUD, role selection, project assignment, glo
   await page.getByRole('button', { name: '新增人员', exact: true }).click();
   let f = page.getByRole('dialog');
   await f.getByLabel('姓名', { exact: true }).fill('陈设计');
-  await f.getByLabel('人员类别', { exact: true }).selectOption('设计人员');
+  await f.getByLabel('工作职责', { exact: true }).selectOption('设计人员');
   await f.getByLabel('人员备注', { exact: true }).fill('深化设计');
   await expect(f.getByLabel('手机号', { exact: true })).toHaveCount(0);
   await f.getByRole('button', { name: '保存', exact: true }).click();

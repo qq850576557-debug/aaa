@@ -1,3 +1,4 @@
+import { ConflictPanel } from './components/ConflictPanel';
 import { remainingSchedule } from './lib/readiness';
 import { useRef, useState, type ReactNode } from 'react';
 import {
@@ -1211,6 +1212,7 @@ export default function App() {
                       </section>
                     </div>
                   )}
+                  <ConflictPanel data={data} projectId={p.id} />
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <Gantt
                       key={p.id}
