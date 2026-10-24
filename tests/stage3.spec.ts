@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-23T04:00:00Z'));
 });
 
-test('phase 3: double click creates a one-day bar without a form, immediately movable/resizable with undo', async ({
+test('current workflow: blank double click creates procurement; explicit one-day task remains movable/resizable with undo', async ({
   page,
 }) => {
   await boot(page);
@@ -27,7 +27,16 @@ test('phase 3: double click creates a one-day bar without a form, immediately mo
   await timeline(page);
   const row = page.locator('.trade-row').nth(2);
   await row.locator('[data-date="2026-10-24"]').dblclick();
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  let form = page.getByRole('dialog', { name: '新建采购事项', exact: true });
+  await expect(form.getByLabel('采购截止日期', { exact: true })).toHaveValue('2026-10-24');
+  await form.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '施工任务', exact: true }).click();
+  form = page.getByRole('dialog');
+  await form.getByLabel('任务名称', { exact: true }).fill('防水与闭水试验');
+  await form.getByLabel('所属工种', { exact: true }).selectOption((await state(page)).trades[2].id);
+  await form.getByLabel('开始日期', { exact: true }).fill('2026-10-24');
+  await form.getByLabel('结束日期', { exact: true }).fill('2026-10-24');
+  await form.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
   const task = (await state(page)).tasks.find((t) => t.name === '防水与闭水试验')!;
   expect(task.start).toBe('2026-10-24');
@@ -69,6 +78,7 @@ test('phase 3: workspace stays unified, project cards drag with insertion line a
   d.projects.push(second, history);
   await boot(page);
   await restore(page, d);
+  const initial = await state(page);
   await closeToast(page);
   await expect(page.getByRole('button', { name: '施工计划', exact: true })).toHaveCount(0);
   const cards = page.locator('.project-card');
@@ -97,7 +107,7 @@ test('phase 3: workspace stays unified, project cards drag with insertion line a
   await page.keyboard.press('Escape');
   await page.mouse.up();
   await expect(page.locator('.project-card.sorting')).toHaveCount(0);
-  expect((await state(page)).projects).toEqual(d.projects);
+  expect((await state(page)).projects).toEqual(initial.projects);
   await page
     .locator(`[data-project-id="${second.id}"]`)
     .dragTo(page.locator(`[data-project-id="${original.id}"]`), {
@@ -107,7 +117,9 @@ test('phase 3: workspace stays unified, project cards drag with insertion line a
   await expect.poll(async () => (await state(page)).projects[0].id).toBe(second.id);
   expect((await state(page)).tasks).toEqual(d.tasks);
   expect((await state(page)).notes).toEqual(d.notes);
-  expect((await state(page)).projects.find((p) => p.id === history.id)).toEqual(history);
+  expect((await state(page)).projects.find((p) => p.id === history.id)).toEqual(
+    initial.projects.find((p) => p.id === history.id),
+  );
   await page.reload();
   await expect(cards.first()).toContainText(second.name);
   await page.getByRole('button', { name: `切换项目${original.name}`, exact: true }).click();
@@ -115,66 +127,37 @@ test('phase 3: workspace stays unified, project cards drag with insertion line a
   await expect(page.locator('.active-project')).toContainText(original.name);
 });
 
-test('phase 3: all personnel roles save, reuse across projects, delete history safely and survive JSON restore', async ({
+test('personnel: old project registration and name candidates survive central profile setup and JSON restore', async ({
   page,
 }) => {
   const d = fixture();
-  d.projects.push({ ...d.projects[0], id: 'project-b', name: '第二工地', manager: '' });
+  d.projects[0].personnel = { worker: '李师傅', manager: '王经理', designer: '陈设计' };
+  d.nameHistory = ['李师傅', '王经理', '陈设计'];
   await boot(page);
   await restore(page, d);
-  await page.getByRole('button', { name: '登记人员', exact: true }).click();
-  let panel = page.getByRole('dialog', { name: '编辑项目', exact: true });
-  await panel.getByLabel('施工人员姓名', { exact: true }).fill('李师傅');
-  await panel.getByLabel('项目经理姓名', { exact: true }).fill('王经理');
-  await panel.getByLabel('执行设计姓名', { exact: true }).fill('陈设计');
+  await page.getByRole('button', { name: '人员管理', exact: true }).click();
+  await page.locator('.legacy-people summary').click();
+  await expect(page.locator('.legacy-people')).toContainText('李师傅');
+  await page.getByRole('button', { name: '用「李师傅」建档', exact: true }).click();
+  const panel = page.getByRole('dialog');
+  await expect(panel.getByLabel('姓名', { exact: true })).toHaveValue('李师傅');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
-  await expect.poll(async () => (await state(page)).projects[0].personnel?.worker).toBe('李师傅');
-  await expect(page.locator('.personnel-summary')).toContainText('陈设计');
-  await page.getByRole('button', { name: '切换项目第二工地', exact: true }).click();
-  await page.getByRole('button', { name: '登记人员', exact: true }).click();
-  panel = page.getByRole('dialog', { name: '编辑项目', exact: true });
-  await panel.getByLabel('施工人员姓名', { exact: true }).focus();
-  const candidate = panel.getByRole('option', { name: '李师傅', exact: true });
-  await expect(candidate).toBeVisible();
-  await candidate.hover();
-  const remove = panel.getByRole('button', { name: '删除历史姓名李师傅', exact: true });
-  await expect(remove).toBeVisible();
-  await remove.click();
-  let confirm = page.getByRole('dialog', { name: '删除历史姓名？' });
-  await expect(confirm).toContainText('正在 1 个项目中使用');
-  await confirm.getByRole('button', { name: '确认操作', exact: true }).click();
-  await expect.poll(async () => (await state(page)).nameHistory?.includes('李师傅')).toBe(false);
-  expect((await state(page)).projects[0].personnel?.worker).toBe('李师傅');
-  await panel.getByLabel('项目经理姓名', { exact: true }).focus();
-  await panel.getByRole('option', { name: '王经理', exact: true }).click();
-  await panel.getByRole('button', { name: '清空项目经理姓名', exact: true }).click();
-  await panel.getByLabel('执行设计姓名', { exact: true }).focus();
-  await panel.getByRole('option', { name: '陈设计', exact: true }).click();
-  await panel.getByRole('button', { name: '保存', exact: true }).click();
-  await expect.poll(async () => (await state(page)).projects[1].personnel?.designer).toBe('陈设计');
-  expect((await state(page)).projects[1].personnel?.manager).toBe('');
-  await page.reload();
-  await expect(page.locator('.save-state')).toContainText('已保存');
-  expect((await state(page)).nameHistory).not.toContain('李师傅');
-  expect((await state(page)).nameHistory).toContain('王经理');
+  await expect.poll(async () => (await state(page)).people?.length).toBe(1);
+  expect((await state(page)).projects[0].personnel).toEqual(d.projects[0].personnel);
   await page.getByRole('button', { name: '数据与备份', exact: true }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '下载完整 JSON 备份', exact: false }).click();
-  const file = await download;
-  const backup = JSON.parse(await readFile((await file.path())!, 'utf8'));
-  expect(backup.projects[0].personnel).toEqual({
-    worker: '李师傅',
-    manager: '王经理',
-    designer: '陈设计',
-  });
-  expect(backup.nameHistory).not.toContain('李师傅');
+  const file = await download,
+    backup = JSON.parse(await readFile((await file.path())!, 'utf8'));
+  expect(backup.projects[0].personnel).toEqual(d.projects[0].personnel);
+  expect(backup.people[0].name).toBe('李师傅');
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await restore(page, backup);
-  expect((await state(page)).projects).toEqual(backup.projects);
+  expect((await state(page)).people).toEqual(backup.people);
   expect((await state(page)).nameHistory).toEqual(backup.nameHistory);
 });
 
-test('phase 3: trade/task personnel stays associated, and untouched deleted candidates never reappear on save', async ({
+test('personnel: project/trade edits preserve untouched legacy names and task selection reuses registered identities', async ({
   page,
 }) => {
   const d = fixture();
@@ -184,26 +167,31 @@ test('phase 3: trade/task personnel stays associated, and untouched deleted cand
     manager: d.projects[0].manager,
     designer: '陈设计',
   };
+  d.trades[1].personnel = { worker: '赵师傅', manager: '', designer: '' };
+  d.people = [
+    { id: 'designer', name: '陈设计', role: '设计人员', trade: '', notes: '', active: true },
+  ];
   await boot(page);
   await restore(page, d);
   await page.getByRole('button', { name: '编辑当前项目', exact: true }).click();
   let panel = page.getByRole('dialog');
+  await expect(panel.locator('.personnel-fields')).toHaveCount(0);
   await panel.getByLabel('项目备注', { exact: true }).fill('只修改备注');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).projects[0].notes).toBe('只修改备注');
   expect((await state(page)).nameHistory).not.toContain('李师傅');
   await page.getByRole('button', { name: '编辑水电改造', exact: true }).click();
   panel = page.getByRole('dialog');
-  await panel.getByLabel('施工人员姓名', { exact: true }).fill('赵师傅');
+  await expect(panel.locator('.personnel-fields')).toHaveCount(0);
+  await panel.getByLabel('工种名称', { exact: true }).fill('水电');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
-  await expect.poll(async () => (await state(page)).trades[1].personnel?.worker).toBe('赵师傅');
+  await expect.poll(async () => (await state(page)).trades[1].name).toBe('水电');
+  expect((await state(page)).trades[1].personnel).toEqual(d.trades[1].personnel);
   await editTask(page, page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' }));
   panel = page.getByRole('dialog');
-  await panel.getByLabel('执行设计姓名', { exact: true }).focus();
-  await panel.getByRole('option', { name: '陈设计', exact: true }).click();
+  await panel.getByLabel('选择设计人员', { exact: true }).selectOption('designer');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
-  await expect.poll(async () => (await state(page)).tasks[1].personnel?.designer).toBe('陈设计');
-  expect((await state(page)).tasks[0].personnel).toBeUndefined();
+  await expect.poll(async () => (await state(page)).tasks[1].staffIds).toEqual(['designer']);
   expect((await state(page)).tasks[1].tradeId).toBe(d.trades[1].id);
 });
 
@@ -213,7 +201,7 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
   await boot(page);
   await restore(page);
   await timeline(page);
-  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '56px');
+  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '34px');
   await expect(page.getByTestId('task-bar').first()).toHaveCSS('font-size', '14px');
   const font = await page.evaluate(async () => {
     await document.fonts.load('28px ChunmoBrand', '春茉空间设计');
@@ -242,7 +230,7 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
     expect(r.x + r.width).toBeLessThanOrEqual(width);
     expect(r.y + r.height).toBeLessThanOrEqual(height);
     expect(await panel.evaluate((e) => e.matches(':modal'))).toBe(false);
-    await expect(panel.locator('.w-color-wheel')).toHaveCSS('width', '116px');
+    await expect(panel.locator('.w-color-wheel')).toHaveCSS('width', '100px');
     await panel.getByLabel('自定义颜色', { exact: true }).fill('#244e42');
     await expect(page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' })).toHaveCSS(
       'border-color',
@@ -292,7 +280,7 @@ test('phase 3: a newly created overlapping predecessor proposes downstream dates
   expect((await state(page)).tasks).toHaveLength(3);
 });
 
-test('phase 3: errors persist until dismissed and a failed PNG export leaves all data intact', async ({
+test('current feedback: failed PNG message expires after three seconds while inline error and data remain', async ({
   page,
 }) => {
   await boot(page);
@@ -308,10 +296,9 @@ test('phase 3: errors persist until dismissed and a failed PNG export leaves all
   await panel.getByRole('button', { name: '生成并导出', exact: true }).click();
   const notice = page.locator('.toast.error-toast');
   await expect(notice).toBeVisible();
-  await page.waitForTimeout(3500);
-  await expect(notice).toBeVisible();
+  await expect(notice).toHaveCount(0, { timeout: 5000 });
+  await expect(panel.getByRole('alert')).toBeVisible();
   expect(await state(page)).toEqual(before);
   await panel.getByRole('button', { name: '关闭浮窗', exact: true }).click();
-  await notice.getByRole('button', { name: '关闭提示', exact: true }).click();
   await expect(notice).toHaveCount(0);
 });

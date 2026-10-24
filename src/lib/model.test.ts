@@ -123,12 +123,15 @@ describe('workspace safety', () => {
   });
   it('persists full structured records to IndexedDB', async () => {
     d.tasks = [task()];
-    await saveData(d);
-    expect(await loadData()).toEqual(d);
+    const saved = await saveData(d);
+    expect(await loadData()).toEqual(saved.data);
+    expect({ ...saved.data.projects[0], updatedAt: d.projects[0].updatedAt }).toEqual(
+      d.projects[0],
+    );
   });
   it('rejects malformed backups without overwriting storage', async () => {
-    await saveData(d);
+    const saved = await saveData(d);
     await expect(saveData({ version: 99 } as unknown as Data)).rejects.toThrow();
-    expect(await loadData()).toEqual(d);
+    expect(await loadData()).toEqual(saved.data);
   });
 });

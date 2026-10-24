@@ -45,6 +45,7 @@ export const projectSchema = z
     notes: text,
     archived: z.boolean(),
     personnel: personnelSchema.optional(),
+    staffIds: z.array(uid).max(100).optional(),
     updatedAt: z.string().datetime(),
   })
   .strict()
@@ -66,6 +67,7 @@ export const tradeSchema = z
     defaultColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     order: z.number().int().nonnegative(),
     personnel: personnelSchema.optional(),
+    staffIds: z.array(uid).max(100).optional(),
   })
   .strict();
 export const taskSchema = z
@@ -82,6 +84,7 @@ export const taskSchema = z
     groupId: uid.optional(),
     personnel: personnelSchema.optional(),
     dependsOn: z.array(uid).max(100).optional(),
+    staffIds: z.array(uid).max(100).optional(),
   })
   .strict()
   .refine((t) => t.end >= t.start, { message: '结束日期不能早于开始日期', path: ['end'] })
@@ -144,9 +147,22 @@ export const purchaseSchema = z
     notes: text,
   })
   .strict();
+export const personSchema = z
+  .object({
+    id: uid,
+    name,
+    role: z.enum(['施工人员', '项目经理', '设计人员', '监理']),
+    trade: z.string().max(100),
+    notes: text,
+    active: z.boolean(),
+    deleted: z.boolean().optional(),
+  })
+  .strict();
+export type Person = z.infer<typeof personSchema>;
 export const dataSchema = z
   .object({
     version: z.literal(1),
+    people: z.array(personSchema).max(2000).optional(),
     nameHistory: z.array(z.string().trim().min(1).max(100)).max(2000).optional(),
     projects: z.array(projectSchema).max(500),
     trades: z.array(tradeSchema).max(5000),
@@ -157,10 +173,17 @@ export const dataSchema = z
   })
   .strict()
   .superRefine((d, ctx) => {
-    for (const list of [d.projects, d.trades, d.tasks, d.notes, d.purchases]) {
+    for (const list of [d.projects, d.trades, d.tasks, d.notes, d.purchases, d.people ?? []]) {
       if (new Set(list.map((x) => x.id)).size !== list.length)
         ctx.addIssue({ code: 'custom', message: '备份中存在重复 ID' });
     }
+    const people = new Set((d.people ?? []).map((p) => p.id));
+    for (const item of [...d.projects, ...d.trades, ...d.tasks])
+      if (
+        item.staffIds?.some((id) => !people.has(id)) ||
+        new Set(item.staffIds).size !== (item.staffIds?.length ?? 0)
+      )
+        ctx.addIssue({ code: 'custom', message: '人员关联无效或重复，请先恢复对应人员档案' });
     for (const p of d.projects) {
       const [a, b] = projectRange(d, p);
       if (duration(a, b) > 1096)
@@ -303,7 +326,7 @@ export const projectStatus = (status: Project['status']) =>
   status === '筹备中' || status === '进行中' ? '施工中' : status;
 export function remainingTime(due: string, now = today()) {
   const n = distance(now, due);
-  return n === 0 ? '今日到期' : n > 0 ? `剩余${n}天` : `已逾期${-n}天`;
+  return n === 0 ? '今天截止' : n > 0 ? `剩余 ${n} 天` : `已逾期 ${-n} 天`;
 }
 // Add a baseline to legacy records in memory, never clear or replace the database.
 // The baseline is the effective deadline at first read by this version; unavailable older history is not invented.

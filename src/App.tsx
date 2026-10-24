@@ -27,6 +27,9 @@ import {
 } from 'lucide-react';
 import { PurchaseCard } from './components/PurchaseCard';
 import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
+import { HistoryPanel, localTime } from './components/HistoryPanel';
+import { GLOBAL_SCOPE, workspaceContent, parseArchive, type History } from './lib/history';
+import { assignedNames } from './lib/people';
 import { PeoplePanel } from './components/PeoplePanel';
 import { useCurrentDate } from './lib/useCurrentDate';
 import { savePurchase, confirmPurchaseDeadline } from './lib/procurement';
@@ -88,7 +91,19 @@ const navigation: [View, string, ReactNode][] = [
   ['people', '人员管理', <Users size={19} />],
 ];
 export default function App() {
-  const { data, ready, status, error, update, retry } = useWorkspace();
+  const {
+    data,
+    savedData,
+    history,
+    historyError,
+    ready,
+    status,
+    error,
+    update,
+    retry,
+    restoreVersion,
+  } = useWorkspace();
+  const [historyOpen, setHistoryOpen] = useState<{ scope: string; anchor?: Anchor } | null>(null);
   const now = useCurrentDate();
   const [deadlineChange, setDeadlineChange] = useState<string | null>(null);
   const [scheduleProposal, setScheduleProposal] = useState<ScheduleProposal | null>(null);
@@ -109,6 +124,7 @@ export default function App() {
   const [exporting, setExporting] = useState(false);
   const [backup, setBackup] = useState(false);
   const [restore, setRestore] = useState<Data | null>(null);
+  const [restoreVersions, setRestoreVersions] = useState<History | undefined>(undefined);
   const [restoreError, setRestoreError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const projects = data.projects.filter(
@@ -449,13 +465,14 @@ export default function App() {
     }
     setRestoreError('');
     if (!file) return;
-    if (file.size > 20 * 1024 * 1024) {
-      setRestoreError('备份文件不能超过 20 MB');
+    if (file.size > 140 * 1024 * 1024) {
+      setRestoreError('备份文件不能超过 140 MB');
       return;
     }
     try {
-      const next = parseBackup(JSON.parse(await file.text()));
-      setRestore(next);
+      const archive = parseArchive(JSON.parse(await file.text()));
+      setRestore(archive.data);
+      setRestoreVersions(archive.history);
     } catch (e) {
       setRestoreError(`备份校验失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -636,7 +653,6 @@ export default function App() {
             <strong className="brand-name">{BRAND_NAME}</strong>
             <span className="brand-initials">{BRAND_INITIALS}</span>
             <span className="brand-slogan">{BRAND_SLOGAN}</span>
-            {!BRAND_LOGO_SRC && <span className="brand-pending">原始 Logo 文件待接入</span>}
           </div>
         </a>
         <div className="sidebar-section">
@@ -654,6 +670,14 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
+          <button
+            disabled={!ready}
+            onClick={() =>
+              setHistoryOpen({ scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE) })
+            }
+          >
+            版本历史 · 15天
+          </button>
           <button onClick={() => setBackup(true)}>
             <ShieldCheck size={17} />
             数据与备份
@@ -758,25 +782,21 @@ export default function App() {
                       : view === 'purchases'
                         ? '把材料安排在施工之前，让进度从容向前。'
                         : view === 'people'
-                          ? '人员登记与业务分离，敏感资料等待真实后端权限。'
+                          ? '统一管理人员档案与项目分配。'
                           : '及时关注待办与风险，让计划保持在轨道上。'}
               </p>
             </div>
             <div className="heading-actions">
-              {p && (
-                <button onClick={() => setExporting(true)}>
-                  <ArrowDownToLine size={16} />
-                  <span>导出施工工期长图</span>
+              {(view === 'overview' || view === 'completed') && (
+                <button
+                  className="primary"
+                  onClick={() => setEdit({ kind: 'project', value: newProject() })}
+                  disabled={!ready}
+                >
+                  <Plus size={17} />
+                  新建项目
                 </button>
               )}
-              <button
-                className="primary"
-                onClick={() => setEdit({ kind: 'project', value: newProject() })}
-                disabled={!ready}
-              >
-                <Plus size={17} />
-                新建项目
-              </button>
             </div>
           </div>
           <div className="stats-grid">
@@ -854,7 +874,7 @@ export default function App() {
           ) : view === 'reminders' ? (
             reminderItems()
           ) : view === 'people' ? (
-            <PeoplePanel data={data} />
+            <PeoplePanel data={data} onChange={(fn) => mutate(fn)} />
           ) : (
             <>
               {projectStatusFilter && (
@@ -885,17 +905,6 @@ export default function App() {
                   <ChevronDown size={15} />
                 </div>
                 <div className="toolbar">
-                  <button
-                    className={archived ? 'selected-filter' : ''}
-                    onClick={() => {
-                      setArchived(!archived);
-                      setShowAllProjects(false);
-                      setSelected('');
-                    }}
-                  >
-                    <Archive size={15} />
-                    {archived ? '施工中项目' : '已完工项目'}
-                  </button>
                   {p && (
                     <>
                       <button
@@ -978,6 +987,35 @@ export default function App() {
                         </span>
                       </div>
                       <h2>{p.name}</h2>
+                      <div className="project-history-entry">
+                        <button
+                          disabled={!ready}
+                          onClick={(e) =>
+                            setHistoryOpen({
+                              scope: p.id,
+                              anchor: { x: e.clientX, y: e.clientY, element: e.currentTarget },
+                            })
+                          }
+                        >
+                          最后修改：
+                          {savedData.projects.find((x) => x.id === p.id)?.updatedAt
+                            ? localTime(savedData.projects.find((x) => x.id === p.id)!.updatedAt)
+                            : '等待首次保存'}{' '}
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+                      {(assignedNames(data, p, '设计人员') || assignedNames(data, p, '监理')) && (
+                        <p className="project-team">
+                          {[
+                            assignedNames(data, p, '设计人员') &&
+                              `设计团队：${assignedNames(data, p, '设计人员')}`,
+                            assignedNames(data, p, '监理') &&
+                              `监理：${assignedNames(data, p, '监理')}`,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      )}
                       <p>
                         {[
                           p.address,
@@ -985,7 +1023,7 @@ export default function App() {
                           p.manager && `${p.manager} · 负责人`,
                         ]
                           .filter(Boolean)
-                          .join('　/　') || '在项目设置中添加地址、业主和负责人'}
+                          .join('　/　')}
                       </p>
                     </div>
                     <div className="project-dates">
@@ -1010,28 +1048,6 @@ export default function App() {
                     <a href="#project-procurement">采购与风险</a>
                     <a href="#project-timeline">施工时间轴</a>
                   </nav>
-                  <div className="personnel-summary">
-                    <span>
-                      施工人员 <strong>{p.personnel?.worker || '待登记'}</strong>
-                    </span>
-                    <span>
-                      项目经理 <strong>{p.personnel?.manager || p.manager || '待登记'}</strong>
-                    </span>
-                    <span>
-                      执行设计 <strong>{p.personnel?.designer || '待登记'}</strong>
-                    </span>
-                    <button
-                      onClick={(e) =>
-                        setEdit({
-                          kind: 'project',
-                          value: p,
-                          anchor: { x: e.clientX, y: e.clientY, element: e.currentTarget },
-                        })
-                      }
-                    >
-                      登记人员
-                    </button>
-                  </div>
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <div className="lower-grid" id="project-today">
                       <section className="panel" data-testid="today-panel">
@@ -1151,24 +1167,8 @@ export default function App() {
                       project={p}
                       onTask={taskEditor}
                       onDeleteTask={(t) => deleteEntity({ kind: 'task', value: t })}
-                      onQuickCreate={(g, date) => {
-                        try {
-                          changeTask({
-                            id: id(),
-                            projectId: p.id,
-                            tradeId: g.id,
-                            name: g.name,
-                            start: date,
-                            end: date,
-                            status: '未开始',
-                            owner: g.personnel?.worker ?? '',
-                            notes: '',
-                            ...(g.personnel ? { personnel: { ...g.personnel } } : {}),
-                          });
-                        } catch (e) {
-                          notify(`创建失败：${e instanceof Error ? e.message : String(e)}`);
-                        }
-                      }}
+                      onQuickCreate={(_g, date) => purchaseEditor(undefined, date)}
+                      onExport={() => setExporting(true)}
                       onDay={setDay}
                       onTrade={tradeEditor}
                       onOrder={order}
@@ -1344,6 +1344,26 @@ export default function App() {
           }
         />
       )}
+      {historyOpen && (
+        <HistoryPanel
+          data={data}
+          history={history}
+          scope={historyOpen.scope}
+          anchor={historyOpen.anchor}
+          error={historyError}
+          canRestore={status === '已保存'}
+          onClose={() => setHistoryOpen(null)}
+          onRestore={async (revision) => {
+            await restoreVersion(revision);
+            setUndo(null);
+            setEdit(null);
+            setDay(null);
+            setScheduleProposal(null);
+            setColorEdit(null);
+            notify('版本恢复已保存，相关工期与采购提醒已重新计算。');
+          }}
+        />
+      )}
       {day && p && (
         <Modal
           title={`${day} · 每日事项`}
@@ -1421,6 +1441,16 @@ export default function App() {
             </div>
             <button
               className="backup-action"
+              disabled={status !== '已保存' || !!historyError}
+              onClick={() => {
+                backupJSON(savedData, history);
+                notify('业务与最近15天版本备份已下载。');
+              }}
+            >
+              下载业务与版本备份
+            </button>
+            <button
+              className="backup-action"
               onClick={() => {
                 backupJSON(data);
                 notify('完整 JSON 备份已下载。');
@@ -1468,7 +1498,7 @@ export default function App() {
           onCancel={() => setRestore(null)}
           onConfirm={() => {
             setUndo(null);
-            update(() => restore);
+            update(() => restore, { history: restoreVersions, source: 'JSON备份恢复' });
             setRestore(null);
             setBackup(false);
             setSelected('');
@@ -1505,7 +1535,7 @@ export default function App() {
             notify('已取消工期调整，所有日期保持不变。');
           }}
           onApply={(shift) => {
-            if (data !== scheduleProposal.base) {
+            if (workspaceContent(data) !== workspaceContent(scheduleProposal.base)) {
               setScheduleProposal(null);
               notify('无法应用过期预览：数据已变化，请重新调整工期。');
               return;

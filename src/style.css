@@ -4165,3 +4165,236 @@ nav button {
     overflow-wrap: anywhere;
   }
 }
+/* Saved versions and compact task workflow. Existing storage and business layout remain. */
+.project-history-entry button {
+  border: 0;
+  background: transparent;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.project-team {
+  font-size: 14px !important;
+  color: var(--green) !important;
+}
+.history-panel {
+  width: min(530px, calc(100vw - 24px));
+  max-height: 75dvh;
+}
+.history-panel.history-full {
+  width: min(900px, calc(100vw - 24px));
+}
+.history-panel .modal-body {
+  max-height: calc(75dvh - 140px);
+  overflow: auto;
+}
+.revision-card {
+  border-top: 1px solid var(--border);
+  padding: 12px 0;
+  font-size: 14px;
+}
+.revision-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.revision-card p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.revision-actions {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.revision-differences {
+  background: #f5f6f2;
+  border-radius: 10px;
+  padding: 10px;
+  overflow-wrap: anywhere;
+}
+.revision-differences > div {
+  border-bottom: 1px solid #e2e8e1;
+  padding: 8px 0;
+}
+.revision-differences del,
+.revision-differences ins {
+  display: block;
+  white-space: pre-wrap;
+  max-height: 180px;
+  overflow: auto;
+  padding: 6px;
+  text-decoration: none;
+}
+.revision-differences del {
+  background: #fff0ec;
+  color: #854e43;
+}
+.revision-differences ins {
+  background: #e9f1e7;
+  color: #335a45;
+}
+.people-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 14px;
+  margin: 20px 0;
+}
+.person-card {
+  border: 1px solid var(--border);
+  padding: 18px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.person-card .toolbar {
+  flex-wrap: wrap;
+}
+.legacy-people button {
+  margin: 6px;
+}
+.staff-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.staff-picker small {
+  grid-column: 1/-1;
+}
+.trade-editor {
+  width: min(510px, calc(100vw - 24px));
+  max-height: 75dvh;
+}
+.trade-editor .modal-body {
+  max-height: calc(75dvh - 160px);
+  overflow: auto;
+  padding: 14px 20px;
+}
+.trade-editor .form-grid {
+  gap: 12px;
+}
+.trade-row.sorting,
+.project-card.sorting {
+  opacity: 0.6;
+}
+.trade-row.drop-before:before,
+.trade-row.drop-after:after {
+  background: #cf594b !important;
+}
+.trade-label {
+  padding-top: 5px !important;
+  padding-bottom: 5px !important;
+}
+.trade-meta {
+  gap: 4px !important;
+}
+.trade-meta > span {
+  font-size: 12px !important;
+}
+@media (max-width: 640px) {
+  .revision-actions {
+    flex-wrap: wrap;
+  }
+  .staff-picker {
+    grid-template-columns: 1fr;
+  }
+  .history-panel .modal-body {
+    max-height: calc(75dvh - 160px);
+  }
+}
+.trade-label {
+  display: flex;
+  flex-direction: row !important;
+  align-items: center;
+  padding: 0 6px !important;
+  gap: 3px;
+}
+.trade-title {
+  flex: 1;
+  min-width: 0;
+  gap: 5px;
+}
+.trade-title > button[title='编辑工种'] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0;
+  min-height: 30px;
+  line-height: 16px;
+  font-size: 14px;
+  overflow: hidden;
+}
+.trade-title > button[title='编辑工种'] > span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.trade-title small {
+  font-size: 12px;
+  font-weight: 400;
+  color: #6b7d70;
+  line-height: 14px;
+}
+.trade-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0 !important;
+  align-items: center;
+}
+.trade-meta > button {
+  padding: 0 4px;
+  min-height: 15px;
+  height: 15px;
+  line-height: 14px;
+  font-size: 13px;
+}
+.trade-title .drag-handle {
+  padding: 0;
+  min-height: 24px;
+}
+.task-bar {
+  height: 26px;
+  min-height: 26px;
+}
+.trade-title > button[title='编辑工种'] {
+  gap: 0;
+}
+.trade-title > button[title='编辑工种'] > span {
+  line-height: 16px;
+}
+.trade-meta {
+  height: 30px;
+  min-height: 30px;
+  margin-left: 0;
+}
+.modal.history-panel {
+  max-height: 75dvh;
+}
+.modal.history-panel[open] {
+  display: flex;
+  flex-direction: column;
+}
+.history-panel > .modal-head,
+.history-panel > .modal-foot {
+  flex-shrink: 0;
+}
+.history-panel > .modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  max-height: none;
+}
+.modal.trade-editor {
+  max-height: 75dvh;
+}

@@ -9,6 +9,7 @@ import {
   type Data,
   type Project,
 } from './model';
+import type { History } from './history';
 import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_INITIALS, BRAND_SLOGAN } from './brand';
 export function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob),
@@ -18,9 +19,18 @@ export function downloadBlob(blob: Blob, name: string) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
-export function backupJSON(data: Data) {
+export function backupJSON(data: Data, history?: History) {
   downloadBlob(
-    new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
+    new Blob(
+      [
+        JSON.stringify(
+          history ? { format: 'chunmo-history-backup', version: 1, data, history } : data,
+          null,
+          2,
+        ),
+      ],
+      { type: 'application/json' },
+    ),
     `春茉空间-完整备份-${new Date().toISOString().slice(0, 10)}.json`,
   );
 }

@@ -1,26 +1,53 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyData, prepareWorkspace, type Data } from './model';
-import { loadData, saveData } from './storage';
+import { emptyHistory } from './history';
+import {
+  loadData,
+  loadHistory,
+  saveData,
+  restoreRevision,
+  pruneHistory,
+  type SaveOptions,
+} from './storage';
 export function useWorkspace() {
-  const [data, setData] = useState<Data>(emptyData);
-  const [ready, setReady] = useState(false);
-  const [status, setStatus] = useState('正在读取');
-  const [error, setError] = useState('');
-  const current = useRef(data);
-  const queue = useRef(Promise.resolve());
-  const rev = useRef(0);
-  const pending = useRef(false);
+  const [savedData, setSavedData] = useState<Data>(emptyData);
+  const [data, setData] = useState<Data>(emptyData),
+    [history, setHistory] = useState(emptyHistory);
+  const [ready, setReady] = useState(false),
+    [status, setStatus] = useState('正在读取'),
+    [error, setError] = useState('');
+  const [historyError, setHistoryError] = useState('');
+  const current = useRef(data),
+    saved = useRef(data),
+    queue = useRef<Promise<unknown>>(Promise.resolve());
+  const rev = useRef(0),
+    pending = useRef(false),
+    restoring = useRef(false);
   useEffect(() => {
     let active = true;
     loadData()
-      .then((loaded) => {
+      .then(async (loaded) => {
         const d = prepareWorkspace(loaded);
-        if (active) {
-          current.current = d;
-          setData(d);
-          setReady(true);
-          setStatus('已保存');
+        if (!active) return;
+        current.current = d;
+        saved.current = d;
+        setSavedData(d);
+        setData(d);
+        setReady(true);
+        setStatus('已保存');
+        try {
+          const h = await loadHistory();
+          if (active) {
+            setHistory(h);
+            setHistoryError('');
+          }
+        } catch (e) {
+          if (active)
+            setHistoryError(`历史读取失败：${String(e)}。业务数据保留；请先备份，不覆盖历史。`);
         }
+        void pruneHistory().catch(() => {
+          if (active) setHistoryError('历史清理失败，已保留现有数据和版本，稍后重试。');
+        });
       })
       .catch((e) => {
         if (active) {
@@ -28,21 +55,40 @@ export function useWorkspace() {
           setStatus('读取失败');
         }
       });
+    const interval = setInterval(() => {
+      void loadHistory()
+        .then((h) => {
+          if (active) setHistory(h);
+        })
+        .catch(() => {});
+      void pruneHistory().catch(() => {});
+    }, 60000);
     return () => {
       active = false;
+      clearInterval(interval);
     };
   }, []);
-  const persist = useCallback((d: Data) => {
+  const pendingOptions = useRef<SaveOptions | undefined>(undefined);
+  const persist = useCallback((d: Data, options?: SaveOptions) => {
+    const meta = options ?? pendingOptions.current;
+    pendingOptions.current = meta;
     const version = ++rev.current;
     pending.current = true;
     setStatus('正在保存');
     setError('');
     queue.current = queue.current
       .catch(() => {})
-      .then(() => saveData(d))
-      .then(() => {
+      .then(() => saveData(d, saved.current, meta))
+      .then((result) => {
+        saved.current = result.data;
+        setSavedData(result.data);
+        setHistory(result.history);
+        setHistoryError('');
         if (version === rev.current) {
           pending.current = false;
+          pendingOptions.current = undefined;
+          current.current = result.data;
+          setData(result.data);
           setStatus('已保存');
         }
       })
@@ -56,18 +102,39 @@ export function useWorkspace() {
     return queue.current;
   }, []);
   const update = useCallback(
-    (fn: (d: Data) => Data) => {
+    (fn: (d: Data) => Data, options?: SaveOptions) => {
       if (!ready) return;
+      if (restoring.current) throw Error('正在恢复版本，请等待完成');
       const d = prepareWorkspace(fn(current.current));
       current.current = d;
       setData(d);
-      void persist(d);
+      void persist(d, options);
     },
     [ready, persist],
   );
+  const restoreVersion = useCallback(async (revisionId: string) => {
+    if (pending.current || restoring.current) throw Error('请先完成当前保存，再恢复历史版本');
+    restoring.current = true;
+    setStatus('正在恢复');
+    try {
+      await queue.current;
+      const result = await restoreRevision(saved.current, revisionId);
+      saved.current = result.data;
+      setSavedData(result.data);
+      current.current = result.data;
+      setData(result.data);
+      setHistory(result.history);
+      setStatus('已保存');
+    } catch (e) {
+      setStatus('已保存');
+      throw e;
+    } finally {
+      restoring.current = false;
+    }
+  }, []);
   useEffect(() => {
     const guard = (e: BeforeUnloadEvent) => {
-      if (pending.current) {
+      if (pending.current || restoring.current) {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -75,5 +142,16 @@ export function useWorkspace() {
     window.addEventListener('beforeunload', guard);
     return () => window.removeEventListener('beforeunload', guard);
   }, []);
-  return { data, ready, status, error, update, retry: () => persist(current.current) };
+  return {
+    data,
+    savedData,
+    history,
+    historyError,
+    ready,
+    status,
+    error,
+    update,
+    restoreVersion,
+    retry: () => persist(current.current),
+  };
 }

@@ -2,7 +2,7 @@ import { useId, useState, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
 import { Confirm, Modal, type Anchor } from './Modal';
 import { DateField } from './DateField';
-import { NameField } from './NameField';
+import { StaffPicker } from './StaffPicker';
 import { ColorControls } from './ColorPopover';
 import {
   dateOK,
@@ -18,7 +18,6 @@ import {
   purchaseSchema,
   type Data,
   type Personnel,
-  usedNames,
   type Project,
   type Trade,
   type Task,
@@ -42,7 +41,6 @@ export function Editor({
   onCopy,
   onContinue,
   onSegment,
-  onForgetName,
   onDeadlineChange,
 }: {
   edit: Edit;
@@ -158,29 +156,12 @@ export function Editor({
     manager: edit.kind === 'project' ? String(v.manager ?? '') : '',
     designer: '',
   }) as Personnel;
-  const peopleFields = ['project', 'trade', 'task'].includes(edit.kind) && (
-    <fieldset className="personnel-fields span2">
-      <legend>
-        人员登记 <span>可输入新姓名或复用历史姓名</span>
-      </legend>
-      {(['worker', 'manager', 'designer'] as const).map((role, index) => (
-        <NameField
-          key={role}
-          label={['施工人员姓名', '项目经理姓名', '执行设计姓名'][index]}
-          value={people[role]}
-          history={data.nameHistory ?? usedNames(data)}
-          onChange={(name) =>
-            set((old) => ({
-              ...old,
-              personnel: { ...people, [role]: name },
-              ...(edit.kind === 'project' && role === 'manager' ? { manager: name } : {}),
-              ...(edit.kind === 'task' && role === 'worker' ? { owner: name } : {}),
-            }))
-          }
-          onForget={onForgetName}
-        />
-      ))}
-    </fieldset>
+  const peopleFields = edit.kind === 'task' && (
+    <StaffPicker
+      data={data}
+      value={(v.staffIds as string[] | undefined) ?? []}
+      onChange={(ids) => change('staffIds', ids)}
+    />
   );
   const kind = edit.kind;
   const isNew = !{
@@ -341,11 +322,9 @@ export function Editor({
     fields = (
       <>
         {input('name', '采购内容 / 事项标题', 'text', true)}
-        {select(
-          'projectId',
-          '所属项目',
-          data.projects.filter((p) => isNew || p.id === v.projectId).map((p) => [p.id, p.name]),
-        )}
+        <p className="form-info span2">
+          所属项目：{data.projects.find((p) => p.id === v.projectId)?.name}
+        </p>
         {input('due', '采购截止日期', 'date', true)}
         {area('notes', '详细备注（可选）')}
         {!isNew && (
@@ -378,7 +357,8 @@ export function Editor({
         subtitle="每一处细节，都让项目更有序。"
         onClose={close}
         anchor={edit.anchor}
-        wide
+        wide={kind !== 'trade'}
+        className={kind === 'trade' ? 'trade-editor' : ''}
       >
         <form onSubmit={submit}>
           <div className="modal-body">

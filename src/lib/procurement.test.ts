@@ -42,11 +42,11 @@ function purchase(id = 'purchase', due = now, projectId = 'one'): Purchase {
 }
 describe('phase 4 procurement deadlines and shared projections', () => {
   it('computes today, remaining, overdue, leap-day and year boundaries', () => {
-    expect(remainingTime(now, now)).toBe('今日到期');
-    expect(remainingTime('2027-01-01', now)).toBe('剩余1天');
-    expect(remainingTime('2027-01-03', now)).toBe('剩余3天');
-    expect(remainingTime('2026-12-29', now)).toBe('已逾期2天');
-    expect(remainingTime('2028-03-01', '2028-02-28')).toBe('剩余2天');
+    expect(remainingTime(now, now)).toBe('今天截止');
+    expect(remainingTime('2027-01-01', now)).toBe('剩余 1 天');
+    expect(remainingTime('2027-01-03', now)).toBe('剩余 3 天');
+    expect(remainingTime('2026-12-29', now)).toBe('已逾期 2 天');
+    expect(remainingTime('2028-03-01', '2028-02-28')).toBe('剩余 2 天');
   });
   it('uses inclusive 15-day boundary, excludes completed/arrived, and never mixes projects', () => {
     const d = setup();

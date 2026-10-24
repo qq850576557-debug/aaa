@@ -24,11 +24,10 @@ export function useNotices() {
         );
         return all.filter((n) => n.error || recent.has(n.id));
       });
-      if (!error)
-        timers.current.set(
-          id,
-          setTimeout(() => dismiss(id), 3000),
-        );
+      timers.current.set(
+        id,
+        setTimeout(() => dismiss(id), 3000),
+      );
     },
     [dismiss],
   );

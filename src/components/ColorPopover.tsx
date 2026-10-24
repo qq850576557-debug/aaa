@@ -23,8 +23,8 @@ export function ColorControls({
       <div className="color-wheel">
         <Wheel
           color={hsva}
-          width={compact ? 116 : 140}
-          height={compact ? 116 : 140}
+          width={compact ? 100 : 104}
+          height={compact ? 100 : 104}
           onChange={(c) => onChange(c.hex)}
         />
       </div>
@@ -117,14 +117,23 @@ export function ColorPopover({
 }) {
   const initial = useRef(trade.color);
   const [draft, setDraft] = useState(trade.color);
-  useEffect(() => setDraft(trade.color), [trade.color]);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const flush = () => {
+    clearTimeout(timer.current);
+    if (/^#[0-9a-fA-F]{6}$/.test(draft) && draft !== trade.color) onChange(draft);
+  };
+  const close = () => {
+    flush();
+    onClose();
+  };
   return (
     <Modal
       title={`${trade.name} · 工种颜色`}
       className="color-panel"
       subtitle="即时保存 · 同步时间轴与导出"
       anchor={anchor}
-      onClose={onClose}
+      onClose={close}
     >
       <div className="modal-body">
         <ColorControls
@@ -134,20 +143,23 @@ export function ColorPopover({
           recent={recent}
           onChange={(color) => {
             setDraft(color);
-            if (/^#[0-9a-fA-F]{6}$/.test(color)) onChange(color);
+            clearTimeout(timer.current);
+            if (/^#[0-9a-fA-F]{6}$/.test(color))
+              timer.current = setTimeout(() => onChange(color), 400);
           }}
         />
       </div>
       <footer className="modal-foot">
         <button
           onClick={() => {
+            clearTimeout(timer.current);
             onChange(initial.current);
             onClose();
           }}
         >
           取消并恢复
         </button>
-        <button className="primary" onClick={onClose}>
+        <button className="primary" onClick={close}>
           完成
         </button>
       </footer>

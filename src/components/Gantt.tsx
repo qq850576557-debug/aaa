@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { CalendarDays, GripVertical, MoreHorizontal, Plus, Settings2 } from 'lucide-react';
+import { CalendarDays, GripVertical, Plus } from 'lucide-react';
 import {
   days,
   distance,
@@ -21,7 +21,7 @@ import { TaskContextMenu } from './TaskContextMenu';
 import type { Anchor } from './Modal';
 import { useReorderMotion } from '../lib/useReorderMotion';
 export const CELL = 56;
-const LANE = 40;
+const LANE = 30;
 interface Props {
   data: Data;
   project: Project;
@@ -34,6 +34,7 @@ interface Props {
   onOrder: (trade: Trade, dir: number) => void;
   onMove: (task: Task) => void;
   onDeleteTask: (task: Task) => void;
+  onExport: () => void;
 }
 type Drag = {
   task: Task;
@@ -53,6 +54,7 @@ export function Gantt({
   onOrder,
   onMove,
   onDeleteTask,
+  onExport,
   onReorder,
   onColor,
 }: Props) {
@@ -220,9 +222,10 @@ export function Gantt({
               段任务
             </span>
           </h2>
-          <p>双击空白日期或拖选创建 · 拖动时间条调整 · 点击日期查看事项</p>
+          <p>双击空白日期新增采购 · 拖选创建施工任务 · 拖动时间条调整</p>
         </div>
         <div className="toolbar">
+          <button onClick={onExport}>导出施工工期长图</button>
           <button onClick={jumpToday} disabled={today() < start || today() > end}>
             今天
           </button>
@@ -295,7 +298,7 @@ export function Gantt({
             const rows = lanes(
               data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id),
             );
-            const height = Math.max(56, rows.length * LANE + 16);
+            const height = Math.max(34, rows.length * LANE + 4);
             return (
               <div
                 key={g.id}
@@ -373,49 +376,34 @@ export function Gantt({
                         onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget })
                       }
                     />
-                    <button onClick={() => onTrade(g)} title="编辑工种">
-                      {g.name}
+                    <button
+                      aria-label={`编辑${g.name}`}
+                      onClick={() => onTrade(g)}
+                      title="编辑工种"
+                    >
+                      <span>{g.name}</span>
+                      <small>
+                        {data.tasks
+                          .filter((t) => t.tradeId === g.id)
+                          .reduce((n, t) => n + duration(t.start, t.end), 0)}{' '}
+                        任务天
+                      </small>
                     </button>
                   </div>
                   <div className="trade-meta">
-                    <span>
-                      {data.tasks
-                        .filter((t) => t.tradeId === g.id)
-                        .reduce((n, t) => n + duration(t.start, t.end), 0)}{' '}
-                      任务天
-                    </span>
-                    <details className="trade-menu">
-                      <summary aria-label={`工种操作${g.name}`}>
-                        <MoreHorizontal size={18} />
-                      </summary>
-                      <div>
-                        <button
-                          disabled={index === 0}
-                          onClick={(e) => {
-                            onOrder(g, -1);
-                            e.currentTarget.closest('details')?.removeAttribute('open');
-                          }}
-                        >
-                          上移
-                        </button>
-                        <button
-                          disabled={index === trades.length - 1}
-                          onClick={(e) => {
-                            onOrder(g, 1);
-                            e.currentTarget.closest('details')?.removeAttribute('open');
-                          }}
-                        >
-                          下移
-                        </button>
-                        <button onClick={() => onTrade(g)}>编辑工种</button>
-                      </div>
-                    </details>
                     <button
-                      className="trade-settings"
-                      aria-label={`编辑${g.name}`}
-                      onClick={() => onTrade(g)}
+                      aria-label={`上移工种${g.name}`}
+                      disabled={index === 0}
+                      onClick={() => onOrder(g, -1)}
                     >
-                      <Settings2 size={16} />
+                      ↑
+                    </button>
+                    <button
+                      aria-label={`下移工种${g.name}`}
+                      disabled={index === trades.length - 1}
+                      onClick={() => onOrder(g, 1)}
+                    >
+                      ↓
                     </button>
                   </div>
                 </div>
@@ -467,7 +455,7 @@ export function Gantt({
                           style={{
                             left: distance(start, t.start) * CELL + 4,
                             width: duration(t.start, t.end) * CELL - 8,
-                            top: 10 + lane * LANE,
+                            top: 4 + lane * LANE,
                             background: `${g.color}26`,
                             borderColor: g.color,
                             color: '#273c34',
@@ -549,7 +537,7 @@ export function Gantt({
               <Plus size={17} />
               在列表末尾新增工种
             </button>
-            <span>拖动工种左侧手柄排序 · 更多菜单提供键盘替代操作</span>
+            <span>拖动左侧手柄排序 · 上下箭头或 Alt + 方向键调整</span>
           </div>
         </div>
       </div>
@@ -570,7 +558,7 @@ export function Gantt({
             </button>
           ))}
         {!data.tasks.some((t) => t.projectId === project.id) && (
-          <p>暂无施工任务，可在空白日期双击创建。</p>
+          <p>暂无施工任务，请使用施工任务入口或拖选日期创建。</p>
         )}
       </details>
       {menu && data.tasks.find((t) => t.id === menu.id) && (

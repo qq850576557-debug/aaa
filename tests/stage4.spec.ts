@@ -48,7 +48,8 @@ test('stage 4: one compact daily purchase updates all panels, indicators and cou
   const initial = await state(page);
   await todayPanel(page).getByRole('button', { name: '添加采购事项', exact: true }).click();
   let form = page.getByRole('dialog', { name: '新建采购事项', exact: true });
-  await expect(form.getByLabel('所属项目', { exact: true })).toHaveValue('p-home');
+  await expect(form.getByLabel('所属项目', { exact: true })).toHaveCount(0);
+  await expect(form).toContainText('所属项目：栖桐里');
   await expect(form.getByLabel('采购内容 / 事项标题', { exact: true })).toBeVisible();
   for (const label of [
     '持续天数',
@@ -66,7 +67,7 @@ test('stage 4: one compact daily purchase updates all panels, indicators and cou
   await form.getByLabel('详细备注（可选）', { exact: true }).fill('按图纸核对规格');
   await form.getByRole('button', { name: '保存', exact: true }).click();
   await expect(upcoming(page)).toContainText('厨房五金');
-  await expect(upcoming(page)).toContainText('剩余3天');
+  await expect(upcoming(page)).toContainText('剩余 3 天');
   await expect(todayPanel(page)).not.toContainText('厨房五金');
   await expect(metric(page, '未来 15 天采购')).toHaveText('2');
   let data = await state(page);
@@ -86,8 +87,8 @@ test('stage 4: one compact daily purchase updates all panels, indicators and cou
   await expect(todayPanel(page)).toContainText('厨房五金');
   const todayCard = todayPanel(page).locator(`[data-purchase-id="${purchase.id}"]`),
     futureCard = upcoming(page).locator(`[data-purchase-id="${purchase.id}"]`);
-  await expect(todayCard).toContainText('今日到期');
-  await expect(futureCard).toContainText('今日到期');
+  await expect(todayCard).toContainText('今天截止');
+  await expect(futureCard).toContainText('今天截止');
   await expect(metric(page, '今日待办')).toHaveText('3');
   await expect(day.locator('i')).toHaveCount(0);
   await todayCard.getByRole('button', { name: '完成采购厨房五金', exact: true }).click();
@@ -187,12 +188,12 @@ test('stage 4: overdue days, completed compatibility, inclusive future boundary 
   await boot(page);
   await restore(page, d);
   await expect(todayPanel(page)).toContainText('逾期瓷砖');
-  await expect(todayPanel(page)).toContainText('已逾期2天');
+  await expect(todayPanel(page)).toContainText('已逾期 2 天');
   await expect(todayPanel(page)).not.toContainText('已完成材料');
   await expect(todayPanel(page)).not.toContainText('旧已到货');
   await expect(todayPanel(page)).not.toContainText('乙工地材料');
   await expect(upcoming(page)).toContainText('十五天材料');
-  await expect(upcoming(page)).toContainText('剩余15天');
+  await expect(upcoming(page)).toContainText('剩余 15 天');
   await expect(upcoming(page)).not.toContainText('十六天材料');
   await expect(metric(page, '今日待办')).toHaveText('3');
   await expect(metric(page, '未来 15 天采购')).toHaveText('2');
@@ -205,7 +206,7 @@ test('stage 4: overdue days, completed compatibility, inclusive future boundary 
   await expect(metric(page, '今日待办')).toHaveText('2');
   await expect(metric(page, '未来 15 天采购')).toHaveText('1');
   await page.getByLabel('切换项目', { exact: true }).selectOption('p-home');
-  await expect(todayPanel(page)).toContainText('已逾期2天');
+  await expect(todayPanel(page)).toContainText('已逾期 2 天');
   expect((await state(page)).purchases.find((p) => p.name === '逾期瓷砖')?.status).toBe('待采购');
   await mkdir('/workspace/chunmo-stage4', { recursive: true });
   await closeToast(page);
@@ -225,12 +226,12 @@ test('stage 4: midnight automatically updates relative time and today projection
   d.purchases = [record('跨日材料', '2026-10-24')];
   await boot(page);
   await restore(page, d);
-  await expect(upcoming(page)).toContainText('剩余1天');
+  await expect(upcoming(page)).toContainText('剩余 1 天');
   await expect(todayPanel(page)).not.toContainText('跨日材料');
   await expect(metric(page, '今日待办')).toHaveText('暂无');
   await page.clock.runFor(31000);
   await expect(todayPanel(page)).toContainText('跨日材料');
-  await expect(upcoming(page)).toContainText('今日到期');
+  await expect(upcoming(page)).toContainText('今天截止');
   await expect(metric(page, '今日待办')).toHaveText('1');
 });
 
@@ -294,7 +295,7 @@ test('stage 4: linked procurement follows an earlier drag but later construction
   await expect
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
     .toBe('2026-10-28');
-  await expect(todayPanel(page)).toContainText('今日到期');
+  await expect(todayPanel(page)).toContainText('今天截止');
   expect((await state(page)).purchases[0].originalDue).toBe('2026-10-23');
   await drag(page, '水电定位与布线', -4);
   await expect
@@ -302,7 +303,7 @@ test('stage 4: linked procurement follows an earlier drag but later construction
     .toBe('2026-10-24');
   const card = todayPanel(page).locator(`[data-purchase-id="${initial.purchases[0].id}"]`);
   await expect(card).toContainText('2026-10-21 前采购');
-  await expect(card).toContainText('已逾期2天');
+  await expect(card).toContainText('已逾期 2 天');
   await expect(upcoming(page)).not.toContainText('电线及线管');
   await expect(metric(page, '已逾期采购')).toHaveText('1');
   await page.getByRole('button', { name: '撤销', exact: true }).click();
@@ -327,8 +328,8 @@ test('stage 4: personnel navigation is separate, old preparation statuses displa
   await expect(page.locator('.project-card')).toHaveCount(2);
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   await expect(page.locator('.people-panel')).toContainText('李师傅');
-  await expect(page.locator('.people-panel')).toContainText('尚未开放采集');
-  await expect(page.locator('.people-panel input')).toHaveCount(0);
+  await expect(page.locator('.people-panel')).toContainText('未开放采集');
+  await expect(page.locator('.people-panel input[type=tel]')).toHaveCount(0);
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByRole('button', { name: '编辑当前项目', exact: true }).click();
   let form = page.getByRole('dialog');
@@ -379,7 +380,8 @@ test('stage 4: global reminders edit the purchase owner project after visiting a
   await page.getByRole('button', { name: '编辑采购电线及线管', exact: true }).click();
   const panel = page.getByRole('dialog', { name: '编辑采购事项', exact: true });
   await expect(panel).toBeVisible();
-  await expect(panel.getByLabel('所属项目', { exact: true })).toHaveValue('p-home');
+  await expect(panel.getByLabel('所属项目', { exact: true })).toHaveCount(0);
+  await expect(panel).toContainText('所属项目：栖桐里');
   await panel.getByLabel('详细备注（可选）', { exact: true }).fill('从全局提醒更新采购备注');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
   await expect
