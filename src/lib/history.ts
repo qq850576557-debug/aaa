@@ -22,7 +22,8 @@ export type Revision = {
   at: string;
   action: '新增' | '修改' | '删除' | '恢复';
   source?: string;
-  actor: '本地操作记录';
+  actor: string;
+  actorId?: string;
   changes: Change[];
   before: string;
   after: string;
@@ -205,7 +206,8 @@ const recordSchema = z
     at: z.string().datetime(),
     action: z.enum(['新增', '修改', '删除', '恢复']),
     source: z.string().optional(),
-    actor: z.literal('本地操作记录'),
+    actor: z.string().trim().min(1).max(100),
+    actorId: z.string().min(1).max(100).optional(),
     changes: z.array(changeSchema),
     before: z.string(),
     after: z.string(),

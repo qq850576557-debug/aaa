@@ -4600,3 +4600,21 @@ nav button {
 .conflict-panel p {
   overflow-wrap: anywhere;
 }
+.topbar .cloud-control {
+  font-size: 13px;
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+.cloud-control {
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  .topbar .cloud-control {
+    font-size: 11px;
+    padding: 4px;
+  }
+  .topbar .breadcrumb {
+    min-width: 0;
+    overflow: hidden;
+  }
+}

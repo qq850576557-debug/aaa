@@ -7,22 +7,28 @@ export function PurchaseDeadlineDialog({
   data,
   onClose,
   onConfirm,
+  cloud = false,
 }: {
   purchase: Purchase;
   data: Data;
   onClose: () => void;
-  onConfirm: (date: string, reason: string) => void;
+  onConfirm: (date: string, reason: string) => void | Promise<void>;
+  cloud?: boolean;
 }) {
   const reasonId = useId();
   const [date, setDate] = useState(purchaseCeiling(p, data)),
     [reason, setReason] = useState(''),
-    [error, setError] = useState('');
-  const submit = (e: FormEvent) => {
+    [error, setError] = useState(''),
+    [saving, setSaving] = useState(false);
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      onConfirm(date, reason);
+      setSaving(true);
+      await onConfirm(date, reason);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
     }
   };
   return (
@@ -34,7 +40,9 @@ export function PurchaseDeadlineDialog({
             {purchaseCeiling(p, data)}。原始日期永久保留，本次原因与新约束进入备份记录。
           </p>
           <p className="span2">
-            当前为本地模式：这是明确确认流程，不是负责人账号授权。尚未实现服务端权限校验。
+            {cloud
+              ? '云端模式：仅工作室负责人可提交，服务端校验版本、原始截止和变更记录。'
+              : '当前为本地模式：这是明确确认流程，不是负责人账号授权。尚未实现服务端权限校验。'}
           </p>
           <DateField label="新的最晚采购期限" required value={date} onChange={setDate} />
           <div className="form-field span2">
@@ -57,7 +65,7 @@ export function PurchaseDeadlineDialog({
           <button type="button" onClick={onClose}>
             取消
           </button>
-          <button className="primary" type="submit">
+          <button className="primary" type="submit" disabled={saving}>
             确认变更期限
           </button>
         </footer>

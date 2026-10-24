@@ -9,7 +9,7 @@ import {
   pruneHistory,
   type SaveOptions,
 } from './storage';
-export function useWorkspace() {
+export function useLocalWorkspace(enabled = true) {
   const [savedData, setSavedData] = useState<Data>(emptyData);
   const [data, setData] = useState<Data>(emptyData),
     [history, setHistory] = useState(emptyHistory);
@@ -24,6 +24,7 @@ export function useWorkspace() {
     pending = useRef(false),
     restoring = useRef(false);
   useEffect(() => {
+    if (!enabled) return;
     let active = true;
     loadData()
       .then(async (loaded) => {

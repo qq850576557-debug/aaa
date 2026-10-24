@@ -1,3 +1,4 @@
+import { CloudControl } from './components/CloudControl';
 import { ConflictPanel } from './components/ConflictPanel';
 import { remainingSchedule } from './lib/readiness';
 import { useRef, useState, type ReactNode } from 'react';
@@ -48,7 +49,7 @@ import {
   type ScheduleProposal,
 } from './lib/scheduling';
 import { Editor, nextTask, type Edit, type Entity } from './components/Forms';
-import { useWorkspace } from './lib/useWorkspace';
+import { useWorkspace } from './lib/useWorkspaceMode';
 import { backupJSON } from './lib/export';
 import { ExportDialog } from './components/ExportDialog';
 import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_INITIALS, BRAND_SLOGAN } from './lib/brand';
@@ -104,6 +105,10 @@ export default function App() {
     update,
     retry,
     restoreVersion,
+    isCloud,
+    cloudUser,
+    reloadCloud,
+    changeDeadline,
   } = useWorkspace();
   const [historyOpen, setHistoryOpen] = useState<{ scope: string; anchor?: Anchor } | null>(null);
   const [navExpanded, setNavExpanded] = useState(() => {
@@ -483,6 +488,10 @@ export default function App() {
       return;
     }
     setRestoreError('');
+    if (isCloud) {
+      setRestoreError('云空间请从云端账号中预览导入，不使用本地覆盖恢复。');
+      return;
+    }
     if (!file) return;
     if (file.size > 140 * 1024 * 1024) {
       setRestoreError('备份文件不能超过 140 MB');
@@ -735,12 +744,13 @@ export default function App() {
             <ArrowRight size={15} />
           </button>
           <p>
-            本地工作空间 <i />
+            {isCloud ? '云端工作空间' : '本地工作空间'} <i />
           </p>
         </div>
       </aside>
       <div className="main-shell">
         <header className="topbar">
+          <CloudControl isCloud={isCloud} dirty={status !== '已保存'} />
           <div className="mobile-brand">
             <strong className="brand-name">{BRAND_NAME}</strong>
             <span className="brand-initials">{BRAND_INITIALS}</span>
@@ -785,7 +795,11 @@ export default function App() {
           )}
           <div className="local-notice">
             <ShieldCheck size={15} />
-            <span>本地模式 · 数据仅保存在当前浏览器和设备，不会自动同步。建议定期备份。</span>
+            <span>
+              {isCloud
+                ? `云空间 · ${cloudUser?.login ?? '正在认证'} · 服务端保存，版本冲突不会静默覆盖。`
+                : '本地模式 · 数据仅保存在当前浏览器和设备，不会自动同步。建议定期备份。'}
+            </span>
             <button onClick={() => setBackup(true)} disabled={!ready}>
               备份数据
               <ArrowDownToLine size={13} />
@@ -798,6 +812,24 @@ export default function App() {
               {ready ? (
                 <>
                   <button onClick={() => void retry()}>重试保存</button>
+                  {isCloud && (
+                    <button
+                      onClick={() =>
+                        setConfirmation({
+                          title: '重新读取云端并放弃草稿？',
+                          message:
+                            '请先下载紧急备份。重新读取只替换当前云页面，不写入或清理本地IndexedDB。',
+                          run: () => {
+                            void reloadCloud()
+                              .then(() => setConfirmation(null))
+                              .catch((e) => notify(String(e)));
+                          },
+                        })
+                      }
+                    >
+                      重新读取云端
+                    </button>
+                  )}
                   <button onClick={() => backupJSON(data)}>紧急备份</button>
                 </>
               ) : (
@@ -1376,10 +1408,16 @@ export default function App() {
             });
           }}
           data={data}
-          onDeadlineChange={(p) => setDeadlineChange(p.id)}
+          onDeadlineChange={
+            !isCloud || cloudUser?.owner ? (p) => setDeadlineChange(p.id) : undefined
+          }
           onClose={() => setEdit(null)}
           onSave={save}
-          onDelete={isExisting ? () => deleteEntity() : undefined}
+          onDelete={
+            isExisting && (!isCloud || !!cloudUser?.owner || edit.kind !== 'project')
+              ? () => deleteEntity()
+              : undefined
+          }
           onCopy={
             isExisting && (edit.kind === 'task' || edit.kind === 'project') ? duplicate : undefined
           }
@@ -1404,7 +1442,7 @@ export default function App() {
           scope={historyOpen.scope}
           anchor={historyOpen.anchor}
           error={historyError}
-          canRestore={status === '已保存'}
+          canRestore={status === '已保存' && (!isCloud || !!cloudUser?.owner)}
           onClose={() => setHistoryOpen(null)}
           onRestore={async (revision) => {
             await restoreVersion(revision);
@@ -1488,8 +1526,9 @@ export default function App() {
             <div className="backup-notice">
               <ShieldCheck size={26} />
               <p>
-                数据保存在当前浏览器的 IndexedDB
-                中。清除网站数据、切换浏览器或设备会导致无法访问这些记录。请将 JSON 备份妥善保存。
+                {isCloud
+                  ? '业务数据保存在当前云工作空间的服务端数据库。本地IndexedDB未上传或清除；云端导入请通过云端账号的预览确认流程。'
+                  : '数据保存在当前浏览器的 IndexedDB 中。清除网站数据、切换浏览器或设备会导致无法访问这些记录。请将 JSON 备份妥善保存。'}
               </p>
             </div>
             <button
@@ -1518,14 +1557,16 @@ export default function App() {
               </span>
               <ArrowDownToLine size={19} />
             </button>
-            <button className="backup-action" onClick={() => fileRef.current?.click()}>
-              <Upload size={24} />
-              <span>
-                <strong>从 JSON 备份恢复</strong>
-                <small>先校验文件，再确认替换所有本地数据</small>
-              </span>
-              <ArrowRight size={19} />
-            </button>
+            {!isCloud && (
+              <button className="backup-action" onClick={() => fileRef.current?.click()}>
+                <Upload size={24} />
+                <span>
+                  <strong>从 JSON 备份恢复</strong>
+                  <small>先校验文件，再确认替换所有本地数据</small>
+                </span>
+                <ArrowRight size={19} />
+              </button>
+            )}
             <input
               ref={fileRef}
               type="file"
@@ -1607,8 +1648,10 @@ export default function App() {
           purchase={data.purchases.find((x) => x.id === deadlineChange)!}
           data={data}
           onClose={() => setDeadlineChange(null)}
-          onConfirm={(date, reason) => {
-            mutate((d) => confirmPurchaseDeadline(d, deadlineChange, date, reason));
+          cloud={isCloud}
+          onConfirm={async (date, reason) => {
+            if (isCloud) await changeDeadline(deadlineChange, date, reason);
+            else mutate((d) => confirmPurchaseDeadline(d, deadlineChange, date, reason));
             setDeadlineChange(null);
             setEdit(null);
             notify('采购期限已明确变更，原始截止和原因已保留。');
