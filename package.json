@@ -20,7 +20,8 @@
     "build:api": "tsc -p tsconfig.server.json && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-api/server.mjs",
     "test:api": "node --env-file=.env.test.local --import tsx --test --test-concurrency=1 server/cloud.test.ts",
     "test:cloud:e2e": "playwright test --config playwright.cloud.config.ts",
-    "test:all": "npm test && npm run test:api && npm run test:e2e && npm run test:cloud:e2e"
+    "test:all": "npm test && npm run test:api && npm run test:e2e && npm run test:cloud:e2e",
+    "verify:native": "node scripts/verify-native.mjs"
   },
   "dependencies": {
     "@uiw/color-convert": "^2.10.3",
@@ -49,9 +50,13 @@
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vite": "^7.1.12",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.12"
   },
   "engines": {
     "node": ">=22.12.0"
+  },
+  "allowScripts": {
+    "argon2@0.45.1": true,
+    "esbuild@0.28.2": true
   }
 }
