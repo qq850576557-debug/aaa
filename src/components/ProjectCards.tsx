@@ -1,3 +1,5 @@
+import { remainingSchedule } from '../lib/readiness';
+import { useCurrentDate } from '../lib/useCurrentDate';
 import { useRef, useState } from 'react';
 import { useReorderMotion } from '../lib/useReorderMotion';
 import { ArrowRight, GripVertical } from 'lucide-react';
@@ -16,6 +18,7 @@ export function ProjectCards({
   onSelect: (id: string) => void;
   onReorder: (source: string, before: string | null) => void;
 }) {
+  const now = useCurrentDate();
   const [drag, setDrag] = useState<string | null>(null);
   const [before, setBefore] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);
@@ -77,6 +80,7 @@ export function ProjectCards({
               <ArrowRight size={17} />
             </div>
             <h3>{p.name}</h3>
+            <small>{remainingSchedule(p, now)}</small>
             <p>{p.address || '地址待补充'}</p>
             <div className="progress-track">
               <i style={{ width: `${tasks.length ? (done / tasks.length) * 100 : 0}%` }} />

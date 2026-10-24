@@ -1,3 +1,5 @@
+import { staffWork } from '../lib/readiness';
+import { useCurrentDate } from '../lib/useCurrentDate';
 import { useState, type FormEvent } from 'react';
 import { id, personSchema, usedNames, type Data, type Person } from '../lib/model';
 import { Confirm, Modal } from './Modal';
@@ -15,6 +17,7 @@ export function PeoplePanel({
     [target, setTarget] = useState('project');
   const [error, setError] = useState(''),
     [filter, setFilter] = useState('');
+  const now = useCurrentDate();
   const people = data.people ?? [];
   const names = data.nameHistory ?? usedNames(data);
   const add = (name = '') => {
@@ -94,6 +97,39 @@ export function PeoplePanel({
               {p.role} · {p.trade || '未设置工种'} · {p.active ? '在用' : '已停用'}
             </span>
             <p>{p.notes}</p>
+            <small>暂无评价</small>
+            <details className="staff-projects">
+              <summary>项目履历 · {staffWork(data, p.id, now).length} 个项目</summary>
+              <p>
+                {['已完工', '施工中', '未进场']
+                  .map(
+                    (status) =>
+                      `${status} ${staffWork(data, p.id, now).filter((w) => w.status === status).length}`,
+                  )
+                  .join(' · ')}
+              </p>
+              {staffWork(data, p.id, now).map((w) => (
+                <article key={w.project.id}>
+                  <strong>{w.project.name}</strong>
+                  <p>
+                    {w.project.address} · {w.status}
+                  </p>
+                  {w.tasks.length ? (
+                    w.tasks.map((t) => (
+                      <p key={t.id}>
+                        {data.trades.find((g) => g.id === t.tradeId)?.name} · {t.name} · {t.start} —{' '}
+                        {t.end}
+                      </p>
+                    ))
+                  ) : (
+                    <p>
+                      {w.trades.map((g) => g.name).join('、') || '项目团队'} · 项目计划{' '}
+                      {w.project.start} — {w.project.end}（未指定任务段）
+                    </p>
+                  )}
+                </article>
+              ))}
+            </details>
             <small>
               关联：
               {data.projects

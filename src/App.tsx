@@ -1,3 +1,4 @@
+import { remainingSchedule } from './lib/readiness';
 import { useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
@@ -104,6 +105,23 @@ export default function App() {
     restoreVersion,
   } = useWorkspace();
   const [historyOpen, setHistoryOpen] = useState<{ scope: string; anchor?: Anchor } | null>(null);
+  const [navExpanded, setNavExpanded] = useState(() => {
+    try {
+      return localStorage.getItem('chunmo-local-navigation') !== 'collapsed';
+    } catch {
+      return true;
+    }
+  });
+  function toggleNavigation() {
+    setNavExpanded((v) => {
+      try {
+        localStorage.setItem('chunmo-local-navigation', v ? 'collapsed' : 'expanded');
+      } catch {
+        /* browser storage unavailable */
+      }
+      return !v;
+    });
+  }
   const now = useCurrentDate();
   const [deadlineChange, setDeadlineChange] = useState<string | null>(null);
   const [scheduleProposal, setScheduleProposal] = useState<ScheduleProposal | null>(null);
@@ -659,15 +677,47 @@ export default function App() {
           工作空间 <span>WORKSPACE</span>
         </div>
         <nav>
-          {navigation.map(([key, label, icon]) => (
-            <button key={key} className={view === key ? 'active' : ''} onClick={() => go(key)}>
-              {icon}
-              <span>{label}</span>
-              {key === 'reminders' && count.overduePurchases + count.overdueTasks > 0 && (
-                <b>{count.overduePurchases + count.overdueTasks}</b>
-              )}
+          <div className="workspace-nav-heading">
+            <button className={view === 'overview' ? 'active' : ''} onClick={() => go('overview')}>
+              <LayoutDashboard size={19} />
+              <span>项目工作空间</span>
             </button>
-          ))}
+            <button
+              aria-label="展开或收起项目菜单"
+              aria-expanded={navExpanded}
+              aria-controls="workspace-subnav"
+              onClick={toggleNavigation}
+            >
+              <ChevronDown size={16} />
+            </button>
+          </div>
+          <div
+            id="workspace-subnav"
+            className={`workspace-subnav ${navExpanded ? 'expanded' : ''}`}
+            inert={!navExpanded}
+          >
+            <div>
+              {navigation
+                .filter(([key]) => key !== 'overview' && key !== 'people')
+                .map(([key, label, icon]) => (
+                  <button
+                    key={key}
+                    className={view === key ? 'active' : ''}
+                    onClick={() => go(key)}
+                  >
+                    {icon}
+                    <span>{label}</span>
+                    {key === 'reminders' && count.overduePurchases + count.overdueTasks > 0 && (
+                      <b>{count.overduePurchases + count.overdueTasks}</b>
+                    )}
+                  </button>
+                ))}
+            </div>
+          </div>
+          <button className={view === 'people' ? 'active' : ''} onClick={() => go('people')}>
+            <Users size={19} />
+            <span>人员管理</span>
+          </button>
         </nav>
         <div className="sidebar-bottom">
           <button
@@ -799,7 +849,7 @@ export default function App() {
               )}
             </div>
           </div>
-          <div className="stats-grid">
+          <div className="stats-grid" hidden={view === 'people'}>
             {(
               [
                 {
@@ -1041,6 +1091,7 @@ export default function App() {
                         <small>天</small>
                       </strong>
                       <span>计划总工期 · 自然日</span>
+                      <span className="remaining-schedule">{remainingSchedule(p, now)}</span>
                     </div>
                   </section>
                   <nav className="workspace-anchors" aria-label="当前项目分区">

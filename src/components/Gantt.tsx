@@ -1,3 +1,4 @@
+import { assignedNames } from '../lib/people';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { CalendarDays, GripVertical, Plus } from 'lucide-react';
 import {
@@ -21,7 +22,7 @@ import { TaskContextMenu } from './TaskContextMenu';
 import type { Anchor } from './Modal';
 import { useReorderMotion } from '../lib/useReorderMotion';
 export const CELL = 56;
-const LANE = 30;
+const LANE = 40;
 interface Props {
   data: Data;
   project: Project;
@@ -298,7 +299,7 @@ export function Gantt({
             const rows = lanes(
               data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id),
             );
-            const height = Math.max(34, rows.length * LANE + 4);
+            const height = Math.max(68, rows.length * LANE + 20);
             return (
               <div
                 key={g.id}
@@ -308,6 +309,7 @@ export function Gantt({
                 onDragOver={(e) => {
                   if (!draggedTrade) return;
                   e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
                   const r = e.currentTarget.getBoundingClientRect();
                   setDropBefore(
                     e.clientY < r.top + r.height / 2 ? g.id : (trades[index + 1]?.id ?? null),
@@ -390,6 +392,14 @@ export function Gantt({
                       </small>
                     </button>
                   </div>
+                  <button
+                    className="trade-workers"
+                    aria-label={`安排${g.name}施工人员`}
+                    title={assignedNames(data, g, '施工人员') || '未安排'}
+                    onClick={() => onTrade(g)}
+                  >
+                    师傅：{assignedNames(data, g, '施工人员') || '未安排'}
+                  </button>
                   <div className="trade-meta">
                     <button
                       aria-label={`上移工种${g.name}`}
@@ -455,7 +465,7 @@ export function Gantt({
                           style={{
                             left: distance(start, t.start) * CELL + 4,
                             width: duration(t.start, t.end) * CELL - 8,
-                            top: 4 + lane * LANE,
+                            top: (height - rows.length * LANE) / 2 + 7 + lane * LANE,
                             background: `${g.color}26`,
                             borderColor: g.color,
                             color: '#273c34',

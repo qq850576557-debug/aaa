@@ -2575,36 +2575,7 @@ nav button {
   padding: 4px;
   min-height: 28px;
 }
-.trade-menu {
-  position: relative;
-  margin-left: auto;
-}
-.trade-menu summary {
-  cursor: pointer;
-  display: flex;
-  padding: 4px;
-  list-style: none;
-}
-.trade-menu > div {
-  position: absolute;
-  top: 24px;
-  left: -95px;
-  width: 160px;
-  padding: 6px;
-  z-index: 30;
-  box-shadow: var(--shadow);
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.trade-menu button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  font-size: 14px;
-  padding: 8px;
-  min-height: 34px;
-}
+
 .task-bar {
   height: 36px;
   font-size: 14px;
@@ -3765,10 +3736,7 @@ nav button {
   padding: 0 2px;
   height: 16px;
 }
-.trade-menu summary {
-  padding: 0 2px;
-  height: 16px;
-}
+
 .trade-row {
   transition:
     background 0.18s,
@@ -4397,4 +4365,211 @@ nav button {
 }
 .modal.trade-editor {
   max-height: 75dvh;
+}
+/* Stage A: explicit local navigation fallback, compact panels and readable construction rows. */
+.workspace-nav-heading {
+  display: flex;
+  align-items: center;
+}
+.workspace-nav-heading > button:first-child {
+  flex: 1;
+}
+.workspace-nav-heading > button:last-child {
+  width: 32px;
+  padding: 6px;
+  flex: 0 0 32px;
+}
+.workspace-subnav {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.18s ease;
+}
+.workspace-subnav.expanded {
+  grid-template-rows: 1fr;
+}
+.workspace-subnav > div {
+  overflow: hidden;
+}
+.workspace-subnav button {
+  padding-left: 32px !important;
+}
+.stats-grid[hidden] {
+  display: none;
+}
+.modal.floating-panel,
+.modal.blocking-panel {
+  max-height: 75dvh;
+  width: min(400px, calc(100vw - 24px));
+}
+.modal.wide,
+.modal.anchored.wide {
+  width: min(420px, calc(100vw - 24px));
+}
+.modal.trade-editor {
+  width: min(470px, calc(100vw - 24px));
+}
+.modal.history-panel {
+  width: min(530px, calc(100vw - 24px));
+}
+.modal.history-panel.history-full {
+  width: min(900px, calc(100vw - 24px));
+}
+.modal.color-panel {
+  width: 300px;
+}
+.modal.blocking-panel {
+  width: min(370px, calc(100vw - 24px));
+}
+.modal-head {
+  padding: 12px 16px;
+}
+.modal-body {
+  padding: 14px 16px;
+}
+.modal-foot {
+  padding: 10px 16px;
+  gap: 6px;
+}
+.form-grid {
+  gap: 12px;
+}
+.modal-head h2 {
+  font-size: 18px;
+}
+.modal-foot > button {
+  padding: 7px 12px;
+}
+.modal-body .form-info {
+  font-size: 13px;
+}
+.remaining-schedule {
+  font-size: 14px !important;
+  font-weight: 500;
+  color: #426b50;
+}
+.people-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.person-card {
+  padding: 14px;
+  min-width: 0;
+}
+.staff-projects {
+  font-size: 13px;
+}
+.staff-projects article {
+  border-top: 1px solid var(--border);
+  padding: 8px 0;
+}
+.trade-label {
+  position: sticky;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  grid-template-rows: 1fr 1fr;
+  gap: 0;
+  padding: 6px 8px !important;
+}
+.trade-title {
+  grid-row: 1/3;
+}
+.trade-workers {
+  position: absolute;
+  left: 55px;
+  right: 28px;
+  bottom: 5px;
+  min-height: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+  justify-content: flex-start;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: transparent;
+}
+.trade-title > button[title='编辑工种'] {
+  padding-bottom: 14px;
+}
+.trade-meta {
+  grid-column: 2;
+  grid-row: 1/3;
+}
+.worker-multiple {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.worker-multiple .check {
+  flex-direction: row;
+}
+.worker-multiple input {
+  width: auto;
+}
+@media (max-width: 1400px) {
+  .people-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 900px) {
+  .people-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .people-grid {
+    grid-template-columns: 1fr;
+  }
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+  .form-grid > .span2 {
+    grid-column: 1;
+  }
+}
+
+.trade-title > button[title='编辑工种'] {
+  justify-content: flex-start;
+  padding-top: 7px;
+  padding-bottom: 0;
+  min-height: 54px;
+  gap: 12px;
+}
+.trade-title > button[title='编辑工种'] > span {
+  max-width: 96px;
+}
+.trade-workers {
+  top: 12px;
+  bottom: auto;
+  left: 151px;
+  right: 26px;
+  font-size: 12px;
+}
+@media (min-width: 900px) {
+  .trade-workers {
+    left: 151px;
+    right: 17px;
+  }
+  .trade-meta {
+    width: 14px;
+    justify-self: end;
+  }
+  .trade-meta > button {
+    padding: 0;
+    width: 14px;
+  }
+}
+@media (max-width: 899px) {
+  .trade-workers {
+    left: 48px;
+    right: 24px;
+    top: auto;
+    bottom: 4px;
+    font-size: 11px;
+  }
+}
+/* Keep native drop targets stationary while showing insertion feedback. */
+.trade-row.drop-before,
+.trade-row.drop-after {
+  transform: none;
 }

@@ -156,7 +156,7 @@ export function Editor({
     manager: edit.kind === 'project' ? String(v.manager ?? '') : '',
     designer: '',
   }) as Personnel;
-  const peopleFields = edit.kind === 'task' && (
+  const peopleFields = ['task', 'trade'].includes(edit.kind) && (
     <StaffPicker
       data={data}
       value={(v.staffIds as string[] | undefined) ?? []}

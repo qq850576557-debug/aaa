@@ -201,7 +201,7 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
   await boot(page);
   await restore(page);
   await timeline(page);
-  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '34px');
+  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '68px');
   await expect(page.getByTestId('task-bar').first()).toHaveCSS('font-size', '14px');
   const font = await page.evaluate(async () => {
     await document.fonts.load('28px ChunmoBrand', '春茉空间设计');
