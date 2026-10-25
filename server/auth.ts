@@ -20,12 +20,18 @@ export function tokenFrom(req: Request) {
 }
 export async function session(tokenHash: string) {
   const q = await pool.query(
-    'SELECT a.id,a.workspace_id,a.login,(w.owner_account_id=a.id) AS owner FROM auth_session s JOIN account a ON a.id=s.account_id JOIN cloud_workspace w ON w.id=a.workspace_id WHERE s.token_hash=$1 AND s.expires_at>now() AND a.active=true',
+    `SELECT a.id,a.workspace_id,a.login,COALESCE(NULLIF(a.display_name,''),a.login) AS display_name,(w.owner_account_id=a.id) AS owner FROM auth_session s JOIN account a ON a.id=s.account_id JOIN cloud_workspace w ON w.id=a.workspace_id WHERE s.token_hash=$1 AND s.expires_at>now() AND a.active=true`,
     [tokenHash],
   );
   const a = q.rows[0];
   return a
-    ? ({ id: a.id, workspaceId: a.workspace_id, login: a.login, owner: a.owner } as Actor)
+    ? ({
+        id: a.id,
+        workspaceId: a.workspace_id,
+        login: a.login,
+        displayName: a.display_name,
+        owner: a.owner,
+      } as Actor)
     : null;
 }
 export async function authenticate(req: AuthRequest, _res: Response, next: NextFunction) {

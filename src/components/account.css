@@ -1,0 +1,304 @@
+.account-dialog {
+  --account-ink: #244238;
+  --account-muted: #73847b;
+}
+.account-body {
+  padding-top: 8px;
+}
+.account-identity {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 22px;
+}
+.account-avatar {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: 0 0 52px;
+  border-radius: 18px;
+  background: #e7eee7;
+  color: #315b46;
+  font-size: 24px;
+}
+.account-identity h3 {
+  margin: 0 0 5px;
+  color: var(--account-ink);
+  font-size: 23px;
+}
+.account-identity p,
+.account-muted {
+  margin: 5px 0 12px;
+  color: var(--account-muted);
+  font-size: 14px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.account-tabs {
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  border-radius: 14px;
+  background: #f1f4ef;
+  margin-bottom: 24px;
+  overflow-x: auto;
+}
+.account-tabs button {
+  flex: 1;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #66796d;
+  min-height: 42px;
+  box-shadow: none;
+}
+.account-tabs button[aria-selected='true'] {
+  background: white;
+  color: #294f3e;
+  box-shadow: 0 2px 8px #223c2a09;
+}
+.account-section {
+  display: grid;
+  gap: 22px;
+  color: var(--account-ink);
+}
+.account-section h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+.account-section form {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  min-width: 0;
+}
+.account-section label {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 0;
+}
+.account-section input,
+.account-section select,
+.account-section textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #dfe7dd;
+  border-radius: 11px;
+  font-size: 16px;
+  background: #fbfcf8;
+  color: #294438;
+}
+.account-section textarea {
+  resize: vertical;
+}
+.account-section button,
+.account-session-actions button {
+  justify-self: start;
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  padding: 10px 17px;
+}
+.account-card {
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 15px;
+  background: #f6f7f2;
+  min-width: 0;
+}
+.account-card summary {
+  cursor: pointer;
+  min-height: 28px;
+  font-size: 16px;
+  color: #30503e;
+}
+.account-card[open] summary {
+  margin-bottom: 14px;
+}
+.account-selected {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  border-radius: 17px;
+  background: #f7f8f4;
+  min-width: 0;
+}
+.account-selected > p {
+  margin: -12px 0 0;
+}
+.account-selected > h3,
+.account-selected > p {
+  overflow-wrap: anywhere;
+}
+.account-selected .account-card {
+  background: white;
+}
+.account-session-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.account-session-actions details {
+  flex-basis: 100%;
+}
+.account-notice {
+  padding: 12px 16px;
+  background: #edf4eb;
+  color: #42613c;
+  border-radius: 12px;
+  line-height: 1.6;
+}
+.account-empty {
+  padding: 20px 0;
+  color: var(--account-muted);
+}
+.audit-filters {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.audit-filters button {
+  align-self: end;
+}
+.audit-events {
+  display: grid;
+  gap: 14px;
+}
+.audit-event {
+  padding: 18px;
+  border-radius: 14px;
+  background: #f6f8f3;
+  min-width: 0;
+}
+.audit-event-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.audit-event-heading strong {
+  font-size: 15px;
+  color: #284937;
+  overflow-wrap: anywhere;
+}
+.audit-event-heading time {
+  font-size: 13px;
+  color: #6e8173;
+}
+.audit-object {
+  font-size: 12px;
+  color: #77897c;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+.audit-object span {
+  display: block;
+}
+.audit-device {
+  font-size: 13px;
+  color: #5f7565;
+  line-height: 1.7;
+}
+.audit-event details summary {
+  font-size: 14px;
+  cursor: pointer;
+}
+.audit-event details > p {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.audit-diff {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+.audit-diff > div {
+  min-width: 0;
+}
+.audit-diff h4 {
+  font-size: 13px;
+  margin: 0 0 8px;
+  color: #6c7e70;
+}
+.audit-diff pre {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: white;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.65;
+}
+@media (max-width: 640px) {
+  .account-dialog .modal-body {
+    padding: 12px 16px 22px;
+  }
+  .account-identity {
+    gap: 11px;
+    padding-bottom: 16px;
+  }
+  .account-identity h3 {
+    font-size: 21px;
+  }
+  .account-identity p {
+    font-size: 13px;
+  }
+  .account-tabs {
+    gap: 0;
+    padding: 4px;
+    margin-bottom: 20px;
+  }
+  .account-tabs button {
+    padding: 9px 11px;
+    flex: 0 0 auto;
+    min-height: 44px;
+    font-size: 14px;
+  }
+  .account-card,
+  .account-selected {
+    padding: 15px;
+  }
+  .audit-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .audit-event {
+    padding: 14px;
+  }
+  .audit-diff {
+    grid-template-columns: 1fr;
+  }
+}
+
+.audit-values {
+  margin: 0;
+  padding: 12px;
+  border-radius: 10px;
+  background: white;
+}
+.audit-values > div {
+  display: grid;
+  gap: 4px;
+  padding: 7px 0;
+}
+.audit-values dt {
+  color: #718175;
+  font-size: 13px;
+}
+.audit-values dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}

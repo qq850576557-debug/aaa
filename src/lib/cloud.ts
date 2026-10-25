@@ -1,6 +1,12 @@
 import type { Data } from './model';
 import type { History } from './history';
-export type CloudUser = { id: string; workspaceId: string; login: string; owner: boolean };
+export type CloudUser = {
+  id: string;
+  workspaceId: string;
+  login: string;
+  displayName?: string;
+  owner: boolean;
+};
 export type CloudState = { data: Data; history: History; revision: number };
 export class CloudError extends Error {
   constructor(

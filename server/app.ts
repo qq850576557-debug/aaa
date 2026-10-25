@@ -1,4 +1,5 @@
 import express from 'express';
+import { auditDevice } from './audit';
 import { passwordSchema } from '../src/lib/password';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -19,7 +20,7 @@ import {
   tokenFrom,
   type AuthRequest,
 } from './auth';
-import { parseBackup, dateOK, emptyData } from '../src/lib/model';
+import { parseBackup, dateOK, emptyData, plus } from '../src/lib/model';
 import { parseArchive, canonical, differences, type History } from '../src/lib/history';
 const credentials = z
   .object({
@@ -39,6 +40,12 @@ function valid<T>(fn: () => T): T {
   }
 }
 const version = z.number().int().nonnegative();
+const displayNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(80)
+  .refine((value) => !/[\u0000-\u001f\u007f]/.test(value));
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
@@ -111,10 +118,156 @@ export function createApp() {
       next(e);
     }
   });
-  app.use('/api', authenticate);
-  app.get('/api/auth/session', (req: AuthRequest, res) =>
-    res.json({ user: req.actor, csrf: hash('csrf:' + req.token) }),
-  );
+  app.use('/api', authenticate, (req: AuthRequest, _res, next) => {
+    req.actor!.auditDevice = auditDevice(req.get('user-agent') ?? '');
+    next();
+  });
+  app.get('/api/auth/session', (req: AuthRequest, res) => {
+    const { auditDevice: _device, ...user } = req.actor!;
+    res.json({ user, csrf: hash('csrf:' + req.token) });
+  });
+  app.patch('/api/auth/profile', async (req: AuthRequest, res, next) => {
+    try {
+      const body = z.object({ displayName: displayNameSchema }).strict().parse(req.body);
+      await transaction(async (c) => {
+        await c.query('UPDATE account SET display_name=$2 WHERE id=$1 AND workspace_id=$3', [
+          req.actor!.id,
+          body.displayName,
+          req.actor!.workspaceId,
+        ]);
+        await audit(c, req.actor!, 'account.profile', undefined, {
+          entityType: 'account',
+          entityId: req.actor!.id,
+          operation: 'update',
+          changedFields: ['displayName'],
+        });
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get('/api/directory', async (req: AuthRequest, res, next) => {
+    try {
+      const q = await pool.query(
+        `SELECT a.id,a.login,COALESCE(NULLIF(a.display_name,''),a.login) AS "displayName",a.active,(w.owner_account_id=a.id) AS owner,COALESCE(n.note,'') AS note
+        FROM account a JOIN cloud_workspace w ON w.id=a.workspace_id
+        LEFT JOIN account_note n ON n.workspace_id=a.workspace_id AND n.target_id=a.id AND n.author_id=$2
+        WHERE a.workspace_id=$1 ORDER BY a.login`,
+        [req.actor!.workspaceId, req.actor!.id],
+      );
+      res.json({ accounts: q.rows });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.put('/api/accounts/:id/note', async (req: AuthRequest, res, next) => {
+    try {
+      const body = z
+        .object({ note: z.string().trim().max(1000) })
+        .strict()
+        .parse(req.body);
+      if (req.params.id === req.actor!.id) throw new ApiError(400, '请为其他账号添加个人备注');
+      await transaction(async (c) => {
+        const target = await c.query('SELECT 1 FROM account WHERE id=$1 AND workspace_id=$2', [
+          req.params.id,
+          req.actor!.workspaceId,
+        ]);
+        if (!target.rowCount) throw new ApiError(404, '账号不存在');
+        if (body.note)
+          await c.query(
+            `INSERT INTO account_note(workspace_id,author_id,target_id,note) VALUES($1,$2,$3,$4)
+          ON CONFLICT(workspace_id,author_id,target_id) DO UPDATE SET note=excluded.note,updated_at=now()`,
+            [req.actor!.workspaceId, req.actor!.id, req.params.id, body.note],
+          );
+        else
+          await c.query(
+            'DELETE FROM account_note WHERE workspace_id=$1 AND author_id=$2 AND target_id=$3',
+            [req.actor!.workspaceId, req.actor!.id, req.params.id],
+          );
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get('/api/audit', async (req: AuthRequest, res, next) => {
+    try {
+      const filter = z
+        .object({
+          actorId: z.string().max(100).optional(),
+          entityType: z
+            .enum([
+              'project',
+              'trade',
+              'task',
+              'purchase',
+              'note',
+              'person',
+              'dictionary',
+              'account',
+              'workspace',
+              'person_private',
+            ])
+            .optional(),
+          operation: z.enum(['create', 'update', 'delete']).optional(),
+          from: z.string().max(40).optional(),
+          to: z.string().max(40).optional(),
+          cursor: z.string().max(500).optional(),
+          limit: z.coerce.number().int().min(1).max(100).default(50),
+        })
+        .strict()
+        .parse(req.query);
+      const args: unknown[] = [req.actor!.workspaceId];
+      const where = ['workspace_id=$1'];
+      const condition = (sql: string, value: unknown) => {
+        args.push(value);
+        where.push(sql.replace('?', '$' + args.length));
+      };
+      if (filter.actorId) condition('actor_id=?', filter.actorId);
+      if (filter.entityType) condition('entity_type=?', filter.entityType);
+      if (filter.operation) condition('operation=?', filter.operation);
+      const edge = (s: string, end: boolean) => {
+        if (dateOK(s)) return (end ? plus(s, 1) : s) + 'T00:00:00+08:00';
+        if (!z.iso.datetime({ offset: true }).safeParse(s).success)
+          throw new ApiError(400, '筛选日期无效');
+        return s;
+      };
+      if (filter.from) condition('created_at>=?::timestamptz', edge(filter.from, false));
+      if (filter.to) condition('created_at<?::timestamptz', edge(filter.to, true));
+      if (filter.cursor) {
+        const cursor = valid(() =>
+          z
+            .object({ at: z.iso.datetime(), id: z.string().max(100) })
+            .strict()
+            .parse(JSON.parse(Buffer.from(filter.cursor!, 'base64url').toString())),
+        );
+        args.push(cursor.at, cursor.id);
+        where.push(`(created_at,id)<($${args.length - 1}::timestamptz,$${args.length})`);
+      }
+      args.push(filter.limit + 1);
+      const rows = (
+        await pool.query(
+          `SELECT id,actor_id AS "actorId",actor_display_name AS "actorDisplayName",
+        to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt",
+        entity_type AS "entityType",entity_id AS "entityId",operation,action,revision,before_value AS before,after_value AS after,changed_fields AS "changedFields",device
+        FROM audit_event WHERE ${where.join(' AND ')} ORDER BY created_at DESC,id DESC LIMIT $${args.length}`,
+          args,
+        )
+      ).rows;
+      const events = rows.slice(0, filter.limit);
+      const last = events.at(-1);
+      res.json({
+        events,
+        nextCursor:
+          rows.length > filter.limit && last
+            ? Buffer.from(JSON.stringify({ at: last.createdAt, id: last.id })).toString('base64url')
+            : null,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
   const streams = new Set<{ accountId: string; tokenHash: string; close: () => void }>();
   app.post('/api/auth/logout', async (req: AuthRequest, res, next) => {
     try {
@@ -181,7 +334,7 @@ export function createApp() {
   app.get('/api/accounts', owner, async (req: AuthRequest, res, next) => {
     try {
       const q = await pool.query(
-        'SELECT id,login,active FROM account WHERE workspace_id=$1 AND id<>$2 ORDER BY login',
+        `SELECT id,login,COALESCE(NULLIF(display_name,''),login) AS "displayName",active FROM account WHERE workspace_id=$1 AND id<>$2 ORDER BY login`,
         [req.actor!.workspaceId, req.actor!.id],
       );
       res.json({ accounts: q.rows });
@@ -191,7 +344,10 @@ export function createApp() {
   });
   app.post('/api/accounts', owner, async (req: AuthRequest, res, next) => {
     try {
-      const body = credentials.parse(req.body);
+      const body = credentials
+        .extend({ displayName: displayNameSchema.optional() })
+        .strict()
+        .parse(req.body);
       await passwordLimit(req.actor!.id);
       if (hashing >= 2) throw new ApiError(429, '密码处理繁忙');
       hashing++;
@@ -200,10 +356,15 @@ export function createApp() {
           pwd = await passwordHash(body.password);
         await transaction(async (c) => {
           await c.query(
-            "INSERT INTO account(id,workspace_id,login,password_hash,role) VALUES($1,$2,$3,$4,'employee')",
-            [id, req.actor!.workspaceId, body.login, pwd],
+            "INSERT INTO account(id,workspace_id,login,password_hash,role,display_name) VALUES($1,$2,$3,$4,'employee',$5)",
+            [id, req.actor!.workspaceId, body.login, pwd, body.displayName ?? ''],
           );
-          await audit(c, req.actor!, 'account.create');
+          await audit(c, req.actor!, 'account.create', undefined, {
+            entityType: 'account',
+            entityId: id,
+            operation: 'create',
+            changedFields: ['login', 'displayName', 'active'],
+          });
         });
         res.status(201).json({ id, login: body.login, role: 'employee' });
       } finally {
@@ -218,10 +379,11 @@ export function createApp() {
       const body = z
         .object({
           active: z.boolean().optional(),
+          displayName: displayNameSchema.optional(),
           password: passwordSchema.optional(),
         })
         .strict()
-        .refine((x) => x.active !== undefined || x.password)
+        .refine((x) => x.active !== undefined || x.password || x.displayName !== undefined)
         .parse(req.body);
       if (req.params.id === req.actor!.id && body.password)
         throw new ApiError(409, '请使用修改我的密码并验证当前密码');
@@ -240,14 +402,27 @@ export function createApp() {
       }
       await transaction(async (c) => {
         const q = await c.query(
-          'UPDATE account SET active=COALESCE($3,active),password_hash=COALESCE($4,password_hash) WHERE id=$1 AND workspace_id=$2 RETURNING id',
-          [req.params.id, req.actor!.workspaceId, body.active ?? null, pwd ?? null],
+          'UPDATE account SET active=COALESCE($3,active),password_hash=COALESCE($4,password_hash),display_name=COALESCE($5,display_name) WHERE id=$1 AND workspace_id=$2 RETURNING id',
+          [
+            req.params.id,
+            req.actor!.workspaceId,
+            body.active ?? null,
+            pwd ?? null,
+            body.displayName ?? null,
+          ],
         );
         if (!q.rowCount) throw new ApiError(404, '账号不存在');
-        await c.query('DELETE FROM auth_session WHERE account_id=$1', [req.params.id]);
-        await audit(c, req.actor!, 'account.update');
+        if (body.password || body.active !== undefined)
+          await c.query('DELETE FROM auth_session WHERE account_id=$1', [req.params.id]);
+        await audit(c, req.actor!, 'account.update', undefined, {
+          entityType: 'account',
+          entityId: String(req.params.id),
+          operation: 'update',
+          changedFields: Object.keys(body).map((k) => (k === 'password' ? 'passwordChanged' : k)),
+        });
       });
-      for (const s of streams) if (s.accountId === req.params.id) s.close();
+      if (body.password || body.active !== undefined)
+        for (const s of streams) if (s.accountId === req.params.id) s.close();
       res.json({ ok: true });
     } catch (e) {
       next(e);

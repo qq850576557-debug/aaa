@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { businessAuditChanges, safeActorDisplayName, type AuditDevice } from './audit';
 type Db = Pick<PoolClient, 'query'>;
 import { randomUUID, createHash } from 'node:crypto';
 import {
@@ -28,7 +29,14 @@ export class ApiError extends Error {
     super(message);
   }
 }
-export type Actor = { id: string; workspaceId: string; login: string; owner: boolean };
+export type Actor = {
+  id: string;
+  workspaceId: string;
+  login: string;
+  owner: boolean;
+  displayName?: string;
+  auditDevice?: AuditDevice;
+};
 export async function getState(c: Db, workspaceId: string, lock = 'SHARE') {
   const q = await c.query(
     `SELECT revision,data,history FROM workspace_state WHERE workspace_id=$1 FOR ${lock}`,
@@ -96,10 +104,51 @@ export async function graph(c: Db, w: string, d: Data) {
     [w, JSON.stringify(assignments)],
   );
 }
-export async function audit(c: Db, a: Actor, action: string, revision?: number) {
+export async function audit(
+  c: Db,
+  a: Actor,
+  action: string,
+  revision?: number,
+  detail?: {
+    entityType: string;
+    entityId: string;
+    operation: string;
+    before?: unknown;
+    after?: unknown;
+    changedFields?: string[];
+  },
+) {
   await c.query(
-    'INSERT INTO audit_event(id,workspace_id,actor_id,action,revision) VALUES($1,$2,$3,$4,$5)',
-    [randomUUID(), a.workspaceId, a.id, action, revision ?? null],
+    `INSERT INTO audit_event(id,workspace_id,actor_id,action,revision,actor_display_name,entity_type,entity_id,operation,before_value,after_value,changed_fields,device)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+    [
+      randomUUID(),
+      a.workspaceId,
+      a.id,
+      action,
+      revision ?? null,
+      safeActorDisplayName(a.displayName ?? a.login),
+      detail?.entityType ??
+        (action.startsWith('account.')
+          ? 'account'
+          : action.startsWith('person.private')
+            ? 'person_private'
+            : 'workspace'),
+      detail?.entityId ?? (action.startsWith('account.') ? a.id : a.workspaceId),
+      detail?.operation ?? (action.endsWith('.create') ? 'create' : 'update'),
+      detail?.before == null ? null : JSON.stringify(detail.before),
+      detail?.after == null ? null : JSON.stringify(detail.after),
+      JSON.stringify(detail?.changedFields ?? []),
+      JSON.stringify(
+        a.auditDevice ?? {
+          category: 'unknown',
+          os: '未知',
+          browser: '未知',
+          model: '未知设备',
+          source: '未采集设备信息',
+        },
+      ),
+    ],
   );
 }
 export async function commit(
@@ -165,7 +214,7 @@ export async function commit(
   const previousIds = new Set(prior.history.records.map((r) => r.id));
   result.history.records = result.history.records.map((r) =>
     !previousIds.has(r.id) && !opts?.importHistory?.records.some((x) => x.id === r.id)
-      ? { ...r, actor: a.login, actorId: a.id }
+      ? { ...r, actor: a.displayName ?? a.login, actorId: a.id }
       : r,
   );
   const revision = prior.revision + 1;
@@ -176,6 +225,11 @@ export async function commit(
     JSON.stringify(result.data),
     JSON.stringify(result.history),
   ]);
+  const auditKey = process.env.PRIVATE_DATA_KEY;
+  if (!auditKey || !/^[a-f0-9]{64}$/i.test(auditKey))
+    throw new ApiError(500, '审计配置无效，未保存修改');
+  for (const change of businessAuditChanges(prior.data, result.data, auditKey))
+    await audit(c, a, 'business.' + change.operation, revision, change);
   await audit(
     c,
     a,

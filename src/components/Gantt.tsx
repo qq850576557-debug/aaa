@@ -59,6 +59,16 @@ export function Gantt({
   onReorder,
   onColor,
 }: Props) {
+  const [touchLayout, setTouchLayout] = useState(
+    () => window.matchMedia('(max-width: 700px)').matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 700px)');
+    const update = () => setTouchLayout(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const laneHeight = touchLayout ? 48 : LANE;
   const [start, end] = projectRange(data, project);
   const dates = days(start, end);
   const trades = data.trades
@@ -299,7 +309,7 @@ export function Gantt({
             const rows = lanes(
               data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id),
             );
-            const height = Math.max(68, rows.length * LANE + 20);
+            const height = Math.max(touchLayout ? 124 : 68, rows.length * laneHeight + 20);
             return (
               <div
                 key={g.id}
@@ -465,7 +475,10 @@ export function Gantt({
                           style={{
                             left: distance(start, t.start) * CELL + 4,
                             width: duration(t.start, t.end) * CELL - 8,
-                            top: (height - rows.length * LANE) / 2 + 7 + lane * LANE,
+                            top:
+                              (height - rows.length * laneHeight) / 2 +
+                              (touchLayout ? 2 : 7) +
+                              lane * laneHeight,
                             background: `${g.color}26`,
                             borderColor: g.color,
                             color: '#273c34',

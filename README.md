@@ -1,8 +1,8 @@
 # 春茉空间设计｜装修项目管理系统
 
-SJD · React 19 + TypeScript + Vite 装修项目工作台。保留原 IndexedDB 本地模式，新增可选 Node.js + PostgreSQL 云空间：真实账号、服务端负责人权限、版本冲突保护与 SSE 同步。默认仍打开本地空间，不自动上传或清空已有数据。
+SJD · React 19 + TypeScript + Vite 装修项目工作台。V1.1 默认先显示独立品牌登录页，真实账号验证后直接进入 PostgreSQL 云空间；支持中文展示名称、个人私有账号备注、只读操作审计和触摸工期表。保留 IndexedDB 历史资料及显式本地资料管理，不自动上传或清空已有数据。
 
-长期路线图、未来数据关系、员工私密信息权限及开发约定统一见 [PROJECT_GUIDE.md](PROJECT_GUIDE.md)。规划与已实现能力须分别查看；本地模式仍没有服务端权限，云空间的实际能力与限制见 [阶段 B 运行和验收](docs/phase-b-cloud.md)。云端在开发/测试数据库验证，尚未部署阿里云。
+长期路线图、未来数据关系、员工私密信息权限及开发约定统一见 [PROJECT_GUIDE.md](PROJECT_GUIDE.md)。规划与已实现能力须分别查看；本地模式仍没有服务端权限，云空间的实际能力与限制见 [阶段 B 运行和验收](docs/phase-b-cloud.md)。V1.1 的增量迁移、数据安全、实际测试和ECS更新命令见 [V1.1验收说明](docs/v1.1-validation.md)。本轮没有远程修改用户已部署的ECS。
 
 本地功能原验收见 [统一整改与15天版本历史验收](docs/history-validation.md) 为准：新增项目级完整历史和事务式恢复，集中人员档案与分配，三字段采购录入。此前 [第四阶段报告](docs/phase4-validation.md) 保留为历史验收记录。
 
@@ -12,11 +12,11 @@ Vitest已固定到修复漏洞的4.1.12；npm12仅批准锁定版本argon2/esbui
 
 ## ECS内部测试部署
 
-已提供复用现有PostgreSQL17的[原生部署、更新、备份与恢复说明](docs/ecs-native-deployment.md)。不使用Docker，不初始化/删除现有库，不开放应用公网端口。先在隔离环境完成验证，实际ECS仍由Workbench运行脚本后验收；不等于已正式上线。
+已提供复用现有PostgreSQL17的[原生部署、更新、备份与恢复说明](docs/ecs-native-deployment.md)。不使用Docker，不初始化/删除现有库，不自动开放新端口或修改安全组；更新保留现有公网私有CA HTTPS 15001配置。先在隔离环境验证，再按Workbench命令备份/更新和人工验收。
 
 ## 云端开发入口
 
-云空间需要独立开发/测试PostgreSQL、初始负责人创建及API进程。准确命令、Windows安全密码输入、双浏览器测试、数据导入与权限边界见 [阶段B运行文档](docs/phase-b-cloud.md)。原本地模式依旧可只运行Vite。
+云空间需要独立开发/测试PostgreSQL、初始负责人创建及API进程。准确命令、Windows安全密码输入、双浏览器测试、数据导入与权限边界见 [阶段B运行文档](docs/phase-b-cloud.md)。默认Vite页面也需要API登录；仅开发时可用 `VITE_ALLOW_LOCAL=true npm run dev` 显式运行原本地工具。Windows PowerShell为 `$env:VITE_ALLOW_LOCAL="true"; npm.cmd run dev`。生产构建不会接受该本地绕过标志。
 
 ## 运行与验证
 
@@ -24,7 +24,8 @@ Vitest已固定到修复漏洞的4.1.12；npm12仅批准锁定版本argon2/esbui
 
 ```sh
 npm ci --cache /tmp/chunmo-npm-cache
-npm run dev
+npm run api:dev      # 终端一，先按云端开发入口配置数据库及初始账号
+# 终端二：npm run dev
 ```
 
 默认端口 5173。`npm run build` 执行 TypeScript 检查并生成 `dist/` 及 `dist-api/server.mjs`；`npm run preview` 用于本地检查生产产物。浏览器测试优先使用 `/usr/bin/chromium`，也可设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`；其他环境先执行 `npx playwright install chromium`（Linux 可能需要系统依赖）。

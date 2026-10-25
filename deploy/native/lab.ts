@@ -112,13 +112,26 @@ async function startApi(database = c.db) {
 }
 async function enter(page: Page, login: string) {
   await page.goto(origin);
-  await page.getByRole('button', { name: '连接云空间', exact: true }).click();
-  const f = page.getByRole('dialog', { name: '云端账号与工作空间', exact: true });
-  await f.getByLabel('登录账号', { exact: true }).fill(login);
-  await f.getByLabel('登录密码', { exact: true }).fill(password);
-  await f.getByRole('button', { name: '登录云端', exact: true }).click();
+  await expect(page.locator('.brand-login')).toBeVisible();
+  await page.evaluate(() => {
+    sessionStorage.setItem('chunmo-space', 'local');
+    localStorage.setItem('VITE_ALLOW_LOCAL', 'true');
+  });
+  await page.reload();
+  await expect(page.locator('.brand-login')).toBeVisible();
+  await expect(page.locator('.main-shell')).toHaveCount(0);
+  await expect(page.locator('.brand-login img')).toBeVisible();
+  await page.screenshot({ path: '/tmp/chunmo-v11-login.png' });
+  await page.getByLabel('登录账号', { exact: true }).fill(login);
+  await page.getByLabel('登录密码', { exact: true }).fill(password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.locator('.save-state')).toContainText('已保存');
+  await page.getByRole('button', { name: '账号管理', exact: true }).click();
+  const f = page.getByRole('dialog', { name: '账号管理', exact: true });
+  await expect(f).toContainText(login);
   return f;
 }
+
 try {
   await cluster(admin, c);
   await cluster(admin, c);
@@ -263,15 +276,16 @@ authorityKeyIdentifier=keyid:always
     a = await ctxA.newPage(),
     b = await ctxB.newPage();
   const ownerForm = await enter(a, 'lab_owner');
+  await ownerForm.getByRole('tab', { name: '账号通讯录', exact: true }).click();
   await ownerForm.getByText('创建普通员工账号', { exact: true }).click();
   await ownerForm.getByLabel('新员工登录名', { exact: true }).fill('lab_staff');
   await ownerForm.getByLabel('初始密码', { exact: true }).fill(password);
   await ownerForm.getByRole('button', { name: '创建员工', exact: true }).click();
   await expect(ownerForm).toContainText('普通员工账号已创建');
-  await ownerForm.getByRole('button', { name: '进入云空间', exact: true }).click();
+  await ownerForm.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(a.locator('.save-state')).toContainText('已保存');
   const staffForm = await enter(b, 'lab_staff');
-  await staffForm.getByRole('button', { name: '进入云空间', exact: true }).click();
+  await staffForm.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(b.locator('.save-state')).toContainText('已保存');
   for (const ctx of [ctxA, ctxB]) {
     const cookies = await ctx.cookies(origin + '/api/workspace');

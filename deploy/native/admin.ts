@@ -123,6 +123,8 @@ export async function grants(c: Deployment) {
       `GRANT SELECT,INSERT,UPDATE,DELETE ON project,person,trade,task,purchase,memo,assignment,login_limit,import_preview TO ${app}`,
     );
     await db.query(`GRANT INSERT ON audit_event TO ${app},${priv}`);
+    await db.query(`GRANT SELECT ON audit_event TO ${app}`);
+    await db.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON account_note TO ${app}`);
     await db.query(`GRANT SELECT,INSERT,UPDATE ON person_private TO ${priv}`);
     await db.query(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${backup}`);
     await db.query(`GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${backup}`);

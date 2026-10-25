@@ -51,6 +51,11 @@ export function useCloudWorkspace(enabled: boolean) {
     if (!enabled) return;
     let active = true,
       events: EventSource | undefined;
+    const profileUpdated = (event: Event) => {
+      const next = (event as CustomEvent<CloudUser>).detail;
+      setUser((previous) => (previous?.id === next?.id ? next : previous));
+    };
+    window.addEventListener('chunmo-profile-updated', profileUpdated);
     void cloudSession()
       .then(async (u) => {
         if (!active) return;
@@ -77,6 +82,7 @@ export function useCloudWorkspace(enabled: boolean) {
           }
           setStatus('登录失效');
           setError('云端会话已失效；未保存草稿仍在当前页面，请先备份，再重新登录。');
+          window.dispatchEvent(new Event('chunmo-auth-expired'));
           events?.close();
         });
       })
@@ -96,6 +102,7 @@ export function useCloudWorkspace(enabled: boolean) {
       active = false;
       clearInterval(deferred);
       events?.close();
+      window.removeEventListener('chunmo-profile-updated', profileUpdated);
     };
   }, [enabled, refresh]);
   const persist = useCallback(

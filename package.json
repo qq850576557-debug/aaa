@@ -1,7 +1,7 @@
 {
   "name": "chunmo-project-manager",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
@@ -18,7 +18,7 @@
     "db:migrate": "node --env-file=.env.development.local --import tsx server/migrate.ts",
     "owner:create": "node --env-file=.env.development.local --import tsx scripts/cloud-owner.ts",
     "build:api": "tsc -p tsconfig.server.json && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-api/server.mjs",
-    "test:api": "node --env-file=.env.test.local --import tsx --test --test-concurrency=1 server/cloud.test.ts",
+    "test:api": "node --env-file=.env.test.local --import tsx --test --test-concurrency=1 server/cloud.test.ts server/audit.test.ts server/migration.test.ts",
     "test:cloud:e2e": "playwright test --config playwright.cloud.config.ts",
     "test:all": "npm test && npm run test:api && npm run test:e2e && npm run test:cloud:e2e",
     "verify:native": "node scripts/verify-native.mjs",

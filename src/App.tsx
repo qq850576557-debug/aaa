@@ -677,7 +677,7 @@ export default function App() {
             go('overview');
           }}
         >
-          {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉空间设计原始 Logo" />}
+          {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉空间设计 Logo" />}
           <div>
             <strong className="brand-name">{BRAND_NAME}</strong>
             <span className="brand-initials">{BRAND_INITIALS}</span>
@@ -798,7 +798,7 @@ export default function App() {
             <ShieldCheck size={15} />
             <span>
               {isCloud
-                ? `云空间 · ${cloudUser?.login ?? '正在认证'} · 服务端保存，版本冲突不会静默覆盖。`
+                ? `云空间 · ${cloudUser?.displayName || cloudUser?.login || '正在认证'} · 服务端保存，版本冲突不会静默覆盖。`
                 : '本地模式 · 数据仅保存在当前浏览器和设备，不会自动同步。建议定期备份。'}
             </span>
             <button onClick={() => setBackup(true)} disabled={!ready}>

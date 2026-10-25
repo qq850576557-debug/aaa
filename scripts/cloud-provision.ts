@@ -56,12 +56,14 @@ try {
     'auth_session',
     'login_limit',
     'audit_event',
+    'account_note',
     'import_preview',
     'imported_archive',
   ];
   await c.query('GRANT SELECT ON schema_migration TO chunmo_app');
   await c.query('GRANT USAGE ON SCHEMA public TO chunmo_app,chunmo_private');
   await c.query('GRANT SELECT,INSERT,UPDATE,DELETE ON ' + tables.join(',') + ' TO chunmo_app');
+  await c.query('REVOKE UPDATE,DELETE ON audit_event FROM chunmo_app,chunmo_private');
   await c.query('GRANT SELECT,INSERT,UPDATE,DELETE ON person_private TO chunmo_private');
   await c.query('GRANT INSERT ON audit_event TO chunmo_private');
   console.log(`Local ${mode} migrations and least-privilege runtime roles ready.`);

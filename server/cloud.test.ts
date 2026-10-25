@@ -488,7 +488,9 @@ test('8–128 password boundaries, owner-only employee list/reset preserve accou
     403,
   );
   const list = await (await request('/accounts', 'GET', undefined, a)).json();
-  assert.deepEqual(list.accounts, [{ id: f.employeeId, login: f.employee, active: true }]);
+  assert.deepEqual(list.accounts, [
+    { id: f.employeeId, login: f.employee, displayName: f.employee, active: true },
+  ]);
   assert.equal(
     (await request('/accounts/' + a.user.id, 'PATCH', { password: 'aaaaaaaa' }, a)).status,
     409,
@@ -650,4 +652,208 @@ test('owner password reset has a database-backed rate limit shared across target
     429,
   );
   await login(f.employee, 'aaaaaaaa');
+});
+
+test('V1.1 display names keep stable identities; private account notes isolate authors, owners and workspaces', async () => {
+  const { f, a, b } = await setup();
+  const foreign = await fixtureAccounts();
+  const original = (
+    await pool.query('SELECT id,login,password_hash,role,workspace_id FROM account WHERE id=$1', [
+      a.user.id,
+    ])
+  ).rows[0];
+  assert.equal((await request('/auth/profile', 'PATCH', { displayName: '马春旭' }, a)).status, 200);
+  const current = await request('/auth/session', 'GET', undefined, a);
+  assert.equal(current.status, 200);
+  assert.equal((await current.json()).user.displayName, '马春旭');
+  assert.deepEqual(
+    (
+      await pool.query('SELECT id,login,password_hash,role,workspace_id FROM account WHERE id=$1', [
+        a.user.id,
+      ])
+    ).rows[0],
+    original,
+  );
+  assert.equal(
+    (await request('/auth/profile', 'PATCH', { displayName: '木工小李' }, b)).status,
+    200,
+  );
+  assert.equal(
+    (await request('/accounts/' + a.user.id, 'PATCH', { displayName: '冒充负责人' }, b)).status,
+    403,
+  );
+  assert.equal(
+    (await request('/accounts/' + f.employeeId, 'PATCH', { displayName: '李师傅' }, a)).status,
+    200,
+  );
+  assert.equal(
+    (await request('/auth/session', 'GET', undefined, b)).status,
+    200,
+    'name-only edit keeps session',
+  );
+  assert.equal(
+    (await request('/accounts/' + f.employeeId + '/note', 'PUT', { note: '仅负责人个人可见' }, a))
+      .status,
+    200,
+  );
+  assert.equal(
+    (await request('/accounts/' + a.user.id + '/note', 'PUT', { note: '仅员工个人可见' }, b))
+      .status,
+    200,
+  );
+  const da = (await (await request('/directory', 'GET', undefined, a)).json()).accounts;
+  const db = (await (await request('/directory', 'GET', undefined, b)).json()).accounts;
+  assert.equal(da.find((x: any) => x.id === f.employeeId).note, '仅负责人个人可见');
+  assert.equal(db.find((x: any) => x.id === a.user.id).note, '仅员工个人可见');
+  assert.ok(!JSON.stringify(da).includes('仅员工个人可见'));
+  assert.ok(!JSON.stringify(db).includes('仅负责人个人可见'));
+  assert.equal(db.find((x: any) => x.id === f.employeeId).displayName, '李师傅');
+  assert.equal(db.find((x: any) => x.id === a.user.id).login, f.login);
+  assert.equal(
+    (await request('/accounts/' + foreign.id + '/note', 'PUT', { note: '越界' }, b)).status,
+    404,
+  );
+  assert.equal(
+    (
+      await request(
+        '/accounts/' + a.user.id + '/note',
+        'PUT',
+        { note: '伪造', authorId: a.user.id },
+        b,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await request('/accounts/' + f.employeeId + '/note', 'PUT', { note: '' }, a)).status,
+    200,
+  );
+  const stillPrivate = await (await request('/directory', 'GET', undefined, b)).json();
+  assert.equal(stillPrivate.accounts.find((x: any) => x.id === a.user.id).note, '仅员工个人可见');
+  const logs = await (await request('/audit', 'GET', undefined, a)).json();
+  assert.ok(!JSON.stringify(logs).includes('仅员工个人可见'));
+  assert.ok(!JSON.stringify(logs).includes('仅负责人个人可见'));
+});
+
+test('V1.1 server audit records object lifecycle, immutable actor snapshots and bounded device hints without private contents', async () => {
+  const { f, a, b } = await setup();
+  assert.equal((await request('/auth/profile', 'PATCH', { displayName: '马春旭' }, a)).status, 200);
+  const d = data();
+  const projectId = d.projects[0].id;
+  d.projects[0].notes = 'private phone +8613800000000 password SECRET-DO-NOT-LOG';
+  d.notes = [
+    {
+      id: randomUUID(),
+      projectId,
+      title: '现场确认',
+      kind: '其他事项',
+      date: d.projects[0].start,
+      reminder: '',
+      owner: 'private-name',
+      content: 'personal-note-secret',
+      done: false,
+      pinned: false,
+    },
+  ];
+  const headers = {
+    'User-Agent':
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1 Version/18.5 Mobile/15E148 Safari/604.1 Cookie=do-not-record',
+  };
+  const first = await request('/workspace', 'PUT', { revision: 0, data: d }, a, headers);
+  assert.equal(first.status, 200);
+  const saved = await first.json();
+  saved.data.projects[0].status = '暂停';
+  saved.data.projects[0].notes = 'other-private-note';
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: 1, data: saved.data }, b)).status,
+    200,
+  );
+  assert.equal(
+    (await request('/auth/profile', 'PATCH', { displayName: '负责人新显示名' }, a)).status,
+    200,
+  );
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: 2, data: emptyData() }, a)).status,
+    200,
+  );
+  const all = await (await request('/audit?limit=100', 'GET', undefined, b)).json();
+  const create = all.events.find(
+    (e: any) => e.entityType === 'project' && e.operation === 'create',
+  );
+  assert.match(create.entityId, /^obj_[a-f0-9]{24}$/);
+  assert.equal(create.actorId, a.user.id);
+  assert.equal(create.actorDisplayName, '马春旭');
+  assert.equal(create.device.category, 'mobile');
+  assert.equal(create.device.model, 'iPhone（具体型号不可识别）');
+  assert.equal(create.device.browser, 'Safari');
+  assert.ok(create.createdAt);
+  const update = all.events.find(
+    (e: any) => e.entityType === 'project' && e.operation === 'update',
+  );
+  assert.equal(update.actorId, f.employeeId);
+  assert.equal(update.after.status, '暂停');
+  assert.equal(update.before.status, '施工中');
+  assert.ok(update.changedFields.includes('notes'));
+  assert.ok(!('notes' in update.after));
+  const deleted = all.events.find(
+    (e: any) => e.entityType === 'project' && e.operation === 'delete',
+  );
+  assert.equal(deleted.actorDisplayName, '负责人新显示名');
+  assert.equal(deleted.after, null);
+  for (const entityType of ['project', 'trade', 'task', 'person', 'purchase', 'note'])
+    assert.ok(all.events.some((e: any) => e.entityType === entityType && e.operation === 'create'));
+  const text = JSON.stringify(all);
+  for (const secret of [
+    '+8613800000000',
+    'SECRET-DO-NOT-LOG',
+    'personal-note-secret',
+    'do-not-record',
+    'other-private-note',
+    f.password,
+    'password_hash',
+    'token_hash',
+    'Cookie=',
+    projectId,
+  ])
+    assert.ok(!text.includes(secret), secret);
+  const only = await (
+    await request(
+      '/audit?entityType=project&operation=create&actorId=' + a.user.id,
+      'GET',
+      undefined,
+      a,
+    )
+  ).json();
+  assert.equal(only.events.length, 1);
+  assert.equal(only.events[0].id, create.id);
+  const page = await (await request('/audit?limit=1', 'GET', undefined, a)).json();
+  assert.equal(page.events.length, 1);
+  assert.ok(page.nextCursor);
+  const page2 = await (
+    await request(
+      '/audit?limit=1&cursor=' + encodeURIComponent(page.nextCursor),
+      'GET',
+      undefined,
+      a,
+    )
+  ).json();
+  assert.notEqual(page2.events[0].id, page.events[0].id);
+  assert.equal((await request('/audit?from=garbage', 'GET', undefined, a)).status, 400);
+  assert.equal((await request('/audit', 'GET')).status, 401);
+  assert.equal((await request('/audit/' + create.id, 'DELETE', {}, b)).status, 404);
+  await assert.rejects(
+    pool.query('UPDATE audit_event SET action=$1 WHERE id=$2', ['forged', create.id]),
+    (e: any) => e.code === '42501',
+  );
+  await assert.rejects(
+    pool.query('DELETE FROM audit_event WHERE id=$1', [create.id]),
+    (e: any) => e.code === '42501',
+  );
+  const foreign = await fixtureAccounts();
+  const outsider = await login(foreign.login, foreign.password);
+  assert.equal(
+    (await (await request('/audit?actorId=' + a.user.id, 'GET', undefined, outsider)).json()).events
+      .length,
+    0,
+  );
 });
