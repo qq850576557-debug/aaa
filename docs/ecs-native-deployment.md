@@ -165,7 +165,7 @@ verify只新建隔离恢复库，绝不覆盖现有库。核对`.restore-verifie
 
 This is an explicit opt-in; pulling/building the code does not activate public access. No ECS service was changed during development. The loopback 8443 endpoint remains for diagnostics, PostgreSQL remains loopback and Node remains `127.0.0.1:4000`. Public activation changes the **one allowed browser Origin** to the supplied HTTPS origin. The old internal page is then diagnostic-only, rather than a second login origin. Existing Secure/HttpOnly/SameSite=Strict cookies, CSRF tokens and server permissions remain enforced. Nginx preserves Origin and overwrites X-Forwarded-For; Express trusts only loopback proxies. SSE remains unbuffered.
 
-### Required public certificate
+### Public CA mode (default)
 
 The internal self-signed CA cannot deliver browser-trusted access without installing that CA. Obtain a **public CA certificate whose SAN covers `39.105.64.188`**, plus its complete intermediate chain and matching private key, or use a domain resolving to this ECS with a public domain certificate. IP certificate availability depends on the CA and ACME client's support. Public ACME IP certificates may be very short-lived and require automated renewal. Neither a different port nor another self-signed certificate solves browser trust. No claim is made that an IP certificate has already been obtained.
 
@@ -185,7 +185,7 @@ bash deploy/native/public-https.sh https://39.105.64.188:15001 /root/chunmo-cert
 
 Use the domain origin instead if the certificate covers a domain. Only after verification, review and allow inbound **TCP 15001** in the existing ECS security group and host firewall; never disable the firewall or expose 4000/5432. From a different network open the exact HTTPS origin and confirm no certificate warning, owner/employee login, permissions, two-browser updates and persistence. Local checks cannot prove external security-group reachability or public browser root trust.
 
-`public-https.sh` uses the existing deployment lock, validates the leaf/key/SAN/current validity (>=24 hours), strict server certificate chain against OS trust, copies/revalidates an immutable certificate bundle, checks Nginx as the service user, and backs up runtime/Nginx/public config under `/etc/chunmo-staging/public-before.*`. It atomically replaces each config file and restarts services; any activation/health/account-smoke failure restores all previous config files and restarts the previous configuration. It never deletes old key bundles or changes database schema/data, except existing isolated deployment-canary accounts/records created by the established smoke tests. Failed/old certificate bundles are retained for investigation. Backups include runtime secrets: keep root-only and never upload them.
+`public-https.sh` uses the existing deployment lock, validates the leaf/key/SAN/current validity (>=24 hours), strict server certificate chain against OS trust (or the explicit private CA in the opt-in mode below), copies/revalidates an immutable certificate bundle, checks Nginx as the service user, and backs up runtime/Nginx/public config under `/etc/chunmo-staging/public-before.*`. It atomically replaces each config file and restarts services; any activation/health/account-smoke failure restores all previous config files and restarts the previous configuration. It never deletes old key bundles or changes database schema/data, except existing isolated deployment-canary accounts/records created by the established smoke tests. Failed/old certificate bundles are retained for investigation. Backups include runtime secrets: keep root-only and never upload them.
 
 Repeat the same `public-https.sh` command with newly issued files to renew/rotate; integrate this command into the chosen ACME client's successful-renewal hook. Issuance/renewal scheduling is **not yet automated by this repository**. Existing health timer verifies both endpoints every minute and warns/fails if the public leaf has less than 24 hours remaining. That systemd failure is local, not an off-server alert. Do not launch publicly until a working renewal schedule and monitoring are configured. Normal updates retain public config and revalidate its certificate; expired/near-expiry certificates fail closed rather than downgrading to HTTP. Renew first if needed.
 
@@ -194,3 +194,33 @@ Validation in this workspace uses an isolated local database and a synthetic loo
 Verified in this workspace (2026-10-25): 17/17 deployment/TLS tests, including real certificates, untrusted/wrong-SAN/wrong-key/near-expiry rejection and mocked activation rollback; 60/60 unit tests; 9/9 PostgreSQL/API tests; 3/3 cloud browser regression tests; frontend/API/deployment production builds. The preserved private HTTPS native lab also passed. Public-listener native lab passed real owner/employee browser login, cookie flags, hostile-Origin rejection, two-session SSE updates, restart persistence, encrypted backup tamper rejection, isolated restore and serving restored state. No real public certificate, public Internet reachability or ECS service changes are included in these results.
 
 Changing browser origin also changes its IndexedDB namespace. Existing local browser data is retained at the old origin; it is not automatically copied or imported. Log in to the existing cloud workspace at the new origin to access already-saved server data. Use the established explicit backup/import workflow for any remaining local-only data.
+
+### 内部 CA 模式：公网 IP + 15001（本次选定方案）
+
+员工首次使用前，需通过安全渠道核验并安装现有 **Chunmo Internal Staging CA 公共证书**。这不是公开 CA 证书；未安装该 CA 的浏览器仍会报警，不应跳过警告。公网 HTTPS 的 Secure Cookie、Origin、CSRF、SSE 和服务端权限保持原有保护。
+
+Workbench 完整命令：
+
+```bash
+sudo -i
+set -e
+cd /opt/chunmo-source
+test "$(git branch --show-current)" = feat/chunmo-project-manager
+git pull --ff-only origin feat/chunmo-project-manager
+test -s /etc/pki/chunmo-staging/ca.crt
+test -s /etc/pki/chunmo-staging/ca.key
+bash deploy/native/deploy.sh
+bash deploy/native/public-https.sh --private-ca https://39.105.64.188:15001
+```
+
+新增的 `--private-ca` 模式仅使用现有 `/etc/pki/chunmo-staging/ca.crt` 和 `ca.key`，不重新签发根证书、不重新生成 CA 私钥，也不修改 localhost 的证书和私钥。若 CA 缺失、无效、私钥不匹配或有效期不足，安全停止。使用受控 OpenSSL 配置创建独立服务器私钥及证书，SAN 为 `IP:39.105.64.188`，有效期最多 365 天且不超出 CA 剩余有效期。使用随机序列号，不写入现有 CA 序列文件。
+
+启用前，以明确指定的 CA 为唯一 OpenSSL 信任锚，严格验证链、用途、IP SAN、有效期及私钥匹配。CA 公共证书快照保存在新证书 bundle 中，并通过 `mode: private-ca` 和 `ca` 路径记入受保护的 `public-https.json`；后续部署、健康检查及本地 HTTPS 探测均沿用该信任锚，不要求把内部 CA 加入 ECS 系统全局信任库。不会关闭 TLS 验证或使用 `curl -k`。原有备份、启用前 Nginx 校验、配置回滚及内部 8443 入口继续保留。
+
+确认 `PASS public HTTPS local verification` 后，仅在现有安全组和主机防火墙中审核放行 TCP 15001，不能关闭防火墙或开放 4000/5432；脚本不会修改这些规则。员工访问 `https://39.105.64.188:15001`，登录已有云空间。数据库、后端继续只监听本机；原浏览器 IndexedDB 不会被导入或删除。
+
+安全分发 `/opt/chunmo-staging/chunmo-staging-ca.crt`（仅公共证书）给员工，通过独立可信渠道比对脚本输出的 CA SHA-256 指纹；Windows 可用 `certutil -dump -v chunmo-staging-ca.crt` 查看证书的 SHA-256 证书指纹（不是 PEM 文件哈希），然后导入当前用户的“受信任的根证书颁发机构”。管理员也可在可信 Workbench 中重新执行 `openssl x509 -in /etc/pki/chunmo-staging/ca.crt -noout -fingerprint -sha256`。不得分发 `ca.key`、`server.key` 或包含密钥的目录/备份。
+
+续签时重新执行相同 `public-https.sh --private-ca ...` 命令，旧证书 bundle 和配置备份保留；不会轮换 CA 或要求员工重复安装未变更的根证书。自动续签定时任务暂未加入，需在到期前主动执行；现有健康检查在剩余不足 24 小时时报错。
+
+本轮私有 CA 模式实际验证：19/19 部署/TLS 测试、60/60 单元测试、9/9 PostgreSQL/API 测试通过，前端/API/部署工具生产构建通过。`CHUNMO_LAB_PRIVATE_CA=1 npm run test:native-lab` 通过真实 Nginx、严格 CA/IP 验证、两个独立浏览器账号、SSE、权限、重启持久化及隔离恢复；并逐字节确认 CA 私钥、CA 公共证书和 localhost 证书/私钥未变。公有/私有两种模式的失败回滚均已测试。本轮没有连接 ECS、修改其服务或实际操作 Windows 信任库。

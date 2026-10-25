@@ -113,7 +113,13 @@ export function decrypt(data: Buffer, key: Buffer) {
   d.setAuthTag(data.subarray(-16));
   return Buffer.concat([d.update(data.subarray(header.length, -16)), d.final()]);
 }
-export type PublicHTTPS = { origin: string; certificate: string; key: string };
+export type PublicHTTPS = {
+  origin: string;
+  certificate: string;
+  key: string;
+  mode?: 'private-ca';
+  ca?: string;
+};
 export function publicHTTPS(value: unknown): PublicHTTPS {
   const c = value as PublicHTTPS;
   const u = new URL(c.origin);
@@ -126,7 +132,12 @@ export function publicHTTPS(value: unknown): PublicHTTPS {
     u.hostname === '127.0.0.1'
   )
     throw Error('Public HTTPS requires an exact HTTPS origin on port 15001');
-  for (const path of [c.certificate, c.key])
+  if (
+    (c.mode !== undefined && c.mode !== 'private-ca') ||
+    (c.mode === 'private-ca' ? typeof c.ca !== 'string' || !c.ca : c.ca !== undefined)
+  )
+    throw Error('An explicit private-ca mode and CA path must be supplied together');
+  for (const path of [c.certificate, c.key, ...(c.ca ? [c.ca] : [])])
     if (!/^\/[a-zA-Z0-9_./-]+$/.test(path)) throw Error('Unsafe public certificate path');
   return c;
 }

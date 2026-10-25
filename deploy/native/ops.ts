@@ -544,7 +544,8 @@ async function main() {
     }
   } else if (op === 'nginx') {
     const external = readPublicHTTPS('/etc/chunmo-staging');
-    if (external) validateCertificate(external.origin, external.certificate, external.key);
+    if (external)
+      validateCertificate(external.origin, external.certificate, external.key, external.ca);
     process.stdout.write(nginx(path, a, b, 8443, 4000, external));
   } else if (op === 'backup') await backup(path, a, b);
   else if (op === 'restore-check')

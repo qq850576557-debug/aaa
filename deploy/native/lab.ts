@@ -9,7 +9,8 @@ import { randomBytes, createHash } from 'node:crypto';
 import { request, Agent } from 'node:https';
 import pg from 'pg';
 import { chromium, expect, type Page } from '@playwright/test';
-import { newDeployment, url, nginx, identifier } from './shared';
+import { newDeployment, url, nginx, identifier, publicHTTPS } from './shared';
+import { preparePrivateCA } from './public';
 import { cluster, grants, owner } from './admin';
 import { smoke, afterRestart, backup, restoreCheck } from './ops';
 process.loadEnvFile('.env.test.local');
@@ -38,7 +39,8 @@ writeFileSync(join(conf, 'backup.key'), randomBytes(32).toString('hex'), { mode:
 writeFileSync(join(conf, 'owner.env'), `OWNER_LOGIN=lab_owner\nOWNER_PASSWORD=${password}\n`, {
   mode: 0o600,
 });
-const publicMode = process.env.CHUNMO_LAB_PUBLIC === '1';
+const privateCAMode = process.env.CHUNMO_LAB_PRIVATE_CA === '1';
+const publicMode = process.env.CHUNMO_LAB_PUBLIC === '1' || privateCAMode;
 const origin = publicMode ? 'https://127.0.0.2:15001' : 'https://127.0.0.1:18443',
   ca = join(tls, 'ca.crt');
 const runtime = (database = c.db) => ({
@@ -127,6 +129,21 @@ try {
   console.log(
     'PASS native provisioning/migrations/grants/bootstrap repeat without password rotation or data deletion.',
   );
+  const caConfig = join(tls, 'lab-ca.cnf');
+  writeFileSync(
+    caConfig,
+    `[req]
+prompt=no
+distinguished_name=dn
+[dn]
+CN=Chunmo isolated lab CA
+[ca]
+basicConstraints=critical,CA:TRUE,pathlen:0
+keyUsage=critical,keyCertSign,cRLSign
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid:always
+`,
+  );
   execFileSync(
     'openssl',
     [
@@ -137,15 +154,17 @@ try {
       '-nodes',
       '-sha256',
       '-days',
-      '2',
+      '4',
       '-subj',
       '/CN=Chunmo isolated lab CA',
       '-keyout',
       join(tls, 'ca.key'),
       '-out',
       ca,
-      '-addext',
-      'basicConstraints=critical,CA:TRUE',
+      '-config',
+      caConfig,
+      '-extensions',
+      'ca',
     ],
     { stdio: 'ignore' },
   );
@@ -192,9 +211,21 @@ try {
     ],
     { stdio: 'ignore' },
   );
-  const external = publicMode
+  let external = publicMode
     ? { origin, certificate: join(tls, 'server.crt'), key: join(tls, 'server.key') }
     : undefined;
+  if (privateCAMode) {
+    const existing = ['ca.key', 'ca.crt', 'server.key', 'server.crt'].map((name) =>
+      readFileSync(join(tls, name)),
+    );
+    const bundle = preparePrivateCA(conf, tls, process.cwd(), state, origin);
+    external = publicHTTPS(JSON.parse(readFileSync(join(bundle, 'public-https.json'), 'utf8')));
+    for (const [index, name] of ['ca.key', 'ca.crt', 'server.key', 'server.crt'].entries())
+      assert.deepEqual(readFileSync(join(tls, name)), existing[index]);
+    console.log(
+      'PASS private CA issues a distinct IP-SAN leaf; CA key/certificate and localhost pair remain byte-identical.',
+    );
+  }
   if (external)
     writeFileSync(join(conf, 'public-https.json'), JSON.stringify(external), { mode: 0o600 });
   writeFileSync(join(root, 'nginx.conf'), nginx(process.cwd(), tls, state, 18443, 4006, external));
@@ -215,7 +246,7 @@ try {
   const pub = execFileSync('openssl', [
     'x509',
     '-in',
-    join(tls, 'server.crt'),
+    external?.certificate ?? join(tls, 'server.crt'),
     '-pubkey',
     '-noout',
   ]);
