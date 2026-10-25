@@ -241,3 +241,101 @@ test('cloud purchase deadline confirmation uses owner API, preserves baseline an
   await ownerContext.close();
   await employeeContext.close();
 });
+
+test('password panel: employee self-change, owner employee reset and owner self-change require fresh login with 8-character passwords', async ({
+  browser,
+}) => {
+  test.setTimeout(60000);
+  const f = await fixtureAccounts();
+  const ownerContext = await browser.newContext(),
+    staffContext = await browser.newContext();
+  const ownerPage = await ownerContext.newPage(),
+    staffPage = await staffContext.newPage();
+  async function panel(page: Page, login: string, password: string) {
+    await page.goto('/');
+    await page.getByRole('button', { name: '连接云空间', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '云端账号与工作空间' });
+    await signIn(dialog, login, password);
+    await dialog.getByRole('button', { name: '进入云空间', exact: true }).click();
+    await expect(page.locator('.save-state')).toContainText('已保存');
+    await page.getByRole('button', { name: '云端账号', exact: true }).click();
+    await dialog.getByRole('button', { name: '检查现有云端会话' }).click();
+    await expect(dialog.getByText('修改我的密码', { exact: true })).toBeVisible();
+    return dialog;
+  }
+  async function signIn(
+    dialog: ReturnType<Page['getByRole']>,
+    login: string,
+    password: string,
+    cloudPage?: Page,
+  ) {
+    await dialog.getByLabel('登录账号', { exact: true }).fill(login);
+    await dialog.getByLabel('登录密码', { exact: true }).fill(password);
+    await dialog.getByRole('button', { name: '登录云端', exact: true }).click();
+    if (cloudPage) {
+      await expect(dialog).not.toBeVisible();
+      await expect(cloudPage.locator('.save-state')).toContainText('已保存');
+      await cloudPage.getByRole('button', { name: '云端账号', exact: true }).click();
+      await dialog.getByRole('button', { name: '检查现有云端会话' }).click();
+    }
+    await expect(dialog.getByText('修改我的密码', { exact: true })).toBeVisible();
+  }
+  try {
+    const ownerPanel = await panel(ownerPage, f.login, f.password);
+    const staffPanel = await panel(staffPage, f.employee, f.password);
+    await expect(staffPanel.getByText('员工账号管理', { exact: true })).toHaveCount(0);
+    await staffPanel.getByText('修改我的密码', { exact: true }).click();
+    await expect(staffPanel.getByLabel('新密码', { exact: true })).toHaveAttribute(
+      'minlength',
+      '8',
+    );
+    await expect(staffPanel.getByLabel('新密码', { exact: true })).toHaveAttribute(
+      'maxlength',
+      '128',
+    );
+    await staffPanel.getByLabel('当前密码', { exact: true }).fill('wrongpwd');
+    await staffPanel.getByLabel('新密码', { exact: true }).fill('aaaaaaaa');
+    await staffPanel.getByLabel('确认新密码', { exact: true }).fill('bbbbbbbb');
+    await staffPanel.getByRole('button', { name: '保存我的新密码' }).click();
+    await expect(staffPanel.getByRole('alert')).toContainText('两次输入的新密码不一致');
+    await staffPanel.getByLabel('确认新密码', { exact: true }).fill('aaaaaaaa');
+    await staffPanel.getByRole('button', { name: '保存我的新密码' }).click();
+    await expect(staffPanel.getByRole('alert')).toContainText('当前密码不正确');
+    await staffPanel.getByLabel('当前密码', { exact: true }).fill(f.password);
+    await staffPanel.getByRole('button', { name: '保存我的新密码' }).click();
+    await expect(staffPanel.getByRole('status')).toContainText('全部旧会话已撤销');
+    expect((await staffPage.request.get('/api/auth/session')).status()).toBe(401);
+    await signIn(staffPanel, f.employee, 'aaaaaaaa', staffPage);
+    await ownerPanel.getByText('员工账号管理', { exact: true }).click();
+    await ownerPanel.getByRole('button', { name: '加载员工账号' }).click();
+    await ownerPanel.getByLabel('选择员工账号').selectOption(f.employeeId);
+    const resetForm = ownerPanel.getByRole('form', { name: '重置员工密码', exact: true });
+    await resetForm.getByLabel('新密码', { exact: true }).fill('bbbbbbbb');
+    await resetForm.getByLabel('确认新密码', { exact: true }).fill('bbbbbbbb');
+    await resetForm.getByRole('button', { name: '重置员工密码' }).click();
+    await expect(ownerPanel.getByRole('status')).toContainText('员工密码已重置');
+    expect((await staffPage.request.get('/api/auth/session')).status()).toBe(401);
+    await staffPanel.getByText('修改我的密码', { exact: true }).click();
+    await staffPanel.getByLabel('当前密码', { exact: true }).fill('aaaaaaaa');
+    await staffPanel.getByLabel('新密码', { exact: true }).fill('dddddddd');
+    await staffPanel.getByLabel('确认新密码', { exact: true }).fill('dddddddd');
+    await staffPanel.getByRole('button', { name: '保存我的新密码' }).click();
+    await expect(staffPanel.getByRole('status')).toContainText('会话已失效');
+    await signIn(staffPanel, f.employee, 'bbbbbbbb', staffPage);
+    await expect(staffPanel).toContainText('普通员工');
+    // Close the reset section to avoid duplicate hidden new-password fields.
+    await ownerPanel.getByText('员工账号管理', { exact: true }).click();
+    await ownerPanel.getByText('修改我的密码', { exact: true }).click();
+    const selfForm = ownerPanel.getByRole('form', { name: '修改我的密码', exact: true });
+    await selfForm.getByLabel('当前密码', { exact: true }).fill(f.password);
+    await selfForm.getByLabel('新密码', { exact: true }).fill('cccccccc');
+    await selfForm.getByLabel('确认新密码', { exact: true }).fill('cccccccc');
+    await selfForm.getByRole('button', { name: '保存我的新密码' }).click();
+    await expect(ownerPanel.getByRole('status')).toContainText('全部旧会话已撤销');
+    await signIn(ownerPanel, f.login, 'cccccccc', ownerPage);
+    await expect(ownerPanel).toContainText('工作室负责人');
+  } finally {
+    await ownerContext.close();
+    await staffContext.close();
+  }
+});

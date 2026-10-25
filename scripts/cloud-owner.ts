@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { passwordSchema } from '../src/lib/password';
 import { passwordHash } from '../server/auth';
 import { createWorkspace } from '../server/store';
 import { pool, privatePool } from '../server/db';
@@ -8,12 +9,11 @@ if (
   !login ||
   !/^[a-z0-9_.@-]{3,80}$/.test(login) ||
   !password ||
-  password.length < 12 ||
-  password.length > 128 ||
+  !passwordSchema.safeParse(password).success ||
   !process.env.MIGRATION_DATABASE_URL
 )
   throw Error(
-    'Provide OWNER_LOGIN, OWNER_PASSWORD (12+ characters), and migration credentials through the environment; never command arguments.',
+    'Provide OWNER_LOGIN, OWNER_PASSWORD (8–128 characters), and migration credentials through the environment; never command arguments.',
   );
 const c = new pg.Client({ connectionString: process.env.MIGRATION_DATABASE_URL });
 await c.connect();

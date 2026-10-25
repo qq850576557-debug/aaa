@@ -109,6 +109,7 @@ export default function App() {
     cloudUser,
     reloadCloud,
     changeDeadline,
+    hasUnsavedChanges,
   } = useWorkspace();
   const [historyOpen, setHistoryOpen] = useState<{ scope: string; anchor?: Anchor } | null>(null);
   const [navExpanded, setNavExpanded] = useState(() => {
@@ -750,7 +751,7 @@ export default function App() {
       </aside>
       <div className="main-shell">
         <header className="topbar">
-          <CloudControl isCloud={isCloud} dirty={status !== '已保存'} />
+          <CloudControl isCloud={isCloud} dirty={hasUnsavedChanges} />
           <div className="mobile-brand">
             <strong className="brand-name">{BRAND_NAME}</strong>
             <span className="brand-initials">{BRAND_INITIALS}</span>

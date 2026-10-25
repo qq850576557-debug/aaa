@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Modal, Confirm } from './Modal';
-import { cloudApi, cloudSession, selectSpace, type CloudUser } from '../lib/cloud';
+import { PASSWORD_MIN, PASSWORD_MAX, passwordSchema } from '../lib/password';
+import { cloudApi, cloudSession, selectSpace, CloudError, type CloudUser } from '../lib/cloud';
 export function CloudControl({ isCloud, dirty }: { isCloud: boolean; dirty: boolean }) {
   const [open, setOpen] = useState(false);
   return (
@@ -27,6 +28,8 @@ function CloudPanel({
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState('');
+  const [accounts, setAccounts] = useState<{ id: string; login: string; active: boolean }[]>([]),
+    [target, setTarget] = useState('');
   const [preview, setPreview] = useState<{
       id?: string;
       revision: number;
@@ -35,6 +38,14 @@ function CloudPanel({
     } | null>(null),
     [confirm, setConfirm] = useState(false),
     [leave, setLeave] = useState<(() => void) | null>(null);
+  const expired = () => {
+    setLogin(user?.login ?? login);
+    setUser(null);
+    setPassword('');
+    setAccounts([]);
+    setTarget('');
+    setNotice('会话已失效，请重新登录。');
+  };
   const load = async () => {
     try {
       setUser(await cloudSession());
@@ -48,10 +59,16 @@ function CloudPanel({
       setError('请先备份草稿并处理保存状态，再切换账号');
       return;
     }
+    const checked = passwordSchema.safeParse(password);
+    if (!checked.success) {
+      setError(checked.error.issues[0].message);
+      return;
+    }
     setBusy(true);
     setError('');
     try {
       await cloudApi('/auth/login', 'POST', { login, password });
+      setNotice('');
       setPassword('');
       setUser(await cloudSession());
       if (isCloud) selectSpace('cloud');
@@ -90,7 +107,8 @@ function CloudPanel({
                     type="password"
                     autoComplete="current-password"
                     required
-                    minLength={12}
+                    minLength={PASSWORD_MIN}
+                    maxLength={PASSWORD_MAX}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -128,6 +146,29 @@ function CloudPanel({
               >
                 退出登录并返回本地
               </button>
+              <details>
+                <summary>修改我的密码</summary>
+                <p>密码8–128位，不限制字符组合。成功后该账号所有会话失效，须重新登录。</p>
+                <PasswordForm
+                  requireCurrent
+                  onExpired={expired}
+                  onSave={async (currentPassword, newPassword) => {
+                    if (isCloud && dirty) throw Error('请先保存云端草稿或下载紧急备份，再修改密码');
+                    await cloudApi('/auth/password', 'POST', {
+                      currentPassword,
+                      newPassword,
+                      confirmPassword: newPassword,
+                    });
+                    setLogin(user.login);
+                    setUser(null);
+                    setPassword('');
+                    setAccounts([]);
+                    setTarget('');
+                    setError('');
+                    setNotice('密码已修改，全部旧会话已撤销。请使用新密码重新登录。');
+                  }}
+                />
+              </details>
               {user.owner && (
                 <>
                   <details>
@@ -135,6 +176,12 @@ function CloudPanel({
                     <form
                       onSubmit={async (e) => {
                         e.preventDefault();
+                        const checked = passwordSchema.safeParse(password);
+                        if (!checked.success) {
+                          setError(checked.error.issues[0].message);
+                          return;
+                        }
+                        setError('');
                         setBusy(true);
                         try {
                           await cloudApi('/accounts', 'POST', { login, password });
@@ -162,7 +209,8 @@ function CloudPanel({
                           aria-label="初始密码"
                           type="password"
                           autoComplete="new-password"
-                          minLength={12}
+                          minLength={PASSWORD_MIN}
+                          maxLength={PASSWORD_MAX}
                           required
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
@@ -170,6 +218,61 @@ function CloudPanel({
                       </label>
                       <button disabled={busy}>创建员工</button>
                     </form>
+                  </details>
+                  <details>
+                    <summary>员工账号管理</summary>
+                    <p>
+                      负责人可重置员工密码，无需原密码。员工所有会话将失效，角色、状态和业务记录保持不变。
+                    </p>
+                    <button
+                      disabled={busy}
+                      onClick={async () => {
+                        setBusy(true);
+                        setError('');
+                        try {
+                          const result = await cloudApi<{ accounts: typeof accounts }>('/accounts');
+                          setAccounts(result.accounts);
+                          setTarget('');
+                          if (!result.accounts.length) setNotice('暂无员工账号');
+                        } catch (e) {
+                          setError(String(e));
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      加载员工账号
+                    </button>
+                    <label>
+                      选择员工账号
+                      <select
+                        aria-label="选择员工账号"
+                        value={target}
+                        onChange={(e) => setTarget(e.target.value)}
+                      >
+                        <option value="">请选择员工</option>
+                        {accounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.login}
+                            {a.active ? '' : '（已停用）'}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {target && (
+                      <PasswordForm
+                        key={target}
+                        requireCurrent={false}
+                        onExpired={expired}
+                        onSave={async (_current, password) => {
+                          await cloudApi('/accounts/' + encodeURIComponent(target), 'PATCH', {
+                            password,
+                          });
+                          setError('');
+                          setNotice('员工密码已重置，全部旧会话已撤销，请通知员工重新登录。');
+                        }}
+                      />
+                    )}
                   </details>
                   <details>
                     <summary>导入本地业务与版本备份</summary>
@@ -272,5 +375,103 @@ function CloudPanel({
         />
       )}
     </>
+  );
+}
+
+function PasswordForm({
+  requireCurrent,
+  onSave,
+  onExpired,
+}: {
+  requireCurrent: boolean;
+  onExpired: () => void;
+  onSave: (current: string, next: string) => Promise<void>;
+}) {
+  const [current, setCurrent] = useState(''),
+    [next, setNext] = useState(''),
+    [confirmation, setConfirmation] = useState(''),
+    [error, setError] = useState(''),
+    [busy, setBusy] = useState(false);
+  return (
+    <form
+      aria-label={requireCurrent ? '修改我的密码' : '重置员工密码'}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setError('');
+        for (const value of [next, ...(requireCurrent ? [current] : [])]) {
+          const result = passwordSchema.safeParse(value);
+          if (!result.success) {
+            setError(result.error.issues[0].message);
+            return;
+          }
+        }
+        if (next !== confirmation) {
+          setError('两次输入的新密码不一致');
+          return;
+        }
+        setBusy(true);
+        try {
+          await onSave(current, next);
+          setCurrent('');
+          setNext('');
+          setConfirmation('');
+        } catch (e) {
+          if (e instanceof CloudError && e.status === 401) onExpired();
+          else setError(String(e));
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {requireCurrent && (
+        <label>
+          当前密码
+          <input
+            aria-label="当前密码"
+            type="password"
+            autoComplete="current-password"
+            required
+            minLength={PASSWORD_MIN}
+            maxLength={PASSWORD_MAX}
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+        </label>
+      )}
+      <label>
+        新密码
+        <input
+          aria-label="新密码"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={PASSWORD_MIN}
+          maxLength={PASSWORD_MAX}
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+        />
+      </label>
+      <label>
+        确认新密码
+        <input
+          aria-label="确认新密码"
+          type="password"
+          autoComplete="new-password"
+          required
+          minLength={PASSWORD_MIN}
+          maxLength={PASSWORD_MAX}
+          value={confirmation}
+          onChange={(e) => setConfirmation(e.target.value)}
+        />
+      </label>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      <button className="primary" disabled={busy}>
+        {requireCurrent ? '保存我的新密码' : '重置员工密码'}
+      </button>
+    </form>
   );
 }

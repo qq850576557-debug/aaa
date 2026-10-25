@@ -9,6 +9,7 @@ export function useWorkspace() {
     ? remote
     : {
         ...local,
+        hasUnsavedChanges: local.status !== '已保存',
         isCloud: false,
         cloudUser: null,
         reloadCloud: async () => {},

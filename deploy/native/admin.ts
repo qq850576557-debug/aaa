@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { passwordSchema } from '../../src/lib/password';
 import { createHmac, createHash, randomBytes, pbkdf2Sync } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import argon2 from 'argon2';
@@ -173,7 +174,7 @@ export async function owner(c: Deployment, login: string, password: string) {
     await db.query('BEGIN');
     await db.query('LOCK TABLE account IN EXCLUSIVE MODE');
     if (!(await db.query('SELECT 1 FROM account LIMIT 1')).rowCount) {
-      if (!/^[a-z0-9_.@-]{3,80}$/.test(login) || password.length < 12 || password.length > 128)
+      if (!/^[a-z0-9_.@-]{3,80}$/.test(login) || !passwordSchema.safeParse(password).success)
         throw Error('Invalid owner bootstrap credentials');
       await createWorkspace(
         db,

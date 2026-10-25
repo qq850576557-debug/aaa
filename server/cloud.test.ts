@@ -471,3 +471,183 @@ test('server protects immutable purchase deadlines and approval history; owner-o
   );
   assert.equal(q.rowCount, 1);
 });
+
+test('8–128 password boundaries, owner-only employee list/reset preserve account roles and complete business state', async () => {
+  const { f, a, b } = await setup();
+  const other = await fixtureAccounts();
+  await request('/workspace', 'PUT', { revision: 0, data: data() }, a);
+  const before = await (await request('/workspace', 'GET', undefined, a)).json();
+  const accountBefore = (
+    await pool.query('SELECT id,workspace_id,login,role,active FROM account WHERE id=$1', [
+      f.employeeId,
+    ])
+  ).rows[0];
+  assert.equal((await request('/accounts', 'GET', undefined, b)).status, 403);
+  assert.equal(
+    (await request('/accounts/' + f.employeeId, 'PATCH', { password: 'aaaaaaaa' }, b)).status,
+    403,
+  );
+  const list = await (await request('/accounts', 'GET', undefined, a)).json();
+  assert.deepEqual(list.accounts, [{ id: f.employeeId, login: f.employee, active: true }]);
+  assert.equal(
+    (await request('/accounts/' + a.user.id, 'PATCH', { password: 'aaaaaaaa' }, a)).status,
+    409,
+  );
+  for (const password of ['', '1234567', 'x'.repeat(129), ' '.repeat(8)]) {
+    assert.equal(
+      (await request('/accounts', 'POST', { login: 'invalid_' + randomUUID(), password }, a))
+        .status,
+      400,
+    );
+    assert.equal(
+      (await request('/accounts/' + f.employeeId, 'PATCH', { password }, a)).status,
+      400,
+    );
+  }
+  assert.equal(
+    (await request('/accounts/' + other.employeeId, 'PATCH', { password: 'aaaaaaaa' }, a)).status,
+    404,
+  );
+  const name = 'eight_' + randomUUID();
+  assert.equal(
+    (await request('/accounts', 'POST', { login: name, password: 'aaaaaaaa' }, a)).status,
+    201,
+  );
+  await login(name, 'aaaaaaaa');
+  const second = await login(f.employee, f.password);
+  const long = 'p'.repeat(128);
+  assert.equal(
+    (await request('/accounts/' + f.employeeId, 'PATCH', { password: long }, a)).status,
+    200,
+  );
+  for (const client of [b, second])
+    assert.equal((await request('/auth/session', 'GET', undefined, client)).status, 401);
+  await login(f.employee, long);
+  assert.deepEqual(
+    (
+      await pool.query('SELECT id,workspace_id,login,role,active FROM account WHERE id=$1', [
+        f.employeeId,
+      ])
+    ).rows[0],
+    accountBefore,
+  );
+  assert.deepEqual(await (await request('/workspace', 'GET', undefined, a)).json(), before);
+  const row = (await pool.query('SELECT password_hash FROM account WHERE id=$1', [f.employeeId]))
+    .rows[0];
+  const hashParts = row.password_hash.split('$');
+  assert.equal(hashParts[1], 'argon2id');
+  assert.equal(hashParts[2], 'v=19');
+  assert.deepEqual(
+    Object.fromEntries(hashParts[3].split(',').map((part: string) => part.split('='))),
+    { m: '65536', t: '3', p: '1' },
+  );
+  assert.ok(!JSON.stringify(list).includes(row.password_hash));
+});
+
+test('owner and employee self-change verify current password/confirmation/CSRF, revoke every old session and SSE, require fresh login', async () => {
+  for (const owner of [true, false]) {
+    const { f, a, b } = await setup();
+    const client = owner ? a : b,
+      name = owner ? f.login : f.employee;
+    const second = await login(name, f.password);
+    const newPassword = owner ? 'aaaaaaaa' : 'n'.repeat(128);
+    const body = { currentPassword: f.password, newPassword, confirmPassword: newPassword };
+    assert.equal((await request('/auth/password', 'POST', body)).status, 401);
+    assert.equal(
+      (await request('/auth/password', 'POST', body, client, { 'X-CSRF-Token': 'invalid' })).status,
+      403,
+    );
+    assert.equal(
+      (await request('/auth/password', 'POST', { ...body, confirmPassword: 'different' }, client))
+        .status,
+      400,
+    );
+    assert.equal(
+      (await request('/auth/password', 'POST', { ...body, currentPassword: 'wrongpwd' }, client))
+        .status,
+      403,
+    );
+    assert.equal((await request('/auth/session', 'GET', undefined, second)).status, 200);
+    const sse = await request('/events', 'GET', undefined, second);
+    const changed = await request('/auth/password', 'POST', body, client);
+    assert.equal(changed.status, 200);
+    assert.match(changed.headers.get('set-cookie')!, /Max-Age=0/);
+    assert.match(await sse.text(), /event: session-expired/);
+    for (const old of [client, second])
+      assert.equal((await request('/auth/session', 'GET', undefined, old)).status, 401);
+    assert.equal(
+      (await request('/auth/login', 'POST', { login: name, password: f.password })).status,
+      401,
+    );
+    const fresh = await login(name, newPassword);
+    assert.equal(fresh.user.owner, owner);
+    assert.equal((await request('/workspace', 'GET', undefined, fresh)).status, 200);
+  }
+});
+
+test('password attempts use a shared per-account limiter and never change password on failures', async () => {
+  const { f, b } = await setup();
+  const another = await login(f.employee, f.password);
+  for (let i = 0; i < 5; i++) {
+    const r = await request(
+      '/auth/password',
+      'POST',
+      { currentPassword: 'wrongpwd', newPassword: 'aaaaaaaa', confirmPassword: 'aaaaaaaa' },
+      i % 2 ? another : b,
+    );
+    assert.equal(r.status, 403);
+  }
+  assert.equal(
+    (
+      await request(
+        '/auth/password',
+        'POST',
+        { currentPassword: f.password, newPassword: 'aaaaaaaa', confirmPassword: 'aaaaaaaa' },
+        b,
+      )
+    ).status,
+    429,
+  );
+  assert.equal((await request('/auth/session', 'GET', undefined, another)).status, 200);
+});
+
+test('concurrent login and owner reset cannot leave sessions authenticated with the old password', async () => {
+  const { f, a } = await setup();
+  const results = await Promise.all([
+    request('/auth/login', 'POST', { login: f.employee, password: f.password }),
+    request('/accounts/' + f.employeeId, 'PATCH', { password: 'aaaaaaaa' }, a),
+  ]);
+  assert.equal(results[1].status, 200);
+  assert.ok([200, 401].includes(results[0].status));
+  if (results[0].status === 200) {
+    const old = {
+      cookie: results[0].headers.get('set-cookie')!.split(';')[0],
+      csrf: '',
+      user: null,
+    };
+    assert.equal((await request('/auth/session', 'GET', undefined, old)).status, 401);
+  }
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int AS n FROM auth_session WHERE account_id=$1', [
+        f.employeeId,
+      ])
+    ).rows[0].n,
+    0,
+  );
+  await login(f.employee, 'aaaaaaaa');
+});
+
+test('owner password reset has a database-backed rate limit shared across target accounts', async () => {
+  const { f, a } = await setup();
+  for (let i = 0; i < 5; i++)
+    assert.equal(
+      (await request('/accounts/' + f.employeeId, 'PATCH', { password: 'aaaaaaaa' }, a)).status,
+      200,
+    );
+  assert.equal(
+    (await request('/accounts/' + f.employeeId, 'PATCH', { password: 'bbbbbbbb' }, a)).status,
+    429,
+  );
+  await login(f.employee, 'aaaaaaaa');
+});

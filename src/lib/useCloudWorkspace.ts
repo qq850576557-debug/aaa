@@ -226,6 +226,7 @@ export function useCloudWorkspace(enabled: boolean) {
       }
       return persist(current.current);
     },
+    hasUnsavedChanges: pending.current,
     isCloud: true,
     cloudUser: user,
     reloadCloud,

@@ -1,4 +1,5 @@
 import express from 'express';
+import { passwordSchema } from '../src/lib/password';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { pool, transaction } from './db';
@@ -27,7 +28,7 @@ const credentials = z
       .trim()
       .toLowerCase()
       .regex(/^[a-z0-9_.@-]{3,80}$/),
-    password: z.string().min(12).max(128),
+    password: passwordSchema,
   })
   .strict();
 function valid<T>(fn: () => T): T {
@@ -81,24 +82,26 @@ export function createApp() {
       if (hashing >= 2) throw new ApiError(429, '登录繁忙，请稍后重试');
       hashing++;
       try {
-        const q = await pool.query('SELECT id,password_hash,active FROM account WHERE login=$1', [
-          body.login,
-        ]);
-        const user = q.rows[0];
-        const valid = user
-          ? await argon2.verify(user.password_hash, body.password)
-          : await argon2.verify(dummyHash, body.password);
-        if (!valid || !user?.active) throw new ApiError(401, '账号或密码不正确');
-        const previous = tokenFrom(req);
-        if (previous) {
-          await pool.query('DELETE FROM auth_session WHERE token_hash=$1', [hash(previous)]);
-          for (const s of streams) if (s.tokenHash === hash(previous)) s.close();
-        }
-        const token = randomToken();
-        await pool.query(
-          "INSERT INTO auth_session(token_hash,account_id,expires_at) VALUES($1,$2,now()+interval '8 hours')",
-          [hash(token), user.id],
-        );
+        const previous = tokenFrom(req),
+          token = randomToken();
+        // Password changes/reset take the same account row lock, so an old hash
+        // cannot be verified before revocation and create a session after it.
+        await transaction(async (c) => {
+          const q = await c.query(
+            'SELECT id,password_hash,active FROM account WHERE login=$1 FOR UPDATE',
+            [body.login],
+          );
+          const user = q.rows[0];
+          const valid = await argon2.verify(user?.password_hash ?? dummyHash, body.password);
+          if (!valid || !user?.active) throw new ApiError(401, '账号或密码不正确');
+          if (previous)
+            await c.query('DELETE FROM auth_session WHERE token_hash=$1', [hash(previous)]);
+          await c.query(
+            "INSERT INTO auth_session(token_hash,account_id,expires_at) VALUES($1,$2,now()+interval '8 hours')",
+            [hash(token), user.id],
+          );
+        });
+        if (previous) for (const s of streams) if (s.tokenHash === hash(previous)) s.close();
         setCookie(res, token);
         res.json({ ok: true });
       } finally {
@@ -123,9 +126,73 @@ export function createApp() {
       next(e);
     }
   });
+  const passwordLimit = async (id: string) => {
+    const q = await pool.query(
+      "INSERT INTO login_limit VALUES($1,1,now()+interval '1 minute') ON CONFLICT(bucket) DO UPDATE SET attempts=CASE WHEN login_limit.expires_at<now() THEN 1 ELSE login_limit.attempts+1 END,expires_at=CASE WHEN login_limit.expires_at<now() THEN now()+interval '1 minute' ELSE login_limit.expires_at END RETURNING attempts",
+      [hash('password:' + id)],
+    );
+    if (q.rows[0].attempts > 5) throw new ApiError(429, '密码操作过于频繁，请稍后重试');
+  };
+  app.post('/api/auth/password', async (req: AuthRequest, res, next) => {
+    try {
+      const body = z
+        .object({
+          currentPassword: passwordSchema,
+          newPassword: passwordSchema,
+          confirmPassword: passwordSchema,
+        })
+        .strict()
+        .refine((v) => v.newPassword === v.confirmPassword)
+        .parse(req.body);
+      await passwordLimit(req.actor!.id);
+      if (hashing >= 2) throw new ApiError(429, '密码处理繁忙');
+      hashing++;
+      try {
+        await transaction(async (c) => {
+          const q = await c.query(
+            'SELECT password_hash FROM account WHERE id=$1 AND active=true FOR UPDATE',
+            [req.actor!.id],
+          );
+          // A concurrent reset/change may have revoked this request after authentication.
+          const live = await c.query(
+            'SELECT 1 FROM auth_session WHERE token_hash=$1 AND account_id=$2 AND expires_at>now()',
+            [req.tokenHash, req.actor!.id],
+          );
+          if (!q.rowCount || !live.rowCount) throw new ApiError(401, '会话已失效，请登录');
+          if (!(await argon2.verify(q.rows[0].password_hash, body.currentPassword)))
+            throw new ApiError(403, '当前密码不正确');
+          await c.query('UPDATE account SET password_hash=$2 WHERE id=$1', [
+            req.actor!.id,
+            await passwordHash(body.newPassword),
+          ]);
+          await c.query('DELETE FROM auth_session WHERE account_id=$1', [req.actor!.id]);
+          await audit(c, req.actor!, 'account.password.change');
+        });
+        for (const s of streams) if (s.accountId === req.actor!.id) s.close();
+        setCookie(res, '', true);
+        res.json({ ok: true });
+      } finally {
+        hashing--;
+      }
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get('/api/accounts', owner, async (req: AuthRequest, res, next) => {
+    try {
+      const q = await pool.query(
+        'SELECT id,login,active FROM account WHERE workspace_id=$1 AND id<>$2 ORDER BY login',
+        [req.actor!.workspaceId, req.actor!.id],
+      );
+      res.json({ accounts: q.rows });
+    } catch (e) {
+      next(e);
+    }
+  });
   app.post('/api/accounts', owner, async (req: AuthRequest, res, next) => {
     try {
       const body = credentials.parse(req.body);
+      await passwordLimit(req.actor!.id);
       if (hashing >= 2) throw new ApiError(429, '密码处理繁忙');
       hashing++;
       try {
@@ -151,11 +218,14 @@ export function createApp() {
       const body = z
         .object({
           active: z.boolean().optional(),
-          password: z.string().min(12).max(128).optional(),
+          password: passwordSchema.optional(),
         })
         .strict()
         .refine((x) => x.active !== undefined || x.password)
         .parse(req.body);
+      if (req.params.id === req.actor!.id && body.password)
+        throw new ApiError(409, '请使用修改我的密码并验证当前密码');
+      if (body.password) await passwordLimit(req.actor!.id);
       if (req.params.id === req.actor!.id && body.active === false)
         throw new ApiError(409, '不能停用负责人');
       if (body.password && hashing >= 2) throw new ApiError(429, '密码处理繁忙');
