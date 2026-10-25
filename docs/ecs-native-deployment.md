@@ -65,6 +65,18 @@ sudo cat /etc/chunmo-staging/owner.env
 
 不要粘贴密码/配置到聊天或Git。该文件是**初始**凭据；以后在API重置密码不会重写它，也不会因重跑部署恢复旧密码。
 
+## 仅修复现有TLS证书
+
+若旧CA因系统OpenSSL默认扩展与`-addext`叠加而出现重复Basic Constraints，先更新功能分支源码，再执行：
+
+```bash
+sudo bash /opt/chunmo-source/deploy/native/deploy.sh --repair-tls
+```
+
+该模式在数据库、构建和服务部署前退出，不访问PostgreSQL、不修改安全组。必须保留原`ca.key`、`server.key`；脚本不会重建或删除这些私钥。显式OpenSSL配置签发候选证书，检查重复扩展、私钥匹配、CA自签名、localhost/IP SAN、服务端用途和至少14天有效期。验证失败保留当前证书；成功后先把旧文件备份到TLS目录内root专用`backup-*`目录，再用同一证书版本指针原子激活CA和服务器证书，旧版本保留。
+
+CA证书指纹可能改变，即使CA私钥没变，也应重新核对并在已信任旧证书的Windows账号导入新的公共CA。不要分发私钥，不关闭HTTPS验证。修复完成后运行源码中的`deploy.sh`继续原部署并加载新证书。新增TLS测试复现已签名的重复扩展根证书，检查修复、失败不替换、错误私钥/缺SAN/有效期不足及真实HTTPS验证握手；测试不连接ECS。
+
 ## Windows私有访问
 
 本阶段先用已有SSH管理通道转发，不依赖额外VPN连通性。不新增安全组规则。若SSH目前只通过Workbench可达而没有Windows可用路径，先由用户明确批准私有接入配置，不擅自开放端口。

@@ -14,6 +14,144 @@ PREVIOUS=
 NODE=
 RELEASE=
 fail() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
+# BEGIN CHUNMO TLS FUNCTIONS (also exercised by the isolated TLS tests)
+tls_openssl() { OPENSSL_CONF="$tls_config" openssl "$@"; }
+tls_key_matches() {
+  local certificate=$1 key=$2 from_cert from_key
+  from_cert=$(tls_openssl x509 -in "$certificate" -pubkey -noout | tls_openssl pkey -pubin -outform DER | tls_openssl dgst -sha256) || return 1
+  from_key=$(tls_openssl pkey -in "$key" -pubout -outform DER | tls_openssl dgst -sha256) || return 1
+  [[ $from_cert == "$from_key" ]]
+}
+tls_unique_extensions() {
+  local text
+  text=$(tls_openssl x509 -in "$1" -text -noout) || return 1
+  [[ -z $(printf '%s\n' "$text" | sed -n 's/^[[:space:]]*\(X509v3 [^:]*\):.*/\1/p' | sort | uniq -d) ]] || { printf 'TLS validation failed: duplicate certificate extensions.\n' >&2; return 1; }
+}
+tls_validate_pair() {
+  local ca=$1 server=$2 ca_key=$3 server_key=$4 text
+  tls_unique_extensions "$ca" && tls_unique_extensions "$server" || return 1
+  tls_key_matches "$ca" "$ca_key" && tls_key_matches "$server" "$server_key" || return 1
+  tls_openssl x509 -checkend 1209600 -noout -in "$ca" >/dev/null || return 1
+  tls_openssl x509 -checkend 1209600 -noout -in "$server" >/dev/null || return 1
+  text=$(tls_openssl x509 -in "$server" -text -noout) || return 1
+  [[ $text == *'DNS:localhost'* && $text == *'IP Address:127.0.0.1'* && $text == *'CA:FALSE'* ]] || return 1
+  tls_openssl verify -x509_strict -check_ss_sig -CAfile "$ca" "$ca" >/dev/null || return 1
+  tls_openssl verify -x509_strict -purpose sslserver -CAfile "$ca" -verify_hostname localhost "$server" >/dev/null || return 1
+  tls_openssl verify -x509_strict -purpose sslserver -CAfile "$ca" -verify_ip 127.0.0.1 "$server" >/dev/null
+}
+tls_manage_pair() {
+  local mode=$1 work tls_config ca_key server_key backup name legacy bundle target
+  work=$(mktemp -d "$TLS/.tls-candidate.XXXXXXXX")
+  tls_config=$work/openssl.cnf
+  cat > "$tls_config" <<'CNF'
+[ req ]
+prompt = no
+distinguished_name = ca_dn
+[ ca_dn ]
+CN = Chunmo Internal Staging CA
+[ ca_extensions ]
+basicConstraints = critical,CA:TRUE,pathlen:0
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+[ server_extensions ]
+basicConstraints = critical,CA:FALSE
+keyUsage = critical,digitalSignature,keyEncipherment
+extendedKeyUsage = serverAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+subjectAltName = DNS:localhost,IP:127.0.0.1
+CNF
+  [[ ! -L $TLS/.certificates ]] || { printf 'Unmanaged TLS bundle directory symlink; refusing changes.\n' >&2; return 1; }
+  if [[ -e $TLS/.certificates/current || -L $TLS/.certificates/current ]]; then
+    [[ -L $TLS/.certificates/current && $(readlink "$TLS/.certificates/current") =~ ^(cert-|legacy\.)[a-zA-Z0-9]{8}$ ]] || { printf 'Unmanaged TLS current path; refusing changes.\n' >&2; return 1; }
+  fi
+  for name in ca.crt server.crt; do
+    [[ ! -L $TLS/$name || $(readlink "$TLS/$name") == ".certificates/current/$name" ]] || { printf 'Unmanaged certificate symlink; refusing changes.\n' >&2; return 1; }
+  done
+  ca_key=$TLS/ca.key
+  server_key=$TLS/server.key
+  for name in ca.key server.key; do [[ ! -L $TLS/$name ]] || { printf 'Refusing to replace a symlinked private key.\n' >&2; return 1; }; done
+  if [[ -f $ca_key && -f $server_key && -f $TLS/ca.crt && -f $TLS/server.crt ]]; then
+    # Resolve a managed bundle once, so validation sees one certificate generation.
+    target=$TLS
+    if [[ -L $TLS/.certificates/current ]]; then target=$(readlink -e "$TLS/.certificates/current"); fi
+    if tls_validate_pair "$target/ca.crt" "$target/server.crt" "$ca_key" "$server_key"; then
+      printf 'TLS pair already valid; existing certificates and private keys retained.\n'
+      return 0
+    fi
+  fi
+  if [[ $mode == repair ]]; then
+    [[ -r $ca_key && -r $server_key ]] || { printf 'TLS repair requires both original private keys; no keys regenerated.\n' >&2; return 1; }
+    # A mismatched key must be investigated, never silently adopted as a new identity.
+    for name in ca server; do
+      if [[ -f $TLS/$name.crt ]]; then tls_key_matches "$TLS/$name.crt" "$TLS/$name.key" || { printf 'Original certificate/private-key mismatch; active files unchanged.\n' >&2; return 1; }; fi
+    done
+  else
+    for name in ca.key server.key ca.crt server.crt; do
+      [[ ! -e $TLS/$name && ! -L $TLS/$name ]] || { printf 'TLS pair is invalid/partial; run deploy.sh --repair-tls with retained keys.\n' >&2; return 1; }
+    done
+    ca_key=$work/ca.key
+    server_key=$work/server.key
+    tls_openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$ca_key" >/dev/null 2>&1
+    tls_openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$server_key" >/dev/null 2>&1
+  fi
+  # Everything is issued with explicit sections; no default config or -addext merging.
+  tls_openssl req -new -x509 -key "$ca_key" -config "$tls_config" -extensions ca_extensions -sha256 -days 3650 -set_serial "0x$(tls_openssl rand -hex 16)" -out "$work/ca.crt"
+  tls_openssl req -new -key "$server_key" -config "$tls_config" -subj '/CN=localhost' -out "$work/server.csr"
+  tls_openssl x509 -req -in "$work/server.csr" -CA "$work/ca.crt" -CAkey "$ca_key" -set_serial "0x$(tls_openssl rand -hex 16)" -days 365 -sha256 -extfile "$tls_config" -extensions server_extensions -out "$work/server.crt"
+  tls_validate_pair "$work/ca.crt" "$work/server.crt" "$ca_key" "$server_key" || { printf 'Candidate TLS validation failed; active certificates/private keys unchanged.\n' >&2; return 1; }
+  if [[ $mode == repair ]]; then
+    backup=$(mktemp -d "$TLS/backup-$(date -u +%Y%m%dT%H%M%SZ).XXXXXXXX")
+    chmod 0700 "$backup"
+    for name in ca.key server.key ca.crt server.crt ca.srl server.csr server.ext; do
+      if [[ -f $TLS/$name ]]; then cp -pL "$TLS/$name" "$backup/$name"; fi
+    done
+    if [[ -n ${BASE:-} && -f ${BASE:-}/chunmo-staging-ca.crt ]]; then cp -pL "$BASE/chunmo-staging-ca.crt" "$backup/exported-ca.crt"; fi
+    printf 'Original TLS files backed up privately: %s\n' "$backup"
+  fi
+  # Publish certificates together via one atomic current-symlink replacement.
+  # Existing legacy aliases are first pointed at an unchanged legacy bundle.
+  mkdir -p "$TLS/.certificates"
+  chgrp --reference="$TLS" "$TLS/.certificates" "$work"
+  chmod 0750 "$TLS/.certificates"
+  if [[ -e $TLS/.certificates/current && ! -L $TLS/.certificates/current ]]; then printf 'Unmanaged TLS current path; refusing overwrite.\n' >&2; return 1; fi
+  for name in ca.crt server.crt; do
+    [[ ! -L $TLS/$name || $(readlink "$TLS/$name") == ".certificates/current/$name" ]] || { printf 'Unmanaged certificate symlink; refusing overwrite.\n' >&2; return 1; }
+  done
+  if [[ ! -L $TLS/.certificates/current && -f $TLS/ca.crt && -f $TLS/server.crt ]]; then
+    legacy=$(mktemp -d "$TLS/.certificates/legacy.XXXXXXXX")
+    cp -pL "$TLS/ca.crt" "$TLS/server.crt" "$legacy/"
+    chgrp --reference="$TLS" "$legacy"
+    chmod 0750 "$legacy"
+    chmod 0644 "$legacy/ca.crt" "$legacy/server.crt"
+    ln -s "${legacy##*/}" "$TLS/.certificates/current"
+  fi
+  if [[ $mode != repair ]]; then mv -T "$ca_key" "$TLS/ca.key"; mv -T "$server_key" "$TLS/server.key"; fi
+  chmod 0644 "$work/ca.crt" "$work/server.crt"
+  chmod 0750 "$work"
+  bundle=$TLS/.certificates/cert-${work##*.tls-candidate.}
+  mv -T "$work" "$bundle"
+  for name in ca.crt server.crt; do
+    if [[ ! -L $TLS/$name ]]; then
+      ln -s ".certificates/current/$name" "$TLS/.$name.next.$$"
+      mv -Tf "$TLS/.$name.next.$$" "$TLS/$name"
+    fi
+  done
+  ln -s "${bundle##*/}" "$TLS/.certificates/.current.next.$$"
+  mv -Tf "$TLS/.certificates/.current.next.$$" "$TLS/.certificates/current"
+  printf 'Validated TLS certificate pair atomically activated; private keys retained.\n'
+}
+tls_finish_permissions() {
+  chown root:chunmo-staging-web "$TLS/server.key" "$TLS/server.crt" "$TLS/ca.crt"
+  chmod 0600 "$TLS/ca.key"
+  chmod 0640 "$TLS/server.key"
+  chmod 0644 "$TLS/server.crt" "$TLS/ca.crt"
+  install -m 0644 "$TLS/ca.crt" "$BASE/.chunmo-staging-ca.crt.next.$$"
+  mv -Tf "$BASE/.chunmo-staging-ca.crt.next.$$" "$BASE/chunmo-staging-ca.crt"
+}
+# END CHUNMO TLS FUNCTIONS
+
 on_error() {
   local code=$? line=$1
   trap - ERR
@@ -35,6 +173,20 @@ on_error() {
   printf 'Diagnostics: systemctl status chunmo-staging-api chunmo-staging-web; journalctl -u chunmo-staging-api -u chunmo-staging-web -n 60\n' >&2
   exit "$code"
 }
+# Explicit certificate-only repair: exits before PostgreSQL/build/service deployment.
+if [[ ${1:-} == --repair-tls ]]; then
+  [[ $EUID == 0 && $# == 1 ]] || fail 'Use sudo bash deploy.sh --repair-tls.'
+  [[ -d $TLS && ! -L $TLS && -d $BASE ]] || fail 'Existing staging TLS/base directories required; nothing deleted.'
+  command -v openssl >/dev/null || fail 'OpenSSL required.'
+  exec 9>/run/lock/chunmo-staging-deploy.lock
+  flock -n 9 || fail 'Deployment/backup/TLS repair busy.'
+  trap 'printf "TLS repair stopped; originals and backup retained; PostgreSQL was not accessed.\n" >&2' ERR
+  tls_manage_pair repair
+  tls_finish_permissions
+  openssl x509 -noout -fingerprint -sha256 -in "$TLS/ca.crt"
+  printf 'TLS-only repair passed. Reimport the verified public CA if its fingerprint changed, then rerun deployment to reload HTTPS.\n'
+  exit 0
+fi
 trap 'on_error "$LINENO"' ERR
 [[ $EUID == 0 ]] || fail 'Run with sudo/root in Workbench.'
 [[ -d /run/systemd/system ]] || fail 'A native systemd host is required; no container deployment.'
@@ -162,24 +314,8 @@ printf 'NODE_BIN=%q\nPG_DUMP_BIN=%q\nPG_RESTORE_BIN=%q\nPG_ADMIN_SOCKET=%q\n' "$
 chmod 0600 "$CONF/tools.env"
 PHASE=tls
 install -d -o root -g chunmo-staging-web -m 0750 "$TLS"
-if [[ ! -e $TLS/ca.key && ! -e $TLS/ca.crt ]]; then
-  openssl req -x509 -newkey rsa:3072 -nodes -sha256 -days 3650 -subj '/CN=Chunmo Internal Staging CA' -keyout "$TLS/ca.key" -out "$TLS/ca.crt" -addext 'basicConstraints=critical,CA:TRUE,pathlen:0' -addext 'keyUsage=critical,keyCertSign,cRLSign' >/dev/null 2>&1
-fi
-[[ -f $TLS/ca.key && -f $TLS/ca.crt ]] || fail 'Partial TLS CA: recover original files; do not regenerate trust.'
-if [[ ! -e $TLS/server.key && ! -e $TLS/server.crt ]]; then
-  openssl req -new -newkey rsa:3072 -nodes -subj '/CN=localhost' -keyout "$TLS/server.key" -out "$TLS/server.csr" >/dev/null 2>&1
-  printf 'subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' > "$TLS/server.ext"
-  openssl x509 -req -in "$TLS/server.csr" -CA "$TLS/ca.crt" -CAkey "$TLS/ca.key" -CAcreateserial -days 365 -sha256 -extfile "$TLS/server.ext" -out "$TLS/server.crt" >/dev/null 2>&1
-fi
-[[ -f $TLS/server.key && -f $TLS/server.crt ]] || fail 'Partial server certificate; recover or renew explicitly.'
-openssl verify -CAfile "$TLS/ca.crt" -verify_hostname localhost "$TLS/server.crt" >/dev/null
-openssl x509 -checkend 1209600 -noout -in "$TLS/server.crt" >/dev/null || fail 'TLS certificate expires within14days; renew using retained CA.'
-chown root:chunmo-staging-web "$TLS/server.key" "$TLS/server.crt" "$TLS/ca.crt"
-chmod 0600 "$TLS/ca.key"
-chmod 0640 "$TLS/server.key"
-chmod 0644 "$TLS/server.crt" "$TLS/ca.crt"
-# Only the public trust certificate is exported, never CA/server private keys.
-install -m 0644 "$TLS/ca.crt" "$BASE/chunmo-staging-ca.crt"
+tls_manage_pair normal
+tls_finish_permissions
 PHASE=services
 for unit in chunmo-staging-api chunmo-staging-web chunmo-staging-backup chunmo-staging-health; do
   if [[ -f /etc/systemd/system/$unit.service ]] && ! grep -q '^# Managed by chunmo native staging deploy' /etc/systemd/system/"$unit".service; then fail "Unmanaged unit exists: $unit"; fi
