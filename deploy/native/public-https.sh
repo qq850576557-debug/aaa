@@ -16,7 +16,11 @@ flock -n 9 || { echo 'Another deployment is running.' >&2; exit 1; }
 source "$CONF/tools.env"
 BUNDLE=$("$NODE_BIN" "$BASE/current/dist-deploy/public.mjs" "$@")
 [[ $BUNDLE == "$TLS/public-"* && -d $BUNDLE ]] || exit 1
-chgrp chunmo-staging-web "$BUNDLE" "$BUNDLE/fullchain.pem" "$BUNDLE/server.key"
+# Node file creation inherits umask 077: grant only the web group the reads
+# needed by nginx -t and startup. Keep runtime.env/public-https.json root-only.
+chgrp chunmo-staging-web "$BUNDLE" "$BUNDLE/nginx.conf" "$BUNDLE/fullchain.pem" "$BUNDLE/server.key"
+chmod 0750 "$BUNDLE"
+chmod 0640 "$BUNDLE/nginx.conf" "$BUNDLE/fullchain.pem" "$BUNDLE/server.key"
 CA=$(/usr/bin/python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print(c.get("ca", "") if c.get("mode")=="private-ca" else "")' "$BUNDLE/public-https.json")
 CURL_TRUST=()
 if [[ -n $CA ]]; then CURL_TRUST=(--cacert "$CA" --capath "${CA%/*}"); fi

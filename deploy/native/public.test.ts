@@ -8,6 +8,7 @@ import {
   symlinkSync,
   existsSync,
   readdirSync,
+  statSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -162,7 +163,12 @@ authorityKeyIdentifier=keyid:always
   process.env.OPENSSL_CONF = '/nonexistent/system-default-must-not-be-used.cnf';
   let bundle: string;
   try {
-    bundle = preparePrivateCA(conf, dir, '/app', '/state', origin);
+    const previousMask = process.umask(0o077);
+    try {
+      bundle = preparePrivateCA(conf, dir, '/app', '/state', origin);
+    } finally {
+      process.umask(previousMask);
+    }
   } finally {
     if (previousConfig === undefined) delete process.env.OPENSSL_CONF;
     else process.env.OPENSSL_CONF = previousConfig;
@@ -227,7 +233,7 @@ for (const privateMode of [false, true])
       writeFileSync(join(release, '.verified-build'), 'test');
       writeFileSync(join(release, 'dist-deploy/public.mjs'), 'test');
       const bundle = join(tls, 'public-synthetic');
-      mkdirSync(bundle);
+      mkdirSync(bundle, { mode: 0o700 });
       for (const [file, content] of Object.entries({
         'runtime.env': 'APP_ORIGIN=https://39.105.64.188:15001\n',
         'nginx.conf': 'new nginx',
@@ -239,7 +245,7 @@ for (const privateMode of [false, true])
         'fullchain.pem': 'test',
         'server.key': 'test',
       }))
-        writeFileSync(join(bundle, file), content);
+        writeFileSync(join(bundle, file), content, { mode: 0o600 });
       const oldEnv = 'APP_ORIGIN=https://localhost:8443\nPRIVATE_DATA_KEY=unchanged-test-key\n';
       writeFileSync(join(conf, 'runtime.env'), oldEnv);
       writeFileSync(join(base, 'nginx.conf'), 'original nginx');
@@ -251,11 +257,30 @@ for (const privateMode of [false, true])
       );
       executable('systemctl', 'echo "$*" >> "$TEST_LOG"');
       executable('nginx', 'exit 0');
-      executable('runuser', 'shift 3; exec "$@"');
+      executable(
+        'runuser',
+        `
+# Check the permissions at the exact preflight boundary, before activation.
+[[ $(stat -c %a "$TEST_BUNDLE") == 750 ]]
+[[ $(stat -c %g "$TEST_BUNDLE") == "$(id -g)" ]]
+for file in nginx.conf fullchain.pem server.key; do
+  [[ $(stat -c %a "$TEST_BUNDLE/$file") == 640 ]]
+  [[ $(stat -c %g "$TEST_BUNDLE/$file") == "$(id -g)" ]]
+done
+for file in runtime.env public-https.json; do
+  [[ $(stat -c %a "$TEST_BUNDLE/$file") == 600 ]]
+done
+shift 3; exec "$@"
+`,
+      );
       executable('curl', `echo \"$*\" >> \"$TEST_CURL_LOG\"; echo '{"ok":true}'`);
       executable('openssl', 'echo fingerprint-test-only');
       executable('sleep', 'exit 0');
-      executable('chgrp', 'exit 0');
+      // Exercise real chgrp without requiring a production account/root locally.
+      executable(
+        'chgrp',
+        'echo "$*" >> "$TEST_GROUP_LOG"; shift; exec /usr/bin/chgrp "$(id -g)" "$@"',
+      );
       writeFileSync(join(conf, 'tools.env'), `NODE_BIN=${join(bin, 'fake-node')}\n`);
       const script = readFileSync('deploy/native/public-https.sh', 'utf8')
         .replace('[[ $EUID == 0 ]]', '[[ 1 == 1 ]]')
@@ -280,6 +305,7 @@ for (const privateMode of [false, true])
             TEST_BUNDLE: bundle,
             TEST_FAIL: fail ? '1' : '0',
             TEST_LOG: join(root, 'calls'),
+            TEST_GROUP_LOG: join(root, 'group-calls'),
             TEST_CURL_LOG: join(root, 'curl-calls'),
           },
           encoding: 'utf8',
@@ -301,6 +327,16 @@ for (const privateMode of [false, true])
       );
       assert.equal(existsSync(join(conf, 'public-https.json')), !fail);
       assert.ok(!result.stdout.includes('unchanged-test-key'));
+      const groupCall = readFileSync(join(root, 'group-calls'), 'utf8');
+      assert.ok(groupCall.startsWith('chunmo-staging-web '));
+      for (const name of ['nginx.conf', 'fullchain.pem', 'server.key']) {
+        assert.ok(groupCall.includes(join(bundle, name)));
+        assert.equal(statSync(join(bundle, name)).mode & 0o777, 0o640);
+        assert.equal(statSync(join(bundle, name)).gid, process.getgid!());
+      }
+      assert.equal(statSync(bundle).mode & 0o777, 0o750);
+      for (const name of ['runtime.env', 'public-https.json'])
+        assert.equal(statSync(join(bundle, name)).mode & 0o777, 0o600);
       const calls = readFileSync(join(root, 'curl-calls'), 'utf8');
       if (privateMode) assert.ok(calls.includes('--cacert ' + join(bundle, 'ca.crt')));
       else assert.ok(!calls.includes(join(bundle, 'ca.crt')));
