@@ -38,7 +38,8 @@ writeFileSync(join(conf, 'backup.key'), randomBytes(32).toString('hex'), { mode:
 writeFileSync(join(conf, 'owner.env'), `OWNER_LOGIN=lab_owner\nOWNER_PASSWORD=${password}\n`, {
   mode: 0o600,
 });
-const origin = 'https://127.0.0.1:18443',
+const publicMode = process.env.CHUNMO_LAB_PUBLIC === '1';
+const origin = publicMode ? 'https://127.0.0.2:15001' : 'https://127.0.0.1:18443',
   ca = join(tls, 'ca.crt');
 const runtime = (database = c.db) => ({
   APP_ENV: 'production',
@@ -167,7 +168,7 @@ try {
   );
   writeFileSync(
     join(tls, 'server.ext'),
-    'subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n',
+    'subjectAltName=DNS:localhost,IP:127.0.0.1,IP:127.0.0.2\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\n',
   );
   execFileSync(
     'openssl',
@@ -191,7 +192,12 @@ try {
     ],
     { stdio: 'ignore' },
   );
-  writeFileSync(join(root, 'nginx.conf'), nginx(process.cwd(), tls, state, 18443, 4006));
+  const external = publicMode
+    ? { origin, certificate: join(tls, 'server.crt'), key: join(tls, 'server.key') }
+    : undefined;
+  if (external)
+    writeFileSync(join(conf, 'public-https.json'), JSON.stringify(external), { mode: 0o600 });
+  writeFileSync(join(root, 'nginx.conf'), nginx(process.cwd(), tls, state, 18443, 4006, external));
   execFileSync(nginxBin, ['-t', '-p', root + '/', '-c', join(root, 'nginx.conf')], {
     stdio: 'pipe',
   });
@@ -236,6 +242,34 @@ try {
   const staffForm = await enter(b, 'lab_staff');
   await staffForm.getByRole('button', { name: '进入云空间', exact: true }).click();
   await expect(b.locator('.save-state')).toContainText('已保存');
+  for (const ctx of [ctxA, ctxB]) {
+    const cookies = await ctx.cookies(origin + '/api/workspace');
+    assert.ok(
+      cookies.some((cookie) => cookie.secure && cookie.httpOnly && cookie.sameSite === 'Strict'),
+    );
+  }
+  const hostileStatus = await new Promise<number | undefined>((done, reject) => {
+    const agent = new Agent({ ca: readFileSync(ca) });
+    const req = request(
+      origin + '/api/auth/logout',
+      {
+        agent,
+        method: 'POST',
+        headers: { Origin: 'https://evil.invalid', 'Content-Type': 'application/json' },
+      },
+      (res) => {
+        res.resume();
+        res.on('end', () => {
+          agent.destroy();
+          done(res.statusCode);
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end('{}');
+  });
+  assert.equal(hostileStatus, 403);
+  console.log('PASS HTTPS browser Secure/HttpOnly/SameSite cookies and hostile Origin rejection.');
   await a.getByRole('button', { name: '新建项目', exact: true }).click();
   const f = a.getByRole('dialog', { name: '新建项目', exact: true });
   await f.getByLabel('项目名称', { exact: true }).fill('原生HTTPS双会话验收');

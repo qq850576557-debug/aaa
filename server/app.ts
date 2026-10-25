@@ -41,6 +41,8 @@ const version = z.number().int().nonnegative();
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
+  // Only the local Nginx is trusted; it replaces incoming X-Forwarded-For.
+  app.set('trust proxy', 'loopback');
   let hashing = 0;
   app.use('/api', (req, res, next) => {
     res.set({

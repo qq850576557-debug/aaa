@@ -113,12 +113,40 @@ export function decrypt(data: Buffer, key: Buffer) {
   d.setAuthTag(data.subarray(-16));
   return Buffer.concat([d.update(data.subarray(header.length, -16)), d.final()]);
 }
-export function nginx(root: string, tls: string, state: string, webPort = 8443, apiPort = 4000) {
+export type PublicHTTPS = { origin: string; certificate: string; key: string };
+export function publicHTTPS(value: unknown): PublicHTTPS {
+  const c = value as PublicHTTPS;
+  const u = new URL(c.origin);
+  if (
+    u.protocol !== 'https:' ||
+    u.origin !== c.origin ||
+    u.port !== '15001' ||
+    !/^[a-zA-Z0-9.-]+$/.test(u.hostname) ||
+    u.hostname === 'localhost' ||
+    u.hostname === '127.0.0.1'
+  )
+    throw Error('Public HTTPS requires an exact HTTPS origin on port 15001');
+  for (const path of [c.certificate, c.key])
+    if (!/^\/[a-zA-Z0-9_./-]+$/.test(path)) throw Error('Unsafe public certificate path');
+  return c;
+}
+export function readPublicHTTPS(path: string): PublicHTTPS | undefined {
+  const file = join(path, 'public-https.json');
+  return existsSync(file) ? publicHTTPS(JSON.parse(readFileSync(file, 'utf8'))) : undefined;
+}
+export function nginx(
+  root: string,
+  tls: string,
+  state: string,
+  webPort = 8443,
+  apiPort = 4000,
+  external?: PublicHTTPS,
+) {
   for (const path of [root, tls, state])
     if (!/^\/[a-zA-Z0-9_./-]+$/.test(path)) throw Error('Unsafe nginx path');
   for (const port of [webPort, apiPort])
     if (!Number.isInteger(port) || port < 1024 || port > 65535) throw Error('Invalid port');
-  return `# Managed by chunmo native staging deploy
+  const rendered = `# Managed by chunmo native staging deploy
 worker_processes 1;
 pid ${state}/nginx.pid;
 error_log stderr warn;
@@ -151,6 +179,7 @@ http {
       proxy_set_header Host $http_host;
       proxy_set_header Connection "";
       proxy_set_header X-Forwarded-Proto https;
+      proxy_set_header X-Forwarded-For $remote_addr;
       proxy_buffering off;
       proxy_cache off;
       proxy_read_timeout 90s;
@@ -160,4 +189,18 @@ http {
   }
 }
 `;
+  if (!external) return rendered;
+  const c = publicHTTPS(external),
+    host = new URL(c.origin).hostname;
+  const start = rendered.indexOf('  server {');
+  const block = rendered
+    .slice(start, rendered.lastIndexOf('\n}'))
+    .replace(`listen 127.0.0.1:${webPort} ssl;`, 'listen 0.0.0.0:15001 ssl;')
+    .replace(
+      'server_name localhost 127.0.0.1;',
+      `server_name ${host};\n    if ($host != "${host}") { return 421; }`,
+    )
+    .replace(`${tls}/server.crt`, c.certificate)
+    .replace(`${tls}/server.key`, c.key);
+  return rendered.slice(0, rendered.lastIndexOf('\n}')) + '\n' + block + '\n}\n';
 }

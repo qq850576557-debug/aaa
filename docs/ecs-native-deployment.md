@@ -160,3 +160,37 @@ verify只新建隔离恢复库，绝不覆盖现有库。核对`.restore-verifie
 | 格式与git差异检查          | 通过                                                                             |
 
 保留昨日已完成文件，未新增业务功能。除明确修复pg_restore目标库参数外，确认Nginx临时目录全部位于服务私有可写目录；HTTPS unit不因后端短暂重启被Requires连带停止，避免重启持久化验收中断。ECS真实执行、systemd开机与Windows接入仍由上述Workbench流程验收，未宣称已经远程部署。
+
+## Optional public HTTPS on TCP 15001
+
+This is an explicit opt-in; pulling/building the code does not activate public access. No ECS service was changed during development. The loopback 8443 endpoint remains for diagnostics, PostgreSQL remains loopback and Node remains `127.0.0.1:4000`. Public activation changes the **one allowed browser Origin** to the supplied HTTPS origin. The old internal page is then diagnostic-only, rather than a second login origin. Existing Secure/HttpOnly/SameSite=Strict cookies, CSRF tokens and server permissions remain enforced. Nginx preserves Origin and overwrites X-Forwarded-For; Express trusts only loopback proxies. SSE remains unbuffered.
+
+### Required public certificate
+
+The internal self-signed CA cannot deliver browser-trusted access without installing that CA. Obtain a **public CA certificate whose SAN covers `39.105.64.188`**, plus its complete intermediate chain and matching private key, or use a domain resolving to this ECS with a public domain certificate. IP certificate availability depends on the CA and ACME client's support. Public ACME IP certificates may be very short-lived and require automated renewal. Neither a different port nor another self-signed certificate solves browser trust. No claim is made that an IP certificate has already been obtained.
+
+Certificate issuance may require publicly reachable 80/443 for validation (or DNS validation for a domain); port 15001 alone does not satisfy HTTP-01/TLS-ALPN-01. The scripts do not open these ports, install an ACME client, purchase a domain or request a certificate on the user's behalf. Chinese mainland public hosting may also require provider/filing review; check applicable requirements before public launch. HTTPS on 15001 does not bypass those requirements.
+
+After putting the issued files in root-protected locations, run in Workbench:
+
+```bash
+sudo -i
+set -e
+cd /opt/chunmo-source
+test "$(git branch --show-current)" = feat/chunmo-project-manager
+git pull --ff-only origin feat/chunmo-project-manager
+bash deploy/native/deploy.sh
+bash deploy/native/public-https.sh https://39.105.64.188:15001 /root/chunmo-cert/fullchain.pem /root/chunmo-cert/privkey.pem
+```
+
+Use the domain origin instead if the certificate covers a domain. Only after verification, review and allow inbound **TCP 15001** in the existing ECS security group and host firewall; never disable the firewall or expose 4000/5432. From a different network open the exact HTTPS origin and confirm no certificate warning, owner/employee login, permissions, two-browser updates and persistence. Local checks cannot prove external security-group reachability or public browser root trust.
+
+`public-https.sh` uses the existing deployment lock, validates the leaf/key/SAN/current validity (>=24 hours), strict server certificate chain against OS trust, copies/revalidates an immutable certificate bundle, checks Nginx as the service user, and backs up runtime/Nginx/public config under `/etc/chunmo-staging/public-before.*`. It atomically replaces each config file and restarts services; any activation/health/account-smoke failure restores all previous config files and restarts the previous configuration. It never deletes old key bundles or changes database schema/data, except existing isolated deployment-canary accounts/records created by the established smoke tests. Failed/old certificate bundles are retained for investigation. Backups include runtime secrets: keep root-only and never upload them.
+
+Repeat the same `public-https.sh` command with newly issued files to renew/rotate; integrate this command into the chosen ACME client's successful-renewal hook. Issuance/renewal scheduling is **not yet automated by this repository**. Existing health timer verifies both endpoints every minute and warns/fails if the public leaf has less than 24 hours remaining. That systemd failure is local, not an off-server alert. Do not launch publicly until a working renewal schedule and monitoring are configured. Normal updates retain public config and revalidate its certificate; expired/near-expiry certificates fail closed rather than downgrading to HTTP. Renew first if needed.
+
+Validation in this workspace uses an isolated local database and a synthetic loopback public listener (`CHUNMO_LAB_PUBLIC=1 npm run test:native-lab`), with certificate-specific browser trust only in the test harness. It does not obtain or install a production certificate, modify ECS, or prove public Internet reachability.
+
+Verified in this workspace (2026-10-25): 17/17 deployment/TLS tests, including real certificates, untrusted/wrong-SAN/wrong-key/near-expiry rejection and mocked activation rollback; 60/60 unit tests; 9/9 PostgreSQL/API tests; 3/3 cloud browser regression tests; frontend/API/deployment production builds. The preserved private HTTPS native lab also passed. Public-listener native lab passed real owner/employee browser login, cookie flags, hostile-Origin rejection, two-session SSE updates, restart persistence, encrypted backup tamper rejection, isolated restore and serving restored state. No real public certificate, public Internet reachability or ECS service changes are included in these results.
+
+Changing browser origin also changes its IndexedDB namespace. Existing local browser data is retained at the old origin; it is not automatically copied or imported. Log in to the existing cloud workspace at the new origin to access already-saved server data. Use the established explicit backup/import workflow for any remaining local-only data.

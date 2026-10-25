@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { validateCertificate } from './public';
 import { randomBytes, randomUUID, createHash, createCipheriv, createDecipheriv } from 'node:crypto';
 import {
   createReadStream,
@@ -21,7 +22,17 @@ import { spawn, execFileSync } from 'node:child_process';
 import { pipeline } from 'node:stream/promises';
 import { request as httpsRequest, Agent } from 'node:https';
 import argon2 from 'argon2';
-import { config, initConfig, url, identifier, magic, hba, nginx, type Deployment } from './shared';
+import {
+  config,
+  initConfig,
+  url,
+  identifier,
+  magic,
+  hba,
+  nginx,
+  readPublicHTTPS,
+  type Deployment,
+} from './shared';
 import { createWorkspace } from '../../server/store';
 import { newProject, defaultTrades, emptyData, prepareWorkspace } from '../../src/lib/model';
 const hashFile = async (file: string) => {
@@ -254,7 +265,7 @@ export async function restoreCheck(
   }
 }
 type Session = { cookie: string; csrf: string };
-function http(origin: string, ca: string) {
+function http(origin: string, ca: string, allowedOrigin = origin) {
   const agent = new Agent({ ca: readFileSync(ca), keepAlive: true });
   const call = (path: string, method = 'GET', body?: unknown, s?: Session) =>
     new Promise<{ status: number; value: any; cookie: string }>((ok, no) => {
@@ -265,7 +276,7 @@ function http(origin: string, ca: string) {
             method,
             agent,
             headers: {
-              Origin: origin,
+              Origin: allowedOrigin,
               ...(data
                 ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }
                 : {}),
@@ -330,7 +341,7 @@ export async function smoke(configDir: string, origin: string, ca: string) {
     employee = 'deploy_probe_staff_' + suffix,
     password = randomBytes(24).toString('hex');
   let workspace = '';
-  const { call, agent } = http(origin, ca);
+  const { call, agent } = http(origin, ca, readPublicHTTPS(configDir)?.origin ?? origin);
   try {
     await db.query('BEGIN');
     const pwd = await argon2.hash(password, {
@@ -477,7 +488,7 @@ export async function smoke(configDir: string, origin: string, ca: string) {
 }
 export async function afterRestart(configDir: string, origin: string, ca: string) {
   const p = JSON.parse(readFileSync(join(configDir, 'probe-pending.json'), 'utf8')),
-    { call, agent } = http(origin, ca);
+    { call, agent } = http(origin, ca, readPublicHTTPS(configDir)?.origin ?? origin);
   try {
     const r = await call('/workspace', 'GET', undefined, p.session);
     need(
@@ -531,8 +542,11 @@ async function main() {
       chmodSync(tmp, s.mode & 0o777);
       renameSync(tmp, a);
     }
-  } else if (op === 'nginx') process.stdout.write(nginx(path, a, b));
-  else if (op === 'backup') await backup(path, a, b);
+  } else if (op === 'nginx') {
+    const external = readPublicHTTPS('/etc/chunmo-staging');
+    if (external) validateCertificate(external.origin, external.certificate, external.key);
+    process.stdout.write(nginx(path, a, b, 8443, 4000, external));
+  } else if (op === 'backup') await backup(path, a, b);
   else if (op === 'restore-check')
     await restoreCheck(path, a, b, (name, c) => peer('restore-db', c, name));
   else if (op === 'smoke') await smoke(path, a, b);

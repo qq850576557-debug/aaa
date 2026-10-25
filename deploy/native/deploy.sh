@@ -349,4 +349,8 @@ printf 'PASS INTERNAL deployment %s. Not approved for formal launch.\n' "$COMMIT
 printf 'Owner credentials: sudo cat /etc/chunmo-staging/owner.env (do not paste into chat/logs).\n'
 printf 'Public trust certificate: /opt/chunmo-staging/chunmo-staging-ca.crt\n'
 openssl x509 -noout -fingerprint -sha256 -in "$TLS/ca.crt"
-printf 'Windows SSH tunnel: ssh -N -L 127.0.0.1:8443:127.0.0.1:8443 YOUR_SSH_USER@YOUR_ECS_IP\nOpen https://localhost:8443 after trusting the verified public CA. No application/DB public port was opened.\n'
+if [[ ! -f $CONF/public-https.json ]]; then
+  printf 'Windows SSH tunnel: ssh -N -L 127.0.0.1:8443:127.0.0.1:8443 YOUR_SSH_USER@YOUR_ECS_IP\nOpen https://localhost:8443 after trusting the verified public CA. No application/DB public port was opened.\n'
+else
+  printf 'Public HTTPS configuration retained; see /etc/chunmo-staging/public-https.json.\n'
+fi
