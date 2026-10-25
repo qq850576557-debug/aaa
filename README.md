@@ -10,6 +10,10 @@ SJD · React 19 + TypeScript + Vite 装修项目工作台。保留原 IndexedDB 
 
 Vitest已固定到修复漏洞的4.1.12；npm12仅批准锁定版本argon2/esbuild的安装脚本。旧npm建议先`npm ci --ignore-scripts`，再`npm rebuild argon2 esbuild --ignore-scripts=false --foreground-scripts`，运行`npm run verify:native`确认本机密码模块和构建工具真实可用。不要全局批准全部安装脚本或运行`npm audit fix --force`。审计影响、实际测试和Windows准确操作见[依赖安全整改](docs/dependency-security-2026-10-24.md)。
 
+## ECS内部测试部署
+
+已提供复用现有PostgreSQL17的[原生部署、更新、备份与恢复说明](docs/ecs-native-deployment.md)。不使用Docker，不初始化/删除现有库，不开放应用公网端口。先在隔离环境完成验证，实际ECS仍由Workbench运行脚本后验收；不等于已正式上线。
+
 ## 云端开发入口
 
 云空间需要独立开发/测试PostgreSQL、初始负责人创建及API进程。准确命令、Windows安全密码输入、双浏览器测试、数据导入与权限边界见 [阶段B运行文档](docs/phase-b-cloud.md)。原本地模式依旧可只运行Vite。

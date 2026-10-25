@@ -21,7 +21,10 @@
     "test:api": "node --env-file=.env.test.local --import tsx --test --test-concurrency=1 server/cloud.test.ts",
     "test:cloud:e2e": "playwright test --config playwright.cloud.config.ts",
     "test:all": "npm test && npm run test:api && npm run test:e2e && npm run test:cloud:e2e",
-    "verify:native": "node scripts/verify-native.mjs"
+    "verify:native": "node scripts/verify-native.mjs",
+    "build:deploy": "tsc -p tsconfig.server.json && esbuild deploy/native/admin.ts deploy/native/ops.ts --bundle --platform=node --format=esm --packages=external --outdir=dist-deploy --out-extension:.js=.mjs",
+    "test:deploy": "node --import tsx --test deploy/native/deploy.test.ts",
+    "test:native-lab": "node --import tsx deploy/native/lab.ts"
   },
   "dependencies": {
     "@uiw/color-convert": "^2.10.3",

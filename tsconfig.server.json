@@ -4,5 +4,10 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["server/**/*.ts", "scripts/cloud-provision.ts", "scripts/cloud-owner.ts"]
+  "include": [
+    "server/**/*.ts",
+    "scripts/cloud-provision.ts",
+    "scripts/cloud-owner.ts",
+    "deploy/native/**/*.ts"
+  ]
 }
