@@ -97,14 +97,43 @@ install -d -o chunmo-build -g chunmo-build -m 0700 /var/lib/chunmo-build/jobs /v
 install -d -o root -g root -m 0700 "$BACKUPS"
 RELEASE=$BASE/releases/$COMMIT
 PHASE=build
+prepare_build_environment() {
+  local node_dir build_path build_python candidate
+  node_dir=$(dirname "$(dirname "$NODE")")
+  build_path="$(dirname "$NODE"):/usr/local/bin:/usr/bin:/bin"
+  # Use the headers shipped with the resolved Node binary, never a remote download.
+  runuser -u chunmo-build -- env -i PATH="$build_path" "$NODE" -e '
+    const fs = require("node:fs"), path = require("node:path"), dir = process.argv[1];
+    try {
+      for (const file of ["node.h", "node_version.h", "common.gypi", "config.gypi"])
+        fs.accessSync(path.join(dir, "include/node", file), fs.constants.R_OK);
+      const header = fs.readFileSync(path.join(dir, "include/node/node_version.h"), "utf8");
+      const actual = ["MAJOR", "MINOR", "PATCH"].map(part =>
+        header.match(new RegExp("^#define\\s+NODE_" + part + "_VERSION\\s+(\\d+)", "m"))?.[1]).join(".");
+      if (actual !== process.versions.node) process.exit(1);
+    } catch { process.exit(1); }
+  ' "$node_dir" || fail 'Build account cannot read matching local Node headers (node.h, node_version.h, common.gypi, config.gypi); install the complete matching Node distribution.'
+  build_python=
+  for candidate in /usr/bin/python3.11 "$(command -v python3.11 || true)" "$(command -v python3 || true)"; do
+    [[ -n $candidate && -x $candidate ]] || continue
+    candidate=$(readlink -f "$candidate")
+    if runuser -u chunmo-build -- env -i PATH="$build_path" "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; then
+      build_python=$candidate
+      break
+    fi
+  done
+  [[ -n $build_python ]] || fail 'Build account needs executable Python3.10+ (prefer /usr/bin/python3.11); Python3.6 is not supported.'
+  BUILD_ENV=("HOME=/var/lib/chunmo-build" "PATH=$build_path" "npm_config_cache=/var/lib/chunmo-build/cache" "NODE_OPTIONS=--max-old-space-size=768"
+    "PYTHON=$build_python" "npm_config_python=$build_python" "npm_config_nodedir=$node_dir")
+  for key in HTTP_PROXY HTTPS_PROXY NO_PROXY NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do if [[ -n ${!key:-} ]]; then BUILD_ENV+=("$key=${!key}"); fi; done
+}
 if [[ -e $RELEASE ]]; then
   [[ -f $RELEASE/.verified-build && $(cat "$RELEASE/.verified-build") == "$COMMIT" ]] || fail 'Existing release is not a verified managed build.'
 else
   JOB=$(mktemp -d /var/lib/chunmo-build/jobs/build.XXXXXXXX)
   git -C "$SOURCE_REPO" archive "$COMMIT" | tar -x -C "$JOB"
   chown -R chunmo-build:chunmo-build "$JOB"
-  BUILD_ENV=("HOME=/var/lib/chunmo-build" "PATH=$(dirname "$NODE"):/usr/local/bin:/usr/bin:/bin" "npm_config_cache=/var/lib/chunmo-build/cache" "NODE_OPTIONS=--max-old-space-size=768")
-  for key in HTTP_PROXY HTTPS_PROXY NO_PROXY NODE_EXTRA_CA_CERTS SSL_CERT_FILE; do if [[ -n ${!key:-} ]]; then BUILD_ENV+=("$key=${!key}"); fi; done
+  prepare_build_environment
   runuser -u chunmo-build -- env -i "${BUILD_ENV[@]}" bash -c 'set -e; cd "$1"; npm ci --ignore-scripts; npm rebuild argon2 esbuild --ignore-scripts=false --foreground-scripts; npm run verify:native; npm test; npm run build; npm run build:deploy; npm audit --omit=dev; npm prune --omit=dev --ignore-scripts; node scripts/verify-native.mjs --production' _ "$JOB"
   printf '%s\n' "$COMMIT" > "$JOB/.verified-build"
   chown -R root:root "$JOB"
