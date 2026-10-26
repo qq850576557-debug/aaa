@@ -185,3 +185,25 @@ describe('review regressions: merged predecessors and unsupported shift ranges',
     expect(plan.shifted.tasks.find((x) => x.id === dependent.id)).toEqual(dependent);
   });
 });
+
+it('V4 task creation and propagation never rewrite planned dates, keeping a stable delay baseline', () => {
+  const d = emptyData(),
+    p = { ...newProject(), name: '计划基准', start: '2026-10-22', end: '2026-12-31' };
+  d.projects = [p];
+  d.trades = defaultTrades(p.id);
+  const t = {
+    id: 'future',
+    projectId: p.id,
+    tradeId: d.trades[0].id,
+    name: '远期施工',
+    start: '2030-12-31',
+    end: '2030-12-31',
+    owner: '',
+    notes: '',
+    status: '未开始' as const,
+  };
+  const next = proposeTaskChange(d, t);
+  expect(next.current.projects).toEqual(d.projects);
+  expect(next.shifted.projects).toEqual(d.projects);
+  expect(next.current.tasks[0]).toEqual(t);
+});

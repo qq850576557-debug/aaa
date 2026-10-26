@@ -1,19 +1,20 @@
 import { CloudControl } from './components/CloudControl';
 import { ConflictPanel } from './components/ConflictPanel';
-import { remainingSchedule } from './lib/readiness';
-import { useRef, useState, type ReactNode } from 'react';
+import { scheduleForecast } from './lib/readiness';
+import { CollaborationBar } from './components/CollaborationBar';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
   Archive,
   ArrowRight,
   CalendarDays,
   Check,
-  CheckCircle2,
   ChevronDown,
   ClipboardList,
   FileJson,
   FolderOpen,
   LayoutDashboard,
+  History as HistoryIcon,
   Leaf,
   Loader2,
   Package,
@@ -30,9 +31,8 @@ import {
 } from 'lucide-react';
 import { PurchaseCard } from './components/PurchaseCard';
 import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
-import { HistoryPanel, localTime } from './components/HistoryPanel';
+import { HistoryPanel } from './components/HistoryPanel';
 import { GLOBAL_SCOPE, workspaceContent, parseArchive, type History } from './lib/history';
-import { assignedNames } from './lib/people';
 import { PeoplePanel } from './components/PeoplePanel';
 import { useCurrentDate } from './lib/useCurrentDate';
 import { savePurchase, confirmPurchaseDeadline } from './lib/procurement';
@@ -52,14 +52,13 @@ import { Editor, nextTask, type Edit, type Entity } from './components/Forms';
 import { useWorkspace } from './lib/useWorkspaceMode';
 import { backupJSON } from './lib/export';
 import { ExportDialog } from './components/ExportDialog';
-import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_INITIALS, BRAND_SLOGAN } from './lib/brand';
+import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_SLOGAN } from './lib/brand';
 import {
   copyProject,
   reorderProjects,
   rememberNames,
   usedNames,
   defaultTrades,
-  duration,
   id,
   isHistorical,
   newProject,
@@ -135,6 +134,19 @@ export default function App() {
   const [undo, setUndo] = useState<{ before: Data; label: string } | null>(null);
   const [colorEdit, setColorEdit] = useState<{ id: string; anchor: Anchor } | null>(null);
   const [selected, setSelected] = useState('');
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  const pendingScroll = useRef<number | null>(null);
+  function selectProject(id: string) {
+    pendingScroll.current = window.scrollY;
+    setSelected(id);
+    setProjectPickerOpen(false);
+  }
+  useLayoutEffect(() => {
+    if (pendingScroll.current !== null) {
+      window.scrollTo(0, pendingScroll.current);
+      pendingScroll.current = null;
+    }
+  }, [selected]);
   const [view, setView] = useState<View>('overview');
   const [edit, setEdit] = useState<Edit | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -556,10 +568,8 @@ export default function App() {
     setView(v);
     if (v === 'completed') {
       setArchived(true);
-      setSelected('');
     } else if (v === 'overview') {
       setArchived(false);
-      setSelected('');
     }
     setSearch('');
     setOnlyOpen(false);
@@ -680,7 +690,6 @@ export default function App() {
           {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉空间设计 Logo" />}
           <div>
             <strong className="brand-name">{BRAND_NAME}</strong>
-            <span className="brand-initials">{BRAND_INITIALS}</span>
             <span className="brand-slogan">{BRAND_SLOGAN}</span>
           </div>
         </a>
@@ -730,6 +739,42 @@ export default function App() {
             <span>人员管理</span>
           </button>
         </nav>
+        <section
+          className={`sidebar-projects ${projectPickerOpen ? 'picker-open' : ''}`}
+          aria-label="项目选择器"
+        >
+          <button
+            className="mobile-project-toggle"
+            aria-expanded={projectPickerOpen}
+            onClick={() => setProjectPickerOpen(!projectPickerOpen)}
+          >
+            {p?.name || '选择项目'} <ChevronDown size={15} />
+          </button>
+          <div className="sidebar-project-list">
+            <div className="sidebar-section">
+              {archived ? '已完工项目' : '当前项目'} <span>{projects.length}</span>
+            </div>
+            <ProjectCards
+              data={data}
+              projects={projects}
+              selected={p?.id ?? ''}
+              onSelect={selectProject}
+              onReorder={(source, before) =>
+                commitSchedule(
+                  reorderProjects(
+                    data,
+                    source,
+                    before,
+                    projects.map((x) => x.id),
+                  ),
+                  data,
+                  '项目顺序已保存，可撤销。',
+                )
+              }
+            />
+            {!projects.length && <p className="muted">暂无项目</p>}
+          </div>
+        </section>
         <div className="sidebar-bottom">
           <button
             disabled={!ready}
@@ -752,29 +797,21 @@ export default function App() {
       <div className="main-shell">
         <header className="topbar">
           <CloudControl isCloud={isCloud} dirty={hasUnsavedChanges} />
+          <button
+            className="mobile-history"
+            aria-label="版本历史 · 15天"
+            title="版本历史 · 15天"
+            disabled={!ready}
+            onClick={() =>
+              setHistoryOpen({ scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE) })
+            }
+          >
+            <HistoryIcon size={17} />
+          </button>
           <div className="mobile-brand">
             <strong className="brand-name">{BRAND_NAME}</strong>
-            <span className="brand-initials">{BRAND_INITIALS}</span>
           </div>
-          <div className="breadcrumb">
-            工作空间 <span>/</span>
-            <strong>{navigation.find((x) => x[0] === view)?.[1]}</strong>
-          </div>
-          {p && (
-            <div className="active-project" title={`${p.name} · ${projectStatus(p.status)}`}>
-              <strong>{p.name}</strong>
-              <span>{projectStatus(p.status)}</span>
-            </div>
-          )}
-          <div className={`save-state ${status.includes('失败') ? 'red' : ''}`} role="status">
-            {status === '正在保存' ? (
-              <Loader2 size={14} className="spin" />
-            ) : (
-              <CheckCircle2 size={14} />
-            )}
-            <span>{status}</span>
-            <div className="avatar">春</div>
-          </div>
+          <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
         <main>
           {undo && (
@@ -805,6 +842,12 @@ export default function App() {
               备份数据
               <ArrowDownToLine size={13} />
             </button>
+          </div>
+          <div
+            className={`save-state compact-save ${status.includes('失败') ? 'red' : ''}`}
+            role="status"
+          >
+            <span>{status}</span>
           </div>
           {error && (
             <div className="error-banner" role="alert">
@@ -970,24 +1013,7 @@ export default function App() {
                 </div>
               )}
               <div className="project-toolbar">
-                <div className="project-switch">
-                  <FolderOpen size={18} />
-                  <select
-                    aria-label="切换项目"
-                    value={p?.id ?? ''}
-                    onChange={(e) => setSelected(e.target.value)}
-                  >
-                    {!projects.length && (
-                      <option value="">{archived ? '暂无已完工项目' : '选择一个项目'}</option>
-                    )}
-                    {projects.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown size={15} />
-                </div>
+                <strong className="current-project-name">{p?.name || '暂无项目'}</strong>
                 <div className="toolbar">
                   {p && (
                     <>
@@ -1028,164 +1054,34 @@ export default function App() {
                 />
               ) : (
                 <>
-                  {(view === 'overview' || view === 'completed') && (
-                    <section className="recent-section">
-                      <div className="section-heading">
-                        <h2>
-                          {archived ? '已完工项目' : '项目列表 · 拖动排序'}{' '}
-                          <span className="count">{projects.length}</span>
-                        </h2>
-                      </div>
-                      <ProjectCards
-                        data={data}
-                        projects={projects}
-                        selected={p.id}
-                        onSelect={setSelected}
-                        onReorder={(source, before) =>
-                          commitSchedule(
-                            reorderProjects(
-                              data,
-                              source,
-                              before,
-                              projects.map((x) => x.id),
-                            ),
-                            data,
-                            '项目顺序已保存，可撤销。',
-                          )
-                        }
-                      />
-                    </section>
-                  )}
-                  <section className="project-summary">
-                    <div className="project-emblem">
-                      <Leaf size={32} />
-                    </div>
-                    <div className="project-info">
-                      <div>
-                        <span className="project-status">
-                          {projectStatus(p.status)}
-                          {p.archived ? ' · 原归档记录' : ''}
-                        </span>
-                        <span className="project-code">
-                          PROJECT / {data.projects.findIndex((x) => x.id === p.id) + 1}
-                        </span>
-                      </div>
-                      <h2>{p.name}</h2>
-                      <div className="project-history-entry">
-                        <button
-                          disabled={!ready}
-                          onClick={(e) =>
-                            setHistoryOpen({
-                              scope: p.id,
-                              anchor: { x: e.clientX, y: e.clientY, element: e.currentTarget },
-                            })
-                          }
-                        >
-                          最后修改：
-                          {savedData.projects.find((x) => x.id === p.id)?.updatedAt
-                            ? localTime(savedData.projects.find((x) => x.id === p.id)!.updatedAt)
-                            : '等待首次保存'}{' '}
-                          <ChevronDown size={14} />
-                        </button>
-                      </div>
-                      {(assignedNames(data, p, '设计人员') || assignedNames(data, p, '监理')) && (
-                        <p className="project-team">
-                          {[
-                            assignedNames(data, p, '设计人员') &&
-                              `设计团队：${assignedNames(data, p, '设计人员')}`,
-                            assignedNames(data, p, '监理') &&
-                              `监理：${assignedNames(data, p, '监理')}`,
-                          ]
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </p>
-                      )}
-                      <p>
-                        {[
-                          p.address,
-                          p.owner && `${p.owner} · 业主`,
-                          p.manager && `${p.manager} · 负责人`,
-                        ]
-                          .filter(Boolean)
-                          .join('　/　')}
-                      </p>
-                    </div>
-                    <div className="project-dates">
-                      <span>
-                        计划开工 <strong>{p.start}</strong>
-                      </span>
-                      <ArrowRight size={17} />
-                      <span>
-                        计划完工 <strong>{p.end}</strong>
-                      </span>
-                    </div>
-                    <div className="project-days">
-                      <strong>
-                        {duration(p.start, p.end)}
-                        <small>天</small>
-                      </strong>
-                      <span>计划总工期 · 自然日</span>
-                      <span className="remaining-schedule">{remainingSchedule(p, now)}</span>
-                    </div>
-                  </section>
                   <nav className="workspace-anchors" aria-label="当前项目分区">
                     <a href="#project-today">今日事项与备忘</a>
                     <a href="#project-procurement">采购与风险</a>
                     <a href="#project-timeline">施工时间轴</a>
                   </nav>
-                  {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <div className="lower-grid" id="project-today">
-                      <section className="panel" data-testid="today-panel">
-                        <div className="section-heading">
-                          <h2>
-                            今日事项{' '}
-                            <span className="count">
-                              {procurement.today.length + dailyNotes.filter((n) => !n.done).length}
-                            </span>
-                          </h2>
-                          <button className="text-btn" onClick={() => noteEditor()}>
-                            <Plus size={15} />
-                            添加采购事项
-                          </button>
-                        </div>
-                        <p className="today-summary">
-                          {procurement.today.length + dailyNotes.filter((n) => !n.done).length}{' '}
-                          条待处理 · 包含逾期采购，完成后不再重复提醒
-                        </p>
-                        {procurement.today.map(purchaseCard)}
-                        {dailyNotes.map((n) => (
-                          <NoteCard
-                            key={n.id}
-                            note={n}
-                            onEdit={() => noteEditor(n)}
-                            onToggle={() => save('note', { ...n, done: !n.done })}
-                            onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                          />
-                        ))}
-                        {!procurement.today.length && !dailyNotes.length && (
-                          <Empty
-                            small
-                            title="今天暂时没有事项"
-                            text="今天到期或逾期的未完成采购将在此自动显示。"
-                          />
-                        )}
-                      </section>
-                      <section className="panel memo-panel">
-                        <div className="section-heading">
-                          <h2>项目备忘</h2>
-                          <button
-                            className="text-btn"
-                            onClick={() => noteEditor(undefined, '', true)}
-                          >
-                            <Plus size={15} />
-                            添加
-                          </button>
-                        </div>
-                        {data.notes
-                          .filter((n) => n.projectId === p.id && n.kind === '项目备忘')
-                          .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-                          .slice(0, 3)
-                          .map((n) => (
+                  <div className="workspace-brief">
+                    {(view === 'overview' || view === 'schedule' || view === 'completed') && (
+                      <div className="lower-grid" id="project-today">
+                        <section className="panel" data-testid="today-panel">
+                          <div className="section-heading">
+                            <h2>
+                              今日事项{' '}
+                              <span className="count">
+                                {procurement.today.length +
+                                  dailyNotes.filter((n) => !n.done).length}
+                              </span>
+                            </h2>
+                            <button className="text-btn" onClick={() => noteEditor()}>
+                              <Plus size={15} />
+                              添加采购事项
+                            </button>
+                          </div>
+                          <p className="today-summary">
+                            {procurement.today.length + dailyNotes.filter((n) => !n.done).length}{' '}
+                            条待处理 · 包含逾期采购，完成后不再重复提醒
+                          </p>
+                          {procurement.today.map(purchaseCard)}
+                          {dailyNotes.map((n) => (
                             <NoteCard
                               key={n.id}
                               note={n}
@@ -1194,66 +1090,122 @@ export default function App() {
                               onPin={() => save('note', { ...n, pinned: !n.pinned })}
                             />
                           ))}
-                        {!data.notes.some((n) => n.projectId === p.id && n.kind === '项目备忘') && (
-                          <Empty
-                            small
-                            title="好设计，藏在被记住的细节里。"
-                            text="记录业主要求、材料信息与现场注意事项。"
-                          />
-                        )}
-                        <button className="text-btn" onClick={() => go('notes')}>
-                          查看全部事项与备忘
-                          <ArrowRight size={14} />
-                        </button>
-                      </section>
-                    </div>
-                  )}
-                  {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <div className="project-alerts" id="project-procurement">
-                      <section className="panel" data-testid="upcoming-panel">
-                        <h3>未来 15 天采购</h3>
-                        {procurement.upcoming.map(purchaseCard)}
-                        {!procurement.upcoming.length && (
-                          <p className="muted">暂无未来 15 天采购安排。</p>
-                        )}
-                        <button className="text-btn" onClick={() => purchaseEditor()}>
-                          <Plus size={15} />
-                          添加采购
-                        </button>
-                      </section>
-                      <section className="panel">
-                        <h3>逾期提醒</h3>
-                        {procurement.overdue.map(purchaseCard)}
-                        {projectTasks
-                          .filter((t) => t.status !== '已完成' && t.end < now)
-                          .map((t) => (
-                            <button
-                              key={t.id}
-                              className="reminder-item"
-                              onClick={() => taskEditor(t)}
-                            >
-                              <strong>{t.name} · 施工逾期</strong>
-                              <em>{t.end}</em>
-                            </button>
-                          ))}
-                        {!projectPurchases.some(
-                          (x) => !purchaseComplete(x) && purchaseDue(x, data) < now,
-                        ) &&
-                          !projectTasks.some((t) => t.status !== '已完成' && t.end < now) && (
-                            <p className="muted">暂无逾期采购或施工任务。</p>
+                          {!procurement.today.length && !dailyNotes.length && (
+                            <Empty
+                              small
+                              title="今天暂时没有事项"
+                              text="今天到期或逾期的未完成采购将在此自动显示。"
+                            />
                           )}
-                      </section>
-                    </div>
+                        </section>
+                        <section className="panel memo-panel">
+                          <div className="section-heading">
+                            <h2>项目备忘</h2>
+                            <button
+                              className="text-btn"
+                              onClick={() => noteEditor(undefined, '', true)}
+                            >
+                              <Plus size={15} />
+                              添加
+                            </button>
+                          </div>
+                          {data.notes
+                            .filter((n) => n.projectId === p.id && n.kind === '项目备忘')
+                            .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+                            .slice(0, 3)
+                            .map((n) => (
+                              <NoteCard
+                                key={n.id}
+                                note={n}
+                                onEdit={() => noteEditor(n)}
+                                onToggle={() => save('note', { ...n, done: !n.done })}
+                                onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                              />
+                            ))}
+                          {!data.notes.some(
+                            (n) => n.projectId === p.id && n.kind === '项目备忘',
+                          ) && (
+                            <Empty
+                              small
+                              title="好设计，藏在被记住的细节里。"
+                              text="记录业主要求、材料信息与现场注意事项。"
+                            />
+                          )}
+                          <button className="text-btn" onClick={() => go('notes')}>
+                            查看全部事项与备忘
+                            <ArrowRight size={14} />
+                          </button>
+                        </section>
+                      </div>
+                    )}
+                    {(view === 'overview' || view === 'schedule' || view === 'completed') && (
+                      <div className="project-alerts" id="project-procurement">
+                        <section className="panel" data-testid="upcoming-panel">
+                          <h3>未来 15 天采购</h3>
+                          {procurement.upcoming.map(purchaseCard)}
+                          {!procurement.upcoming.length && (
+                            <p className="muted">暂无未来 15 天采购安排。</p>
+                          )}
+                          <button className="text-btn" onClick={() => purchaseEditor()}>
+                            <Plus size={15} />
+                            添加采购
+                          </button>
+                        </section>
+                        <section className="panel">
+                          <h3>逾期提醒</h3>
+                          {procurement.overdue.map(purchaseCard)}
+                          {projectTasks
+                            .filter((t) => t.status !== '已完成' && t.end < now)
+                            .map((t) => (
+                              <button
+                                key={t.id}
+                                className="reminder-item"
+                                onClick={() => taskEditor(t)}
+                              >
+                                <strong>{t.name} · 施工逾期</strong>
+                                <em>{t.end}</em>
+                              </button>
+                            ))}
+                          {!projectPurchases.some(
+                            (x) => !purchaseComplete(x) && purchaseDue(x, data) < now,
+                          ) &&
+                            !projectTasks.some((t) => t.status !== '已完成' && t.end < now) && (
+                              <p className="muted">暂无逾期采购或施工任务。</p>
+                            )}
+                        </section>
+                      </div>
+                    )}
+                  </div>
+                  {(view === 'overview' || view === 'schedule' || view === 'completed') && (
+                    <p className="schedule-forecast" role="status">
+                      {scheduleForecast(data, p).label} · 工期按自然日计算
+                    </p>
                   )}
                   <ConflictPanel data={data} projectId={p.id} />
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <Gantt
-                      key={p.id}
                       data={data}
                       project={p}
                       onTask={taskEditor}
                       onDeleteTask={(t) => deleteEntity({ kind: 'task', value: t })}
-                      onQuickCreate={(_g, date) => purchaseEditor(undefined, date)}
+                      onQuickCreate={(g, date) => {
+                        try {
+                          changeTask({
+                            id: id(),
+                            projectId: p.id,
+                            tradeId: g.id,
+                            name: g.name,
+                            start: date,
+                            end: date,
+                            owner: '',
+                            status: '未开始',
+                            notes: '',
+                            staffIds: g.staffIds,
+                          });
+                        } catch (e) {
+                          notify(`无法创建施工任务：${e instanceof Error ? e.message : String(e)}`);
+                        }
+                      }}
                       onExport={() => setExporting(true)}
                       onDay={setDay}
                       onTrade={tradeEditor}

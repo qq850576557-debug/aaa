@@ -1,4 +1,30 @@
-import { distance, isHistorical, today, type Data, type Project } from './model';
+import { dateOK, distance, isHistorical, today, type Data, type Project } from './model';
+// A schedule is a forecast, never evidence of actual completion.
+export function scheduleForecast(data: Data, project: Project) {
+  const tasks = data.tasks.filter(
+    (t) => t.projectId === project.id && dateOK(t.start) && dateOK(t.end) && t.end >= t.start,
+  );
+  const start = tasks.map((t) => t.start).sort()[0] ?? null;
+  const end =
+    tasks
+      .map((t) => t.end)
+      .sort()
+      .at(-1) ?? null;
+  const actual = project.status === '已完工' && dateOK(project.actualEnd);
+  const finish = actual ? project.actualEnd : end;
+  const delta = finish ? distance(project.end, finish) : null;
+  const label =
+    delta === null
+      ? '待排期'
+      : `${actual ? '实际' : '预计'}${delta > 0 ? `延期 ${delta} 天` : delta < 0 ? `提前 ${-delta} 天` : '按计划完工'}`;
+  return {
+    start,
+    end,
+    delta,
+    actual,
+    label: `${start && end ? `排期 ${start} — ${end} · ` : ''}${label}`,
+  };
+}
 export function remainingSchedule(p: Pick<Project, 'status' | 'archived' | 'end'>, now = today()) {
   if (isHistorical(p as Project)) return '已完工';
   if (!p.end) return '剩余工期未设置';

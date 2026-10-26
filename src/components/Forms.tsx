@@ -214,12 +214,9 @@ export function Editor({
       <>
         {input('name', '项目名称', 'text', true)}
         {select('status', '项目状态', ['施工中', '已完工', '暂停'])}
-        {input('address', '项目地址')}
         {input('owner', '业主称呼')}
         {input('start', '计划开工日期', 'date', true)}
         {input('end', '计划完工日期', 'date', true)}
-        {input('actualStart', '实际开工日期', 'date')}
-        {input('actualEnd', '实际完工日期', 'date')}
         {area('notes', '项目备注')}
       </>
     );
@@ -357,8 +354,8 @@ export function Editor({
         subtitle="每一处细节，都让项目更有序。"
         onClose={close}
         anchor={edit.anchor}
-        wide={kind !== 'trade'}
-        className={kind === 'trade' ? 'trade-editor' : ''}
+        wide={kind !== 'trade' && kind !== 'project'}
+        className={kind === 'trade' ? 'trade-editor' : kind === 'project' ? 'project-editor' : ''}
       >
         <form onSubmit={submit}>
           <div className="modal-body">

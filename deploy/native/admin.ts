@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { loginSchema } from '../../src/lib/login';
 import { passwordSchema } from '../../src/lib/password';
 import { createHmac, createHash, randomBytes, pbkdf2Sync } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -124,7 +125,7 @@ export async function grants(c: Deployment) {
     );
     await db.query(`GRANT INSERT ON audit_event TO ${app},${priv}`);
     await db.query(`GRANT SELECT ON audit_event TO ${app}`);
-    await db.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON account_note TO ${app}`);
+    await db.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON account_note,account_avatar TO ${app}`);
     await db.query(`GRANT SELECT,INSERT,UPDATE ON person_private TO ${priv}`);
     await db.query(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${backup}`);
     await db.query(`GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${backup}`);
@@ -176,7 +177,7 @@ export async function owner(c: Deployment, login: string, password: string) {
     await db.query('BEGIN');
     await db.query('LOCK TABLE account IN EXCLUSIVE MODE');
     if (!(await db.query('SELECT 1 FROM account LIMIT 1')).rowCount) {
-      if (!/^[a-z0-9_.@-]{3,80}$/.test(login) || !passwordSchema.safeParse(password).success)
+      if (!loginSchema.safeParse(login).success || !passwordSchema.safeParse(password).success)
         throw Error('Invalid owner bootstrap credentials');
       await createWorkspace(
         db,

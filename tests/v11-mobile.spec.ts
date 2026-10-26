@@ -37,44 +37,24 @@ for (const width of [320, 375, 390, 430]) {
       deviceScaleFactor: 2,
     });
     const page = await context.newPage();
+    await page.clock.setFixedTime(new Date('2026-10-23T04:00:00Z'));
     try {
       await boot(page);
       await restore(page, peopleFixture());
       await closeToast(page);
       const header = await page.locator('.topbar').evaluate((el) => {
-        const rect = (selector: string) => {
-          const r = el.querySelector(selector)!.getBoundingClientRect();
-          return {
-            x: r.x,
-            y: r.y,
-            right: r.right,
-            bottom: r.bottom,
-            width: r.width,
-            height: r.height,
-          };
-        };
-        const brandName = el.querySelector('.mobile-brand .brand-name')!;
-        const saved = el.querySelector('.save-state > span')!;
+        const a = el.querySelector('.cloud-control')!.getBoundingClientRect(),
+          u = el.querySelector('.collaboration-bar')!.getBoundingClientRect();
         return {
-          brand: rect('.mobile-brand'),
-          account: rect('.cloud-control'),
-          project: rect('.active-project'),
-          saved: rect('.save-state'),
-          nameFits: brandName.scrollWidth <= brandName.clientWidth,
-          saveFits: saved.scrollWidth <= saved.clientWidth,
+          account: a.x,
+          userRight: u.right,
+          bottom: a.bottom,
+          width: el.getBoundingClientRect().width,
         };
       });
-      expect(header.nameFits).toBe(true);
-      expect(header.saveFits).toBe(true);
-      expect(header.brand.right).toBeLessThanOrEqual(header.account.x);
-      expect(header.account.height).toBeGreaterThanOrEqual(44);
-      expect(Math.max(header.brand.bottom, header.account.bottom)).toBeLessThanOrEqual(
-        Math.min(header.project.y, header.saved.y),
-      );
-      expect(header.project.width).toBeGreaterThanOrEqual(150);
-      expect(header.project.right).toBeLessThanOrEqual(header.saved.x);
-      expect(header.saved.right).toBeLessThanOrEqual(width);
-      if (width === 390) await page.screenshot({ path: '/tmp/chunmo-v11-mobile-header.png' });
+      expect(header.userRight).toBeLessThanOrEqual(header.account);
+      expect(header.width).toBeLessThanOrEqual(width);
+      if (width === 390) await page.screenshot({ path: '/tmp/chunmo-v4-mobile-header.png' });
       await page.locator('#project-timeline').scrollIntoViewIfNeeded();
       const geometry = await page.locator('.trade-row').evaluateAll((rows) =>
         rows.map((row) => {
@@ -119,7 +99,7 @@ for (const width of [320, 375, 390, 430]) {
           expect(arrow.x).toBeGreaterThanOrEqual(Math.max(row.name.right, row.workers.right));
           expect(arrow.right).toBeLessThanOrEqual(row.label.right);
         }
-        expect(row.arrows[0].bottom).toBeLessThanOrEqual(row.arrows[1].y);
+        expect(row.arrows).toHaveLength(0);
       }
       const scroller = page.getByTestId('gantt-scroll');
       await scroller.evaluate((el) => {
@@ -151,12 +131,14 @@ test('V1.1 desktop keeps compact rows while mobile reorder and task details rema
   await boot(page);
   await restore(page, peopleFixture());
   await closeToast(page);
-  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '68px');
+  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '84px');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.trade-row').first()).toHaveCSS('height', '124px');
   const before = await state(page),
     first = before.trades[0];
-  await page.getByRole('button', { name: `下移工种${first.name}`, exact: true }).click();
+  await page
+    .getByRole('button', { name: `拖动工种${first.name}`, exact: true })
+    .press('Alt+ArrowDown');
   await expect
     .poll(async () => (await state(page)).trades.find((trade) => trade.id === first.id)?.order)
     .toBe(1);
@@ -165,7 +147,7 @@ test('V1.1 desktop keeps compact rows while mobile reorder and task details rema
   await expect(page.getByRole('heading', { name: '编辑施工任务', exact: true })).toBeVisible();
   await page.getByRole('button', { name: '关闭浮窗' }).click();
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '68px');
+  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '84px');
 });
 
 test('V1.1 real touch pointer drags a time block and persists its dates', async ({ browser }) => {
@@ -175,6 +157,7 @@ test('V1.1 real touch pointer drags a time block and persists its dates', async 
     hasTouch: true,
   });
   const page = await context.newPage();
+  await page.clock.setFixedTime(new Date('2026-10-23T04:00:00Z'));
   try {
     await boot(page);
     await restore(page, peopleFixture());
@@ -199,13 +182,62 @@ test('V1.1 real touch pointer drags a time block and persists its dates', async 
     });
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     const currentOnly = page.getByRole('button', { name: '仅调整当前工序', exact: true });
-    if (await currentOnly.isVisible()) await currentOnly.tap();
+    await expect(currentOnly).toBeVisible();
+    await currentOnly.tap();
     await expect
       .poll(async () => (await state(page)).tasks.find((task) => task.id === 't-first')?.start)
       .toBe('2026-10-23');
     await page
       .locator('#project-timeline')
       .screenshot({ path: '/tmp/chunmo-v11-mobile-timeline.png' });
+  } finally {
+    await context.close();
+  }
+});
+
+test('V4 real touch sorts a trade with insertion line and keeps task dates unchanged', async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  try {
+    const page = await context.newPage();
+    await page.clock.setFixedTime(new Date('2026-10-23T04:00:00Z'));
+    await boot(page);
+    await restore(page, peopleFixture());
+    await closeToast(page);
+    const before = await state(page);
+    const handle = page.getByRole('button', {
+      name: `拖动工种${before.trades[0].name}`,
+      exact: true,
+    });
+    await handle.scrollIntoViewIfNeeded();
+    const a = (await handle.boundingBox())!,
+      b = (await page.locator('.trade-row').nth(1).boundingBox())!;
+    const cdp = await context.newCDPSession(page);
+    const x = a.x + a.width / 2,
+      y = a.y + a.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ x, y, id: 1 }],
+    });
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: y + 10, id: 1 }],
+    });
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y: b.y + b.height - 10, id: 1 }],
+    });
+    await expect(page.locator('.drop-before,.drop-after')).toHaveCount(1);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect
+      .poll(async () => (await state(page)).trades.find((t) => t.id === before.trades[0].id)?.order)
+      .toBe(1);
+    expect((await state(page)).tasks).toEqual(before.tasks);
   } finally {
     await context.close();
   }

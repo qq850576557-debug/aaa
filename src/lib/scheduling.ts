@@ -82,21 +82,6 @@ function mergeSegments(data: Data, changed: Task): { data: Data; removed: string
     },
   };
 }
-function expandProject(data: Data, pid: string): Data {
-  const tasks = data.tasks.filter((t) => t.projectId === pid);
-  return {
-    ...data,
-    projects: data.projects.map((p) =>
-      p.id === pid
-        ? {
-            ...p,
-            start: [p.start, ...tasks.map((t) => t.start)].sort()[0],
-            end: [p.end, ...tasks.map((t) => t.end)].sort().at(-1)!,
-          }
-        : p,
-    ),
-  };
-}
 export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
   const old = base.tasks.find((t) => t.id === value.id);
   let current = {
@@ -109,7 +94,6 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
     current = merged.data;
     mergedIds = merged.removed;
   }
-  current = expandProject(current, value.projectId);
   parseBackup(current);
   const changed = current.tasks.find((t) => t.id === value.id)!;
   let shifted = { ...current, tasks: current.tasks.map((t) => ({ ...t })) };
@@ -176,7 +160,6 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
     }
     if (!progressed) break;
   }
-  shifted = expandProject(shifted, value.projectId);
   let shiftError: string | undefined;
   try {
     parseBackup(shifted);

@@ -13,7 +13,7 @@ async function renderedFonts(page: Page, selector: string) {
   return result.fonts;
 }
 
-test('brand: desktop and mobile render all six actual custom glyphs, while SJD and controls use sans-serif', async ({
+test('brand: desktop/mobile render custom brand glyphs, sidebar stacks logo/name/motto without SJD', async ({
   page,
 }) => {
   const requests: string[] = [];
@@ -22,10 +22,7 @@ test('brand: desktop and mobile render all six actual custom glyphs, while SJD a
   });
   await boot(page);
   await page.evaluate(() => document.fonts.load('28px ChunmoBrand', '春茉空间设计'));
-  for (const [width, selector] of [
-    [1440, '.brand .brand-name'],
-    [390, '.mobile-brand .brand-name'],
-  ] as const) {
+  for (const [width, selector] of [[1440, '.brand .brand-name']] as const) {
     await page.setViewportSize({ width, height: 1000 });
     await expect(page.locator(selector)).toHaveText('春茉空间设计');
     await expect(page.locator(selector)).toHaveCSS('font-weight', '400');
@@ -33,9 +30,9 @@ test('brand: desktop and mobile render all six actual custom glyphs, while SJD a
     const fonts = await renderedFonts(page, selector);
     expect(fonts.filter((f) => f.isCustomFont).reduce((sum, f) => sum + f.glyphCount, 0)).toBe(6);
     expect(fonts.filter((f) => !f.isCustomFont).reduce((sum, f) => sum + f.glyphCount, 0)).toBe(0);
-    const initials = width === 390 ? '.mobile-brand .brand-initials' : '.brand .brand-initials';
-    await expect(page.locator(initials)).toHaveText('SJD');
-    expect((await renderedFonts(page, initials)).every((f) => !f.isCustomFont)).toBe(true);
+    await expect(page.locator('.brand .brand-initials,.mobile-brand .brand-initials')).toHaveCount(
+      0,
+    );
     expect(await page.locator('h1').evaluate((e) => getComputedStyle(e).fontFamily)).not.toContain(
       'ChunmoBrand',
     );
@@ -48,8 +45,16 @@ test('brand: desktop and mobile render all six actual custom glyphs, while SJD a
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
+    if (width === 1440) {
+      const logo = (await page.locator('.brand img').boundingBox())!;
+      const text = (await page.locator(selector).boundingBox())!;
+      const motto = (await page.locator('.brand-slogan').boundingBox())!;
+      expect(logo.y + logo.height).toBeLessThanOrEqual(text.y);
+      expect(text.y + text.height).toBeLessThanOrEqual(motto.y);
+      await expect(page.locator('.brand-slogan')).toHaveText('功能与美×共生');
+    }
     const r = (await page.locator(selector).boundingBox())!;
-    expect(r.width).toBeLessThan(width === 390 ? 200 : 208);
+    expect(r.width).toBeLessThan(208);
     await page.screenshot({ path: `test-results/brand-${width}.png`, animations: 'disabled' });
   }
   // Vite dev uses no-cache: preloading may be followed by a 304 cache validation.

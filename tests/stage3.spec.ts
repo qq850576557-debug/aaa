@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-23T04:00:00Z'));
 });
 
-test('current workflow: blank double click creates procurement; explicit one-day task remains movable/resizable with undo', async ({
+test('V4 workflow: blank double click creates one-day task directly, movable/resizable with undo', async ({
   page,
 }) => {
   await boot(page);
@@ -27,16 +27,7 @@ test('current workflow: blank double click creates procurement; explicit one-day
   await timeline(page);
   const row = page.locator('.trade-row').nth(2);
   await row.locator('[data-date="2026-10-24"]').dblclick();
-  let form = page.getByRole('dialog', { name: '新建采购事项', exact: true });
-  await expect(form.getByLabel('采购截止日期', { exact: true })).toHaveValue('2026-10-24');
-  await form.getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('button', { name: '施工任务', exact: true }).click();
-  form = page.getByRole('dialog');
-  await form.getByLabel('任务名称', { exact: true }).fill('防水与闭水试验');
-  await form.getByLabel('所属工种', { exact: true }).selectOption((await state(page)).trades[2].id);
-  await form.getByLabel('开始日期', { exact: true }).fill('2026-10-24');
-  await form.getByLabel('结束日期', { exact: true }).fill('2026-10-24');
-  await form.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
   const task = (await state(page)).tasks.find((t) => t.name === '防水与闭水试验')!;
   expect(task.start).toBe('2026-10-24');
@@ -84,12 +75,13 @@ test('phase 3: workspace stays unified, project cards drag with insertion line a
   const cards = page.locator('.project-card');
   await expect(cards).toHaveCount(2);
   await cards.nth(1).click();
-  await expect(page.locator('.project-info h2')).toHaveText(second.name);
+  await expect(page.locator('.current-project-name')).toHaveText(second.name);
   await expect(cards).toHaveCount(2);
   await expect(page.locator('.schedule-section')).toBeVisible();
   await expect(page.getByTestId('task-bar')).toHaveCount(0);
   await cards.first().click();
-  await expect(page.getByTestId('task-bar')).toHaveCount(3);
+  await expect(page.getByTestId('task-bar')).toHaveCount(2);
+  expect((await state(page)).tasks).toHaveLength(3);
   const source = (await cards.nth(1).boundingBox())!,
     target = (await cards.first().boundingBox())!;
   await page.mouse.move(source.x + 50, source.y + 20);
@@ -124,7 +116,7 @@ test('phase 3: workspace stays unified, project cards drag with insertion line a
   await expect(cards.first()).toContainText(second.name);
   await page.getByRole('button', { name: `切换项目${original.name}`, exact: true }).click();
   await timeline(page);
-  await expect(page.locator('.active-project')).toContainText(original.name);
+  await expect(page.locator('.current-project-name')).toContainText(original.name);
 });
 
 test('personnel: old project registration and name candidates survive central profile setup and JSON restore', async ({
@@ -201,7 +193,7 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
   await boot(page);
   await restore(page);
   await timeline(page);
-  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '68px');
+  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '84px');
   await expect(page.getByTestId('task-bar').first()).toHaveCSS('font-size', '14px');
   const font = await page.evaluate(async () => {
     await document.fonts.load('28px ChunmoBrand', '春茉空间设计');

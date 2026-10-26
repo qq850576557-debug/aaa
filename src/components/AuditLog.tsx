@@ -72,7 +72,9 @@ const fields: Record<string, string> = {
   tradeIds: '关联工种编号',
   dependsOn: '前序任务编号',
   displayName: '正式展示名称',
-  login: '登录名',
+  avatar: '头像',
+  login: '登录账号',
+  loginChangedAt: '登录账号修改时间',
 };
 function safeValue(value: unknown): string {
   if (value === null || value === undefined) return '无';
@@ -139,7 +141,7 @@ export function AuditLog({ accounts }: { accounts: DirectoryAccount[] }) {
       <div>
         <h3>操作记录</h3>
         <p className="account-muted">
-          记录由服务端生成，只读展示，时间按北京时间显示。自由文本及敏感个人信息的内容不记录；设备信息来自浏览器声明，无法独立核验。
+          记录由服务端生成，只读展示，时间按北京时间显示。仅记录允许的字段及登录账号变更；密码、私有备注和敏感个人资料不记录。设备信息来自浏览器声明，无法独立核验。
         </p>
       </div>
       <form

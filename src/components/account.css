@@ -302,3 +302,34 @@
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
+.login-policy {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+.login-policy > div {
+  display: grid;
+  gap: 5px;
+}
+.login-policy dt {
+  color: #73847b;
+  font-size: 13px;
+}
+.login-policy dd {
+  margin: 0;
+  color: #244238;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.login-change-warning {
+  padding: 14px;
+  margin: 16px 0;
+  border-radius: 12px;
+  background: #f5efdf;
+  color: #765b2d;
+  line-height: 1.7;
+}
+.login-name-editor form {
+  display: grid;
+  gap: 14px;
+}

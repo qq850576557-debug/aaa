@@ -22,7 +22,7 @@ async function enter(page: Page, login: string, password = accounts.password) {
 async function accountPanel(page: Page) {
   await page.getByRole('button', { name: '账号管理', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '账号管理', exact: true });
-  await expect(dialog.getByRole('tab', { name: '我的账号', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('tab', { name: '账号与安全', exact: true })).toBeVisible();
   return dialog;
 }
 async function localSpace(page: Page) {
@@ -65,7 +65,7 @@ test('two real accounts: API-backed saves, SSE, dirty-form conflict, explicit re
   await form.getByLabel('项目名称', { exact: true }).fill('多人云端工地');
   await form.getByRole('button', { name: '保存', exact: true }).click();
   await expect(a.locator('.save-state')).toContainText('已保存');
-  await expect(b.locator('.project-info h2')).toHaveText('多人云端工地', { timeout: 10000 });
+  await expect(b.locator('.current-project-name')).toHaveText('多人云端工地', { timeout: 10000 });
   const before = await clientApi(a, '/workspace');
   const aForm = await editor(a),
     bForm = await editor(b);
@@ -77,16 +77,16 @@ test('two real accounts: API-backed saves, SSE, dirty-form conflict, explicit re
   await bForm.getByRole('button', { name: '保存', exact: true }).click();
   await expect(b.locator('.save-state')).toContainText('保存冲突');
   expect((await clientApi(a, '/workspace')).body.data.projects[0].name).toBe('负责人更新');
-  await expect(b.locator('.project-info h2')).toHaveText('员工旧版草稿');
+  await expect(b.locator('.current-project-name')).toHaveText('员工旧版草稿');
   await b.getByRole('button', { name: '重新读取云端', exact: true }).click();
   await b.getByRole('button', { name: '确认操作', exact: true }).click();
-  await expect(b.locator('.project-info h2')).toHaveText('负责人更新');
+  await expect(b.locator('.current-project-name')).toHaveText('负责人更新');
   form = await editor(b);
   await form.getByLabel('项目备注', { exact: true }).fill('普通员工同步修改');
   await form.getByLabel('项目名称', { exact: true }).fill('员工实时更新');
   await form.getByRole('button', { name: '保存', exact: true }).click();
   await expect(b.locator('.save-state')).toContainText('已保存');
-  await expect(a.locator('.project-info h2')).toHaveText('员工实时更新', { timeout: 10000 });
+  await expect(a.locator('.current-project-name')).toHaveText('员工实时更新', { timeout: 10000 });
   await expect
     .poll(async () => (await clientApi(a, '/workspace')).body.data.projects[0].notes)
     .toBe('普通员工同步修改');
@@ -116,7 +116,7 @@ test('two real accounts: API-backed saves, SSE, dirty-form conflict, explicit re
   expect(JSON.stringify((await clientApi(b, '/export')).body)).not.toContain(phone);
   await a.reload();
   await expect(a.locator('.local-notice')).toContainText('云空间');
-  await expect(a.locator('.project-info h2')).toHaveText('员工实时更新');
+  await expect(a.locator('.current-project-name')).toHaveText('员工实时更新');
   const local = await a.evaluate(
     async () =>
       await new Promise<any>(async (resolve, reject) => {
@@ -165,7 +165,7 @@ test('owner-controlled import from a real local backup previews and commits with
     buffer: Buffer.from(JSON.stringify(archive)),
   });
   await p.getByRole('button', { name: '确认操作', exact: true }).click();
-  await expect(p.locator('.project-info h2')).toHaveText(archive.projects[0].name);
+  await expect(p.locator('.current-project-name')).toHaveText(archive.projects[0].name);
   await expect(p.locator('.save-state')).toContainText('已保存');
   await p.getByRole('button', { name: '数据与备份', exact: true }).click();
   const download = p.waitForEvent('download');
@@ -179,7 +179,7 @@ test('owner-controlled import from a real local backup previews and commits with
     .getByLabel('选择云端导入备份')
     .setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: bytes });
   await expect(account).toContainText('校验预览');
-  await expect(p.locator('.project-info h2')).toHaveText(archive.projects[0].name);
+  await expect(p.locator('.current-project-name')).toHaveText(archive.projects[0].name);
   await account.getByRole('button', { name: '确认导入预览', exact: true }).click();
   await p.getByRole('button', { name: '确认操作', exact: true }).click();
   await expect(account).toContainText('导入成功');
@@ -187,13 +187,13 @@ test('owner-controlled import from a real local backup previews and commits with
     .getByLabel('选择云端导入备份')
     .setInputFiles({ name: 'backup.json', mimeType: 'application/json', buffer: bytes });
   await expect(account).toContainText('此备份已导入');
-  await account.getByRole('tab', { name: '我的账号', exact: true }).click();
+  await account.getByRole('tab', { name: '账号与安全', exact: true }).click();
   await account.getByRole('button', { name: '进入云空间', exact: true }).click();
   await expect(p.locator('.local-notice')).toContainText('云空间');
-  await expect(p.getByLabel('切换项目', { exact: true }).locator('option')).toHaveCount(2);
-  await p.getByLabel('切换项目', { exact: true }).selectOption('import-project');
-  await expect(p.getByTestId('task-bar')).toHaveCount(3);
-  await p.locator('.project-history-entry button').click();
+  await expect(p.locator('.project-card')).toHaveCount(2);
+  await p.locator('[data-project-id="import-project"]').click();
+  expect((await clientApi(p, '/workspace')).body.data.tasks.length).toBe(3);
+  await p.getByRole('button', { name: '版本历史 · 15天', exact: true }).click();
   await expect(p.getByRole('dialog', { name: '最近15天修改历史' })).toContainText('导入记录');
   await p.getByRole('button', { name: '关闭', exact: true }).click();
   account = await accountPanel(p);
@@ -202,8 +202,8 @@ test('owner-controlled import from a real local backup previews and commits with
   // Reauthentication is required before accessing retained local-only data.
   await enter(p, accounts.login);
   await localSpace(p);
-  await expect(p.locator('.project-info h2')).toHaveText(archive.projects[0].name);
-  await expect(p.getByTestId('task-bar')).toHaveCount(3);
+  await expect(p.locator('.current-project-name')).toHaveText(archive.projects[0].name);
+  expect((await clientApi(p, '/workspace')).body.data.tasks.length).toBe(3);
   await context.close();
 });
 
@@ -271,7 +271,7 @@ test('password panel: employee self-change, owner employee reset and owner self-
     const staffPanel = await panel(staffPage, f.employee, f.password);
     await staffPanel.getByRole('tab', { name: '账号通讯录', exact: true }).click();
     await expect(staffPanel.getByText('创建普通员工账号', { exact: true })).toHaveCount(0);
-    await staffPanel.getByRole('tab', { name: '我的账号', exact: true }).click();
+    await staffPanel.getByRole('tab', { name: '账号与安全', exact: true }).click();
     await staffPanel.getByText('修改我的密码', { exact: true }).click();
     await expect(staffPanel.getByLabel('新密码', { exact: true })).toHaveAttribute(
       'minlength',
@@ -306,7 +306,7 @@ test('password panel: employee self-change, owner employee reset and owner self-
     await expect(staffPage.locator('.brand-login')).toBeVisible();
     await panel(staffPage, f.employee, 'bbbbbbbb');
     await expect(staffPanel).toContainText('普通员工');
-    await ownerPanel.getByRole('tab', { name: '我的账号', exact: true }).click();
+    await ownerPanel.getByRole('tab', { name: '账号与安全', exact: true }).click();
     await ownerPanel.getByText('修改我的密码', { exact: true }).click();
     const selfForm = ownerPanel.getByRole('form', { name: '修改我的密码', exact: true });
     await selfForm.getByLabel('当前密码', { exact: true }).fill(f.password);

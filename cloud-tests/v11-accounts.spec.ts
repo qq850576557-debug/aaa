@@ -17,7 +17,7 @@ async function login(page: Page, name: string, password: string) {
 async function panel(page: Page) {
   await page.getByRole('button', { name: '账号管理', exact: true }).click();
   const p = page.getByRole('dialog', { name: '账号管理', exact: true });
-  await expect(p.getByRole('tab', { name: '我的账号', exact: true })).toBeVisible();
+  await expect(p.getByRole('tab', { name: '账号与安全', exact: true })).toBeVisible();
   return p;
 }
 async function api(context: BrowserContext, path: string, method = 'GET', body?: unknown) {

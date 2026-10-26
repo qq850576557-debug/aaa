@@ -4920,3 +4920,573 @@ nav button {
     scroll-margin-top: 110px;
   }
 }
+/* Brand stack on the full desktop sidebar; retain the mobile bottom dock. */
+@media (min-width: 951px) {
+  .sidebar .brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 13px;
+    text-align: center;
+    padding: 0 0 25px;
+  }
+  .sidebar .brand img {
+    width: 70px;
+    height: 76px;
+    flex-shrink: 0;
+  }
+  .sidebar .brand .brand-slogan {
+    margin-top: 10px;
+    letter-spacing: 2px;
+    font-size: 13px;
+  }
+}
+
+/* V4: one persistent project selector and a compact working surface. */
+.sidebar-projects {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin: 12px 0;
+}
+.sidebar-project-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  padding: 0 3px 6px;
+}
+.sidebar-project-list .project-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.sidebar-project-list .project-card {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  text-align: left;
+  min-height: 0;
+}
+.sidebar-project-list .project-card h3 {
+  font-size: 15px;
+  margin: 5px 0 3px;
+  overflow-wrap: anywhere;
+}
+.sidebar-project-list .project-card small {
+  font-size: 12px;
+  line-height: 1.5;
+  display: block;
+}
+.sidebar-project-list .project-card footer {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.sidebar-project-list .project-card .card-forecast {
+  color: #768676;
+}
+.sidebar-project-list .project-card.drop-before:before,
+.sidebar-project-list .project-card.drop-after:after {
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 3px;
+  bottom: auto;
+  top: -5px;
+}
+.sidebar-project-list .project-card.drop-after:after {
+  top: auto;
+  bottom: -5px;
+}
+.sidebar-bottom {
+  flex-shrink: 0;
+}
+.mobile-project-toggle {
+  display: none;
+}
+.current-project-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.project-toolbar {
+  margin-bottom: 14px;
+}
+.workspace-brief {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.workspace-brief .lower-grid,
+.workspace-brief .project-alerts {
+  display: contents;
+}
+.workspace-brief .panel {
+  min-width: 0;
+  padding: 14px;
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  border-radius: 12px;
+}
+.workspace-brief h2,
+.workspace-brief h3 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+.workspace-brief .section-heading {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.workspace-brief .empty {
+  padding: 12px 0;
+  min-height: 0;
+}
+.workspace-brief .empty-icon {
+  display: none;
+}
+.workspace-brief .empty h3 {
+  font-size: 14px;
+}
+.workspace-brief .empty p,
+.workspace-brief .today-summary {
+  font-size: 12px;
+}
+.workspace-brief .note-card,
+.workspace-brief .purchase-card {
+  padding: 9px;
+  margin: 6px 0;
+}
+.workspace-brief .text-btn {
+  font-size: 12px;
+  padding: 4px 0;
+}
+.schedule-forecast {
+  font-size: 13px;
+  color: #627967;
+  margin: 12px 0;
+  overflow-wrap: anywhere;
+}
+.compact-save {
+  justify-content: flex-end;
+  min-height: 20px;
+  font-size: 12px;
+  opacity: 0.8;
+  margin: 2px 0 8px;
+}
+.collaboration-bar {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.current-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.current-account strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.account-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #e9efe2;
+  color: #416048;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid #fff;
+}
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.online-accounts {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 45%;
+}
+.online-accounts > span + span {
+  margin-left: -7px;
+}
+.online-accounts > span {
+  position: relative;
+  display: inline-flex;
+}
+.online-accounts > span:after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  background: #588d69;
+  border-radius: 50%;
+  position: absolute;
+  right: 1px;
+  bottom: 2px;
+  border: 1px solid white;
+}
+.online-accounts .online-more:after {
+  display: none;
+}
+.online-more {
+  font-size: 12px;
+  padding-left: 10px;
+}
+.avatar-editor .avatar-preview {
+  width: 72px;
+  height: 72px;
+  margin: 14px 0;
+  font-size: 24px;
+}
+@media (min-width: 951px) {
+  .sidebar {
+    width: 248px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 24px 16px 16px;
+  }
+  .main-shell {
+    margin-left: 248px;
+  }
+  .sidebar nav {
+    flex-shrink: 0;
+  }
+  .sidebar .brand {
+    padding-bottom: 10px;
+  }
+  .sidebar .brand img {
+    width: 56px;
+    height: 60px;
+  }
+  .sidebar .brand-name {
+    font-size: 26px;
+  }
+}
+@media (max-width: 1250px) {
+  .workspace-brief {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 950px) {
+  .sidebar-projects {
+    position: fixed;
+    top: 65px;
+    left: 12px;
+    right: 12px;
+    z-index: 35;
+    margin: 0;
+    pointer-events: none;
+  }
+  .mobile-project-toggle {
+    display: flex;
+    pointer-events: auto;
+    align-self: flex-start;
+    max-width: 100%;
+    min-height: 36px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 2px 12px #244e4210;
+  }
+  .sidebar-project-list {
+    display: none;
+    pointer-events: auto;
+    background: #fafcf8;
+    border: 1px solid #dde7d9;
+    box-shadow: 0 12px 35px #244e4220;
+    padding: 12px;
+    border-radius: 14px;
+    margin-top: 6px;
+    max-height: 55vh;
+  }
+  .picker-open .sidebar-project-list {
+    display: block;
+  }
+  .main-shell main {
+    padding-top: 48px;
+  }
+  .topbar .mobile-brand {
+    display: none;
+  }
+  .collaboration-bar {
+    gap: 8px;
+  }
+  .current-account {
+    gap: 6px;
+  }
+  .current-account strong {
+    max-width: 135px;
+    font-size: 13px;
+  }
+  .online-accounts .account-avatar {
+    width: 28px;
+    height: 28px;
+  }
+}
+@media (max-width: 600px) {
+  .workspace-brief {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .workspace-brief .panel {
+    max-height: 220px;
+  }
+  .online-accounts {
+    max-width: 43%;
+  }
+  .current-account strong {
+    max-width: 105px;
+  }
+  .online-accounts > .online-member:nth-child(n + 4) {
+    display: none;
+  }
+}
+/* Each timeline renders only the visible dates plus overscan, across a five-year range. */
+.timeline-spacer {
+  flex: none;
+  pointer-events: none;
+}
+.timeline-jump {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.timeline-jump input {
+  width: 145px;
+  padding: 6px;
+}
+#project-timeline .trade-label {
+  display: flex;
+  flex-direction: column !important;
+  justify-content: center;
+  align-items: stretch;
+  padding: 8px 10px !important;
+  gap: 4px;
+}
+#project-timeline .trade-title {
+  display: grid;
+  grid-template-columns: 20px 9px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  flex: none;
+}
+#project-timeline .trade-title .drag-handle {
+  display: inline-flex;
+  width: 20px;
+  min-width: 20px;
+  position: static;
+  padding: 0;
+}
+#project-timeline .trade-title .trade-color {
+  width: 9px;
+  height: 18px;
+  min-height: 18px;
+  position: static;
+  margin: 0;
+}
+#project-timeline .trade-title > button[title='编辑工种'] {
+  width: 100%;
+  min-width: 0;
+  position: static;
+  align-items: flex-start;
+  min-height: 36px;
+  overflow: hidden;
+}
+#project-timeline .trade-title > button[title='编辑工种'] > span {
+  display: block;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-width: 100%;
+  line-height: 21px;
+}
+#project-timeline .trade-workers {
+  position: static;
+  inset: auto;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 0 41px;
+  min-height: 20px;
+  height: auto;
+  max-height: 40px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  font-size: 12px;
+  line-height: 20px;
+}
+@media (max-width: 700px) {
+  #project-timeline .trade-title {
+    grid-template-columns: 24px 8px minmax(0, 1fr);
+    gap: 4px;
+  }
+  #project-timeline .trade-title .drag-handle {
+    min-height: 44px;
+    width: 24px;
+    touch-action: none;
+  }
+  #project-timeline .trade-title > button[title='编辑工种'] {
+    min-height: 56px;
+  }
+  #project-timeline .trade-title > button[title='编辑工种'] > span {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+    line-height: 20px;
+    max-height: 40px;
+  }
+  #project-timeline .trade-workers {
+    padding-left: 36px;
+    min-height: 36px;
+  }
+}
+@media (max-width: 950px) {
+  .app-shell .topbar {
+    display: flex;
+    flex-direction: row;
+    min-height: 60px;
+    height: 60px;
+    padding: 8px 12px;
+    gap: 10px;
+  }
+  .app-shell .topbar .mobile-brand {
+    display: none;
+  }
+  .app-shell .topbar .cloud-control {
+    order: 2;
+    min-height: 40px;
+    padding: 7px;
+    font-size: 12px;
+  }
+  .app-shell .topbar .collaboration-bar {
+    order: 1;
+  }
+  .app-shell .topbar .online-accounts {
+    max-width: 85px;
+    overflow: hidden;
+  }
+  .app-shell .topbar .online-accounts > .online-member:nth-child(n + 3) {
+    display: none;
+  }
+  .sidebar-projects {
+    top: 65px;
+  }
+}
+.people-panel .people-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+.people-panel .person-card {
+  padding: 14px;
+  min-height: 0;
+  gap: 6px;
+}
+.people-panel .person-card > strong {
+  font-size: 18px;
+}
+.people-panel .person-card > p {
+  margin: 2px 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.people-panel .person-card .toolbar {
+  margin-top: 6px;
+}
+.people-panel .person-card .toolbar button {
+  padding: 6px 9px;
+  font-size: 13px;
+}
+.people-panel .person-card details {
+  padding: 4px 0;
+  margin: 0;
+}
+.project-editor .modal-body {
+  padding: 18px;
+}
+.project-editor .form-grid {
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .people-panel .people-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 950px) {
+  .app-shell .sidebar {
+    backdrop-filter: none;
+    background: #fbfdf9;
+  }
+}
+.workspace-brief {
+  align-items: start;
+}
+.workspace-brief .panel {
+  min-height: 0;
+  height: auto;
+  max-height: 225px;
+}
+.workspace-brief .empty.small,
+.workspace-brief .empty {
+  padding: 8px 0;
+  min-height: 0;
+}
+.workspace-brief .empty h3,
+.workspace-brief .empty p {
+  margin: 4px 0;
+}
+.today-construction {
+  font-size: 13px;
+  color: #647963;
+  margin: 8px 0;
+  overflow-wrap: anywhere;
+}
+.task-bar.working-today {
+  box-shadow: inset 0 0 0 1px #527761;
+}
+
+.workspace-brief .empty-state {
+  padding: 8px 0;
+  min-height: 0;
+}
+.workspace-brief .empty-state h3,
+.workspace-brief .empty-state p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+.mobile-history {
+  display: none;
+}
+@media (max-width: 950px) {
+  .topbar .mobile-history {
+    display: inline-flex;
+    order: 3;
+    width: 34px;
+    min-height: 40px;
+    padding: 6px;
+    flex-shrink: 0;
+  }
+}
+/* Touch actions retain pinch zoom and avoid double-tap zoom on form controls. */
+.modal button {
+  touch-action: manipulation;
+}

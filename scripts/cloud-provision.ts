@@ -57,6 +57,7 @@ try {
     'login_limit',
     'audit_event',
     'account_note',
+    'account_avatar',
     'import_preview',
     'imported_archive',
   ];

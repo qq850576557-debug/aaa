@@ -198,14 +198,14 @@ test('stage 4: overdue days, completed compatibility, inclusive future boundary 
   await expect(metric(page, '今日待办')).toHaveText('3');
   await expect(metric(page, '未来 15 天采购')).toHaveText('2');
   await expect(metric(page, '已逾期采购')).toHaveText('1');
-  await page.getByLabel('切换项目', { exact: true }).selectOption('project-two');
+  await page.locator('[data-project-id="project-two"]').click();
   await expect(todayPanel(page)).toContainText('乙工地材料');
   await expect(todayPanel(page)).not.toContainText('逾期瓷砖');
   await expect(upcoming(page)).not.toContainText('十五天材料');
   await todayPanel(page).getByRole('button', { name: '完成采购乙工地材料', exact: true }).click();
   await expect(metric(page, '今日待办')).toHaveText('2');
   await expect(metric(page, '未来 15 天采购')).toHaveText('1');
-  await page.getByLabel('切换项目', { exact: true }).selectOption('p-home');
+  await page.locator('[data-project-id="p-home"]').click();
   await expect(todayPanel(page)).toContainText('已逾期 2 天');
   expect((await state(page)).purchases.find((p) => p.name === '逾期瓷砖')?.status).toBe('待采购');
   await mkdir('/workspace/chunmo-stage4', { recursive: true });
@@ -279,7 +279,8 @@ test('stage 4: bar double click never edits; context menu deletion confirms and 
   await expect(todayPanel(page)).toContainText('电线及线管');
   await expect(upcoming(page)).toContainText('电线及线管');
   await page.reload();
-  await expect(page.getByTestId('task-bar')).toHaveCount(2);
+  expect((await state(page)).tasks).toHaveLength(2);
+  await expect(page.getByTestId('task-bar')).toHaveCount(1);
   await page.locator('.task-details-list summary').click();
   await page.getByRole('button', { name: '编辑任务现场保护与拆改', exact: true }).click();
   await expect(page.getByRole('heading', { name: '编辑施工任务', exact: true })).toBeVisible();
@@ -322,7 +323,7 @@ test('stage 4: personnel navigation is separate, old preparation statuses displa
   d.projects.push({ ...d.projects[0], id: 'p-two', name: '旧进行中工地', status: '进行中' });
   await boot(page);
   await restore(page, d);
-  await expect(page.locator('.project-status').filter({ hasText: '施工中' })).toHaveCount(3);
+  await expect(page.locator('.project-status').filter({ hasText: '施工中' })).toHaveCount(2);
   await expect(metric(page, '施工中的项目')).toHaveText('2');
   await page.locator('.stat-card').filter({ hasText: '施工中的项目' }).click();
   await expect(page.locator('.project-card')).toHaveCount(2);

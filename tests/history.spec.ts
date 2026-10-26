@@ -22,7 +22,7 @@ async function versions(page: Page): Promise<History> {
 }
 async function openHistory(page: Page) {
   await closeToast(page);
-  await page.locator('.project-history-entry button').click();
+  await page.getByRole('button', { name: '版本历史 · 15天', exact: true }).click();
   return page.getByRole('dialog', { name: '最近15天修改历史', exact: true });
 }
 async function changeName(page: Page, name: string) {
@@ -45,10 +45,10 @@ test('history: successful timestamp, readable diffs, arbitrary multi-change rest
   d.projects.push({ ...d.projects[0], id: 'other', name: '另一个项目', notes: '不要覆盖' });
   await boot(page);
   await restore(page, d);
-  await expect(page.locator('.project-history-entry')).toContainText('2026-10-23 12:00:00');
+  expect((await state(page)).projects[0].updatedAt).toBe('2026-10-23T04:00:00.000Z');
   await page.clock.setFixedTime(new Date('2026-10-23T04:00:04Z'));
   await changeName(page, '修改后的项目');
-  await expect(page.locator('.project-history-entry')).toContainText('12:00:04');
+  expect((await state(page)).projects[0].updatedAt).toBe('2026-10-23T04:00:04.000Z');
   const changed = (await versions(page)).records.find(
     (r) =>
       r.scope === 'p-home' &&
@@ -115,6 +115,7 @@ test('history: date and procurement changes show real before/after values; backu
 }) => {
   await boot(page);
   await restore(page);
+  await page.getByLabel('定位日期', { exact: true }).fill('2026-12-28');
   await editTask(page, page.getByTestId('task-bar').filter({ hasText: '竣工联合验收' }));
   let f = page.getByRole('dialog');
   await f.getByLabel('开始日期', { exact: true }).fill('2026-12-27');
@@ -183,22 +184,18 @@ test('history: failed atomic restore leaves current data and records intact; exp
   expect(await state(page)).toEqual(before);
 });
 
-test('workflow: blank double click creates a project-bound purchase only; existing bars do not edit and compact trade editor has no personnel registration', async ({
+test('V4 workflow: blank double click creates a project-bound task only; existing bars do not edit and compact trade editor has no personnel registration', async ({
   page,
 }) => {
   await boot(page);
   await restore(page);
   const before = await state(page);
   await page.locator('.trade-row').nth(2).locator('[data-date="2026-10-24"]').dblclick();
-  let f = page.getByRole('dialog', { name: '新建采购事项', exact: true });
-  await expect(f.getByLabel('所属项目', { exact: true })).toHaveCount(0);
-  await expect(f).toContainText('栖桐里');
-  await expect(f.getByLabel('采购截止日期', { exact: true })).toHaveValue('2026-10-24');
-  await f.getByLabel('采购内容 / 事项标题', { exact: true }).fill('双击新增材料');
-  await f.getByRole('button', { name: '保存', exact: true }).click();
-  await expect.poll(async () => (await state(page)).purchases.length).toBe(2);
-  expect((await state(page)).tasks).toEqual(before.tasks);
-  expect((await state(page)).purchases[1].projectId).toBe('p-home');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
+  expect((await state(page)).purchases).toEqual(before.purchases);
+  expect((await state(page)).tasks[3].projectId).toBe('p-home');
+  let f;
   await page.getByTestId('task-bar').first().dblclick();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByRole('button', { name: '编辑水电改造', exact: true }).click();
@@ -231,12 +228,13 @@ test('people: central safe profile CRUD, role selection, project assignment, glo
   await expect.poll(async () => (await state(page)).people?.length).toBe(1);
   const person = (await state(page)).people![0];
   let card = page.locator(`[data-person-id="${person.id}"]`);
-  await card.getByRole('button', { name: '分配项目／工序', exact: true }).click();
+  await card.locator('.staff-projects summary').click();
+  await card.getByRole('button', { name: '管理项目分配', exact: true }).click();
   f = page.getByRole('dialog');
   await f.getByRole('button', { name: '确认分配', exact: true }).click();
   await expect.poll(async () => (await state(page)).projects[0].staffIds).toEqual([person.id]);
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
-  await expect(page.locator('.project-team')).toHaveText('设计团队：陈设计');
+  expect((await state(page)).projects[0].staffIds).toEqual([person.id]);
   await expect(page.locator('.personnel-summary')).toHaveCount(0);
   await editTask(page, page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' }));
   f = page.getByRole('dialog');
@@ -250,9 +248,14 @@ test('people: central safe profile CRUD, role selection, project assignment, glo
   await f.getByLabel('姓名', { exact: true }).fill('陈主创');
   await f.getByRole('button', { name: '保存', exact: true }).click();
   await expect(card).toContainText('陈主创');
-  await card.getByRole('button', { name: '停用', exact: true }).click();
-  await expect(card.getByRole('button', { name: '分配项目／工序', exact: true })).toBeDisabled();
-  await card.getByRole('button', { name: '启用', exact: true }).click();
+  await card.getByRole('button', { name: '编辑人员', exact: true }).click();
+  await page.getByLabel('可参与新分配', { exact: true }).uncheck();
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
+  await card.locator('.staff-projects summary').click();
+  await expect(card.getByRole('button', { name: '管理项目分配', exact: true })).toBeDisabled();
+  await card.getByRole('button', { name: '编辑人员', exact: true }).click();
+  await page.getByLabel('可参与新分配', { exact: true }).check();
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
   await card.getByRole('button', { name: '删除人员', exact: true }).click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
   await expect(card).toHaveCount(0);

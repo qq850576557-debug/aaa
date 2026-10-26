@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import App from '../App';
 import { cloudApi, cloudSession, CloudError, type CloudUser } from '../lib/cloud';
+import { loginInputSchema } from '../lib/login';
 import { passwordSchema, PASSWORD_MIN, PASSWORD_MAX } from '../lib/password';
 import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_INITIALS, BRAND_SLOGAN } from '../lib/brand';
 import './login.css';
@@ -16,6 +17,8 @@ export function CloudGate() {
     [busy, setBusy] = useState(false);
   const [mounted, setMounted] = useState(false);
   const prior = useRef<CloudUser | null>(null);
+  const authorized = useRef(false),
+    generation = useRef(0);
   useEffect(() => {
     if (localDevelopment) return;
     let active = true;
@@ -25,6 +28,8 @@ export function CloudGate() {
         if (sessionStorage.getItem('chunmo-space') !== 'local')
           sessionStorage.setItem('chunmo-space', 'cloud');
         prior.current = account;
+        authorized.current = true;
+        generation.current++;
         setUser(account);
         setMounted(true);
       })
@@ -34,23 +39,50 @@ export function CloudGate() {
       .finally(() => {
         if (active) setChecking(false);
       });
-    const expired = () => {
-      setUser(null);
-      setPassword('');
-      setError('登录已失效，请重新登录。');
+    const expired = (event?: Event) => {
+      const detail = (
+        event as CustomEvent<{ login?: string; clearWorkspace?: boolean }> | undefined
+      )?.detail;
+      if (detail?.clearWorkspace) {
+        setMounted(false);
+        prior.current = null;
+      }
+      if (typeof detail?.login === 'string') setLogin(detail.login);
+      // SSE and an API response may report the same revocation. Do not erase
+      // credentials entered on the already-locked page when a late event arrives.
+      if (authorized.current) {
+        authorized.current = false;
+        generation.current++;
+        setUser(null);
+        setPassword('');
+        setError('登录已失效，请重新登录。');
+      }
     };
     window.addEventListener('chunmo-auth-expired', expired);
     const verify = () => {
-      if (!prior.current || document.visibilityState !== 'visible') return;
+      if (!authorized.current || !prior.current || document.visibilityState !== 'visible') return;
+      const observed = generation.current;
       void cloudSession()
         .then((account) => {
-          if (active && account.id !== prior.current?.id) {
+          if (
+            active &&
+            authorized.current &&
+            generation.current === observed &&
+            account.id !== prior.current?.id
+          ) {
             expired();
             window.location.reload();
           }
         })
         .catch((e) => {
-          if (active && e instanceof CloudError && e.status === 401) expired();
+          if (
+            active &&
+            authorized.current &&
+            generation.current === observed &&
+            e instanceof CloudError &&
+            e.status === 401
+          )
+            expired();
         });
     };
     const timer = setInterval(verify, 60000);
@@ -65,6 +97,11 @@ export function CloudGate() {
   async function signIn(event: FormEvent) {
     event.preventDefault();
     setError('');
+    const identity = loginInputSchema.safeParse(login);
+    if (!identity.success) {
+      setError(identity.error.issues[0].message);
+      return;
+    }
     const result = passwordSchema.safeParse(password);
     if (!result.success) {
       setError(result.error.issues[0].message);
@@ -72,9 +109,11 @@ export function CloudGate() {
     }
     setBusy(true);
     try {
-      await cloudApi('/auth/login', 'POST', { login, password });
+      await cloudApi('/auth/login', 'POST', { login: identity.data, password });
       const account = await cloudSession();
       sessionStorage.setItem('chunmo-space', 'cloud');
+      authorized.current = true;
+      generation.current++;
       setPassword('');
       if (mounted) {
         // Same-user draft memory remains recoverable if beforeunload is cancelled.
@@ -129,7 +168,7 @@ export function CloudGate() {
                   name="username"
                   autoComplete="username"
                   required
-                  maxLength={80}
+                  maxLength={160}
                   value={login}
                   onChange={(e) => setLogin(e.target.value)}
                   disabled={checking || busy}

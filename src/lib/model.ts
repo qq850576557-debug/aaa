@@ -217,8 +217,8 @@ export const dataSchema = z
         ctx.addIssue({ code: 'custom', message: '人员关联无效或重复，请先恢复对应人员档案' });
     for (const p of d.projects) {
       const [a, b] = projectRange(d, p);
-      if (duration(a, b) > 1096)
-        ctx.addIssue({ code: 'custom', message: '项目与任务的合并日期跨度不能超过 3 年' });
+      if (duration(a, b) > 3660)
+        ctx.addIssue({ code: 'custom', message: '项目与任务的合并日期跨度不能超过 10 年' });
     }
     const projects = new Set(d.projects.map((p) => p.id));
     for (const x of [...d.trades, ...d.tasks, ...d.notes, ...d.purchases])

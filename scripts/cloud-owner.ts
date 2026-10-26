@@ -1,13 +1,14 @@
 import pg from 'pg';
+import { loginSchema } from '../src/lib/login';
 import { passwordSchema } from '../src/lib/password';
 import { passwordHash } from '../server/auth';
 import { createWorkspace } from '../server/store';
 import { pool, privatePool } from '../server/db';
-const login = process.env.OWNER_LOGIN?.toLowerCase(),
+const parsedLogin = loginSchema.safeParse(process.env.OWNER_LOGIN);
+const login = parsedLogin.success ? parsedLogin.data : undefined,
   password = process.env.OWNER_PASSWORD;
 if (
   !login ||
-  !/^[a-z0-9_.@-]{3,80}$/.test(login) ||
   !password ||
   !passwordSchema.safeParse(password).success ||
   !process.env.MIGRATION_DATABASE_URL

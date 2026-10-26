@@ -30,14 +30,14 @@ test('dirty form protection, anchored quick create, real calendar and duration s
   const cell = page.locator('.trade-row').first().locator('[data-date="2026-10-27"]');
   const point = await cell.boundingBox();
   await cell.dblclick();
-  let modal = page.getByRole('dialog', { name: '新建采购事项', exact: true });
-  await expect(modal.getByLabel('采购截止日期', { exact: true })).toHaveValue('2026-10-27');
-  await modal.getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('button', { name: '施工任务', exact: true }).click();
-  modal = page.getByRole('dialog');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
+  const created = (await state(page)).tasks.find(
+    (t) => t.id !== 't-first' && t.start === '2026-10-27',
+  )!;
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: created.name }).last());
+  let modal = page.getByRole('dialog');
   await modal.getByLabel('任务名称', { exact: true }).fill('第二段拆改');
-  await modal.getByLabel('开始日期', { exact: true }).fill('2026-10-27');
-  await modal.getByLabel('结束日期', { exact: true }).fill('2026-10-27');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
   await editTask(page, page.getByTestId('task-bar').filter({ hasText: '第二段拆改' }));
@@ -214,7 +214,7 @@ test('legacy archived and completed history is retained, zero metrics say 暂无
   d.projects[0].archived = true;
   await restore(page, d);
   await page.getByRole('button', { name: '已完工项目', exact: true }).first().click();
-  await expect(page.locator('.project-info h2')).toHaveText(d.projects[0].name);
+  await expect(page.locator('.current-project-name')).toHaveText(d.projects[0].name);
   expect((await state(page)).tasks).toHaveLength(3);
   await page.getByRole('button', { name: '恢复施工中' }).click();
   await page.getByRole('button', { name: '确认', exact: true }).click();
@@ -259,14 +259,14 @@ test('today, memo and purchase panels precede timeline, completion and project s
   await boot(page);
   await restore(page, d);
   await schedule(page);
-  const cards = await page.locator('.lower-grid').boundingBox(),
+  const cards = await page.locator('.workspace-brief').boundingBox(),
     gantt = await page.locator('.schedule-section').boundingBox();
   expect(cards!.y).toBeLessThan(gantt!.y);
   await page.getByRole('button', { name: '完成材料与施工注意事项', exact: true }).click();
   await expect
     .poll(async () => (await state(page)).notes.find((n) => n.kind === '项目备忘')?.done)
     .toBe(true);
-  await page.getByLabel('切换项目', { exact: true }).selectOption(p2.id);
+  await page.locator(`[data-project-id="${p2.id}"]`).click();
   await expect(
     page.getByRole('button', { name: '标记未完成材料与施工注意事项', exact: true }),
   ).toHaveCount(0);

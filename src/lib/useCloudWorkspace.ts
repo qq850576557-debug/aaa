@@ -63,6 +63,11 @@ export function useCloudWorkspace(enabled: boolean) {
         await refresh();
         if (!active) return;
         events = new EventSource('/api/events');
+        events.addEventListener('open', () => window.dispatchEvent(new Event('chunmo-presence')));
+        events.addEventListener('presence', () =>
+          window.dispatchEvent(new Event('chunmo-presence')),
+        );
+        window.dispatchEvent(new Event('chunmo-presence'));
         events.addEventListener('revision', (event) => {
           const value = JSON.parse((event as MessageEvent).data);
           if (value.revision !== revision.current)
@@ -71,6 +76,7 @@ export function useCloudWorkspace(enabled: boolean) {
             });
         });
         events.addEventListener('session-expired', () => {
+          if (!active) return;
           blocked.current = true;
           setUser(null);
           if (!pending.current) {

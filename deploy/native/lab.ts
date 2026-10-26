@@ -8,6 +8,7 @@ import { spawn, execFileSync, type ChildProcess } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
 import { request, Agent } from 'node:https';
 import pg from 'pg';
+import { PNG } from 'pngjs';
 import { chromium, expect, type Page } from '@playwright/test';
 import { newDeployment, url, nginx, identifier, publicHTTPS } from './shared';
 import { preparePrivateCA } from './public';
@@ -319,20 +320,60 @@ authorityKeyIdentifier=keyid:always
   const f = a.getByRole('dialog', { name: '新建项目', exact: true });
   await f.getByLabel('项目名称', { exact: true }).fill('原生HTTPS双会话验收');
   await f.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(b.locator('.project-info h2')).toHaveText('原生HTTPS双会话验收', { timeout: 12000 });
+  await expect(b.locator('.current-project-name')).toHaveText('原生HTTPS双会话验收', {
+    timeout: 12000,
+  });
   await b.getByRole('button', { name: '编辑当前项目', exact: true }).click();
   const edit = b.getByRole('dialog', { name: '编辑项目', exact: true });
   await edit.getByLabel('项目名称', { exact: true }).fill('员工经原生HTTPS同步');
   await edit.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(a.locator('.project-info h2')).toHaveText('员工经原生HTTPS同步', { timeout: 12000 });
+  await expect(a.locator('.current-project-name')).toHaveText('员工经原生HTTPS同步', {
+    timeout: 12000,
+  });
   await stop(api);
   await startApi();
   await health();
   await a.reload();
-  await expect(a.locator('.project-info h2')).toHaveText('员工经原生HTTPS同步');
+  await expect(a.locator('.current-project-name')).toHaveText('员工经原生HTTPS同步');
   console.log(
     'PASS built frontend + native Nginx HTTPS: owner creates employee, two browser sessions, bidirectional SSE and reload after API restart.',
   );
+  // Exercise the new identity flow through the actual production HTTPS build.
+  await b.reload();
+  await expect(b.locator('.save-state')).toContainText('已保存');
+  await b.getByRole('button', { name: '账号管理', exact: true }).click();
+  const renamePanel = b.getByRole('dialog', { name: '账号管理', exact: true });
+  await renamePanel.getByText('修改登录账号', { exact: true }).click();
+  await renamePanel.getByLabel('新登录账号', { exact: true }).fill('春茉师傅');
+  await renamePanel.getByRole('button', { name: '继续修改登录账号' }).click();
+  const renameConfirm = b.getByRole('dialog', { name: '确认修改登录账号', exact: true });
+  await renameConfirm.getByLabel('当前登录密码').fill(password);
+  await renameConfirm.getByRole('button', { name: '确认修改并退出登录' }).click();
+  await expect(b.locator('.brand-login')).toBeVisible();
+  const renamedPanel = await enter(b, '春茉师傅');
+  await renamedPanel.getByRole('button', { name: '关闭', exact: true }).click();
+  const renamedPolicy = await b.evaluate(async () =>
+    (await fetch('/api/auth/login-policy')).json(),
+  );
+  assert.equal(renamedPolicy.canChange, false);
+  console.log(
+    'PASS production HTTPS Chinese login rename, full session revocation and 90-day policy.',
+  );
+  const avatarPNG = PNG.sync.write(new PNG({ width: 2, height: 2 }));
+  const avatarCode = await b.evaluate(
+    async (image) => {
+      const session = await (await fetch('/api/auth/session')).json();
+      return (
+        await fetch('/api/auth/avatar', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf },
+          body: JSON.stringify({ image }),
+        })
+      ).status;
+    },
+    'data:image/png;base64,' + avatarPNG.toString('base64'),
+  );
+  assert.equal(avatarCode, 200);
   const file = await backup(conf, backups, dump);
   const tampered = file + '.tampered',
     bytes = readFileSync(file);
@@ -360,9 +401,25 @@ authorityKeyIdentifier=keyid:always
   await startApi(restored);
   await health();
   await a.reload();
-  await expect(a.locator('.project-info h2')).toHaveText('员工经原生HTTPS同步');
+  await expect(a.locator('.current-project-name')).toHaveText('员工经原生HTTPS同步');
+  await b.reload();
+  await expect(b.locator('.current-project-name')).toHaveText('员工经原生HTTPS同步');
+  const restoredPolicy = await b.evaluate(async () =>
+    (await fetch('/api/auth/login-policy')).json(),
+  );
+  assert.equal(restoredPolicy.login, '春茉师傅');
+  assert.equal(restoredPolicy.canChange, false);
+  assert.equal(restoredPolicy.nextAllowedAt, renamedPolicy.nextAllowedAt);
+  const restoredAvatar = await b.evaluate(async () => {
+    const s = await (await fetch('/api/auth/session')).json();
+    const r = await fetch('/api/accounts/' + s.user.id + '/avatar');
+    return { status: r.status, bytes: Array.from(new Uint8Array(await r.arrayBuffer())) };
+  });
+  assert.equal(restoredAvatar.status, 200);
+  assert.deepEqual(Buffer.from(restoredAvatar.bytes), avatarPNG);
+  console.log('PASS avatar PNG persists through encrypted database backup and isolated restore.');
   console.log(
-    'PASS restored database actually serves preserved accounts/sessions and project through HTTPS.',
+    'PASS restored database serves preserved sessions/project and retains the exact Chinese login cooldown.',
   );
   writeFileSync(
     join(root, 'result.json'),

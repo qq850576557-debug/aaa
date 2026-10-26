@@ -43,70 +43,44 @@ async function revisions(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-24T04:00:00Z'));
 });
-test('dictionary: real CRUD, multiple trade IDs, old values, disabled selection, used deletion protection and global version restore', async ({
+test('V4 compact personnel editor preserves category, legacy trade and disabled dictionary references', async ({
   page,
 }) => {
   const d = data();
+  d.dictionaries = [
+    { id: 'cat', kind: 'category', label: '合作师傅', active: true, order: 0 },
+    { id: 'water', kind: 'trade', label: '水电专业', active: true, order: 1 },
+    { id: 'old', kind: 'trade', label: '旧专业', active: false, order: 2 },
+  ];
+  d.people![0].categoryId = 'cat';
+  d.people![0].tradeIds = ['old'];
   await boot(page);
   await restore(page, d);
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
-  await page.getByRole('button', { name: '类别与工种字典', exact: true }).click();
-  let manager = page.getByRole('dialog', { name: '人员类别与工种字典', exact: true });
-  await manager.getByRole('button', { name: '新增类别', exact: true }).click();
-  let editor = page.getByRole('dialog', { name: '编辑字典选项', exact: true });
-  await editor.getByLabel('选项名称', { exact: true }).fill('合作师傅');
-  await editor.getByRole('button', { name: '保存选项', exact: true }).click();
-  await expect.poll(async () => (await state(page)).dictionaries?.length).toBe(1);
-  for (const name of ['水电专业', '安装专业']) {
-    await manager.getByRole('button', { name: '新增工种选项', exact: true }).click();
-    editor = page.getByRole('dialog', { name: '编辑字典选项', exact: true });
-    await editor.getByLabel('选项名称', { exact: true }).fill(name);
-    await editor.getByRole('button', { name: '保存选项', exact: true }).click();
-  }
-  await expect.poll(async () => (await state(page)).dictionaries?.length).toBe(3);
-  await manager.getByRole('button', { name: '关闭', exact: true }).click();
-  await page
-    .locator('[data-person-id="w"]')
-    .getByRole('button', { name: '编辑人员', exact: true })
-    .click();
-  editor = page.getByRole('dialog', { name: '编辑人员档案' });
-  const dictionaries = (await state(page)).dictionaries!;
-  await editor.getByLabel('人员类别', { exact: true }).selectOption(dictionaries[0].id);
+  await expect(page.getByRole('button', { name: '类别与工种字典', exact: true })).toHaveCount(0);
+  const card = page.locator('[data-person-id="w"]');
+  await card.getByRole('button', { name: '编辑人员', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑人员档案' });
+  await expect(editor.getByLabel('人员类别', { exact: true })).toHaveCount(0);
+  await expect(editor.getByText('原工种文字（兼容保留）', { exact: true })).toHaveCount(0);
   await editor.getByLabel('人员工种水电专业', { exact: true }).check();
-  await editor.getByLabel('人员工种安装专业', { exact: true }).check();
+  await editor.getByLabel('姓名', { exact: true }).fill('张师傅更新');
   await editor.getByRole('button', { name: '保存', exact: true }).click();
-  await expect.poll(async () => (await state(page)).people![0].tradeIds?.length).toBe(2);
-  expect((await state(page)).people![0].trade).toBe('旧水电');
-  await expect(page.locator('[data-person-id="w"]')).toContainText('水电专业、安装专业');
-  await page.getByRole('button', { name: '类别与工种字典', exact: true }).click();
-  manager = page.getByRole('dialog', { name: '人员类别与工种字典', exact: true });
-  let row = manager.locator(`[data-dictionary-id="${dictionaries[1].id}"]`);
-  await row.getByRole('button', { name: '删除选项', exact: true }).click();
-  await page.getByRole('button', { name: '确认操作', exact: true }).click();
-  await expect(manager.getByRole('alert')).toContainText('引用');
-  expect((await state(page)).dictionaries![1].deleted).toBeUndefined();
-  await row.getByRole('button', { name: '停用选项', exact: true }).click();
-  await expect(row).toContainText('停用');
-  await row.getByRole('button', { name: '编辑选项', exact: true }).click();
-  editor = page.getByRole('dialog', { name: '编辑字典选项', exact: true });
-  await editor.getByLabel('选项名称', { exact: true }).fill('精细水电');
-  await editor.getByRole('button', { name: '保存选项', exact: true }).click();
-  await expect.poll(async () => (await state(page)).dictionaries![1].label).toBe('精细水电');
-  const h = await revisions(page),
-    target = h.records.findLast(
-      (r: any) => r.scope === '@global' && r.changes.some((c: any) => c.after === '精细水电'),
-    );
-  await manager.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect.poll(async () => (await state(page)).people![0].name).toBe('张师傅更新');
+  const saved = await state(page);
+  expect(saved.people![0].categoryId).toBe('cat');
+  expect(saved.people![0].trade).toBe('旧水电');
+  expect(saved.people![0].tradeIds).toEqual(['old', 'water']);
+  expect(saved.dictionaries).toEqual(d.dictionaries);
   await page.getByRole('button', { name: '版本历史 · 15天', exact: true }).click();
-  const history = page.getByRole('dialog', { name: '最近15天修改历史', exact: true });
+  const history = page.getByRole('dialog', { name: '最近15天修改历史' });
   await history
-    .locator(`[data-revision-id="${target.id}"]`)
+    .locator('.revision-card')
+    .first()
     .getByRole('button', { name: '恢复到修改前' })
     .click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
-  await expect.poll(async () => (await state(page)).dictionaries![1].label).toBe('水电专业');
-  expect((await state(page)).people![0].tradeIds).toEqual(dictionaries.slice(1).map((x) => x.id));
-  expect((await state(page)).tasks).toEqual(d.tasks);
+  await expect.poll(async () => (await state(page)).people![0].name).toBe('张师傅');
 });
 
 test('conflicts: task dates and personnel allocation synchronize both directions and historical restore recomputes overlaps', async ({
@@ -139,7 +113,7 @@ test('conflicts: task dates and personnel allocation synchronize both directions
   card = page.locator('[data-person-id="w"]');
   await card.locator('.staff-projects summary').click();
   await expect(card).toContainText('计划进场 2026-11-10');
-  await card.getByRole('button', { name: '分配项目／工序', exact: true }).click();
+  await card.getByRole('button', { name: '管理项目分配', exact: true }).click();
   editor = page.getByRole('dialog');
   await editor.getByLabel('分配位置', { exact: true }).selectOption(`trade:${d.trades[1].id}`);
   await editor.getByRole('button', { name: '解除此处分配', exact: true }).click();
@@ -157,7 +131,7 @@ test('conflicts: task dates and personnel allocation synchronize both directions
     page.getByRole('button', { name: '安排水电改造施工人员', exact: true }),
   ).toContainText('未安排');
   await closeToast(page);
-  await page.locator('.project-history-entry button').click();
+  await page.getByRole('button', { name: '版本历史 · 15天', exact: true }).click();
   const history = page.getByRole('dialog', { name: '最近15天修改历史', exact: true });
   await history
     .locator(`[data-revision-id="${target.id}"]`)
@@ -195,4 +169,23 @@ test('privacy: local profile has no rating input, rating payload or private info
   const raw = JSON.stringify(await state(page));
   expect(raw).not.toContain('reviews');
   expect(raw).not.toContain('ratings');
+});
+
+test('V4 new personnel can select standard trades without a dictionary management screen', async ({
+  page,
+}) => {
+  await boot(page);
+  await restore(page, data());
+  await page.getByRole('button', { name: '人员管理', exact: true }).click();
+  await page.getByRole('button', { name: '新增人员', exact: true }).click();
+  const f = page.getByRole('dialog', { name: '新增人员档案' });
+  await f.getByLabel('姓名', { exact: true }).fill('新水电师傅');
+  await f.getByLabel('人员工种水电改造', { exact: true }).check();
+  await f.getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(async () => (await state(page)).people!.length).toBe(2);
+  const d = await state(page),
+    p = d.people!.find((p) => p.name === '新水电师傅')!;
+  expect(d.dictionaries?.find((t) => t.id === p.tradeIds![0])?.label).toBe('水电改造');
+  expect(d.people![0].trade).toBe('旧水电');
+  await expect(page.locator(`[data-person-id="${p.id}"]`)).toContainText('水电改造');
 });

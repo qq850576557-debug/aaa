@@ -2,6 +2,9 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Modal, Confirm } from './Modal';
 import { PASSWORD_MIN, PASSWORD_MAX, passwordSchema } from '../lib/password';
 import { cloudApi, cloudSession, selectSpace, CloudError, type CloudUser } from '../lib/cloud';
+import { AvatarEditor } from './AvatarEditor';
+import { LoginNameEditor } from './LoginNameEditor';
+import { loginSchema, LOGIN_HELP } from '../lib/login';
 import { AuditLog } from './AuditLog';
 import './account.css';
 export type DirectoryAccount = {
@@ -156,7 +159,7 @@ function CloudPanel({
               </div>
               <div className="account-tabs" role="tablist" aria-label="账号管理功能">
                 {[
-                  ['profile', '我的账号'],
+                  ['profile', '账号与安全'],
                   ['directory', '账号通讯录'],
                   ['audit', '操作记录'],
                   ...(user.owner ? [['import', '备份导入']] : []),
@@ -176,7 +179,7 @@ function CloudPanel({
                 ))}
               </div>
               {tab === 'profile' && (
-                <section className="account-section" aria-label="我的账号">
+                <section className="account-section" aria-label="账号与安全">
                   <form
                     aria-label="修改我的展示名称"
                     onSubmit={(e) => {
@@ -207,6 +210,8 @@ function CloudPanel({
                     </label>
                     <button disabled={busy}>保存展示名称</button>
                   </form>
+                  <AvatarEditor user={user} />
+                  <LoginNameEditor dirty={dirty} onExpired={expired} />
                   <details className="account-card">
                     <summary>修改我的密码</summary>
                     <p className="account-muted">
@@ -236,7 +241,11 @@ function CloudPanel({
                           () =>
                             void action(async () => {
                               await cloudApi('/auth/logout', 'POST', {});
-                              window.location.reload();
+                              window.dispatchEvent(
+                                new CustomEvent('chunmo-auth-expired', {
+                                  detail: { clearWorkspace: true },
+                                }),
+                              );
                             }),
                         )
                       }
@@ -391,10 +400,16 @@ function CloudPanel({
                   {user.owner && (
                     <details className="account-card">
                       <summary>创建普通员工账号</summary>
+                      <p className="account-muted">{LOGIN_HELP}</p>
                       <form
                         aria-label="创建普通员工账号"
                         onSubmit={(e) => {
                           e.preventDefault();
+                          const account = loginSchema.safeParse(login);
+                          if (!account.success) {
+                            setError(account.error.issues[0].message);
+                            return;
+                          }
                           const checked = passwordSchema.safeParse(password);
                           if (!checked.success) {
                             setError(checked.error.issues[0].message);
@@ -402,7 +417,7 @@ function CloudPanel({
                           }
                           void action(async () => {
                             await cloudApi('/accounts', 'POST', {
-                              login,
+                              login: account.data,
                               password,
                               ...(newName.trim() ? { displayName: newName } : {}),
                             });
@@ -420,9 +435,8 @@ function CloudPanel({
                             aria-label="新员工登录名"
                             autoComplete="off"
                             required
-                            pattern={'[a-z0-9_.@\\-]{3,80}'}
                             minLength={3}
-                            maxLength={80}
+                            maxLength={160}
                             value={login}
                             onChange={(e) => setLogin(e.target.value)}
                           />

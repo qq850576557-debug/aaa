@@ -1,5 +1,7 @@
 import express from 'express';
+import { validateAvatar } from './avatar';
 import { auditDevice } from './audit';
+import { loginSchema, loginInputSchema } from '../src/lib/login';
 import { passwordSchema } from '../src/lib/password';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -24,11 +26,7 @@ import { parseBackup, dateOK, emptyData, plus } from '../src/lib/model';
 import { parseArchive, canonical, differences, type History } from '../src/lib/history';
 const credentials = z
   .object({
-    login: z
-      .string()
-      .trim()
-      .toLowerCase()
-      .regex(/^[a-z0-9_.@-]{3,80}$/),
+    login: loginSchema,
     password: passwordSchema,
   })
   .strict();
@@ -77,7 +75,7 @@ export function createApp() {
   });
   app.post('/api/auth/login', async (req, res, next) => {
     try {
-      const body = credentials.parse(req.body);
+      const body = credentials.extend({ login: loginInputSchema }).parse(req.body);
       for (const bucket of ['login:' + body.login + ':' + req.ip, 'ip:' + req.ip]) {
         const q = await pool.query(
           "INSERT INTO login_limit VALUES($1,1,now()+interval '1 minute') ON CONFLICT(bucket) DO UPDATE SET attempts=CASE WHEN login_limit.expires_at<now() THEN 1 ELSE login_limit.attempts+1 END,expires_at=CASE WHEN login_limit.expires_at<now() THEN now()+interval '1 minute' ELSE login_limit.expires_at END RETURNING attempts",
@@ -95,7 +93,7 @@ export function createApp() {
         // cannot be verified before revocation and create a session after it.
         await transaction(async (c) => {
           const q = await c.query(
-            'SELECT id,password_hash,active FROM account WHERE login=$1 FOR UPDATE',
+            'SELECT id,password_hash,active FROM account WHERE login_key=$1 FOR UPDATE',
             [body.login],
           );
           const user = q.rows[0];
@@ -143,6 +141,79 @@ export function createApp() {
         });
       });
       res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.put('/api/auth/avatar', async (req: AuthRequest, res, next) => {
+    try {
+      const body = z
+        .object({ image: z.string().max(2800000) })
+        .strict()
+        .parse(req.body);
+      const png = validateAvatar(body.image);
+      await transaction(async (c) => {
+        await c.query(
+          'INSERT INTO account_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now()',
+          [req.actor!.id, png, randomUUID()],
+        );
+        await audit(c, req.actor!, 'account.avatar', undefined, {
+          entityType: 'account',
+          entityId: req.actor!.id,
+          operation: 'update',
+          changedFields: ['avatar'],
+        });
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.delete('/api/auth/avatar', async (req: AuthRequest, res, next) => {
+    try {
+      await transaction(async (c) => {
+        await c.query('DELETE FROM account_avatar WHERE account_id=$1', [req.actor!.id]);
+        await audit(c, req.actor!, 'account.avatar', undefined, {
+          entityType: 'account',
+          entityId: req.actor!.id,
+          operation: 'update',
+          changedFields: ['avatar'],
+        });
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get('/api/accounts/:id/avatar', async (req: AuthRequest, res, next) => {
+    try {
+      const q = await pool.query(
+        'SELECT v.png FROM account_avatar v JOIN account a ON a.id=v.account_id WHERE a.id=$1 AND a.workspace_id=$2 AND a.active=true',
+        [req.params.id, req.actor!.workspaceId],
+      );
+      if (!q.rowCount) throw new ApiError(404, '头像不存在');
+      res.type('png').send(q.rows[0].png);
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get('/api/presence', async (req: AuthRequest, res, next) => {
+    try {
+      const ids = [
+        ...new Set(
+          [...streams]
+            .filter((s) => s.workspaceId === req.actor!.workspaceId)
+            .map((s) => s.accountId),
+        ),
+      ];
+      const tokens = [...streams]
+        .filter((s) => s.workspaceId === req.actor!.workspaceId)
+        .map((s) => s.tokenHash);
+      const q = await pool.query(
+        `SELECT DISTINCT a.id,a.login,COALESCE(NULLIF(a.display_name,''),a.login) AS "displayName",v.version AS "avatarVersion" FROM account a JOIN auth_session s ON s.account_id=a.id LEFT JOIN account_avatar v ON v.account_id=a.id WHERE a.workspace_id=$1 AND a.id=ANY($2::text[]) AND s.token_hash=ANY($3::text[]) AND s.expires_at>now() AND a.active=true ORDER BY a.id`,
+        [req.actor!.workspaceId, ids, tokens],
+      );
+      res.json({ accounts: q.rows });
     } catch (e) {
       next(e);
     }
@@ -268,7 +339,12 @@ export function createApp() {
       next(e);
     }
   });
-  const streams = new Set<{ accountId: string; tokenHash: string; close: () => void }>();
+  const streams = new Set<{
+    accountId: string;
+    workspaceId: string;
+    tokenHash: string;
+    close: () => void;
+  }>();
   app.post('/api/auth/logout', async (req: AuthRequest, res, next) => {
     try {
       await pool.query('DELETE FROM auth_session WHERE token_hash=$1', [req.tokenHash]);
@@ -286,6 +362,83 @@ export function createApp() {
     );
     if (q.rows[0].attempts > 5) throw new ApiError(429, '密码操作过于频繁，请稍后重试');
   };
+  app.get('/api/auth/login-policy', async (req: AuthRequest, res, next) => {
+    try {
+      const q = await pool.query(
+        `SELECT login,login_changed_at AS "lastChangedAt",
+        login_changed_at+interval '2160 hours' AS "nextAllowedAt",
+        login_changed_at IS NULL OR clock_timestamp()>=login_changed_at+interval '2160 hours' AS "canChange",
+        clock_timestamp() AS "serverNow" FROM account WHERE id=$1`,
+        [req.actor!.id],
+      );
+      res.json(q.rows[0]);
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.post('/api/auth/login-name', async (req: AuthRequest, res, next) => {
+    try {
+      const body = z
+        .object({
+          newLogin: loginSchema,
+          currentPassword: passwordSchema,
+          confirm: z.literal(true),
+        })
+        .strict()
+        .parse(req.body);
+      await passwordLimit(req.actor!.id);
+      if (hashing >= 2) throw new ApiError(429, '账号验证繁忙，请稍后重试');
+      hashing++;
+      try {
+        await transaction(async (c) => {
+          const q = await c.query(
+            `SELECT id,login,login_key,password_hash,login_changed_at,
+            login_changed_at+interval '2160 hours' AS next_allowed,
+            login_changed_at IS NULL OR clock_timestamp()>=login_changed_at+interval '2160 hours' AS can_change
+            FROM account WHERE id=$1 AND active=true FOR UPDATE`,
+            [req.actor!.id],
+          );
+          const row = q.rows[0];
+          const live = await c.query(
+            'SELECT 1 FROM auth_session WHERE token_hash=$1 AND account_id=$2 AND expires_at>now()',
+            [req.tokenHash, req.actor!.id],
+          );
+          if (!row || !live.rowCount) throw new ApiError(401, '会话已失效，请重新登录');
+          if (!row.can_change)
+            throw new ApiError(
+              409,
+              '90天内不可再次修改，下次允许修改时间：' + new Date(row.next_allowed).toISOString(),
+            );
+          if (row.login_key === body.newLogin)
+            throw new ApiError(409, '新账号与当前账号规范化后相同');
+          if (!(await argon2.verify(row.password_hash, body.currentPassword)))
+            throw new ApiError(403, '当前密码不正确');
+          const changed = await c.query(
+            'UPDATE account SET login=$2 WHERE id=$1 RETURNING login,login_changed_at',
+            [req.actor!.id, body.newLogin],
+          );
+          const current = changed.rows[0];
+          await audit(c, req.actor!, 'account.login.change', undefined, {
+            entityType: 'account',
+            entityId: req.actor!.id,
+            operation: 'update',
+            before: { login: row.login },
+            after: { login: current.login, loginChangedAt: current.login_changed_at.toISOString() },
+            changedFields: ['login'],
+          });
+        });
+        for (const stream of streams) if (stream.accountId === req.actor!.id) stream.close();
+        setCookie(res, '', true);
+        res.json({ ok: true, login: body.newLogin });
+      } finally {
+        hashing--;
+      }
+    } catch (e) {
+      if ((e as { code?: string }).code === '23505')
+        next(new ApiError(409, '该登录账号已被使用，请选择其他账号'));
+      else next(e);
+    }
+  });
   app.post('/api/auth/password', async (req: AuthRequest, res, next) => {
     try {
       const body = z
@@ -658,7 +811,12 @@ export function createApp() {
         streams.delete(stream);
         res.end();
       };
-      const stream = { accountId: req.actor!.id, tokenHash: req.tokenHash!, close };
+      const stream = {
+        accountId: req.actor!.id,
+        workspaceId: req.actor!.workspaceId,
+        tokenHash: req.tokenHash!,
+        close,
+      };
       const timer = setInterval(async () => {
         if (busy) return;
         busy = true;
@@ -675,7 +833,8 @@ export function createApp() {
           if (revision !== last) {
             last = revision;
             res.write(`event: revision\ndata: ${JSON.stringify({ revision })}\n\n`);
-          } else if (++ticks % 15 === 0) res.write(': keepalive\n\n');
+          }
+          if (++ticks % 5 === 0) res.write('event: presence\ndata: {}\n\n');
         } catch {
           close();
         } finally {

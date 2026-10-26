@@ -1,4 +1,4 @@
-import { remainingSchedule } from '../lib/readiness';
+import { remainingSchedule, scheduleForecast } from '../lib/readiness';
 import { useCurrentDate } from '../lib/useCurrentDate';
 import { useRef, useState } from 'react';
 import { useReorderMotion } from '../lib/useReorderMotion';
@@ -26,8 +26,6 @@ export function ProjectCards({
   return (
     <div ref={root} className="project-cards" aria-label="项目列表">
       {projects.map((p, index) => {
-        const tasks = data.tasks.filter((t) => t.projectId === p.id),
-          done = tasks.filter((t) => t.status === '已完成').length;
         return (
           <button
             key={p.id}
@@ -49,7 +47,7 @@ export function ProjectCards({
               e.preventDefault();
               const r = e.currentTarget.getBoundingClientRect();
               setBefore(
-                e.clientX < r.left + r.width / 2 ? p.id : (projects[index + 1]?.id ?? null),
+                e.clientY < r.top + r.height / 2 ? p.id : (projects[index + 1]?.id ?? null),
               );
             }}
             onDrop={(e) => {
@@ -57,7 +55,7 @@ export function ProjectCards({
               const source = e.dataTransfer.getData('text/plain');
               const r = e.currentTarget.getBoundingClientRect();
               const target =
-                e.clientX < r.left + r.width / 2 ? p.id : (projects[index + 1]?.id ?? null);
+                e.clientY < r.top + r.height / 2 ? p.id : (projects[index + 1]?.id ?? null);
               if (source === drag) onReorder(source, target);
               setDrag(null);
             }}
@@ -81,16 +79,12 @@ export function ProjectCards({
             </div>
             <h3>{p.name}</h3>
             <small>{remainingSchedule(p, now)}</small>
-            <p>{p.address || '地址待补充'}</p>
-            <div className="progress-track">
-              <i style={{ width: `${tasks.length ? (done / tasks.length) * 100 : 0}%` }} />
-            </div>
+            <small className="card-forecast">
+              {scheduleForecast(data, p).label.split(' · ').at(-1)}
+            </small>
             <footer>
               <span>
                 {shortDate(p.start)} — {shortDate(p.end)}
-              </span>
-              <span>
-                {done}/{tasks.length} 已完成
               </span>
             </footer>
           </button>

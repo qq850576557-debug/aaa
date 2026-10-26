@@ -21,7 +21,7 @@ test('create projects and tasks through validated modals; persistence and indepe
   await modal.getByLabel('计划开工日期', { exact: true }).fill('2026-12-28');
   await modal.getByLabel('计划完工日期', { exact: true }).fill('2027-01-20');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(page.locator('.project-info h2')).toHaveText('跨年新居');
+  await expect(page.locator('.current-project-name')).toHaveText('跨年新居');
   await expect(page.locator('.trade-row')).toHaveCount(8);
   await page.getByRole('button', { name: '施工任务', exact: true }).click();
   modal = page.getByRole('dialog');
@@ -30,16 +30,19 @@ test('create projects and tasks through validated modals; persistence and indepe
   await modal.getByLabel('结束日期', { exact: true }).fill('2027-01-02');
   await expect(modal.getByText('3 天', { exact: true })).toBeVisible();
   await modal.getByRole('button', { name: '保存', exact: true }).click();
+  await page.getByLabel('定位日期', { exact: true }).fill('2026-12-31');
   await expect(page.getByTestId('task-bar')).toHaveCount(1);
   await expect.poll(async () => (await state(page))?.tasks.length).toBe(1);
   await page.reload();
+  await page.getByLabel('定位日期', { exact: true }).fill('2026-12-31');
   await expect(page.getByTestId('task-bar')).toHaveCount(1);
   await page.getByRole('button', { name: '新建项目', exact: true }).click();
   modal = page.getByRole('dialog');
   await modal.getByLabel('项目名称', { exact: true }).fill('另一个家');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByTestId('task-bar')).toHaveCount(0);
-  await page.getByLabel('切换项目', { exact: true }).selectOption({ label: '跨年新居' });
+  await page.getByRole('button', { name: '切换项目跨年新居', exact: true }).click();
+  await page.getByLabel('定位日期', { exact: true }).fill('2026-12-31');
   await expect(page.getByTestId('task-bar')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
@@ -57,15 +60,12 @@ test('date click, double click, range select, move and both resize handles have 
   await expect(page.getByRole('heading', { name: '2026-10-27 · 每日事项' })).toBeVisible();
   await page.getByRole('button', { name: '关闭浮窗' }).click();
   await cell.dblclick();
-  let modal = page.getByRole('dialog', { name: '新建采购事项', exact: true });
-  await expect(modal.getByLabel('采购截止日期', { exact: true })).toHaveValue('2026-10-27');
-  await modal.getByRole('button', { name: '取消', exact: true }).click();
-  expect((await state(page)).tasks).toHaveLength(3);
-  await page.getByRole('button', { name: '施工任务', exact: true }).click();
-  modal = page.getByRole('dialog');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
+  const quick = (await state(page)).tasks.find((t) => t.start === '2026-10-27')!;
+  await editTask(page, page.getByTestId('task-bar').filter({ hasText: quick.name }).last());
+  let modal = page.getByRole('dialog');
   await modal.getByLabel('任务名称', { exact: true }).fill('第二段拆改');
-  await modal.getByLabel('开始日期', { exact: true }).fill('2026-10-27');
-  await modal.getByLabel('结束日期', { exact: true }).fill('2026-10-27');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
   const from = await cells.nth(8).boundingBox(),
@@ -169,7 +169,7 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
   await expect.poll(async () => (await state(page)).projects.length).toBe(2);
-  await expect(page.getByLabel('切换项目', { exact: true })).toHaveValue(/.+/);
+  await expect(page.locator('.project-card.chosen')).toHaveCount(1);
   await page.getByRole('button', { name: '标记完工', exact: true }).click();
   await page.getByRole('button', { name: '确认', exact: true }).click();
   await expect
@@ -265,7 +265,7 @@ test('storage failure is visible, retry saves and invalid stored data is never o
   await expect(page.locator('.save-state')).toContainText('已保存');
   expect((await state(page)).projects[0].name).toBe('未保存的修改');
   await page.reload();
-  await expect(page.locator('.project-info h2')).toHaveText('未保存的修改');
+  await expect(page.locator('.current-project-name')).toHaveText('未保存的修改');
   await page.evaluate(async () => {
     await new Promise<void>((resolve) => {
       const r = indexedDB.open('chunmo-workspace', 1);
@@ -354,9 +354,7 @@ test('task copy/delete, procurement CRUD, project settings validation and scroll
   await modal.getByRole('button', { name: '取消', exact: true }).click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
-  await page.getByTestId('gantt-scroll').evaluate((e) => {
-    e.scrollLeft = e.scrollWidth;
-  });
+  await page.getByLabel('定位日期', { exact: true }).fill('2026-12-31');
   const head = await page
     .getByRole('button', { name: '查看 2026-12-31 事项', exact: true })
     .boundingBox();

@@ -111,6 +111,7 @@ test('review: an invalid downstream shift cannot block valid current-only edits'
   await boot(page);
   await restore(page, d);
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
+  await page.getByLabel('定位日期', { exact: true }).fill('2200-12-28');
   await editTask(page, page.getByTestId('task-bar').first());
   let panel = page.getByRole('dialog');
   await panel.getByLabel('结束日期', { exact: true }).fill('2200-12-31');
