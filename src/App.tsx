@@ -44,6 +44,7 @@ import { ScheduleConfirm } from './components/ScheduleConfirm';
 import {
   insertTrade,
   proposeTaskChange,
+  proposeTaskChanges,
   reorderTrades,
   type ScheduleProposal,
 } from './lib/scheduling';
@@ -200,7 +201,9 @@ export default function App() {
     setUndo({ before, label });
   }
   function changeTask(value: Task) {
-    const plan = proposeTaskChange(data, value);
+    const plan = data.tasks.some((t) => t.id === value.id)
+      ? proposeTaskChanges(data, [value])
+      : proposeTaskChange(data, value);
     const prior = data.tasks.find((t) => t.id === value.id);
     const previous =
       prior?.personnel ?? (prior ? { worker: prior.owner, manager: '', designer: '' } : undefined);
@@ -1214,7 +1217,9 @@ export default function App() {
                       onColor={(g, anchor) => setColorEdit({ id: g.id, anchor })}
                       onMove={(t) => {
                         try {
-                          changeTask(t);
+                          const plan = proposeTaskChanges(data, t);
+                          if (plan.affected.length) setScheduleProposal(plan);
+                          else commitSchedule(plan.current, plan.base, '工期已保存，可撤销。');
                         } catch (e) {
                           notify(`工期调整失败：${e instanceof Error ? e.message : String(e)}`);
                         }
@@ -1581,7 +1586,11 @@ export default function App() {
             commitSchedule(
               shift ? scheduleProposal.shifted : scheduleProposal.current,
               scheduleProposal.base,
-              shift ? '后续工期已顺延，可撤销。' : '已仅调整当前工序，可撤销。',
+              shift
+                ? scheduleProposal.advance
+                  ? '后续工期已提前，可撤销。'
+                  : '后续工期已顺延，可撤销。'
+                : '已仅调整当前工序，可撤销。',
             );
             setScheduleProposal(null);
           }}

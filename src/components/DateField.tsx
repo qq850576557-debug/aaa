@@ -13,6 +13,7 @@ export function DateField({
   min = '1900-01-01',
   max = '2200-12-31',
   compact = false,
+  hideLabel = false,
 }: {
   label: string;
   value: string;
@@ -23,6 +24,7 @@ export function DateField({
   min?: string;
   max?: string;
   compact?: boolean;
+  hideLabel?: boolean;
 }) {
   const uid = useId(),
     popover = useRef<HTMLDivElement>(null),
@@ -140,7 +142,9 @@ export function DateField({
     lastYear = Number(upper.slice(0, 4));
   return (
     <div className={`form-field date-picker ${compact ? 'date-picker-compact' : ''}`}>
-      <label htmlFor={uid}>{label}</label>
+      <label htmlFor={uid} className={hideLabel ? 'sr-only' : undefined}>
+        {label}
+      </label>
       <div className="date-field">
         <input
           ref={input}

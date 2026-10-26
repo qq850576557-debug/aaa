@@ -74,7 +74,7 @@ test('dirty form protection, anchored quick create, real calendar and duration s
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
-test('linked segments merge only on date adjustment; undo restores purchases and original segments', async ({
+test('linked segments merge in view only; dates, references and undo preserve original records', async ({
   page,
 }) => {
   const d = fixture(),
@@ -99,18 +99,28 @@ test('linked segments merge only on date adjustment; undo restores purchases and
   await page.mouse.down();
   await page.mouse.move(r!.x + 25 - 2 * 56, r!.y + 17, { steps: 12 });
   await page.mouse.up();
-  // Merging extends the original segment into a following trade: choose current only.
-  if (await page.getByRole('heading', { name: '是否顺延后续工期？' }).isVisible())
-    await page.getByRole('button', { name: '仅调整当前工序', exact: true }).click();
-  await expect.poll(async () => (await state(page)).tasks.length).toBe(3);
+  // Display-only merging does not retire or remap either source record.
+  const earlier = page.getByRole('dialog', {
+    name: '当前工序已提前，是否同步提前后续工序？',
+    exact: true,
+  });
+  await expect(earlier).toBeVisible();
+  expect((await state(page)).tasks.find((t) => t.id === b.id)?.start).toBe(b.start);
+  await earlier.getByRole('button', { name: '不调整', exact: true }).click();
+  await expect
+    .poll(async () => (await state(page)).tasks.find((t) => t.id === b.id)?.start)
+    .toBe('2026-10-26');
   let saved = await state(page);
-  expect(saved.tasks.find((t) => t.id === 'segment-2')?.start).toBe('2026-10-22');
+  expect(saved.tasks).toHaveLength(4);
+  await expect(page.locator('.trade-row').first().getByTestId('task-bar')).toHaveCount(1);
+  expect(saved.tasks.find((t) => t.id === 'segment-2')?.start).toBe('2026-10-26');
   expect(saved.tasks.find((t) => t.id === 'segment-2')?.end).toBe('2026-10-27');
-  expect(saved.purchases[0].taskId).toBe('segment-2');
-  expect(saved.notes[0].taskId).toBe('segment-2');
+  expect(saved.purchases[0].taskId).toBe(a.id);
+  expect(saved.notes[0].taskId).toBe(a.id);
   await page.getByRole('button', { name: '撤销', exact: true }).click();
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
   expect((await state(page)).purchases[0].taskId).toBe(a.id);
+  expect((await state(page)).tasks.find((t) => t.id === b.id)?.start).toBe(b.start);
 });
 
 test('reschedule preview offers atomic cancel/current-only/propagation, preserves overlap and is undoable', async ({

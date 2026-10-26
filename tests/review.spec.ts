@@ -53,7 +53,7 @@ test('review: color and editors are nonblocking panels; confirmation remains mod
   await expect(panel.getByLabel('任务名称', { exact: true })).toHaveValue('待保存修改');
 });
 
-test('review: merged predecessor prompts before moving related tasks and updates associations atomically', async ({
+test('review: extending predecessor prompts atomically while merged display preserves source associations', async ({
   page,
 }) => {
   const d = fixture(),
@@ -71,10 +71,10 @@ test('review: merged predecessor prompts before moving related tasks and updates
   await boot(page);
   await restore(page, d);
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
-  const segment = page.getByTestId('task-bar').filter({ hasText: root.name }).nth(1);
+  const segment = page.getByTestId('task-bar').filter({ hasText: root.name }).first();
   await editTask(page, segment);
   let panel = page.getByRole('dialog');
-  await panel.getByLabel('开始日期', { exact: true }).fill('2026-10-26');
+  await panel.getByLabel('开始日期', { exact: true }).fill('2026-10-22');
   await panel.getByLabel('结束日期', { exact: true }).fill('2026-10-27');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByRole('heading', { name: '是否顺延后续工期？' })).toBeVisible();
@@ -85,10 +85,10 @@ test('review: merged predecessor prompts before moving related tasks and updates
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
     .toBe('2026-10-28');
   const saved = await state(page);
-  expect(saved.tasks).toHaveLength(3);
-  expect(saved.notes[0].taskId).toBe('merge-later');
-  expect(saved.purchases[0].taskId).toBe('merge-later');
-  expect(saved.tasks.find((t) => t.id === 't-water')?.dependsOn).toEqual(['merge-later']);
+  expect(saved.tasks).toHaveLength(4);
+  expect(saved.notes[0].taskId).toBe(root.id);
+  expect(saved.purchases[0].taskId).toBe(root.id);
+  expect(saved.tasks.find((t) => t.id === 't-water')?.dependsOn).toEqual([root.id]);
   await page.getByRole('button', { name: '撤销', exact: true }).click();
   await expect.poll(async () => (await state(page)).tasks.length).toBe(4);
   expect((await state(page)).notes[0].taskId).toBe(root.id);

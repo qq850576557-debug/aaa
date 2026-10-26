@@ -1,3 +1,4 @@
+import { ganttGroups, resizeGanttGroup, type GanttGroup } from '../lib/gantt-groups';
 import { DateField } from './DateField';
 import { timelineRange, timelineWindow } from '../lib/timeline';
 import { assignedNames } from '../lib/people';
@@ -35,12 +36,12 @@ interface Props {
   onReorder: (source: string, before: string | null) => void;
   onColor: (trade: Trade, anchor: Anchor) => void;
   onOrder: (trade: Trade, dir: number) => void;
-  onMove: (task: Task) => void;
+  onMove: (tasks: Task[]) => void;
   onDeleteTask: (task: Task) => void;
   onExport: () => void;
 }
 type Drag = {
-  task: Task;
+  task: GanttGroup;
   mode: 'move' | 'start' | 'end';
   x: number;
   scroll: number;
@@ -152,7 +153,7 @@ export function Gantt({
   const clearClick = () => {
     if (clickTimer.current) clearTimeout(clickTimer.current);
   };
-  function barDown(e: PointerEvent, task: Task, mode: Drag['mode']) {
+  function barDown(e: PointerEvent, task: GanttGroup, mode: Drag['mode']) {
     if (e.button !== 0) return;
     e.stopPropagation();
     clearClick();
@@ -199,7 +200,7 @@ export function Gantt({
       lastDrag.current = performance.now();
       if (e.currentTarget.hasPointerCapture(e.pointerId))
         e.currentTarget.releasePointerCapture(e.pointerId);
-      onMove(moved(d));
+      onMove(resizeGanttGroup(d.task, moved(d), d.mode));
     }
   }
   function rowDown(e: PointerEvent, g: Trade) {
@@ -285,6 +286,7 @@ export function Gantt({
         <div className="toolbar">
           <DateField
             compact
+            hideLabel
             label="定位日期"
             value={locateDate}
             min={start}
@@ -389,9 +391,10 @@ export function Gantt({
             </div>
           </div>
           {trades.map((g, index) => {
-            const rows = lanes(
+            const groups = ganttGroups(
               data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id),
             );
+            const rows = lanes(groups) as GanttGroup[][];
             const height = Math.max(touchLayout ? 124 : 84, rows.length * laneHeight + 20);
             return (
               <div
@@ -515,10 +518,7 @@ export function Gantt({
                     >
                       <span>{g.name}</span>
                       <small>
-                        {data.tasks
-                          .filter((t) => t.tradeId === g.id)
-                          .reduce((n, t) => n + duration(t.start, t.end), 0)}{' '}
-                        任务天
+                        {groups.reduce((n, t) => n + duration(t.start, t.end), 0)} 任务天
                       </small>
                     </button>
                   </div>
@@ -580,7 +580,7 @@ export function Gantt({
                             key={t.id}
                             data-testid="task-bar"
                             data-task-id={t.id}
-                            title={`${t.name} · ${t.start} — ${t.end}${data.tasks.filter((x) => (x.groupId ?? x.id) === (t.groupId ?? t.id)).length > 1 ? ' · 同任务多段' : ''}`}
+                            title={`${original.members.length > 1 ? `合并显示 ${original.members.length} 段（原始记录见任务详情） · ` : ''}${t.name} · ${t.start} — ${t.end}${data.tasks.filter((x) => (x.groupId ?? x.id) === (t.groupId ?? t.id)).length > 1 ? ' · 同任务多段' : ''}`}
                             aria-label={`${t.name}，${t.start} 至 ${t.end}，${duration(t.start, t.end)} 天`}
                             className={`task-bar ${drag?.task.id === t.id ? 'dragging' : ''} ${t.status === '已完成' ? 'completed' : ''} ${t.start <= today() && t.end >= today() && t.status !== '已完成' ? 'working-today' : ''} ${t.end < today() && t.status !== '已完成' ? 'overdue' : ''}`}
                             style={{
@@ -698,6 +698,12 @@ export function Gantt({
       {menu && data.tasks.find((t) => t.id === menu.id) && (
         <TaskContextMenu
           task={data.tasks.find((t) => t.id === menu.id)!}
+          members={
+            ganttGroups(data.tasks.filter((t) => t.projectId === project.id)).find((g) =>
+              g.members.some((t) => t.id === menu.id),
+            )?.members
+          }
+          onSelect={(id) => setMenu({ ...menu, id })}
           point={menu}
           onClose={() => setMenu(null)}
           onEdit={() =>

@@ -47,21 +47,27 @@ export function ScheduleConfirm({
     },
   });
   return (
-    <Modal title="是否顺延后续工期？" onClose={onCancel} className="schedule-decision">
+    <Modal
+      title={proposal.advance ? '当前工序已提前，是否同步提前后续工序？' : '是否顺延后续工期？'}
+      onClose={onCancel}
+      className="schedule-decision"
+    >
       {proposal.shiftError && (
         <p className="decision-error error" role="alert">
-          顺延方案超出可保存范围，请仅调整当前工序或取消。
+          {proposal.advance ? '提前' : '顺延'}方案超出可保存范围，请仅调整当前工序或取消。
         </p>
       )}
       <footer className="modal-foot">
         <button {...activation(onCancel)}>取消本次操作</button>
-        <button {...activation(() => onApply(false))}>仅调整当前工序</button>
+        <button {...activation(() => onApply(false))}>
+          {proposal.advance ? '不调整' : '仅调整当前工序'}
+        </button>
         <button
           className="primary"
           disabled={!!proposal.shiftError}
           {...activation(() => onApply(true))}
         >
-          顺延后续工期
+          {proposal.advance ? '同步提前' : '顺延后续工期'}
         </button>
       </footer>
     </Modal>

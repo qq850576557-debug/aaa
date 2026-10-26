@@ -15,6 +15,7 @@ export type ScheduleProposal = {
   affected: TaskChange[];
   mergedIds: string[];
   inferred: boolean;
+  advance?: boolean;
   shiftError?: string;
 };
 const logicalId = (t: Task) => t.groupId ?? t.id;
@@ -83,13 +84,27 @@ function mergeSegments(data: Data, changed: Task): { data: Data; removed: string
   };
 }
 export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
+  return proposeChanges(base, [value], false);
+}
+export function proposeTaskChanges(base: Data, values: Task[]): ScheduleProposal {
+  return proposeChanges(base, values, true);
+}
+function proposeChanges(base: Data, values: Task[], preserve: boolean): ScheduleProposal {
+  const value = values[0];
+  if (!value || values.some((t) => t.projectId !== value.projectId)) throw Error('无效的工期调整');
+  if (
+    preserve &&
+    values.some((t) => !base.tasks.some((old) => old.id === t.id && old.projectId === t.projectId))
+  )
+    throw Error('任务不存在，请重新调整');
+  const edits = new Map(values.map((t) => [t.id, t]));
   const old = base.tasks.find((t) => t.id === value.id);
   let current = {
     ...prepareWorkspace(base),
-    tasks: old ? base.tasks.map((t) => (t.id === value.id ? value : t)) : [...base.tasks, value],
+    tasks: old ? base.tasks.map((t) => edits.get(t.id) ?? t) : [...base.tasks, value],
   };
   let mergedIds: string[] = [];
-  if (old && (old.start !== value.start || old.end !== value.end)) {
+  if (!preserve && old && (old.start !== value.start || old.end !== value.end)) {
     const merged = mergeSegments(current, value);
     current = merged.data;
     mergedIds = merged.removed;
@@ -117,7 +132,7 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
   for (let pass = 0; pass < shifted.tasks.length; pass++) {
     let progressed = false;
     for (const t of shifted.tasks) {
-      if (t.id === changed.id || t.projectId !== value.projectId || t.status === '已完成') continue;
+      if (edits.has(t.id) || t.projectId !== value.projectId || t.status === '已完成') continue;
       const was = original.get(t.id);
       if (!was) continue;
       let earliest = t.start;
@@ -160,6 +175,60 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
     }
     if (!progressed) break;
   }
+  // Earlier completion/movement shifts the eligible downstream set by one common
+  // delta, retaining original durations, gaps and parallel relationships.
+  const originals = base.tasks.filter((t) => edits.has(t.id));
+  const oldEnd = originals
+    .map((t) => t.end)
+    .sort()
+    .at(-1);
+  const newEnd = current.tasks
+    .filter((t) => edits.has(t.id))
+    .map((t) => t.end)
+    .sort()
+    .at(-1);
+  const advance = !mergedIds.length && !!oldEnd && !!newEnd && newEnd < oldEnd;
+  if (advance) {
+    const delta = distance(oldEnd!, newEnd!);
+    const lastOrder = Math.max(...originals.map((t) => order.get(t.tradeId) ?? 0));
+    const follows = new Set(originals.map((t) => t.id));
+    for (let pass = 0; pass < base.tasks.length; pass++) {
+      for (const t of base.tasks) {
+        if (
+          t.projectId !== value.projectId ||
+          t.status === '已完成' ||
+          follows.has(t.id) ||
+          originals.some((root) => dependsTransitively(root.id, t.id))
+        )
+          continue;
+        if (
+          t.dependsOn?.length
+            ? t.dependsOn.some((dep) => follows.has(dep))
+            : (order.get(t.tradeId) ?? 0) > lastOrder && t.start > oldEnd!
+        ) {
+          // Do not pull a dependent ahead of another unchanged prerequisite.
+          const blocked = (t.dependsOn ?? []).some((id) => {
+            const parent = original.get(id);
+            return (
+              parent &&
+              !follows.has(id) &&
+              t.start > parent.end &&
+              plus(t.start, delta) <= parent.end
+            );
+          });
+          if (!blocked) follows.add(t.id);
+        }
+      }
+    }
+    shifted = {
+      ...current,
+      tasks: current.tasks.map((t) =>
+        follows.has(t.id) && !edits.has(t.id)
+          ? { ...t, start: plus(t.start, delta), end: plus(t.end, delta) }
+          : t,
+      ),
+    };
+  }
   let shiftError: string | undefined;
   try {
     parseBackup(shifted);
@@ -169,7 +238,7 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
   const affected = shifted.tasks
     .filter(
       (t) =>
-        t.id !== changed.id &&
+        !edits.has(t.id) &&
         original.has(t.id) &&
         (t.start !== original.get(t.id)!.start || t.end !== original.get(t.id)!.end),
     )
@@ -181,6 +250,7 @@ export function proposeTaskChange(base: Data, value: Task): ScheduleProposal {
     affected,
     mergedIds,
     inferred,
+    advance,
     ...(shiftError ? { shiftError } : {}),
   };
 }

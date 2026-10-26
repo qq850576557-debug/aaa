@@ -1,3 +1,4 @@
+import { ganttGroups } from './gantt-groups';
 import {
   days,
   distance,
@@ -91,7 +92,7 @@ export async function schedulePNG(
     tasks = data.tasks.filter((t) => t.projectId === project.id);
   const groups = trades.map((g) => ({
     g,
-    rows: lanes(tasks.filter((t) => t.tradeId === g.id)),
+    rows: lanes(ganttGroups(tasks.filter((t) => t.tradeId === g.id))),
     lines: wrap(g.name, label - 50),
   }));
   const rowHeights = groups.map((g) =>

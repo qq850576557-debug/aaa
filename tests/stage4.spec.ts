@@ -307,6 +307,10 @@ test('stage 4: linked procurement follows an earlier drag but later construction
   await expect(todayPanel(page)).toContainText('今天截止');
   expect((await state(page)).purchases[0].originalDue).toBe('2026-10-23');
   await drag(page, '水电定位与布线', -4);
+  await page
+    .getByRole('dialog', { name: '当前工序已提前，是否同步提前后续工序？', exact: true })
+    .getByRole('button', { name: '不调整', exact: true })
+    .click();
   await expect
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
     .toBe('2026-10-24');
