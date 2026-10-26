@@ -35,6 +35,7 @@ export type Actor = {
   login: string;
   owner: boolean;
   displayName?: string;
+  avatarVersion?: string | null;
   auditDevice?: AuditDevice;
 };
 export async function getState(c: Db, workspaceId: string, lock = 'SHARE') {

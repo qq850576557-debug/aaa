@@ -859,8 +859,8 @@ test('V1.1 server audit records object lifecycle, immutable actor snapshots and 
   );
 });
 
-test('owner and employee rename to canonical Chinese logins: IDs, permissions, data, private notes and prior audit ownership stay intact', async () => {
-  for (const isOwner of [true, false]) {
+test('owner rename to canonical Chinese login: IDs, permissions, data, private notes and prior audit ownership stay intact', async () => {
+  for (const isOwner of [true]) {
     const { f, a, b } = await setup(),
       client = isOwner ? a : b,
       oldLogin = isOwner ? f.login : f.employee;
@@ -1036,7 +1036,7 @@ test('owner and employee rename to canonical Chinese logins: IDs, permissions, d
 });
 
 test('canonical uniqueness is global; conflict rollback preserves sessions and cooldown, concurrent renames commit only once', async () => {
-  const { f, a, b } = await setup();
+  const { f, a } = await setup();
   const other = await fixtureAccounts();
   const taken = '唯一_' + randomUUID().slice(0, 8) + '_ma';
   await pool.query('UPDATE account SET login=$2 WHERE id=$1', [other.employeeId, taken]);
@@ -1045,17 +1045,17 @@ test('canonical uniqueness is global; conflict rollback preserves sessions and c
     currentPassword: f.password,
     confirm: true,
   };
-  assert.equal((await request('/auth/login-name', 'POST', body, b)).status, 409);
-  assert.equal((await request('/auth/session', 'GET', undefined, b)).status, 200);
+  assert.equal((await request('/auth/login-name', 'POST', body, a)).status, 409);
+  assert.equal((await request('/auth/session', 'GET', undefined, a)).status, 200);
   assert.equal(
-    (await (await request('/auth/login-policy', 'GET', undefined, b)).json()).canChange,
+    (await (await request('/auth/login-policy', 'GET', undefined, a)).json()).canChange,
     true,
   );
   assert.equal(
     (
       await pool.query(
         "SELECT count(*)::int n FROM audit_event WHERE actor_id=$1 AND action='account.login.change'",
-        [f.employeeId],
+        [f.id],
       )
     ).rows[0].n,
     0,
@@ -1065,13 +1065,13 @@ test('canonical uniqueness is global; conflict rollback preserves sessions and c
       '/auth/login-name',
       'POST',
       { newLogin: '并发甲_' + randomUUID(), currentPassword: f.password, confirm: true },
-      b,
+      a,
     ),
     request(
       '/auth/login-name',
       'POST',
       { newLogin: '并发乙_' + randomUUID(), currentPassword: f.password, confirm: true },
-      b,
+      a,
     ),
   ]);
   assert.equal(result.filter((x) => x.status === 200).length, 1);
@@ -1080,27 +1080,25 @@ test('canonical uniqueness is global; conflict rollback preserves sessions and c
     (
       await pool.query(
         "SELECT count(*)::int n FROM audit_event WHERE actor_id=$1 AND action='account.login.change'",
-        [f.employeeId],
+        [f.id],
       )
     ).rows[0].n,
     1,
   );
   assert.equal(
-    (
-      await pool.query('SELECT count(*)::int n FROM auth_session WHERE account_id=$1', [
-        f.employeeId,
-      ])
-    ).rows[0].n,
+    (await pool.query('SELECT count(*)::int n FROM auth_session WHERE account_id=$1', [f.id]))
+      .rows[0].n,
     0,
   );
-  // A separate account in the SAME studio can still change: cooldown belongs to identity.
+  // A different studio's owner remains independently eligible.
+  const otherOwner = await login(other.login, other.password);
   assert.equal(
     (
       await request(
         '/auth/login-name',
         'POST',
-        { newLogin: '负责人_' + randomUUID(), currentPassword: f.password, confirm: true },
-        a,
+        { newLogin: '另一负责人_' + randomUUID(), currentPassword: other.password, confirm: true },
+        otherOwner,
       )
     ).status,
     200,
@@ -1108,7 +1106,7 @@ test('canonical uniqueness is global; conflict rollback preserves sessions and c
 });
 
 test('login-name current-password attempts share server rate limiting', async () => {
-  const { f, b } = await setup();
+  const { f, a: b } = await setup();
   for (let i = 0; i < 5; i++)
     assert.equal(
       (
@@ -1136,7 +1134,7 @@ test('login-name current-password attempts share server rate limiting', async ()
 });
 
 test('database 90-day boundary expires by real server time; no-op/timestamp tampering and audit failure roll back atomically', async () => {
-  const { f, b } = await setup();
+  const { f, a: b } = await setup();
   const next = '日期甲_' + randomUUID();
   assert.equal(
     (
@@ -1165,7 +1163,7 @@ test('database 90-day boundary expires by real server time; no-op/timestamp tamp
         await admin.query('SET LOCAL session_replication_role=replica');
         await admin.query(
           'UPDATE account SET login_changed_at=clock_timestamp()+$2::interval WHERE id=$1',
-          [f.employeeId, interval],
+          [f.id, interval],
         );
         await admin.query('COMMIT');
       } catch (e) {
@@ -1188,7 +1186,7 @@ test('database 90-day boundary expires by real server time; no-op/timestamp tamp
     await assert.rejects(
       pool.query(
         "UPDATE account SET login_changed_at=clock_timestamp()-interval '91 days' WHERE id=$1",
-        [f.employeeId],
+        [f.id],
       ),
       (e: any) => e.code === '42501',
     );
@@ -1200,15 +1198,12 @@ test('database 90-day boundary expires by real server time; no-op/timestamp tamp
     // Force a constraint failure on an actual rename/audit transaction. Both
     // the DB-trigger session revocation and login timestamp must roll back.
     const before = (
-      await pool.query('SELECT login,login_changed_at FROM account WHERE id=$1', [f.employeeId])
+      await pool.query('SELECT login,login_changed_at FROM account WHERE id=$1', [f.id])
     ).rows[0];
     const c = await pool.connect();
     try {
       await c.query('BEGIN');
-      await c.query('UPDATE account SET login=$2 WHERE id=$1', [
-        f.employeeId,
-        '回滚_' + randomUUID(),
-      ]);
+      await c.query('UPDATE account SET login=$2 WHERE id=$1', [f.id, '回滚_' + randomUUID()]);
       await assert.rejects(
         c.query(
           "INSERT INTO audit_event(id,workspace_id,actor_id,action) VALUES($1,$2,'missing-actor','test')",
@@ -1221,8 +1216,7 @@ test('database 90-day boundary expires by real server time; no-op/timestamp tamp
       c.release();
     }
     assert.deepEqual(
-      (await pool.query('SELECT login,login_changed_at FROM account WHERE id=$1', [f.employeeId]))
-        .rows[0],
+      (await pool.query('SELECT login,login_changed_at FROM account WHERE id=$1', [f.id])).rows[0],
       before,
     );
     assert.equal((await request('/auth/session', 'GET', undefined, fresh)).status, 200);
@@ -1325,4 +1319,98 @@ test('V4 presence: only live authenticated SSE connections in the same workspace
   await request('/auth/logout', 'POST', {}, b);
   assert.deepEqual((await (await request('/presence', 'GET', undefined, a)).json()).accounts, []);
   controller.abort();
+});
+
+test('account grants: staff self-profile/avatar/password only; rename/admin/import/private endpoints reject direct role bypass', async () => {
+  const { f, a, b } = await setup();
+  const before = (
+    await pool.query(
+      'SELECT id,login,password_hash,role,active,login_changed_at FROM account WHERE id=$1',
+      [f.employeeId],
+    )
+  ).rows[0];
+  const forbidden: [string, string, unknown][] = [
+    ['/auth/login-policy', 'GET', undefined],
+    [
+      '/auth/login-name',
+      'POST',
+      { newLogin: '员工改名_' + randomUUID(), currentPassword: f.password, confirm: true },
+    ],
+    ['/accounts', 'GET', undefined],
+    ['/accounts', 'POST', { login: 'forged_' + randomUUID(), password: f.password }],
+    ['/accounts/' + f.id, 'PATCH', { active: false }],
+    ['/accounts/' + f.employeeId, 'PATCH', { active: false }],
+    ['/accounts/' + f.id, 'PATCH', { password: 'abcdefgh' }],
+    ['/accounts/' + f.employeeId, 'PATCH', { role: 'owner', permissions: ['*'] }],
+    ['/import/preview', 'POST', { archive: emptyData() }],
+    ['/import/commit', 'POST', { id: 'guess', revision: 0, confirm: true }],
+    ['/people/guess/private', 'GET', undefined],
+    ['/people/guess/private', 'PUT', { phone: '13800000000', birthDate: '1990-01-01' }],
+  ];
+  for (const [path, method, body] of forbidden) {
+    const r = await request(path, method, body, b, { 'X-Role': 'owner', 'X-Owner': 'true' });
+    assert.equal(r.status, 403, path);
+  }
+  for (const key of ['login', 'role', 'permissions', 'active'])
+    assert.equal(
+      (
+        await request(
+          '/auth/profile',
+          'PATCH',
+          { displayName: '员工姓名', [key]: key === 'active' ? false : 'owner' },
+          b,
+        )
+      ).status,
+      400,
+    );
+  assert.deepEqual(
+    (
+      await pool.query(
+        'SELECT id,login,password_hash,role,active,login_changed_at FROM account WHERE id=$1',
+        [f.employeeId],
+      )
+    ).rows[0],
+    before,
+  );
+  assert.equal((await request('/auth/session', 'GET', undefined, b)).status, 200);
+  assert.equal(
+    (await request('/auth/profile', 'PATCH', { displayName: '员工可改展示名' }, b)).status,
+    200,
+  );
+  const directory = await request('/directory', 'GET', undefined, b);
+  assert.equal(directory.status, 200);
+  const text = await directory.text();
+  for (const key of ['password_hash', 'birthDate', 'phone', 'token_hash'])
+    assert.equal(text.includes(key), false);
+  assert.equal((await request('/audit', 'GET', undefined, b)).status, 200);
+  assert.equal((await request('/directory')).status, 401);
+  assert.equal((await request('/audit')).status, 401);
+});
+
+test('display-name audit snapshots stay immutable; employee can read full studio audit without cross-studio leakage', async () => {
+  const { a, b } = await setup(),
+    d = data();
+  await request('/auth/profile', 'PATCH', { displayName: '旧展示名称' }, b);
+  assert.equal((await request('/workspace', 'PUT', { revision: 0, data: d }, b)).status, 200);
+  const old = (
+    await (await request('/audit?entityType=project', 'GET', undefined, b)).json()
+  ).events.find((x: any) => x.actorId === b.user.id);
+  assert.equal(old.actorDisplayName, '旧展示名称');
+  await request('/auth/profile', 'PATCH', { displayName: '新展示名称' }, b);
+  d.projects[0].name = '新业务操作';
+  await request('/workspace', 'PUT', { revision: 1, data: d }, b);
+  const changed = (await (await request('/audit?entityType=project', 'GET', undefined, b)).json())
+    .events;
+  assert.equal(changed.find((x: any) => x.id === old.id).actorDisplayName, '旧展示名称');
+  assert.equal(changed[0].actorDisplayName, '新展示名称');
+  await request('/auth/profile', 'PATCH', { displayName: '负责人名称' }, a);
+  const all = (await (await request('/audit', 'GET', undefined, b)).json()).events;
+  assert.ok(all.some((x: any) => x.actorId === a.user.id));
+  const other = await fixtureAccounts(),
+    outside = await login(other.employee, other.password);
+  assert.equal(
+    (await (await request('/audit?actorId=' + b.user.id, 'GET', undefined, outside)).json()).events
+      .length,
+    0,
+  );
 });

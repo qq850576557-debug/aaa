@@ -5,6 +5,7 @@ export type CloudUser = {
   workspaceId: string;
   login: string;
   displayName?: string;
+  avatarVersion?: string | null;
   owner: boolean;
 };
 export type CloudState = { data: Data; history: History; revision: number };

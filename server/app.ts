@@ -1,4 +1,5 @@
 import express from 'express';
+import { requireAccountPermission } from './permissions';
 import { validateAvatar } from './avatar';
 import { auditDevice } from './audit';
 import { loginSchema, loginInputSchema } from '../src/lib/login';
@@ -140,6 +141,7 @@ export function createApp() {
           changedFields: ['displayName'],
         });
       });
+      announcePresence(req.actor!.workspaceId);
       res.json({ ok: true });
     } catch (e) {
       next(e);
@@ -164,6 +166,7 @@ export function createApp() {
           changedFields: ['avatar'],
         });
       });
+      announcePresence(req.actor!.workspaceId);
       res.json({ ok: true });
     } catch (e) {
       next(e);
@@ -180,6 +183,7 @@ export function createApp() {
           changedFields: ['avatar'],
         });
       });
+      announcePresence(req.actor!.workspaceId);
       res.json({ ok: true });
     } catch (e) {
       next(e);
@@ -218,51 +222,60 @@ export function createApp() {
       next(e);
     }
   });
-  app.get('/api/directory', async (req: AuthRequest, res, next) => {
-    try {
-      const q = await pool.query(
-        `SELECT a.id,a.login,COALESCE(NULLIF(a.display_name,''),a.login) AS "displayName",a.active,(w.owner_account_id=a.id) AS owner,COALESCE(n.note,'') AS note
+  app.get(
+    '/api/directory',
+    requireAccountPermission('directory'),
+    async (req: AuthRequest, res, next) => {
+      try {
+        const q = await pool.query(
+          `SELECT a.id,a.login,COALESCE(NULLIF(a.display_name,''),a.login) AS "displayName",a.active,(w.owner_account_id=a.id) AS owner,COALESCE(n.note,'') AS note,v.version AS "avatarVersion"
         FROM account a JOIN cloud_workspace w ON w.id=a.workspace_id
+        LEFT JOIN account_avatar v ON v.account_id=a.id
         LEFT JOIN account_note n ON n.workspace_id=a.workspace_id AND n.target_id=a.id AND n.author_id=$2
         WHERE a.workspace_id=$1 ORDER BY a.login`,
-        [req.actor!.workspaceId, req.actor!.id],
-      );
-      res.json({ accounts: q.rows });
-    } catch (e) {
-      next(e);
-    }
-  });
-  app.put('/api/accounts/:id/note', async (req: AuthRequest, res, next) => {
-    try {
-      const body = z
-        .object({ note: z.string().trim().max(1000) })
-        .strict()
-        .parse(req.body);
-      if (req.params.id === req.actor!.id) throw new ApiError(400, '请为其他账号添加个人备注');
-      await transaction(async (c) => {
-        const target = await c.query('SELECT 1 FROM account WHERE id=$1 AND workspace_id=$2', [
-          req.params.id,
-          req.actor!.workspaceId,
-        ]);
-        if (!target.rowCount) throw new ApiError(404, '账号不存在');
-        if (body.note)
-          await c.query(
-            `INSERT INTO account_note(workspace_id,author_id,target_id,note) VALUES($1,$2,$3,$4)
+          [req.actor!.workspaceId, req.actor!.id],
+        );
+        res.json({ accounts: q.rows });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+  app.put(
+    '/api/accounts/:id/note',
+    requireAccountPermission('directory'),
+    async (req: AuthRequest, res, next) => {
+      try {
+        const body = z
+          .object({ note: z.string().trim().max(1000) })
+          .strict()
+          .parse(req.body);
+        if (req.params.id === req.actor!.id) throw new ApiError(400, '请为其他账号添加个人备注');
+        await transaction(async (c) => {
+          const target = await c.query('SELECT 1 FROM account WHERE id=$1 AND workspace_id=$2', [
+            req.params.id,
+            req.actor!.workspaceId,
+          ]);
+          if (!target.rowCount) throw new ApiError(404, '账号不存在');
+          if (body.note)
+            await c.query(
+              `INSERT INTO account_note(workspace_id,author_id,target_id,note) VALUES($1,$2,$3,$4)
           ON CONFLICT(workspace_id,author_id,target_id) DO UPDATE SET note=excluded.note,updated_at=now()`,
-            [req.actor!.workspaceId, req.actor!.id, req.params.id, body.note],
-          );
-        else
-          await c.query(
-            'DELETE FROM account_note WHERE workspace_id=$1 AND author_id=$2 AND target_id=$3',
-            [req.actor!.workspaceId, req.actor!.id, req.params.id],
-          );
-      });
-      res.json({ ok: true });
-    } catch (e) {
-      next(e);
-    }
-  });
-  app.get('/api/audit', async (req: AuthRequest, res, next) => {
+              [req.actor!.workspaceId, req.actor!.id, req.params.id, body.note],
+            );
+          else
+            await c.query(
+              'DELETE FROM account_note WHERE workspace_id=$1 AND author_id=$2 AND target_id=$3',
+              [req.actor!.workspaceId, req.actor!.id, req.params.id],
+            );
+        });
+        res.json({ ok: true });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+  app.get('/api/audit', requireAccountPermission('audit'), async (req: AuthRequest, res, next) => {
     try {
       const filter = z
         .object({
@@ -344,7 +357,12 @@ export function createApp() {
     workspaceId: string;
     tokenHash: string;
     close: () => void;
+    notify: () => void;
   }>();
+  function announcePresence(workspaceId: string) {
+    for (const stream of streams) if (stream.workspaceId === workspaceId) stream.notify();
+  }
+
   app.post('/api/auth/logout', async (req: AuthRequest, res, next) => {
     try {
       await pool.query('DELETE FROM auth_session WHERE token_hash=$1', [req.tokenHash]);
@@ -362,83 +380,94 @@ export function createApp() {
     );
     if (q.rows[0].attempts > 5) throw new ApiError(429, '密码操作过于频繁，请稍后重试');
   };
-  app.get('/api/auth/login-policy', async (req: AuthRequest, res, next) => {
-    try {
-      const q = await pool.query(
-        `SELECT login,login_changed_at AS "lastChangedAt",
+  app.get(
+    '/api/auth/login-policy',
+    requireAccountPermission('changeLogin'),
+    async (req: AuthRequest, res, next) => {
+      try {
+        const q = await pool.query(
+          `SELECT login,login_changed_at AS "lastChangedAt",
         login_changed_at+interval '2160 hours' AS "nextAllowedAt",
         login_changed_at IS NULL OR clock_timestamp()>=login_changed_at+interval '2160 hours' AS "canChange",
         clock_timestamp() AS "serverNow" FROM account WHERE id=$1`,
-        [req.actor!.id],
-      );
-      res.json(q.rows[0]);
-    } catch (e) {
-      next(e);
-    }
-  });
-  app.post('/api/auth/login-name', async (req: AuthRequest, res, next) => {
-    try {
-      const body = z
-        .object({
-          newLogin: loginSchema,
-          currentPassword: passwordSchema,
-          confirm: z.literal(true),
-        })
-        .strict()
-        .parse(req.body);
-      await passwordLimit(req.actor!.id);
-      if (hashing >= 2) throw new ApiError(429, '账号验证繁忙，请稍后重试');
-      hashing++;
+          [req.actor!.id],
+        );
+        res.json(q.rows[0]);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+  app.post(
+    '/api/auth/login-name',
+    requireAccountPermission('changeLogin'),
+    async (req: AuthRequest, res, next) => {
       try {
-        await transaction(async (c) => {
-          const q = await c.query(
-            `SELECT id,login,login_key,password_hash,login_changed_at,
+        const body = z
+          .object({
+            newLogin: loginSchema,
+            currentPassword: passwordSchema,
+            confirm: z.literal(true),
+          })
+          .strict()
+          .parse(req.body);
+        await passwordLimit(req.actor!.id);
+        if (hashing >= 2) throw new ApiError(429, '账号验证繁忙，请稍后重试');
+        hashing++;
+        try {
+          await transaction(async (c) => {
+            const q = await c.query(
+              `SELECT id,login,login_key,password_hash,login_changed_at,
             login_changed_at+interval '2160 hours' AS next_allowed,
             login_changed_at IS NULL OR clock_timestamp()>=login_changed_at+interval '2160 hours' AS can_change
             FROM account WHERE id=$1 AND active=true FOR UPDATE`,
-            [req.actor!.id],
-          );
-          const row = q.rows[0];
-          const live = await c.query(
-            'SELECT 1 FROM auth_session WHERE token_hash=$1 AND account_id=$2 AND expires_at>now()',
-            [req.tokenHash, req.actor!.id],
-          );
-          if (!row || !live.rowCount) throw new ApiError(401, '会话已失效，请重新登录');
-          if (!row.can_change)
-            throw new ApiError(
-              409,
-              '90天内不可再次修改，下次允许修改时间：' + new Date(row.next_allowed).toISOString(),
+              [req.actor!.id],
             );
-          if (row.login_key === body.newLogin)
-            throw new ApiError(409, '新账号与当前账号规范化后相同');
-          if (!(await argon2.verify(row.password_hash, body.currentPassword)))
-            throw new ApiError(403, '当前密码不正确');
-          const changed = await c.query(
-            'UPDATE account SET login=$2 WHERE id=$1 RETURNING login,login_changed_at',
-            [req.actor!.id, body.newLogin],
-          );
-          const current = changed.rows[0];
-          await audit(c, req.actor!, 'account.login.change', undefined, {
-            entityType: 'account',
-            entityId: req.actor!.id,
-            operation: 'update',
-            before: { login: row.login },
-            after: { login: current.login, loginChangedAt: current.login_changed_at.toISOString() },
-            changedFields: ['login'],
+            const row = q.rows[0];
+            const live = await c.query(
+              'SELECT 1 FROM auth_session WHERE token_hash=$1 AND account_id=$2 AND expires_at>now()',
+              [req.tokenHash, req.actor!.id],
+            );
+            if (!row || !live.rowCount) throw new ApiError(401, '会话已失效，请重新登录');
+            if (!row.can_change)
+              throw new ApiError(
+                409,
+                '90天内不可再次修改，下次允许修改时间：' + new Date(row.next_allowed).toISOString(),
+              );
+            if (row.login_key === body.newLogin)
+              throw new ApiError(409, '新账号与当前账号规范化后相同');
+            if (!(await argon2.verify(row.password_hash, body.currentPassword)))
+              throw new ApiError(403, '当前密码不正确');
+            const changed = await c.query(
+              'UPDATE account SET login=$2 WHERE id=$1 RETURNING login,login_changed_at',
+              [req.actor!.id, body.newLogin],
+            );
+            const current = changed.rows[0];
+            await audit(c, req.actor!, 'account.login.change', undefined, {
+              entityType: 'account',
+              entityId: req.actor!.id,
+              operation: 'update',
+              before: { login: row.login },
+              after: {
+                login: current.login,
+                loginChangedAt: current.login_changed_at.toISOString(),
+              },
+              changedFields: ['login'],
+            });
           });
-        });
-        for (const stream of streams) if (stream.accountId === req.actor!.id) stream.close();
-        setCookie(res, '', true);
-        res.json({ ok: true, login: body.newLogin });
-      } finally {
-        hashing--;
+          for (const stream of streams) if (stream.accountId === req.actor!.id) stream.close();
+          setCookie(res, '', true);
+          res.json({ ok: true, login: body.newLogin });
+        } finally {
+          hashing--;
+        }
+      } catch (e) {
+        if ((e as { code?: string }).code === '23505')
+          next(new ApiError(409, '该登录账号已被使用，请选择其他账号'));
+        else next(e);
       }
-    } catch (e) {
-      if ((e as { code?: string }).code === '23505')
-        next(new ApiError(409, '该登录账号已被使用，请选择其他账号'));
-      else next(e);
-    }
-  });
+    },
+  );
   app.post('/api/auth/password', async (req: AuthRequest, res, next) => {
     try {
       const body = z
@@ -484,103 +513,115 @@ export function createApp() {
       next(e);
     }
   });
-  app.get('/api/accounts', owner, async (req: AuthRequest, res, next) => {
-    try {
-      const q = await pool.query(
-        `SELECT id,login,COALESCE(NULLIF(display_name,''),login) AS "displayName",active FROM account WHERE workspace_id=$1 AND id<>$2 ORDER BY login`,
-        [req.actor!.workspaceId, req.actor!.id],
-      );
-      res.json({ accounts: q.rows });
-    } catch (e) {
-      next(e);
-    }
-  });
-  app.post('/api/accounts', owner, async (req: AuthRequest, res, next) => {
-    try {
-      const body = credentials
-        .extend({ displayName: displayNameSchema.optional() })
-        .strict()
-        .parse(req.body);
-      await passwordLimit(req.actor!.id);
-      if (hashing >= 2) throw new ApiError(429, '密码处理繁忙');
-      hashing++;
+  app.get(
+    '/api/accounts',
+    requireAccountPermission('manageAccounts'),
+    async (req: AuthRequest, res, next) => {
       try {
-        const id = randomUUID(),
-          pwd = await passwordHash(body.password);
-        await transaction(async (c) => {
-          await c.query(
-            "INSERT INTO account(id,workspace_id,login,password_hash,role,display_name) VALUES($1,$2,$3,$4,'employee',$5)",
-            [id, req.actor!.workspaceId, body.login, pwd, body.displayName ?? ''],
-          );
-          await audit(c, req.actor!, 'account.create', undefined, {
-            entityType: 'account',
-            entityId: id,
-            operation: 'create',
-            changedFields: ['login', 'displayName', 'active'],
-          });
-        });
-        res.status(201).json({ id, login: body.login, role: 'employee' });
-      } finally {
-        hashing--;
+        const q = await pool.query(
+          `SELECT id,login,COALESCE(NULLIF(display_name,''),login) AS "displayName",active FROM account WHERE workspace_id=$1 AND id<>$2 ORDER BY login`,
+          [req.actor!.workspaceId, req.actor!.id],
+        );
+        res.json({ accounts: q.rows });
+      } catch (e) {
+        next(e);
       }
-    } catch (e) {
-      next(e);
-    }
-  });
-  app.patch('/api/accounts/:id', owner, async (req: AuthRequest, res, next) => {
-    try {
-      const body = z
-        .object({
-          active: z.boolean().optional(),
-          displayName: displayNameSchema.optional(),
-          password: passwordSchema.optional(),
-        })
-        .strict()
-        .refine((x) => x.active !== undefined || x.password || x.displayName !== undefined)
-        .parse(req.body);
-      if (req.params.id === req.actor!.id && body.password)
-        throw new ApiError(409, '请使用修改我的密码并验证当前密码');
-      if (body.password) await passwordLimit(req.actor!.id);
-      if (req.params.id === req.actor!.id && body.active === false)
-        throw new ApiError(409, '不能停用负责人');
-      if (body.password && hashing >= 2) throw new ApiError(429, '密码处理繁忙');
-      let pwd: string | undefined;
-      if (body.password) {
+    },
+  );
+  app.post(
+    '/api/accounts',
+    requireAccountPermission('manageAccounts'),
+    async (req: AuthRequest, res, next) => {
+      try {
+        const body = credentials
+          .extend({ displayName: displayNameSchema.optional() })
+          .strict()
+          .parse(req.body);
+        await passwordLimit(req.actor!.id);
+        if (hashing >= 2) throw new ApiError(429, '密码处理繁忙');
         hashing++;
         try {
-          pwd = await passwordHash(body.password);
+          const id = randomUUID(),
+            pwd = await passwordHash(body.password);
+          await transaction(async (c) => {
+            await c.query(
+              "INSERT INTO account(id,workspace_id,login,password_hash,role,display_name) VALUES($1,$2,$3,$4,'employee',$5)",
+              [id, req.actor!.workspaceId, body.login, pwd, body.displayName ?? ''],
+            );
+            await audit(c, req.actor!, 'account.create', undefined, {
+              entityType: 'account',
+              entityId: id,
+              operation: 'create',
+              changedFields: ['login', 'displayName', 'active'],
+            });
+          });
+          res.status(201).json({ id, login: body.login, role: 'employee' });
         } finally {
           hashing--;
         }
+      } catch (e) {
+        next(e);
       }
-      await transaction(async (c) => {
-        const q = await c.query(
-          'UPDATE account SET active=COALESCE($3,active),password_hash=COALESCE($4,password_hash),display_name=COALESCE($5,display_name) WHERE id=$1 AND workspace_id=$2 RETURNING id',
-          [
-            req.params.id,
-            req.actor!.workspaceId,
-            body.active ?? null,
-            pwd ?? null,
-            body.displayName ?? null,
-          ],
-        );
-        if (!q.rowCount) throw new ApiError(404, '账号不存在');
-        if (body.password || body.active !== undefined)
-          await c.query('DELETE FROM auth_session WHERE account_id=$1', [req.params.id]);
-        await audit(c, req.actor!, 'account.update', undefined, {
-          entityType: 'account',
-          entityId: String(req.params.id),
-          operation: 'update',
-          changedFields: Object.keys(body).map((k) => (k === 'password' ? 'passwordChanged' : k)),
+    },
+  );
+  app.patch(
+    '/api/accounts/:id',
+    requireAccountPermission('manageAccounts'),
+    async (req: AuthRequest, res, next) => {
+      try {
+        const body = z
+          .object({
+            active: z.boolean().optional(),
+            displayName: displayNameSchema.optional(),
+            password: passwordSchema.optional(),
+          })
+          .strict()
+          .refine((x) => x.active !== undefined || x.password || x.displayName !== undefined)
+          .parse(req.body);
+        if (req.params.id === req.actor!.id && body.password)
+          throw new ApiError(409, '请使用修改我的密码并验证当前密码');
+        if (body.password) await passwordLimit(req.actor!.id);
+        if (req.params.id === req.actor!.id && body.active === false)
+          throw new ApiError(409, '不能停用负责人');
+        if (body.password && hashing >= 2) throw new ApiError(429, '密码处理繁忙');
+        let pwd: string | undefined;
+        if (body.password) {
+          hashing++;
+          try {
+            pwd = await passwordHash(body.password);
+          } finally {
+            hashing--;
+          }
+        }
+        await transaction(async (c) => {
+          const q = await c.query(
+            'UPDATE account SET active=COALESCE($3,active),password_hash=COALESCE($4,password_hash),display_name=COALESCE($5,display_name) WHERE id=$1 AND workspace_id=$2 RETURNING id',
+            [
+              req.params.id,
+              req.actor!.workspaceId,
+              body.active ?? null,
+              pwd ?? null,
+              body.displayName ?? null,
+            ],
+          );
+          if (!q.rowCount) throw new ApiError(404, '账号不存在');
+          if (body.password || body.active !== undefined)
+            await c.query('DELETE FROM auth_session WHERE account_id=$1', [req.params.id]);
+          await audit(c, req.actor!, 'account.update', undefined, {
+            entityType: 'account',
+            entityId: String(req.params.id),
+            operation: 'update',
+            changedFields: Object.keys(body).map((k) => (k === 'password' ? 'passwordChanged' : k)),
+          });
         });
-      });
-      if (body.password || body.active !== undefined)
-        for (const s of streams) if (s.accountId === req.params.id) s.close();
-      res.json({ ok: true });
-    } catch (e) {
-      next(e);
-    }
-  });
+        if (body.password || body.active !== undefined)
+          for (const s of streams) if (s.accountId === req.params.id) s.close();
+        res.json({ ok: true });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
   app.get('/api/workspace', async (req: AuthRequest, res, next) => {
     try {
       res.json(await transaction((c) => getState(c, req.actor!.workspaceId)));
@@ -642,156 +683,172 @@ export function createApp() {
       next(e);
     }
   });
-  app.get('/api/people/:id/private', owner, async (req: AuthRequest, res, next) => {
-    try {
-      const r = await privatePool.query(
-        'SELECT sealed FROM person_private WHERE workspace_id=$1 AND person_id=$2',
-        [req.actor!.workspaceId, req.params.id],
-      );
-      if (!r.rowCount) throw new ApiError(404, '私密资料未登记');
-      await transaction((c) => audit(c, req.actor!, 'person.private.read'));
-      res.json(unseal(r.rows[0].sealed));
-    } catch (e) {
-      next(e);
-    }
-  });
-  app.put('/api/people/:id/private', owner, async (req: AuthRequest, res, next) => {
-    try {
-      const b = z
-        .object({
-          phone: z.string().regex(/^\+?\d{6,20}$/),
-          birthDate: z.string().refine((x) => x === '' || dateOK(x)),
-        })
-        .strict()
-        .parse(req.body);
-      const current = await transaction((c) => getState(c, req.actor!.workspaceId));
-      if (!current.data.people?.some((p) => p.id === req.params.id))
-        throw new ApiError(404, '人员不存在');
-      const pc = await privatePool.connect();
+  app.get(
+    '/api/people/:id/private',
+    requireAccountPermission('privatePersonnel'),
+    async (req: AuthRequest, res, next) => {
       try {
-        await pc.query('BEGIN');
-        await pc.query(
-          'INSERT INTO person_private(workspace_id,person_id,sealed) VALUES($1,$2,$3) ON CONFLICT(workspace_id,person_id) DO UPDATE SET sealed=excluded.sealed,updated_at=now()',
-          [req.actor!.workspaceId, req.params.id, JSON.stringify(seal(b))],
+        const r = await privatePool.query(
+          'SELECT sealed FROM person_private WHERE workspace_id=$1 AND person_id=$2',
+          [req.actor!.workspaceId, req.params.id],
         );
-        await audit(pc, req.actor!, 'person.private.update');
-        await pc.query('COMMIT');
+        if (!r.rowCount) throw new ApiError(404, '私密资料未登记');
+        await transaction((c) => audit(c, req.actor!, 'person.private.read'));
+        res.json(unseal(r.rows[0].sealed));
       } catch (e) {
-        await pc.query('ROLLBACK');
-        throw e;
-      } finally {
-        pc.release();
+        next(e);
       }
-      res.json({ ok: true });
-    } catch (e) {
-      next(e);
-    }
-  });
-  app.post('/api/import/preview', owner, async (req: AuthRequest, res, next) => {
-    try {
-      const raw = z.object({ archive: z.unknown() }).strict().parse(req.body),
-        archive = valid(() => parseArchive(raw.archive)),
-        digest = hash(canonical(raw.archive));
-      const preview = await transaction(async (c) => {
-        const prior = await c.query(
-          'SELECT revision FROM imported_archive WHERE workspace_id=$1 AND hash=$2',
-          [req.actor!.workspaceId, digest],
-        );
-        if (prior.rowCount)
-          return { alreadyImported: true, revision: Number(prior.rows[0].revision) };
-        const s = await getState(c, req.actor!.workspaceId);
-        const merged = mergeImport(s.data, archive.data);
-        const id = randomUUID();
-        const history: History | undefined = archive.history
-          ? {
-              ...archive.history,
-              records: archive.history.records.map((r) => {
-                const { actorId: _, ...rest } = r;
-                return {
-                  ...rest,
-                  changes: differences(
-                    archive.history!.snapshots[r.before],
-                    archive.history!.snapshots[r.after],
-                  ),
-                  actor: '导入记录（身份未核验）',
-                };
-              }),
-            }
-          : undefined;
-        await c.query(
-          "INSERT INTO import_preview VALUES($1,$2,$3,$4,$5,$6,now()+interval '10 minutes',false)",
-          [
-            id,
-            req.actor!.workspaceId,
-            req.actor!.id,
-            s.revision,
-            digest,
-            JSON.stringify({ data: merged, history }),
-          ],
-        );
-        return {
-          id,
-          revision: s.revision,
-          hash: digest,
-          counts: {
-            projects: archive.data.projects.length,
-            tasks: archive.data.tasks.length,
-            people: archive.data.people?.length ?? 0,
-            purchases: archive.data.purchases.length,
-            history: archive.history?.records.length ?? 0,
-            historyDiscarded: Math.max(
-              0,
-              ((raw.archive as { history?: { records?: unknown[] } })?.history?.records?.length ??
-                0) - (archive.history?.records.length ?? 0),
-            ),
-          },
-        };
-      });
-      res.json(preview);
-    } catch (e) {
-      next(e);
-    }
-  });
-  app.post('/api/import/commit', owner, async (req: AuthRequest, res, next) => {
-    try {
-      const b = z
-        .object({ id: z.string().uuid(), revision: version, confirm: z.literal(true) })
-        .strict()
-        .parse(req.body);
-      res.json(
-        await transaction(async (c) => {
-          const q = await c.query(
-            'SELECT * FROM import_preview WHERE id=$1 AND workspace_id=$2 AND actor_id=$3 AND expires_at>now() FOR UPDATE',
-            [b.id, req.actor!.workspaceId, req.actor!.id],
+    },
+  );
+  app.put(
+    '/api/people/:id/private',
+    requireAccountPermission('privatePersonnel'),
+    async (req: AuthRequest, res, next) => {
+      try {
+        const b = z
+          .object({
+            phone: z.string().regex(/^\+?\d{6,20}$/),
+            birthDate: z.string().refine((x) => x === '' || dateOK(x)),
+          })
+          .strict()
+          .parse(req.body);
+        const current = await transaction((c) => getState(c, req.actor!.workspaceId));
+        if (!current.data.people?.some((p) => p.id === req.params.id))
+          throw new ApiError(404, '人员不存在');
+        const pc = await privatePool.connect();
+        try {
+          await pc.query('BEGIN');
+          await pc.query(
+            'INSERT INTO person_private(workspace_id,person_id,sealed) VALUES($1,$2,$3) ON CONFLICT(workspace_id,person_id) DO UPDATE SET sealed=excluded.sealed,updated_at=now()',
+            [req.actor!.workspaceId, req.params.id, JSON.stringify(seal(b))],
           );
-          if (!q.rowCount) throw new ApiError(404, '预览不存在或已过期');
-          const p = q.rows[0];
-          const old = await c.query(
+          await audit(pc, req.actor!, 'person.private.update');
+          await pc.query('COMMIT');
+        } catch (e) {
+          await pc.query('ROLLBACK');
+          throw e;
+        } finally {
+          pc.release();
+        }
+        res.json({ ok: true });
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+  app.post(
+    '/api/import/preview',
+    requireAccountPermission('backupImport'),
+    async (req: AuthRequest, res, next) => {
+      try {
+        const raw = z.object({ archive: z.unknown() }).strict().parse(req.body),
+          archive = valid(() => parseArchive(raw.archive)),
+          digest = hash(canonical(raw.archive));
+        const preview = await transaction(async (c) => {
+          const prior = await c.query(
             'SELECT revision FROM imported_archive WHERE workspace_id=$1 AND hash=$2',
-            [req.actor!.workspaceId, p.hash],
+            [req.actor!.workspaceId, digest],
           );
-          if (old.rowCount)
-            return { alreadyImported: true, revision: Number(old.rows[0].revision) };
-          if (p.consumed || Number(p.base_revision) !== b.revision)
-            throw new ApiError(409, '预览版本已变化');
-          const result = await commit(c, req.actor!, b.revision, parseBackup(p.payload.data), {
-            importHistory: p.payload.history,
-            importing: true,
-          });
-          await c.query('INSERT INTO imported_archive VALUES($1,$2,$3,$4)', [
-            req.actor!.workspaceId,
-            p.hash,
-            req.actor!.id,
-            result.revision,
-          ]);
-          await c.query('UPDATE import_preview SET consumed=true WHERE id=$1', [b.id]);
-          return result;
-        }),
-      );
-    } catch (e) {
-      next(e);
-    }
-  });
+          if (prior.rowCount)
+            return { alreadyImported: true, revision: Number(prior.rows[0].revision) };
+          const s = await getState(c, req.actor!.workspaceId);
+          const merged = mergeImport(s.data, archive.data);
+          const id = randomUUID();
+          const history: History | undefined = archive.history
+            ? {
+                ...archive.history,
+                records: archive.history.records.map((r) => {
+                  const { actorId: _, ...rest } = r;
+                  return {
+                    ...rest,
+                    changes: differences(
+                      archive.history!.snapshots[r.before],
+                      archive.history!.snapshots[r.after],
+                    ),
+                    actor: '导入记录（身份未核验）',
+                  };
+                }),
+              }
+            : undefined;
+          await c.query(
+            "INSERT INTO import_preview VALUES($1,$2,$3,$4,$5,$6,now()+interval '10 minutes',false)",
+            [
+              id,
+              req.actor!.workspaceId,
+              req.actor!.id,
+              s.revision,
+              digest,
+              JSON.stringify({ data: merged, history }),
+            ],
+          );
+          return {
+            id,
+            revision: s.revision,
+            hash: digest,
+            counts: {
+              projects: archive.data.projects.length,
+              tasks: archive.data.tasks.length,
+              people: archive.data.people?.length ?? 0,
+              purchases: archive.data.purchases.length,
+              history: archive.history?.records.length ?? 0,
+              historyDiscarded: Math.max(
+                0,
+                ((raw.archive as { history?: { records?: unknown[] } })?.history?.records?.length ??
+                  0) - (archive.history?.records.length ?? 0),
+              ),
+            },
+          };
+        });
+        res.json(preview);
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
+  app.post(
+    '/api/import/commit',
+    requireAccountPermission('backupImport'),
+    async (req: AuthRequest, res, next) => {
+      try {
+        const b = z
+          .object({ id: z.string().uuid(), revision: version, confirm: z.literal(true) })
+          .strict()
+          .parse(req.body);
+        res.json(
+          await transaction(async (c) => {
+            const q = await c.query(
+              'SELECT * FROM import_preview WHERE id=$1 AND workspace_id=$2 AND actor_id=$3 AND expires_at>now() FOR UPDATE',
+              [b.id, req.actor!.workspaceId, req.actor!.id],
+            );
+            if (!q.rowCount) throw new ApiError(404, '预览不存在或已过期');
+            const p = q.rows[0];
+            const old = await c.query(
+              'SELECT revision FROM imported_archive WHERE workspace_id=$1 AND hash=$2',
+              [req.actor!.workspaceId, p.hash],
+            );
+            if (old.rowCount)
+              return { alreadyImported: true, revision: Number(old.rows[0].revision) };
+            if (p.consumed || Number(p.base_revision) !== b.revision)
+              throw new ApiError(409, '预览版本已变化');
+            const result = await commit(c, req.actor!, b.revision, parseBackup(p.payload.data), {
+              importHistory: p.payload.history,
+              importing: true,
+            });
+            await c.query('INSERT INTO imported_archive VALUES($1,$2,$3,$4)', [
+              req.actor!.workspaceId,
+              p.hash,
+              req.actor!.id,
+              result.revision,
+            ]);
+            await c.query('UPDATE import_preview SET consumed=true WHERE id=$1', [b.id]);
+            return result;
+          }),
+        );
+      } catch (e) {
+        next(e);
+      }
+    },
+  );
   app.get('/api/events', async (req: AuthRequest, res, next) => {
     try {
       if ([...streams].filter((s) => s.accountId === req.actor!.id).length >= 8)
@@ -808,14 +865,18 @@ export function createApp() {
       const close = () => {
         if (!res.writableEnded && !res.destroyed) res.write('event: session-expired\ndata: {}\n\n');
         clearInterval(timer);
-        streams.delete(stream);
+        const removed = streams.delete(stream);
         res.end();
+        if (removed) announcePresence(req.actor!.workspaceId);
       };
       const stream = {
         accountId: req.actor!.id,
         workspaceId: req.actor!.workspaceId,
         tokenHash: req.tokenHash!,
         close,
+        notify: () => {
+          if (!res.writableEnded && !res.destroyed) res.write('event: presence\ndata: {}\n\n');
+        },
       };
       const timer = setInterval(async () => {
         if (busy) return;
@@ -842,6 +903,7 @@ export function createApp() {
         }
       }, 1000);
       streams.add(stream);
+      announcePresence(req.actor!.workspaceId);
       req.on('close', close);
       res.write(': connected\n\n');
     } catch (e) {

@@ -2,7 +2,7 @@ import { remainingSchedule, scheduleForecast } from '../lib/readiness';
 import { useCurrentDate } from '../lib/useCurrentDate';
 import { useRef, useState } from 'react';
 import { useReorderMotion } from '../lib/useReorderMotion';
-import { ArrowRight, GripVertical } from 'lucide-react';
+import { ArrowRight, GripVertical, Settings2 } from 'lucide-react';
 import { shortDate, projectStatus, type Data, type Project } from '../lib/model';
 
 export function ProjectCards({
@@ -10,12 +10,14 @@ export function ProjectCards({
   projects,
   selected,
   onSelect,
+  onEdit,
   onReorder,
 }: {
   data: Data;
   projects: Project[];
   selected: string;
   onSelect: (id: string) => void;
+  onEdit: (project: Project) => void;
   onReorder: (source: string, before: string | null) => void;
 }) {
   const now = useCurrentDate();
@@ -27,16 +29,17 @@ export function ProjectCards({
     <div ref={root} className="project-cards" aria-label="项目列表">
       {projects.map((p, index) => {
         return (
-          <button
+          <article
             key={p.id}
             data-project-id={p.id}
             draggable
             className={`project-card ${p.id === selected ? 'chosen' : ''} ${drag === p.id ? 'sorting' : ''} ${drag && before === p.id ? 'drop-before' : ''} ${drag && before === null && index === projects.length - 1 ? 'drop-after' : ''}`}
-            aria-label={`切换项目${p.name}`}
-            aria-pressed={p.id === selected}
             title="点击切换项目；拖放排序；Alt + 左右方向键排序"
-            onClick={() => onSelect(p.id)}
             onDragStart={(e) => {
+              if ((e.target as HTMLElement).closest('.project-settings')) {
+                e.preventDefault();
+                return;
+              }
               setDrag(p.id);
               setBefore(p.id);
               e.dataTransfer.setData('text/plain', p.id);
@@ -72,22 +75,35 @@ export function ProjectCards({
               }
             }}
           >
-            <div>
-              <span className="project-status">{projectStatus(p.status)}</span>
-              <GripVertical size={16} />
-              <ArrowRight size={17} />
-            </div>
-            <h3>{p.name}</h3>
-            <small>{remainingSchedule(p, now)}</small>
-            <small className="card-forecast">
-              {scheduleForecast(data, p).label.split(' · ').at(-1)}
-            </small>
-            <footer>
-              <span>
+            <button
+              className="project-select"
+              aria-label={`切换项目${p.name}`}
+              aria-pressed={p.id === selected}
+              onClick={() => onSelect(p.id)}
+            >
+              <span className="project-card-heading">
+                <span className="project-status">{projectStatus(p.status)}</span>
+                <GripVertical size={14} />
+                <ArrowRight size={15} />
+              </span>
+              <strong className="project-card-name">{p.name}</strong>
+              <small>{remainingSchedule(p, now)}</small>
+              <small className="card-forecast">
+                {scheduleForecast(data, p).label.split(' · ').at(-1)}
+              </small>
+              <span className="project-card-dates">
                 {shortDate(p.start)} — {shortDate(p.end)}
               </span>
-            </footer>
-          </button>
+            </button>
+            <button
+              className="project-settings"
+              aria-label={p.id === selected ? '编辑当前项目' : `编辑项目${p.name}`}
+              title={`${p.name} · 项目设置`}
+              onClick={() => onEdit(p)}
+            >
+              <Settings2 size={16} />
+            </button>
+          </article>
         );
       })}
     </div>

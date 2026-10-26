@@ -8,8 +8,8 @@ test.beforeAll(async () => {
   accounts = await fixtureAccounts();
 });
 test.afterAll(async () => {
-  await pool.end();
-  await privatePool.end();
+  if (!pool.ended) await pool.end();
+  if (!privatePool.ended) await privatePool.end();
 });
 async function enter(page: Page, login: string, password = accounts.password) {
   await page.goto('/');
@@ -27,7 +27,7 @@ async function accountPanel(page: Page) {
 }
 async function localSpace(page: Page) {
   const dialog = await accountPanel(page);
-  await dialog.getByText('本地资料管理', { exact: true }).click();
+  await dialog.getByRole('tab', { name: '备份导入', exact: true }).click();
   await dialog.getByRole('button', { name: '切换本地空间（保留账号会话）', exact: true }).click();
   await expect(page.locator('.local-notice')).toContainText('本地模式');
   await expect(page.locator('.save-state')).toContainText('已保存');

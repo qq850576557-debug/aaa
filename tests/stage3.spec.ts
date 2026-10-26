@@ -266,7 +266,9 @@ test('phase 3: a newly created overlapping predecessor proposes downstream dates
   await form.getByRole('button', { name: '保存', exact: true }).click();
   let panel = page.getByRole('dialog', { name: '是否顺延后续工期？' });
   await expect(panel).toHaveAttribute('aria-modal', 'false');
-  await expect(panel).toContainText('2026-10-27');
+  await expect(panel.locator('.shift-preview')).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: '仅调整当前工序', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: '顺延后续工期', exact: true })).toBeVisible();
   expect((await state(page)).tasks).toHaveLength(3);
   await panel.getByRole('button', { name: '取消本次操作', exact: true }).click();
   expect((await state(page)).tasks).toHaveLength(3);

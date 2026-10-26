@@ -1,0 +1,222 @@
+.date-picker {
+  min-width: 0;
+}
+.date-picker .date-field {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  background: #fcfdfb;
+  border: 1px solid #dce5dc;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.date-picker .date-field input {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  min-width: 0;
+  padding: 10px 11px;
+}
+.date-picker .date-field:focus-within {
+  border-color: #82a28e;
+  box-shadow: 0 0 0 3px #406b5310;
+}
+.date-picker .date-field button {
+  position: static;
+  inset: auto;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 8px;
+  color: #698273;
+}
+.date-picker-compact {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.date-picker-compact > label {
+  font-size: 13px;
+  white-space: nowrap;
+  margin: 0;
+}
+.date-picker-compact .date-field {
+  width: 172px;
+}
+.date-picker-compact .date-field input {
+  width: 132px;
+  font-size: 14px;
+  padding: 8px;
+}
+.calendar-popover[popover] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: 314px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #e0e7df;
+  border-radius: 20px;
+  background: #fcfdfb;
+  box-shadow: 0 16px 48px #203a2a21;
+  color: #293f35;
+  font-family: inherit;
+  z-index: 150;
+}
+.calendar-popover::backdrop {
+  background: transparent;
+}
+.calendar-popover header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+}
+.calendar-popover .calendar-period {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+}
+.calendar-popover .calendar-period select {
+  width: auto;
+  max-width: 90px;
+  padding: 6px 3px;
+  border: 0;
+  background: transparent;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  min-height: 36px;
+  color: #304b3b;
+}
+.calendar-popover header > button {
+  width: 32px;
+  min-width: 32px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #f0f4ee;
+}
+.calendar-popover .calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+}
+.calendar-popover .calendar-grid > span {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 400;
+  color: #8a998e;
+  line-height: 28px;
+}
+.calendar-popover .calendar-grid > button {
+  display: grid;
+  place-items: center;
+  position: relative;
+  width: 100%;
+  height: 35px;
+  min-height: 35px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: #344f40;
+  font-size: 15px;
+  font-weight: 500;
+  box-shadow: none;
+}
+.calendar-popover .calendar-grid > button.outside {
+  color: #a4afa6;
+}
+.calendar-popover .calendar-grid > button.calendar-today {
+  border-color: #b2c6b4;
+  color: #39674a;
+  background: #f1f6ee;
+}
+.calendar-popover .calendar-grid > button.in-range {
+  background: #eaf0e5;
+}
+.calendar-popover .calendar-grid > button.selected {
+  background: #477d64;
+  color: #fff;
+  border-color: #477d64;
+  box-shadow: 0 3px 8px #477d6420;
+}
+.calendar-popover .calendar-grid > button:disabled {
+  opacity: 0.35;
+  color: #9ba69b;
+  background: transparent;
+  box-shadow: none;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+.calendar-popover .calendar-grid > button:focus-visible {
+  outline: 2px solid #82a28c;
+  outline-offset: 0;
+}
+.calendar-popover footer {
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 0 0;
+  margin: 11px 0 0;
+  border-top: 1px solid #edf0e9;
+}
+.calendar-popover footer > button {
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  border-radius: 8px;
+  color: #56745b;
+}
+@media (max-width: 480px) {
+  .calendar-popover[popover] {
+    width: min(320px, calc(100vw - 16px));
+    padding: 13px;
+    border-radius: 18px;
+  }
+  .calendar-popover .calendar-grid > button {
+    height: 38px;
+    min-height: 38px;
+  }
+  .calendar-popover footer > button {
+    min-height: 36px;
+  }
+}
+@media (max-height: 420px) {
+  .calendar-popover .calendar-grid > button {
+    height: 27px;
+    min-height: 27px;
+  }
+  .calendar-popover[popover] {
+    padding: 8px 12px;
+  }
+  .calendar-popover header {
+    margin-bottom: 4px;
+  }
+  .calendar-popover footer {
+    margin-top: 4px;
+    padding-top: 4px;
+  }
+}

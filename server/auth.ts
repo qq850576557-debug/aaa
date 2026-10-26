@@ -20,7 +20,7 @@ export function tokenFrom(req: Request) {
 }
 export async function session(tokenHash: string) {
   const q = await pool.query(
-    `SELECT a.id,a.workspace_id,a.login,COALESCE(NULLIF(a.display_name,''),a.login) AS display_name,(w.owner_account_id=a.id) AS owner FROM auth_session s JOIN account a ON a.id=s.account_id JOIN cloud_workspace w ON w.id=a.workspace_id WHERE s.token_hash=$1 AND s.expires_at>now() AND a.active=true`,
+    `SELECT a.id,a.workspace_id,a.login,COALESCE(NULLIF(a.display_name,''),a.login) AS display_name,v.version AS avatar_version,(w.owner_account_id=a.id) AS owner FROM auth_session s JOIN account a ON a.id=s.account_id JOIN cloud_workspace w ON w.id=a.workspace_id LEFT JOIN account_avatar v ON v.account_id=a.id WHERE s.token_hash=$1 AND s.expires_at>now() AND a.active=true`,
     [tokenHash],
   );
   const a = q.rows[0];
@@ -30,6 +30,7 @@ export async function session(tokenHash: string) {
         workspaceId: a.workspace_id,
         login: a.login,
         displayName: a.display_name,
+        avatarVersion: a.avatar_version,
         owner: a.owner,
       } as Actor)
     : null;

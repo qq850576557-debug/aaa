@@ -121,6 +121,7 @@ test('continuous creation, accessible ordering, color wheel and default colors',
   await expect(page.locator('.trade-title').first()).toContainText('水电改造');
   await page.getByRole('button', { name: '编辑水电改造', exact: true }).click();
   let modal = page.getByRole('dialog');
+  await modal.locator('.trade-colors > summary').click();
   await expect(modal.locator('.w-color-wheel')).toBeVisible();
   await modal.getByLabel('自定义颜色', { exact: true }).fill('#244e42');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
@@ -129,6 +130,7 @@ test('continuous creation, accessible ordering, color wheel and default colors',
     'rgb(36, 78, 66)',
   );
   await page.getByRole('button', { name: '编辑水电改造', exact: true }).click();
+  await page.getByRole('dialog').locator('.trade-colors > summary').click();
   await page.getByRole('button', { name: '恢复默认颜色' }).click();
   await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
   await page.getByRole('button', { name: '施工任务', exact: true }).click();

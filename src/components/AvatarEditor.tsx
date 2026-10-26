@@ -1,31 +1,17 @@
-import { useEffect, useState } from 'react';
-import { cloudApi, type CloudUser } from '../lib/cloud';
-export function AvatarEditor({ user }: { user: CloudUser }) {
-  const [preview, setPreview] = useState(''),
-    [candidate, setCandidate] = useState(''),
+import { useState } from 'react';
+import { Avatar } from './Avatar';
+import { cloudApi, cloudSession, type CloudUser } from '../lib/cloud';
+export function AvatarEditor({
+  user,
+  onUpdated,
+}: {
+  user: CloudUser;
+  onUpdated: (user: CloudUser) => void;
+}) {
+  const [candidate, setCandidate] = useState(''),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let active = true;
-    void fetch(`/api/accounts/${encodeURIComponent(user.id)}/avatar`)
-      .then(async (r) => {
-        if (r.ok) {
-          const blob = await r.blob();
-          const reader = new FileReader();
-          reader.onload = () => {
-            if (active) setPreview(String(reader.result));
-          };
-          reader.readAsDataURL(blob);
-        }
-      })
-      .catch(() => {
-        if (active) setError('头像暂时无法读取，请稍后重试');
-      });
-    return () => {
-      active = false;
-    };
-  }, [user.id]);
   async function choose(file?: File) {
     setError('');
     setNotice('');
@@ -72,7 +58,9 @@ export function AvatarEditor({ user }: { user: CloudUser }) {
     setError('');
     try {
       await cloudApi('/auth/avatar', remove ? 'DELETE' : 'PUT', remove ? {} : { image: candidate });
-      setPreview(remove ? '' : candidate);
+      const updated = await cloudSession();
+      onUpdated(updated);
+      window.dispatchEvent(new CustomEvent('chunmo-profile-updated', { detail: updated }));
       setCandidate('');
       setNotice(remove ? '已恢复默认头像' : '头像已保存');
       window.dispatchEvent(new Event('chunmo-presence'));
@@ -85,12 +73,8 @@ export function AvatarEditor({ user }: { user: CloudUser }) {
   return (
     <details className="account-card avatar-editor">
       <summary>头像设置</summary>
-      <div className="avatar-preview account-avatar">
-        {candidate || preview ? (
-          <img src={candidate || preview} alt="头像预览" />
-        ) : (
-          Array.from(user.displayName || user.login)[0]
-        )}
+      <div className="avatar-preview">
+        <Avatar account={user} source={candidate || undefined} label="头像预览" />
       </div>
       <label>
         选择头像
@@ -116,7 +100,7 @@ export function AvatarEditor({ user }: { user: CloudUser }) {
           </button>
         </div>
       )}
-      {preview && (
+      {user.avatarVersion && (
         <button disabled={busy} onClick={() => void save(true)}>
           恢复默认头像
         </button>

@@ -2,6 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Modal, Confirm } from './Modal';
 import { PASSWORD_MIN, PASSWORD_MAX, passwordSchema } from '../lib/password';
 import { cloudApi, cloudSession, selectSpace, CloudError, type CloudUser } from '../lib/cloud';
+import { Avatar } from './Avatar';
+import { accountPermissions } from '../lib/account-permissions';
 import { AvatarEditor } from './AvatarEditor';
 import { LoginNameEditor } from './LoginNameEditor';
 import { loginSchema, LOGIN_HELP } from '../lib/login';
@@ -14,6 +16,7 @@ export type DirectoryAccount = {
   active: boolean;
   owner: boolean;
   note: string;
+  avatarVersion?: string | null;
 };
 export function CloudControl({ isCloud, dirty }: { isCloud: boolean; dirty: boolean }) {
   const [open, setOpen] = useState(false);
@@ -78,12 +81,11 @@ function CloudPanel({
   }
   useEffect(() => {
     let active = true;
-    void Promise.all([cloudSession(), cloudApi<{ accounts: DirectoryAccount[] }>('/directory')])
-      .then(([u, list]) => {
+    void cloudSession()
+      .then((u) => {
         if (active) {
           setUser(u);
           setDisplayName(u.displayName || u.login);
-          setAccounts(list.accounts);
         }
       })
       .catch((e) => {
@@ -96,6 +98,10 @@ function CloudPanel({
       active = false;
     };
   }, []);
+  useEffect(() => {
+    if (user && ['directory', 'audit'].includes(tab) && accountPermissions(user.owner).directory)
+      void directory().catch(report);
+  }, [user?.id, tab]);
   async function action(run: () => Promise<void>) {
     setBusy(true);
     setError('');
@@ -127,13 +133,7 @@ function CloudPanel({
   }
   return (
     <>
-      <Modal
-        title="账号管理"
-        subtitle="身份、个人设置与工作室协作"
-        onClose={onClose}
-        wide
-        className="account-dialog"
-      >
+      <Modal title="账号管理" onClose={onClose} wide className="account-dialog">
         <div className="modal-body account-body">
           {loading ? (
             <p role="status">正在读取账号…</p>
@@ -147,9 +147,7 @@ function CloudPanel({
           ) : (
             <>
               <div className="account-identity">
-                <span className="account-avatar" aria-hidden="true">
-                  {(user.displayName || user.login).slice(0, 1)}
-                </span>
+                <Avatar account={user} />
                 <div>
                   <h3>{user.displayName || user.login}</h3>
                   <p>
@@ -162,7 +160,7 @@ function CloudPanel({
                   ['profile', '账号与安全'],
                   ['directory', '账号通讯录'],
                   ['audit', '操作记录'],
-                  ...(user.owner ? [['import', '备份导入']] : []),
+                  ...(accountPermissions(user.owner).backupImport ? [['import', '备份导入']] : []),
                 ].map(([key, label]) => (
                   <button
                     key={key}
@@ -196,8 +194,6 @@ function CloudPanel({
                       });
                     }}
                   >
-                    <h3>正式展示名称</h3>
-                    <p className="account-muted">可使用中文名称。操作记录会保留操作当时的名称。</p>
                     <label>
                       我的展示名称
                       <input
@@ -210,8 +206,10 @@ function CloudPanel({
                     </label>
                     <button disabled={busy}>保存展示名称</button>
                   </form>
-                  <AvatarEditor user={user} />
-                  <LoginNameEditor dirty={dirty} onExpired={expired} />
+                  <AvatarEditor user={user} onUpdated={setUser} />
+                  {accountPermissions(user.owner).changeLogin && (
+                    <LoginNameEditor dirty={dirty} onExpired={expired} />
+                  )}
                   <details className="account-card">
                     <summary>修改我的密码</summary>
                     <p className="account-muted">
@@ -255,21 +253,10 @@ function CloudPanel({
                     {!isCloud && (
                       <button onClick={() => leave(() => selectSpace('cloud'))}>进入云空间</button>
                     )}
-                    {isCloud && (
-                      <details>
-                        <summary>本地资料管理</summary>
-                        <p className="account-muted">
-                          本地资料独立保存，不会自动上传。切换不会删除已有资料。
-                        </p>
-                        <button onClick={() => leave(() => selectSpace('local'))}>
-                          切换本地空间（保留账号会话）
-                        </button>
-                      </details>
-                    )}
                   </div>
                 </section>
               )}
-              {tab === 'directory' && (
+              {tab === 'directory' && accountPermissions(user.owner).directory && (
                 <section className="account-section" aria-label="账号通讯录">
                   <p className="account-muted">
                     正式展示名称属于账号本人；“我的私有备注”仅当前账号可见。
@@ -469,13 +456,22 @@ function CloudPanel({
                   )}
                 </section>
               )}
-              {tab === 'audit' && <AuditLog accounts={accounts} />}
-              {tab === 'import' && user.owner && (
+              {tab === 'audit' && accountPermissions(user.owner).audit && (
+                <AuditLog accounts={accounts} />
+              )}
+              {tab === 'import' && accountPermissions(user.owner).backupImport && (
                 <section className="account-section">
                   <h3>导入本地业务与版本备份</h3>
                   <p className="account-muted">
                     只合并无冲突的稳定ID；同ID不同内容拒绝，不覆盖已有记录。原浏览器资料保留。
                   </p>
+                  {isCloud && (
+                    <div className="local-backup-access">
+                      <button onClick={() => leave(() => selectSpace('local'))}>
+                        切换本地空间（保留账号会话）
+                      </button>
+                    </div>
+                  )}
                   <input
                     aria-label="选择云端导入备份"
                     type="file"

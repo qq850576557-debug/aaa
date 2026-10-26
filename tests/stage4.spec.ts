@@ -125,7 +125,11 @@ test('stage 4: ordinary edits cannot move deadline past original; explicit local
   await page.keyboard.press('Escape');
   await form.getByLabel('采购截止日期', { exact: true }).fill('2026-10-27');
   await form.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(form.getByRole('alert')).toContainText('不能晚于');
+  expect(
+    await form
+      .getByLabel('采购截止日期', { exact: true })
+      .evaluate((e) => (e as HTMLInputElement).checkValidity()),
+  ).toBe(false);
   expect((await state(page)).purchases.find((p) => p.name === '定制柜五金')?.due).toBe(
     '2026-10-26',
   );
@@ -169,7 +173,11 @@ test('stage 4: ordinary edits cannot move deadline past original; explicit local
   form = page.getByRole('dialog');
   await form.getByLabel('采购截止日期', { exact: true }).fill('2026-10-31');
   await form.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(form.getByRole('alert')).toContainText('不能晚于');
+  expect(
+    await form
+      .getByLabel('采购截止日期', { exact: true })
+      .evaluate((e) => (e as HTMLInputElement).checkValidity()),
+  ).toBe(false);
 });
 
 test('stage 4: overdue days, completed compatibility, inclusive future boundary and projects remain isolated', async ({

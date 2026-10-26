@@ -96,7 +96,9 @@ test('conflicts: task dates and personnel allocation synchronize both directions
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   let card = page.locator('[data-person-id="w"]');
   await card.locator('.staff-projects summary').click();
-  await expect(card).toContainText('计划进场 2026-10-26');
+  await expect(card.locator('.staff-project-names')).toContainText('第二工地');
+  await expect(card.locator('.staff-project-names')).not.toContainText('计划进场');
+  expect((await state(page)).tasks.find((t) => t.id === 't-water')?.start).toBe('2026-10-26');
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await editTask(page, page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' }));
   let editor = page.getByRole('dialog');
@@ -112,7 +114,8 @@ test('conflicts: task dates and personnel allocation synchronize both directions
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   card = page.locator('[data-person-id="w"]');
   await card.locator('.staff-projects summary').click();
-  await expect(card).toContainText('计划进场 2026-11-10');
+  expect((await state(page)).tasks.find((t) => t.id === 't-water')?.start).toBe('2026-11-10');
+  await expect(card.locator('.staff-project-names')).not.toContainText('2026-11-10');
   await card.getByRole('button', { name: '管理项目分配', exact: true }).click();
   editor = page.getByRole('dialog');
   await editor.getByLabel('分配位置', { exact: true }).selectOption(`trade:${d.trades[1].id}`);

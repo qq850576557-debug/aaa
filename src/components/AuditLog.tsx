@@ -1,3 +1,4 @@
+import { DateField } from './DateField';
 import { useEffect, useState, type FormEvent } from 'react';
 import { cloudApi } from '../lib/cloud';
 import type { DirectoryAccount } from './CloudControl';
@@ -193,24 +194,8 @@ export function AuditLog({ accounts }: { accounts: DirectoryAccount[] }) {
             ))}
           </select>
         </label>
-        <label>
-          开始日期
-          <input
-            aria-label="开始日期"
-            type="date"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          />
-        </label>
-        <label>
-          结束日期
-          <input
-            aria-label="结束日期"
-            type="date"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          />
-        </label>
+        <DateField label="开始日期" value={from} max={to || undefined} onChange={setFrom} />
+        <DateField label="结束日期" value={to} min={from || undefined} onChange={setTo} />
         <button className="primary" disabled={busy}>
           筛选记录
         </button>

@@ -291,15 +291,17 @@ export function Editor({
     fields = (
       <>
         {input('name', '工种名称', 'text', true)}
-        <div />
-        <div className="span2">
+        <details className="span2 trade-colors" open={isNew}>
+          <summary>
+            工种颜色 <i style={{ background: String(v.color) }} /> <span>{String(v.color)}</span>
+          </summary>
           <ColorControls
             color={String(v.color)}
             defaultColor={String(v.defaultColor)}
             recent={data.recentColors}
             onChange={(color) => change('color', color)}
           />
-        </div>
+        </details>
       </>
     );
   else if (kind === 'note')
@@ -351,7 +353,7 @@ export function Editor({
       {' '}
       <Modal
         title={`${isNew ? '新建' : '编辑'}${labels[kind]}`}
-        subtitle="每一处细节，都让项目更有序。"
+        subtitle={kind === 'trade' ? undefined : '每一处细节，都让项目更有序。'}
         onClose={close}
         anchor={edit.anchor}
         wide={kind !== 'trade' && kind !== 'project'}
@@ -360,8 +362,9 @@ export function Editor({
         <form onSubmit={submit}>
           <div className="modal-body">
             <div className="form-grid">
+              {kind === 'trade' && peopleFields}
               {fields}
-              {peopleFields}
+              {kind !== 'trade' && peopleFields}
             </div>
             {error && (
               <p className="error" role="alert">

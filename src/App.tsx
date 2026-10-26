@@ -1,3 +1,4 @@
+import { nextTradeColor } from './lib/trade-colors';
 import { CloudControl } from './components/CloudControl';
 import { ConflictPanel } from './components/ConflictPanel';
 import { scheduleForecast } from './lib/readiness';
@@ -21,13 +22,11 @@ import {
   Pin,
   Plus,
   Search,
-  Settings2,
   ShieldCheck,
   StickyNote,
   TriangleAlert,
   Upload,
   Users,
-  X,
 } from 'lucide-react';
 import { PurchaseCard } from './components/PurchaseCard';
 import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
@@ -62,7 +61,6 @@ import {
   id,
   isHistorical,
   newProject,
-  palette,
   parseBackup,
   plus,
   purchaseDue,
@@ -200,7 +198,6 @@ export default function App() {
     };
     update(() => stamped);
     setUndo({ before, label });
-    notify(label);
   }
   function changeTask(value: Task) {
     const plan = proposeTaskChange(data, value);
@@ -314,7 +311,7 @@ export default function App() {
   }
   function tradeEditor(g?: Trade, index = projectTrades.length) {
     if (!p) return;
-    const color = palette[projectTrades.length % palette.length];
+    const color = nextTradeColor(data, p.id, index);
     setEdit({
       kind: 'trade',
       value: g ?? {
@@ -759,6 +756,7 @@ export default function App() {
               projects={projects}
               selected={p?.id ?? ''}
               onSelect={selectProject}
+              onEdit={(project) => setEdit({ kind: 'project', value: project })}
               onReorder={(source, before) =>
                 commitSchedule(
                   reorderProjects(
@@ -814,23 +812,6 @@ export default function App() {
           <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
         <main>
-          {undo && (
-            <div className="undo-banner">
-              <span>{undo.label}</span>
-              <button
-                onClick={() => {
-                  update(() => undo.before);
-                  setUndo(null);
-                  notify('已撤销上一次工期或排序调整。');
-                }}
-              >
-                撤销
-              </button>
-              <button aria-label="关闭撤销提示" onClick={() => setUndo(null)}>
-                <X size={16} />
-              </button>
-            </div>
-          )}
           <div className="local-notice">
             <ShieldCheck size={15} />
             <span>
@@ -848,6 +829,18 @@ export default function App() {
             role="status"
           >
             <span>{status}</span>
+            {undo && (
+              <button
+                className="undo-quiet"
+                title={undo.label}
+                onClick={() => {
+                  update(() => undo.before);
+                  setUndo(null);
+                }}
+              >
+                撤销
+              </button>
+            )}
           </div>
           {error && (
             <div className="error-banner" role="alert">
@@ -1017,13 +1010,6 @@ export default function App() {
                 <div className="toolbar">
                   {p && (
                     <>
-                      <button
-                        aria-label="编辑当前项目"
-                        onClick={() => setEdit({ kind: 'project', value: p })}
-                      >
-                        <Settings2 size={15} />
-                        <span>项目设置</span>
-                      </button>
                       <button onClick={archiveProject}>
                         <Archive size={15} />
                         {isHistorical(p) ? '恢复施工中' : '标记完工'}
@@ -1059,61 +1045,25 @@ export default function App() {
                     <a href="#project-procurement">采购与风险</a>
                     <a href="#project-timeline">施工时间轴</a>
                   </nav>
-                  <div className="workspace-brief">
-                    {(view === 'overview' || view === 'schedule' || view === 'completed') && (
+                  {(view === 'overview' || view === 'schedule' || view === 'completed') && (
+                    <div className="workspace-brief">
                       <div className="lower-grid" id="project-today">
                         <section className="panel" data-testid="today-panel">
-                          <div className="section-heading">
+                          <header className="brief-heading">
                             <h2>
                               今日事项{' '}
-                              <span className="count">
-                                {procurement.today.length +
-                                  dailyNotes.filter((n) => !n.done).length}
-                              </span>
+                              {procurement.today.length + dailyNotes.filter((n) => !n.done).length >
+                                0 && (
+                                <span className="count">
+                                  {procurement.today.length +
+                                    dailyNotes.filter((n) => !n.done).length}
+                                </span>
+                              )}
                             </h2>
-                            <button className="text-btn" onClick={() => noteEditor()}>
-                              <Plus size={15} />
-                              添加采购事项
-                            </button>
-                          </div>
-                          <p className="today-summary">
-                            {procurement.today.length + dailyNotes.filter((n) => !n.done).length}{' '}
-                            条待处理 · 包含逾期采购，完成后不再重复提醒
-                          </p>
-                          {procurement.today.map(purchaseCard)}
-                          {dailyNotes.map((n) => (
-                            <NoteCard
-                              key={n.id}
-                              note={n}
-                              onEdit={() => noteEditor(n)}
-                              onToggle={() => save('note', { ...n, done: !n.done })}
-                              onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                            />
-                          ))}
-                          {!procurement.today.length && !dailyNotes.length && (
-                            <Empty
-                              small
-                              title="今天暂时没有事项"
-                              text="今天到期或逾期的未完成采购将在此自动显示。"
-                            />
-                          )}
-                        </section>
-                        <section className="panel memo-panel">
-                          <div className="section-heading">
-                            <h2>项目备忘</h2>
-                            <button
-                              className="text-btn"
-                              onClick={() => noteEditor(undefined, '', true)}
-                            >
-                              <Plus size={15} />
-                              添加
-                            </button>
-                          </div>
-                          {data.notes
-                            .filter((n) => n.projectId === p.id && n.kind === '项目备忘')
-                            .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-                            .slice(0, 3)
-                            .map((n) => (
+                          </header>
+                          <div className="brief-content">
+                            {procurement.today.map(purchaseCard)}
+                            {dailyNotes.map((n) => (
                               <NoteCard
                                 key={n.id}
                                 note={n}
@@ -1122,60 +1072,103 @@ export default function App() {
                                 onPin={() => save('note', { ...n, pinned: !n.pinned })}
                               />
                             ))}
-                          {!data.notes.some(
-                            (n) => n.projectId === p.id && n.kind === '项目备忘',
-                          ) && (
-                            <Empty
-                              small
-                              title="好设计，藏在被记住的细节里。"
-                              text="记录业主要求、材料信息与现场注意事项。"
-                            />
-                          )}
-                          <button className="text-btn" onClick={() => go('notes')}>
-                            查看全部事项与备忘
-                            <ArrowRight size={14} />
-                          </button>
+                            {!procurement.today.length && !dailyNotes.length && (
+                              <p className="brief-empty">暂无</p>
+                            )}
+                          </div>
+                          <footer className="brief-actions">
+                            <button className="text-btn" onClick={() => noteEditor()}>
+                              <Plus size={14} />
+                              添加采购事项
+                            </button>
+                          </footer>
+                        </section>
+                        <section className="panel memo-panel">
+                          <header className="brief-heading">
+                            <h2>项目备忘</h2>
+                          </header>
+                          <div className="brief-content">
+                            {data.notes
+                              .filter((n) => n.projectId === p.id && n.kind === '项目备忘')
+                              .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+                              .slice(0, 3)
+                              .map((n) => (
+                                <NoteCard
+                                  key={n.id}
+                                  note={n}
+                                  onEdit={() => noteEditor(n)}
+                                  onToggle={() => save('note', { ...n, done: !n.done })}
+                                  onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                                />
+                              ))}
+                            {!data.notes.some(
+                              (n) => n.projectId === p.id && n.kind === '项目备忘',
+                            ) && <p className="brief-empty">暂无</p>}
+                          </div>
+                          <footer className="brief-actions">
+                            <button
+                              className="text-btn"
+                              onClick={() => noteEditor(undefined, '', true)}
+                            >
+                              <Plus size={14} />
+                              添加
+                            </button>
+                            <button className="text-btn" onClick={() => go('notes')}>
+                              查看全部事项与备忘
+                              <ArrowRight size={14} />
+                            </button>
+                          </footer>
                         </section>
                       </div>
-                    )}
-                    {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                       <div className="project-alerts" id="project-procurement">
                         <section className="panel" data-testid="upcoming-panel">
-                          <h3>未来 15 天采购</h3>
-                          {procurement.upcoming.map(purchaseCard)}
-                          {!procurement.upcoming.length && (
-                            <p className="muted">暂无未来 15 天采购安排。</p>
-                          )}
-                          <button className="text-btn" onClick={() => purchaseEditor()}>
-                            <Plus size={15} />
-                            添加采购
-                          </button>
+                          <header className="brief-heading">
+                            <h3>未来 15 天采购</h3>
+                          </header>
+                          <div className="brief-content">
+                            {procurement.upcoming.map(purchaseCard)}
+                            {!procurement.upcoming.length && <p className="brief-empty">暂无</p>}
+                          </div>
+                          <footer className="brief-actions">
+                            <button className="text-btn" onClick={() => purchaseEditor()}>
+                              <Plus size={14} />
+                              添加采购
+                            </button>
+                          </footer>
                         </section>
-                        <section className="panel">
-                          <h3>逾期提醒</h3>
-                          {procurement.overdue.map(purchaseCard)}
-                          {projectTasks
-                            .filter((t) => t.status !== '已完成' && t.end < now)
-                            .map((t) => (
-                              <button
-                                key={t.id}
-                                className="reminder-item"
-                                onClick={() => taskEditor(t)}
-                              >
-                                <strong>{t.name} · 施工逾期</strong>
-                                <em>{t.end}</em>
-                              </button>
-                            ))}
-                          {!projectPurchases.some(
-                            (x) => !purchaseComplete(x) && purchaseDue(x, data) < now,
-                          ) &&
-                            !projectTasks.some((t) => t.status !== '已完成' && t.end < now) && (
-                              <p className="muted">暂无逾期采购或施工任务。</p>
-                            )}
+                        <section className="panel" data-testid="overdue-panel">
+                          <header className="brief-heading">
+                            <h3>逾期提醒</h3>
+                          </header>
+                          <div className="brief-content">
+                            {procurement.overdue.map(purchaseCard)}
+                            {projectTasks
+                              .filter((t) => t.status !== '已完成' && t.end < now)
+                              .map((t) => (
+                                <button
+                                  key={t.id}
+                                  className="reminder-item"
+                                  onClick={() => taskEditor(t)}
+                                >
+                                  <strong>{t.name} · 施工逾期</strong>
+                                  <em>{t.end}</em>
+                                </button>
+                              ))}
+                            {!procurement.overdue.length &&
+                              !projectTasks.some((t) => t.status !== '已完成' && t.end < now) && (
+                                <p className="brief-empty">暂无</p>
+                              )}
+                          </div>
+                          <footer className="brief-actions">
+                            <button className="text-btn" onClick={() => go('reminders')}>
+                              查看提醒
+                              <ArrowRight size={14} />
+                            </button>
+                          </footer>
                         </section>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <p className="schedule-forecast" role="status">
                       {scheduleForecast(data, p).label} · 工期按自然日计算
@@ -1356,7 +1349,6 @@ export default function App() {
                   nameHistory: (d.nameHistory ?? usedNames(d)).filter((n) => n !== name),
                 }));
                 setConfirmation(null);
-                notify('历史姓名已移除，已有登记保持完整。');
               },
             });
           }}
@@ -1579,7 +1571,6 @@ export default function App() {
           proposal={scheduleProposal}
           onCancel={() => {
             setScheduleProposal(null);
-            notify('已取消工期调整，所有日期保持不变。');
           }}
           onApply={(shift) => {
             if (workspaceContent(data) !== workspaceContent(scheduleProposal.base)) {

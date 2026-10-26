@@ -339,20 +339,21 @@ authorityKeyIdentifier=keyid:always
     'PASS built frontend + native Nginx HTTPS: owner creates employee, two browser sessions, bidirectional SSE and reload after API restart.',
   );
   // Exercise the new identity flow through the actual production HTTPS build.
-  await b.reload();
+  await a.reload();
   await expect(b.locator('.save-state')).toContainText('已保存');
-  await b.getByRole('button', { name: '账号管理', exact: true }).click();
-  const renamePanel = b.getByRole('dialog', { name: '账号管理', exact: true });
+  await a.getByRole('button', { name: '账号管理', exact: true }).click();
+  const renamePanel = a.getByRole('dialog', { name: '账号管理', exact: true });
   await renamePanel.getByText('修改登录账号', { exact: true }).click();
-  await renamePanel.getByLabel('新登录账号', { exact: true }).fill('春茉师傅');
+  await renamePanel.getByLabel('新登录账号', { exact: true }).fill('春茉负责人');
   await renamePanel.getByRole('button', { name: '继续修改登录账号' }).click();
-  const renameConfirm = b.getByRole('dialog', { name: '确认修改登录账号', exact: true });
+  const renameConfirm = a.getByRole('dialog', { name: '确认修改登录账号', exact: true });
   await renameConfirm.getByLabel('当前登录密码').fill(password);
   await renameConfirm.getByRole('button', { name: '确认修改并退出登录' }).click();
-  await expect(b.locator('.brand-login')).toBeVisible();
-  const renamedPanel = await enter(b, '春茉师傅');
+  await expect(a.locator('.brand-login')).toBeVisible();
+  await expect(b.locator('.current-project-name')).toHaveText('员工经原生HTTPS同步');
+  const renamedPanel = await enter(a, '春茉负责人');
   await renamedPanel.getByRole('button', { name: '关闭', exact: true }).click();
-  const renamedPolicy = await b.evaluate(async () =>
+  const renamedPolicy = await a.evaluate(async () =>
     (await fetch('/api/auth/login-policy')).json(),
   );
   assert.equal(renamedPolicy.canChange, false);
@@ -404,10 +405,10 @@ authorityKeyIdentifier=keyid:always
   await expect(a.locator('.current-project-name')).toHaveText('员工经原生HTTPS同步');
   await b.reload();
   await expect(b.locator('.current-project-name')).toHaveText('员工经原生HTTPS同步');
-  const restoredPolicy = await b.evaluate(async () =>
+  const restoredPolicy = await a.evaluate(async () =>
     (await fetch('/api/auth/login-policy')).json(),
   );
-  assert.equal(restoredPolicy.login, '春茉师傅');
+  assert.equal(restoredPolicy.login, '春茉负责人');
   assert.equal(restoredPolicy.canChange, false);
   assert.equal(restoredPolicy.nextAllowedAt, renamedPolicy.nextAllowedAt);
   const restoredAvatar = await b.evaluate(async () => {

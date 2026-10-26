@@ -141,35 +141,11 @@ export function PeoplePanel({
             </details>
             <details className="staff-projects">
               <summary>项目履历 · {staffWork(data, p.id, now).length} 个项目</summary>
-              <p>
-                {['已完工', '施工中', '未进场']
-                  .map(
-                    (status) =>
-                      `${status} ${staffWork(data, p.id, now).filter((w) => w.status === status).length}`,
-                  )
-                  .join(' · ')}
-              </p>
-              {staffWork(data, p.id, now).map((w) => (
-                <article key={w.project.id}>
-                  <strong>{w.project.name}</strong>
-                  <p>
-                    {w.project.address} · {w.status}
-                  </p>
-                  {w.tasks.length ? (
-                    w.tasks.map((t) => (
-                      <p key={t.id}>
-                        {data.trades.find((g) => g.id === t.tradeId)?.name} · {t.name} · 计划进场{' '}
-                        {t.start} — 计划结束 {t.end}
-                      </p>
-                    ))
-                  ) : (
-                    <p>
-                      {w.trades.map((g) => g.name).join('、') || '项目团队'} · 项目计划{' '}
-                      {w.project.start} — {w.project.end}（未指定任务段）
-                    </p>
-                  )}
-                </article>
-              ))}
+              <ul className="staff-project-names">
+                {staffWork(data, p.id, now).map((w) => (
+                  <li key={w.project.id}>{w.project.name}</li>
+                ))}
+              </ul>
               <button
                 disabled={!p.active}
                 onClick={() => {

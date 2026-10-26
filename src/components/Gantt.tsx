@@ -1,9 +1,11 @@
+import { DateField } from './DateField';
 import { timelineRange, timelineWindow } from '../lib/timeline';
 import { assignedNames } from '../lib/people';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { CalendarDays, GripVertical, Plus } from 'lucide-react';
 import {
   days,
+  dateOK,
   distance,
   duration,
   lanes,
@@ -69,6 +71,7 @@ export function Gantt({
     return () => media.removeEventListener('change', update);
   }, []);
   const laneHeight = touchLayout ? 48 : LANE;
+  const [locateDate, setLocateDate] = useState(today());
   const [start, end] = timelineRange(data, project);
   const total = duration(start, end);
   const [visible, setVisible] = useState({ first: 0, last: 30 });
@@ -280,22 +283,21 @@ export function Gantt({
           <p>双击空白日期直接新增施工任务 · 拖选创建施工任务 · 拖动时间条调整</p>
         </div>
         <div className="toolbar">
-          <label className="timeline-jump">
-            定位日期
-            <input
-              aria-label="定位日期"
-              type="date"
-              min={start}
-              max={end}
-              onChange={(e) => {
-                if (e.target.value >= start && e.target.value <= end)
-                  scroller.current?.scrollTo({
-                    left: distance(start, e.target.value) * CELL,
-                    behavior: 'auto',
-                  });
-              }}
-            />
-          </label>
+          <DateField
+            compact
+            label="定位日期"
+            value={locateDate}
+            min={start}
+            max={end}
+            onChange={(date) => {
+              setLocateDate(date);
+              if (date >= start && date <= end && dateOK(date))
+                scroller.current?.scrollTo({
+                  left: distance(start, date) * CELL,
+                  behavior: 'auto',
+                });
+            }}
+          />
           <button onClick={onExport}>导出施工工期长图</button>
           <button onClick={jumpToday} disabled={today() < start || today() > end}>
             今天

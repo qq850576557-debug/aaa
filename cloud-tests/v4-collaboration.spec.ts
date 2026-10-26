@@ -52,7 +52,7 @@ for (const width of [1440, 390])
         mimeType: 'image/png',
         buffer: PNG.sync.write(png),
       });
-      await expect(panel.getByAltText('头像预览')).toBeVisible();
+      await expect(panel.getByRole('img', { name: '头像预览', exact: true })).toBeVisible();
       await panel.getByRole('button', { name: '保存头像', exact: true }).click();
       await expect(panel.getByText('头像已保存', { exact: true })).toBeVisible();
       await p.getByRole('button', { name: '关闭浮窗', exact: true }).click();

@@ -45,6 +45,7 @@ test('trade assignment reuses IDs and synchronizes multiple workers and personne
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   const card = page.locator('[data-person-id="w0"]');
   await card.locator('.staff-projects summary').click();
-  await expect(card).toContainText('水电定位与布线');
-  await expect(card).toContainText('2026-10-26');
+  await expect(card.locator('.staff-project-names')).toHaveText(d.projects[0].name);
+  await expect(card.locator('.staff-project-names')).not.toContainText('2026-10-26');
+  expect((await state(page)).tasks[1].start).toBe('2026-10-26');
 });

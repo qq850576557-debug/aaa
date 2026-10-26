@@ -9,7 +9,7 @@ test.afterAll(async () => {
 const origin = 'http://127.0.0.1:5180';
 for (const width of [1440, 390])
   for (const owner of [true, false])
-    test(`login rename ${width}px ${owner ? 'owner' : 'employee'}: password confirmation, Chinese login, revoked sessions and cooldown`, async ({
+    test(`login rename ${width}px: ${owner ? 'owner password confirmation, Chinese login, session revocation and cooldown' : 'employee cannot rename via UI or API and keeps existing login'}`, async ({
       browser,
     }) => {
       const f = await fixtureAccounts();
@@ -39,6 +39,24 @@ for (const width of [1440, 390])
         await panel.getByLabel('我的展示名称', { exact: true }).fill(formal);
         await panel.getByRole('button', { name: '保存展示名称', exact: true }).click();
         await expect(panel.getByRole('heading', { name: formal, exact: true })).toBeVisible();
+        if (!owner) {
+          await expect(panel.getByText('修改登录账号', { exact: true })).toHaveCount(0);
+          const session = await (await context.request.get('/api/auth/session')).json();
+          const denied = await context.request.post('/api/auth/login-name', {
+            headers: { Origin: origin, 'X-CSRF-Token': session.csrf },
+            data: {
+              newLogin: '不允许改名_' + randomUUID(),
+              currentPassword: f.password,
+              confirm: true,
+            },
+          });
+          expect(denied.status()).toBe(403);
+          expect((await context.request.get('/api/auth/login-policy')).status()).toBe(403);
+          expect((await (await context.request.get('/api/auth/session')).json()).user.login).toBe(
+            old,
+          );
+          return;
+        }
         await panel.getByText('修改登录账号', { exact: true }).click();
         const editor = panel.locator('.login-name-editor');
         await expect(editor).toContainText(old);
