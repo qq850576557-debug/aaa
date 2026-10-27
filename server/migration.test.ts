@@ -66,6 +66,8 @@ test('V1.1 additive upgrade retains old identities, password hash, business rows
       },
     );
     assert.equal((await db.query('SELECT count(*)::int n FROM project')).rows[0].n, 1);
+    assert.equal((await db.query('SELECT count(*)::int n FROM daily_assessment')).rows[0].n, 0);
+    assert.equal((await db.query('SELECT count(*)::int n FROM assessment_history')).rows[0].n, 0);
     assert.equal(
       (await db.query("SELECT login_key FROM account WHERE id='old-legacy-separators'")).rows[0]
         .login_key,

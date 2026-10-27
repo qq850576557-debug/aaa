@@ -1,0 +1,97 @@
+.assessment-panel {
+  margin: 24px 0;
+  border-top: 1px solid #e3e9df;
+  padding-top: 20px;
+}
+.assessment-panel h2 {
+  font-size: 19px;
+}
+.assessment-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.assessment-filters label {
+  min-width: 0;
+}
+.assessment-table-scroll {
+  overflow-x: auto;
+  margin: 14px 0;
+}
+.assessment-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+  font-size: 14px;
+}
+.assessment-table th,
+.assessment-table td {
+  text-align: left;
+  padding: 12px 9px;
+  border-bottom: 1px solid #e5eadd;
+  vertical-align: middle;
+}
+.assessment-table thead th {
+  background: #f5f7f1;
+  color: #5c7060;
+  white-space: nowrap;
+}
+.assessment-table small {
+  display: block;
+  font-weight: 400;
+  color: #7b897b;
+  line-height: 1.6;
+}
+.assessment-table input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+}
+.assessment-badge {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  min-height: 36px;
+  white-space: nowrap;
+}
+.assessment-badge.yes {
+  background: #e7f1e8;
+  color: #28603e;
+}
+.assessment-badge.no {
+  background: #f9eae7;
+  color: #a34035;
+}
+.assessment-badge.pending {
+  background: #eff1ed;
+  color: #6d766c;
+}
+.assessment-targets {
+  max-height: 180px;
+  overflow: auto;
+  padding-left: 20px;
+  line-height: 1.8;
+}
+.assessment-history article {
+  border-bottom: 1px solid #e2e8dc;
+  padding: 14px 0;
+}
+.assessment-local {
+  color: #758271;
+  font-size: 14px;
+}
+@media (max-width: 600px) {
+  .assessment-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .assessment-panel .section-heading {
+    align-items: flex-start;
+  }
+  .assessment-table {
+    min-width: 620px;
+  }
+  .assessment-panel .section-heading .toolbar {
+    flex-wrap: wrap;
+  }
+}

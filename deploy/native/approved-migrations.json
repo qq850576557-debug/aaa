@@ -3,5 +3,6 @@
   "002_assignment_scope.sql": "915a3f72a11d008c9682f2aa4e701621c8c2fb8b8ae3bc7c0c11fac916459539",
   "003_accounts_audit.sql": "7d504c9510ea0d998c75c0099b03174d71ea4c96e6a4ccd6907f37d92a865b79",
   "004_login_change.sql": "0d8be6c57f0357a375ddaad600c92a7c46be235383cfc300f47895a7e8a4f8a5",
-  "005_account_avatar.sql": "0bb23b9c1f95654d577e047e9b8aed20e463751db533b2f96acc0f49018e488e"
+  "005_account_avatar.sql": "0bb23b9c1f95654d577e047e9b8aed20e463751db533b2f96acc0f49018e488e",
+  "006_daily_assessments.sql": "592bd6f027a74364ff9dd7fb5e21f84f9dddcbc00b44477cab7eb7aba721fe33"
 }

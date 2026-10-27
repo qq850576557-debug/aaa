@@ -997,7 +997,7 @@ export default function App() {
           ) : view === 'reminders' ? (
             reminderItems()
           ) : view === 'people' ? (
-            <PeoplePanel data={data} onChange={(fn) => mutate(fn)} />
+            <PeoplePanel isCloud={isCloud} data={data} onChange={(fn) => mutate(fn)} />
           ) : (
             <>
               {projectStatusFilter && (

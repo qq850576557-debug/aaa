@@ -1,3 +1,4 @@
+import { assessmentRoutes } from './assessments';
 import express from 'express';
 import { requireAccountPermission } from './permissions';
 import { validateAvatar } from './avatar';
@@ -121,6 +122,7 @@ export function createApp() {
     req.actor!.auditDevice = auditDevice(req.get('user-agent') ?? '');
     next();
   });
+  assessmentRoutes(app);
   app.get('/api/auth/session', (req: AuthRequest, res) => {
     const { auditDevice: _device, ...user } = req.actor!;
     res.json({ user, csrf: hash('csrf:' + req.token) });

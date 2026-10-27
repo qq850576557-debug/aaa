@@ -1414,3 +1414,219 @@ test('display-name audit snapshots stay immutable; employee can read full studio
     0,
   );
 });
+
+test('daily assessments: default deny, separate recorder grant and no leak via public history/export', async () => {
+  const { a, b } = await setup(),
+    d = data();
+  await request('/workspace', 'PUT', { revision: 0, data: d }, a);
+  const key = {
+    date: '2026-10-27',
+    personId: d.people![0].id,
+    projectId: d.projects[0].id,
+    tradeId: d.trades[0].id,
+    version: 0,
+    changes: { photo: 'yes' },
+  };
+  for (const [path, method, body] of [
+    ['/assessments', 'GET', undefined],
+    ['/assessments/export', 'GET', undefined],
+    ['/assessments/unknown/history', 'GET', undefined],
+    ['/assessments/batch', 'POST', { requestId: randomUUID(), confirmed: true, edits: [key] }],
+    ['/assessments/recorders/' + b.user.id, 'PUT', { enabled: true }],
+  ] as const)
+    assert.equal((await request(path, method, body, b, { 'X-Role': 'owner' })).status, 403, path);
+  assert.equal((await request('/assessments')).status, 401);
+  assert.deepEqual(await (await request('/assessments/access', 'GET', undefined, b)).json(), {
+    allowed: false,
+    owner: false,
+  });
+  const body = { requestId: randomUUID(), confirmed: true, edits: [key] };
+  assert.equal((await request('/assessments/batch', 'POST', body, a)).status, 200);
+  const exported = await (await request('/export', 'GET', undefined, b)).text();
+  assert.equal(exported.includes('createdBy'), false);
+  assert.equal(exported.includes('assessment_history'), false);
+  const auditEvents = (await (await request('/audit', 'GET', undefined, b)).json()).events.filter(
+    (e: any) => e.action === 'assessment.save',
+  );
+  assert.equal(auditEvents.length, 1);
+  assert.equal(auditEvents[0].before, null);
+  assert.equal(auditEvents[0].after, null);
+});
+test('daily assessments: supervisor records independent tri-state values, version history, idempotency and revocation', async () => {
+  const { f, a, b } = await setup(),
+    d = data();
+  await request('/workspace', 'PUT', { revision: 0, data: d }, a);
+  assert.equal(
+    (await request('/assessments/recorders/' + b.user.id, 'PUT', { enabled: true }, a)).status,
+    200,
+  );
+  const edit = {
+    date: '2026-10-27',
+    personId: d.people![0].id,
+    projectId: d.projects[0].id,
+    tradeId: d.trades[0].id,
+    version: 0,
+    changes: { attendance: 'yes' },
+  };
+  const body = { requestId: randomUUID(), confirmed: true, edits: [edit] };
+  const made = await request('/assessments/batch', 'POST', body, b);
+  assert.equal(made.status, 200);
+  const r = (await made.json()).records[0];
+  assert.equal(r.createdBy, f.employeeId);
+  assert.equal(r.photo, 'pending');
+  assert.equal(r.cleaning, 'pending');
+  assert.equal(r.version, 1);
+  const replay = await (await request('/assessments/batch', 'POST', body, b)).json();
+  assert.deepEqual(replay.records[0], r);
+  assert.equal(
+    (
+      await request(
+        '/assessments/batch',
+        'POST',
+        { ...body, edits: [{ ...edit, changes: { photo: 'no' } }] },
+        b,
+      )
+    ).status,
+    409,
+  );
+  await request('/auth/profile', 'PATCH', { displayName: '监理新名称' }, b);
+  const changed = await request(
+    '/assessments/batch',
+    'POST',
+    {
+      requestId: randomUUID(),
+      confirmed: true,
+      edits: [{ ...edit, version: 1, changes: { photo: 'no', cleaning: 'yes' } }],
+    },
+    b,
+  );
+  assert.equal(changed.status, 200);
+  const after = (await changed.json()).records[0];
+  assert.equal(after.attendance, 'yes');
+  assert.equal(after.createdBy, f.employeeId);
+  assert.equal(after.createdName, r.createdName);
+  assert.equal(after.updatedName, '监理新名称');
+  const events = (
+    await (await request('/assessments/' + r.id + '/history', 'GET', undefined, b)).json()
+  ).events;
+  assert.equal(events.length, 2);
+  assert.equal(events[0].before.photo, 'pending');
+  assert.equal(events[0].after.photo, 'no');
+  await assert.rejects(
+    pool.query('DELETE FROM assessment_history WHERE workspace_id=$1', [f.workspaceId]),
+  );
+  assert.equal(
+    (
+      await request(
+        '/assessments/batch',
+        'POST',
+        { requestId: randomUUID(), confirmed: true, edits: [edit] },
+        b,
+      )
+    ).status,
+    409,
+  );
+  const result = await request(
+    '/assessments/export?from=2026-10-27&to=2026-10-27',
+    'GET',
+    undefined,
+    b,
+  );
+  assert.equal(result.status, 200);
+  assert.match(await result.text(), /未拍照/);
+  const outsider = await fixtureAccounts();
+  assert.equal(
+    (await request('/assessments/recorders/' + outsider.employeeId, 'PUT', { enabled: true }, a))
+      .status,
+    404,
+  );
+  const other = await login(outsider.login, outsider.password);
+  assert.deepEqual(
+    (await (await request('/assessments/' + r.id + '/history', 'GET', undefined, other)).json())
+      .events,
+    [],
+  );
+  assert.equal(
+    (
+      await request(
+        '/assessments/batch',
+        'POST',
+        {
+          requestId: randomUUID(),
+          confirmed: true,
+          edits: [{ ...edit, personId: outsider.employeeId }],
+        },
+        b,
+      )
+    ).status,
+    400,
+  );
+  await request('/assessments/recorders/' + b.user.id, 'PUT', { enabled: false }, a);
+  assert.equal((await request('/assessments', 'GET', undefined, b)).status, 403);
+  assert.equal((await request('/assessments/export', 'GET', undefined, b)).status, 403);
+});
+test('daily assessments: concurrent writes cannot overwrite, batches roll back atomically, dates/projects remain isolated', async () => {
+  const { a } = await setup(),
+    d = data(),
+    p2 = { ...d.projects[0], id: randomUUID(), name: '另一工地' };
+  d.projects.push(p2);
+  d.trades.push({ ...d.trades[0], id: randomUUID(), projectId: p2.id });
+  await request('/workspace', 'PUT', { revision: 0, data: d }, a);
+  const edit = {
+    date: '2026-10-26',
+    personId: d.people![0].id,
+    projectId: d.projects[0].id,
+    tradeId: d.trades[0].id,
+    version: 0,
+    changes: { photo: 'yes' },
+  };
+  const submit = (edits: unknown[]) =>
+    request('/assessments/batch', 'POST', { requestId: randomUUID(), confirmed: true, edits }, a);
+  const races = await Promise.all([
+    submit([edit]),
+    submit([{ ...edit, changes: { photo: 'no' } }]),
+  ]);
+  assert.deepEqual(races.map((r) => r.status).sort(), [200, 409]);
+  assert.equal(
+    (
+      await submit([
+        { ...edit, date: '2026-10-27' },
+        { ...edit, projectId: p2.id },
+      ])
+    ).status,
+    400,
+  );
+  const afterRollback = await (
+    await request('/assessments?from=2026-10-27&to=2026-10-27', 'GET', undefined, a)
+  ).json();
+  assert.equal(afterRollback.records.length, 0);
+  assert.equal(
+    (
+      await submit([
+        { ...edit, date: '2026-10-27' },
+        { ...edit, date: '2026-10-27', projectId: p2.id, tradeId: d.trades.at(-1)!.id },
+      ])
+    ).status,
+    200,
+  );
+  const rows = (
+    await (await request('/assessments?from=2026-10-26&to=2026-10-27', 'GET', undefined, a)).json()
+  ).records;
+  assert.equal(rows.length, 3);
+  assert.equal(new Set(rows.map((r: any) => r.id)).size, 3);
+  assert.equal((await submit([edit, edit])).status, 400);
+  assert.equal((await submit([{ ...edit, date: '2026-02-30' }])).status, 400);
+  // Replacing business projections / restoring 15-day history does not cascade away assessments.
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: 1, data: emptyData() }, a)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await (
+        await request('/assessments?from=2026-10-26&to=2026-10-27', 'GET', undefined, a)
+      ).json()
+    ).records.length,
+    3,
+  );
+});

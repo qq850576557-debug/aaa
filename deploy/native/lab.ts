@@ -375,6 +375,43 @@ authorityKeyIdentifier=keyid:always
     'data:image/png;base64,' + avatarPNG.toString('base64'),
   );
   assert.equal(avatarCode, 200);
+  // Seed private assessments through the authenticated production API before backup.
+  const assessmentSeed = await a.evaluate(async () => {
+    const session = await (await fetch('/api/auth/session')).json();
+    const w = await (await fetch('/api/workspace')).json();
+    const person = {
+      id: 'lab-assessment-worker',
+      name: '隔离考核师傅',
+      role: '施工人员',
+      trade: '',
+      active: true,
+      notes: '',
+    };
+    w.data.people = [...(w.data.people ?? []), person];
+    w.data.trades[0].staffIds = [...(w.data.trades[0].staffIds ?? []), person.id];
+    const headers = { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf };
+    const put = await fetch('/api/workspace', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ revision: w.revision, data: w.data }),
+    });
+    if (!put.ok) throw Error('Assessment fixture save failed');
+    const edit = {
+      date: '2026-10-27',
+      personId: person.id,
+      projectId: w.data.trades[0].projectId,
+      tradeId: w.data.trades[0].id,
+      version: 0,
+      changes: { attendance: 'yes', photo: 'yes', cleaning: 'pending' },
+    };
+    const response = await fetch('/api/assessments/batch', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ requestId: crypto.randomUUID(), confirmed: true, edits: [edit] }),
+    });
+    if (!response.ok) throw Error('Assessment API save failed: HTTP ' + response.status);
+    return (await response.json()).records[0];
+  });
   const file = await backup(conf, backups, dump);
   const tampered = file + '.tampered',
     bytes = readFileSync(file);
@@ -419,6 +456,19 @@ authorityKeyIdentifier=keyid:always
   assert.equal(restoredAvatar.status, 200);
   assert.deepEqual(Buffer.from(restoredAvatar.bytes), avatarPNG);
   console.log('PASS avatar PNG persists through encrypted database backup and isolated restore.');
+  const restoredAssessment = await a.evaluate(async () =>
+    (await fetch('/api/assessments?from=2026-10-27&to=2026-10-27')).json(),
+  );
+  assert.deepEqual(restoredAssessment.records, [assessmentSeed]);
+  const assessmentHistory = await a.evaluate(
+    async (id) => (await fetch('/api/assessments/' + id + '/history')).json(),
+    assessmentSeed.id,
+  );
+  assert.equal(assessmentHistory.events.length, 1);
+  assert.equal(assessmentHistory.events[0].after.photo, 'yes');
+  console.log(
+    'PASS private assessment and immutable change history survive encrypted backup and isolated restore.',
+  );
   console.log(
     'PASS restored database serves preserved sessions/project and retains the exact Chinese login cooldown.',
   );

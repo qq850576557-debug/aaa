@@ -1,3 +1,4 @@
+import { AssessmentPanel } from './AssessmentPanel';
 import { ConflictPanel } from './ConflictPanel';
 import { categoryName, tradeNames } from '../lib/dictionaries';
 import { staffWork } from '../lib/readiness';
@@ -16,8 +17,10 @@ import { Confirm, Modal } from './Modal';
 export function PeoplePanel({
   data,
   onChange,
+  isCloud = false,
 }: {
   data: Data;
+  isCloud?: boolean;
   onChange: (fn: (d: Data) => Data) => void;
 }) {
   const [editing, setEditing] = useState<Person | null>(null),
@@ -123,6 +126,7 @@ export function PeoplePanel({
           placeholder="姓名、类别或工种"
         />
       </label>
+      <AssessmentPanel data={data} isCloud={isCloud} />
       <ConflictPanel data={data} />
       <div className="people-grid">
         {registered.map((p) => (
