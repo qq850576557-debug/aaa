@@ -20,7 +20,7 @@ import {
   type MaterialEvent,
   type MaterialAlert,
 } from '../src/lib/materials';
-async function permitted(c: PoolClient, a: Actor, write = false) {
+export async function permitted(c: PoolClient, a: Actor, write = false) {
   await c.query(
     `SELECT workspace_id FROM workspace_state WHERE workspace_id=$1 FOR ${write ? 'UPDATE' : 'SHARE'}`,
     [a.workspaceId],
@@ -36,7 +36,7 @@ async function permitted(c: PoolClient, a: Actor, write = false) {
   )
     throw new ApiError(403, '材料资产仅负责人或获授权材料管理人可操作');
 }
-async function load(c: PoolClient, a: Actor) {
+export async function load(c: PoolClient, a: Actor) {
   const lists = [];
   for (const t of ['material_item', 'material_project_meta', 'material_context', 'material_alert'])
     lists.push(
@@ -66,7 +66,13 @@ async function load(c: PoolClient, a: Actor) {
     data,
   };
 }
-async function history(c: PoolClient, a: Actor, id: string, before: unknown, after: unknown) {
+export async function history(
+  c: PoolClient,
+  a: Actor,
+  id: string,
+  before: unknown,
+  after: unknown,
+) {
   await c.query(
     'INSERT INTO material_history(workspace_id,id,entity_id,actor_id,actor_name,before_value,after_value) VALUES($1,$2,$3,$4,$5,$6,$7)',
     [
@@ -80,7 +86,7 @@ async function history(c: PoolClient, a: Actor, id: string, before: unknown, aft
     ],
   );
 }
-async function alerts(c: PoolClient, a: Actor, state: MaterialState, data: Data) {
+export async function alerts(c: PoolClient, a: Actor, state: MaterialState, data: Data) {
   const analysis = materialAnalysis(state, data);
   const found = new Map(analysis.risks.map((r) => [r.key, r]));
   for (const r of analysis.risks) {
@@ -333,6 +339,8 @@ export function materialRoutes(app: Express) {
   app.post('/api/materials/events', async (req: AuthRequest, res, next) => {
     try {
       const body = eventSchema.parse(req.body);
+      if (body.kind === 'transfer' || body.kind.startsWith('transfer_'))
+        throw new ApiError(409, '新调拨必须使用调拨单流程，不能直接记入接收工地');
       const result = await transaction(async (c) => {
         const a = req.actor!;
         await permitted(c, a, true);
@@ -356,6 +364,16 @@ export function materialRoutes(app: Express) {
         if (body.date > today()) throw new ApiError(400, '实际库存流水不能记在未来');
         if (['reverse', 'reopen'].includes(body.kind) && !a.owner)
           throw new ApiError(403, '冲销和重开仅负责人执行');
+        if (
+          body.kind === 'close' &&
+          (
+            await c.query(
+              "SELECT 1 FROM material_transfer WHERE workspace_id=$1 AND (payload->>'projectId'=$2 OR payload->>'targetProjectId'=$2) AND payload->>'materialId'=$3 AND payload->>'status' NOT IN ('已接收','已取消','差异关闭')",
+              [a.workspaceId, p.id, m.id],
+            )
+          ).rowCount
+        )
+          throw new ApiError(409, '仍有未结束调拨，不能清仓');
         if (body.kind === 'close' && !isHistorical(p)) throw new ApiError(409, '项目尚未完工');
         if (
           body.purchaseId &&
@@ -380,6 +398,8 @@ export function materialRoutes(app: Express) {
         if (body.kind === 'reverse') {
           const original = state.events.find((e) => e.id === body.referenceId);
           if (original) {
+            if (original.kind.startsWith('transfer_'))
+              throw new ApiError(409, '调拨流水须通过调拨单接收、退回或差异处理');
             const ids = [original.projectId, original.targetProjectId].filter(Boolean);
             if (
               state.events.some(

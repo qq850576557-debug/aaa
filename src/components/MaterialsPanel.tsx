@@ -1,3 +1,5 @@
+import { transferSuggestions } from '../lib/material-recommendations';
+import { TransferPanel } from './TransferPanel';
 import { useEffect, useState } from 'react';
 import { cloudApi } from '../lib/cloud';
 import { type Data, today, distance } from '../lib/model';
@@ -106,7 +108,7 @@ export function MaterialsPanel({
     setState(await cloudApi<State>('/materials'));
   }
   useEffect(() => {
-    if (isCloud) void refresh(true).catch((e) => setError(String(e)));
+    if (isCloud) void refresh().catch((e) => setError(String(e)));
   }, [isCloud]);
   async function action(fn: () => Promise<void>) {
     setBusy(true);
@@ -188,6 +190,7 @@ export function MaterialsPanel({
         layout: p?.layout ?? '',
         grade: p?.grade ?? '',
         design: p?.design ?? '',
+        transportRate: p?.transportRate ?? '',
       },
     });
   }
@@ -215,6 +218,8 @@ export function MaterialsPanel({
         budgetPrice: c?.budgetPrice ?? '0',
         progress: String(c?.progress ?? 0),
         finalized: c?.finalized ?? false,
+        actualWorkers: String(c?.actualWorkers ?? 0),
+        actualDays: String(c?.actualDays ?? 0),
       },
     });
   }
@@ -289,9 +294,15 @@ export function MaterialsPanel({
         body = {
           id: String(projectId),
           version: e.version,
-          value: { ...rest, regions: lines(String(regions), 'name', 'area') },
+          value: {
+            ...rest,
+            transportRate: v.transportRate ? String(v.transportRate) : undefined,
+            regions: lines(String(regions), 'name', 'area'),
+          },
         };
       }
+      if (!project || ('projectId' in v && v.projectId !== project))
+        throw Error('工地上下文已变化，请重新打开表单');
       if (e.kind === 'context') {
         path = '/materials/contexts';
         body = {
@@ -305,6 +316,8 @@ export function MaterialsPanel({
               .filter(Boolean),
             coats: Number(v.coats),
             progress: Number(v.progress),
+            actualWorkers: Number(v.actualWorkers),
+            actualDays: Number(v.actualDays),
           },
         };
       }
@@ -369,41 +382,11 @@ export function MaterialsPanel({
       (s) => Number(s.siteQty) > 0 && s.siteDate && distance(s.siteDate, today()) >= 30,
     ),
     pending = alerts.filter((a) => a.status !== '已关闭');
-  const needs = state.contexts.filter(
-    (c) =>
-      c.progress < 100 &&
-      (!project || c.projectId === project) &&
-      (!material || c.materialId === material) &&
-      (!category || mat(c.materialId)?.category === category),
-  );
-  const transfers = state.analysis.stocks.flatMap((s) =>
-    Number(s.siteQty) > 0
-      ? needs
-          .filter(
-            (c) =>
-              c.materialId === s.materialId &&
-              c.projectId !== s.projectId &&
-              !state.analysis.stocks.find(
-                (t) => t.projectId === c.projectId && t.materialId === c.materialId,
-              )?.closed,
-          )
-          .map((c) => {
-            const use = state.analysis.rows.find((r) => r.id === c.id),
-              have = state.analysis.stocks.find(
-                (t) => t.projectId === c.projectId && t.materialId === c.materialId,
-              );
-            const shortage = Math.max(
-              0,
-              Number(c.budgetQty) - Number(use?.actual ?? 0) - Number(have?.totalQty ?? 0),
-            );
-            return { source: s, context: c, shortage };
-          })
-          .filter((t) => t.shortage > 0)
-      : [],
-  );
+  const transfers = project ? transferSuggestions(state, data, project) : [];
   const kinds = eKindOptions();
   function eKindOptions() {
     return eventKinds
+      .filter((k) => k !== 'transfer' && !k.startsWith('transfer_'))
       .filter((k) => access?.owner || !['reverse', 'reopen'].includes(k))
       .map((k) => [k, eventLabels[k]] as [string, string]);
   }
@@ -429,7 +412,7 @@ export function MaterialsPanel({
           <p className="muted">数量、领用、实际使用与损耗分开核算；预警只用于核查，不认定责任。</p>
         </div>
         <div className="toolbar">
-          <button disabled={busy} onClick={() => void action(() => refresh(true))}>
+          <button disabled={busy || !project} onClick={() => void action(() => refresh(true))}>
             刷新核算与预警
           </button>
           {access.owner && (
@@ -488,9 +471,15 @@ export function MaterialsPanel({
           <select
             aria-label="材料项目"
             value={project}
-            onChange={(e) => setProject(e.target.value)}
+            onChange={(e) => {
+              setProject(e.target.value);
+              setEdit(null);
+              setConfirm(null);
+              setMaterial('');
+              setNotice('当前操作工地已切换，请核对下方工地名称。');
+            }}
           >
-            <option value="">全部工地</option>
+            <option value="">请先选择工地</option>
             {[
               ...new Map([
                 ...data.projects.map((p) => [p.id, p.name] as const),
@@ -567,555 +556,549 @@ export function MaterialsPanel({
         </p>
       )}
       {busy && <p role="status">正在保存/核验…</p>}
-      {tab === 0 && (
-        <>
-          <p className="form-info">
-            材料台账、名片和授权需使用服务器加密数据库备份；项目 JSON 不含这些独立记录，CSV
-            供核对与统计。
-          </p>
-          <div className="material-overview">
-            <button type="button" onClick={() => setTab(1)}>
-              库存规格/工地
-              <strong>{stocks.filter((s) => Number(s.totalQty) > 0).length || '暂无'}</strong>
-            </button>
-            <button type="button" onClick={() => setTab(1)}>
-              账面估算价值
-              <strong>
-                {state.events.length
-                  ? '¥ ' + yuan(stocks.reduce((n, s) => n + BigInt(s.valueMicros), 0n))
-                  : '暂无'}
-              </strong>
-            </button>
-            <button type="button" onClick={() => setTab(0)}>
-              近30天无流水余料<strong>{idle.length || '暂无'}</strong>
-            </button>
-            <button type="button" onClick={() => setTab(3)}>
-              待调拨建议<strong>{transfers.length || '暂无'}</strong>
-            </button>
-            <button type="button" onClick={() => setTab(1)}>
-              账实差异
-              <strong>
-                {stocks.filter((s) => s.counts.some((c) => Number(c.difference) !== 0)).length ||
-                  '暂无'}
-              </strong>
-            </button>
-            <button type="button" onClick={() => setTab(5)}>
-              待核查/待复核<strong>{pending.length || '暂无'}</strong>
-            </button>
-          </div>
-          <div className="toolbar">
-            <button disabled={!access.owner} onClick={() => openItem()}>
-              新增材料规格
-            </button>
-            <button onClick={() => openEvent()}>登记库存流水</button>
-            <button onClick={() => setTab(5)}>查看核查事项</button>
-          </div>
-          {table(
-            ['材料/类别', '规格、性能及单位', '换算', '状态', '操作'],
-            state.materials.map((m) => (
-              <tr key={m.id}>
-                <th>
-                  {m.name}
-                  <small>{m.category}</small>
-                </th>
-                <td>
-                  {m.specification}
-                  <small>
-                    {m.performance} · {m.unit}
-                  </small>
-                </td>
-                <td>
-                  {m.conversions.map((c) => `1${c.unit}=${c.factor}${m.unit}`).join('；') ||
-                    '仅基准单位'}
-                </td>
-                <td>{m.active ? '在用' : '已停用'}</td>
-                <td>
-                  {access.owner && <button onClick={() => openItem(m)}>编辑规格</button>}
-                  <button onClick={() => void inspect(m.id, m.name)}>历史</button>
-                </td>
-              </tr>
-            )),
-          )}
-          {idle.map((s) => (
-            <p key={s.projectId + s.materialId}>
-              {nameProject(s.projectId)} · {mat(s.materialId)?.name}：{s.siteQty}
-              {mat(s.materialId)?.unit}，最近现场出入库 {s.siteDate}。请核对闲置状态和其他工地计划。
+      <p className="material-project-context" role="status">
+        {project
+          ? `当前操作工地：${nameProject(project)}`
+          : '请先选择工地。未选择时材料操作不可用。'}
+      </p>
+      <fieldset className="material-workarea" disabled={!project} hidden={!project}>
+        {tab === 0 && (
+          <>
+            <p className="form-info">
+              材料台账、名片和授权需使用服务器加密数据库备份；项目 JSON 不含这些独立记录，CSV
+              供核对与统计。
             </p>
-          ))}
-        </>
-      )}
-      {tab === 1 && (
-        <>
-          <div className="toolbar">
-            <button onClick={() => openProject()}>项目比较条件</button>
-            <button onClick={() => openContext()}>新增核算阶段</button>
-          </div>
-          {dateRange()}
-          {table(
-            [
-              '期间期初 / 期末账面',
-              '工地 / 规格',
-              '当期入场 / 使用 / 损耗',
-              '期末实盘 / 待核差',
-              '数量勾稽',
-            ],
-            materialPeriod(state.events, from, to)
-              .filter(applicable)
-              .map((r) => (
-                <tr key={r.projectId + r.materialId}>
-                  <td>
-                    {r.begin} / {r.endBook}
-                  </td>
+            <div className="material-overview">
+              <button type="button" onClick={() => setTab(1)}>
+                库存规格/工地
+                <strong>{stocks.filter((s) => Number(s.totalQty) > 0).length || '暂无'}</strong>
+              </button>
+              <button type="button" onClick={() => setTab(1)}>
+                账面估算价值
+                <strong>
+                  {state.events.length
+                    ? '¥ ' + yuan(stocks.reduce((n, s) => n + BigInt(s.valueMicros), 0n))
+                    : '暂无'}
+                </strong>
+              </button>
+              <button type="button" onClick={() => setTab(0)}>
+                近30天无流水余料<strong>{idle.length || '暂无'}</strong>
+              </button>
+              <button type="button" onClick={() => setTab(3)}>
+                待调拨建议<strong>{transfers.length || '暂无'}</strong>
+              </button>
+              <button type="button" onClick={() => setTab(1)}>
+                账实差异
+                <strong>
+                  {stocks.filter((s) => s.counts.some((c) => Number(c.difference) !== 0)).length ||
+                    '暂无'}
+                </strong>
+              </button>
+              <button type="button" onClick={() => setTab(5)}>
+                待核查/待复核<strong>{pending.length || '暂无'}</strong>
+              </button>
+            </div>
+            <div className="toolbar">
+              <button disabled={!access.owner} onClick={() => openItem()}>
+                新增材料规格
+              </button>
+              <button onClick={() => openEvent()}>登记库存流水</button>
+              <button onClick={() => setTab(5)}>查看核查事项</button>
+            </div>
+            {table(
+              ['材料/类别', '规格、性能及单位', '换算', '状态', '操作'],
+              state.materials.map((m) => (
+                <tr key={m.id}>
                   <th>
-                    {nameProject(r.projectId)}
+                    {m.name}
+                    <small>{m.category}</small>
+                  </th>
+                  <td>
+                    {m.specification}
                     <small>
-                      {mat(r.materialId)?.name} · {mat(r.materialId)?.unit}
+                      {m.performance} · {m.unit}
+                    </small>
+                  </td>
+                  <td>
+                    {m.conversions.map((c) => `1${c.unit}=${c.factor}${m.unit}`).join('；') ||
+                      '仅基准单位'}
+                  </td>
+                  <td>{m.active ? '在用' : '已停用'}</td>
+                  <td>
+                    {access.owner && <button onClick={() => openItem(m)}>编辑规格</button>}
+                    <button onClick={() => void inspect(m.id, m.name)}>历史</button>
+                  </td>
+                </tr>
+              )),
+            )}
+            {idle.map((s) => (
+              <p key={s.projectId + s.materialId}>
+                {nameProject(s.projectId)} · {mat(s.materialId)?.name}：{s.siteQty}
+                {mat(s.materialId)?.unit}，最近现场出入库 {s.siteDate}
+                。请核对闲置状态和其他工地计划。
+              </p>
+            ))}
+          </>
+        )}
+        {tab === 1 && (
+          <>
+            <div className="toolbar">
+              <button onClick={() => openProject()}>项目比较条件</button>
+              <button onClick={() => openContext()}>新增核算阶段</button>
+            </div>
+            {dateRange()}
+            {table(
+              [
+                '期间期初 / 期末账面',
+                '工地 / 规格',
+                '当期入场 / 使用 / 损耗',
+                '期末实盘 / 待核差',
+                '数量勾稽',
+              ],
+              materialPeriod(state.events, from, to)
+                .filter(applicable)
+                .map((r) => (
+                  <tr key={r.projectId + r.materialId}>
+                    <td>
+                      {r.begin} / {r.endBook}
+                    </td>
+                    <th>
+                      {nameProject(r.projectId)}
+                      <small>
+                        {mat(r.materialId)?.name} · {mat(r.materialId)?.unit}
+                      </small>
+                    </th>
+                    <td>
+                      {r.received} / {r.used} / {r.loss}
+                      <small>
+                        期内期初入账 {r.opening}；调入 {r.transferIn} / 调出 {r.transferOut}；退货{' '}
+                        {r.supplierReturn}；差异调整 {r.adjustment}
+                      </small>
+                    </td>
+                    <td>
+                      {r.endPhysical ?? '未在期末完成各库位盘点'} / {r.unverified}
+                    </td>
+                    <td>{r.check ? '数量守恒' : '核算异常'}</td>
+                  </tr>
+                )),
+            )}
+            {table(
+              [
+                '工地/规格',
+                '现场库存 / 班组余料',
+                '采购 / 入场',
+                '实际使用 / 已确认损耗',
+                '估算价值 / 差异',
+                '追溯',
+              ],
+              stocks.map((s) => (
+                <tr key={s.projectId + s.materialId}>
+                  <th>
+                    {nameProject(s.projectId)}
+                    <small>
+                      {mat(s.materialId)?.name} · {mat(s.materialId)?.unit}
+                      {s.closed ? ' · 已清仓关闭' : ''}
                     </small>
                   </th>
                   <td>
-                    {r.received} / {r.used} / {r.loss}
+                    {s.siteQty} / {s.crewQty}
+                  </td>
+                  <td>
+                    {s.ordered} / {s.received}
+                  </td>
+                  <td>
+                    {s.used} / {s.loss}
+                    {Number(s.transitLoss) > 0 && (
+                      <small>
+                        在途损耗另列 {s.transitLoss}，成本 ¥{s.transitLossCost}
+                        （已计调出，不再重复扣减）
+                      </small>
+                    )}
+                    <small>采购不等于使用；领用未消耗仍为资产</small>
+                  </td>
+                  <td>
+                    ¥ {s.value}
                     <small>
-                      期内期初入账 {r.opening}；调入 {r.transferIn} / 调出 {r.transferOut}；退货{' '}
-                      {r.supplierReturn}；差异调整 {r.adjustment}
+                      {s.counts.map((c) => `盘点${c.id}：差异${c.difference}`).join('；') ||
+                        '尚无盘点'}
                     </small>
                   </td>
                   <td>
-                    {r.endPhysical ?? '未在期末完成各库位盘点'} / {r.unverified}
-                  </td>
-                  <td>{r.check ? '数量守恒' : '核算异常'}</td>
-                </tr>
-              )),
-          )}
-          {table(
-            [
-              '工地/规格',
-              '现场库存 / 班组余料',
-              '采购 / 入场',
-              '实际使用 / 已确认损耗',
-              '估算价值 / 差异',
-              '追溯',
-            ],
-            stocks.map((s) => (
-              <tr key={s.projectId + s.materialId}>
-                <th>
-                  {nameProject(s.projectId)}
-                  <small>
-                    {mat(s.materialId)?.name} · {mat(s.materialId)?.unit}
-                    {s.closed ? ' · 已清仓关闭' : ''}
-                  </small>
-                </th>
-                <td>
-                  {s.siteQty} / {s.crewQty}
-                </td>
-                <td>
-                  {s.ordered} / {s.received}
-                </td>
-                <td>
-                  {s.used} / {s.loss}
-                  <small>采购不等于使用；领用未消耗仍为资产</small>
-                </td>
-                <td>
-                  ¥ {s.value}
-                  <small>
-                    {s.counts.map((c) => `盘点${c.id}：差异${c.difference}`).join('；') ||
-                      '尚无盘点'}
-                  </small>
-                </td>
-                <td>
-                  <button
-                    onClick={() => {
-                      setProject(s.projectId);
-                      setFrom('1900-01-01');
-                      setTo(today());
-                      setMaterial(s.materialId);
-                      setTab(2);
-                    }}
-                  >
-                    原始流水
-                  </button>
-                  <button onClick={() => openEvent('count_site', s.projectId, s.materialId)}>
-                    盘点
-                  </button>
-                  <button
-                    onClick={() =>
-                      openEvent(s.closed ? 'reopen' : 'close', s.projectId, s.materialId)
-                    }
-                    disabled={s.closed && !access.owner}
-                  >
-                    {s.closed ? '重开' : '完工清仓'}
-                  </button>
-                </td>
-              </tr>
-            )),
-          )}
-          {table(
-            [
-              '阶段/区域',
-              '工地 / 材料',
-              '班组 / 施工关联',
-              '实际基数与预算',
-              '进度 / 核算',
-              '操作',
-            ],
-            state.contexts.filter(applicable).map((c) => (
-              <tr key={c.id}>
-                <th>
-                  {c.phase}
-                  <small>{c.zone}</small>
-                </th>
-                <td>
-                  {c.projectName}
-                  <small>{mat(c.materialId)?.name}</small>
-                </td>
-                <td>
-                  {c.teamName}
-                  <small>
-                    {data.trades.find((g) => g.id === c.tradeId)?.name} ·{' '}
-                    {data.tasks.find((t) => t.id === c.taskId)?.name} ·{' '}
-                    {c.staffIds
-                      .map((id) => data.people?.find((p) => p.id === id)?.name || id)
-                      .join('、')}
-                  </small>
-                </td>
-                <td>
-                  {c.basis}{' '}
-                  {c.basisKind === 'length'
-                    ? 'm'
-                    : c.basisKind === 'area_coats'
-                      ? `m²×${c.coats}遍`
-                      : 'm²'}
-                  <small>
-                    预算{c.budgetQty}
-                    {mat(c.materialId)?.unit} / ¥{c.budgetPrice}
-                  </small>
-                </td>
-                <td>
-                  {c.progress}% · {c.finalized ? '核算完成' : '核算中'}
-                </td>
-                <td>
-                  <button onClick={() => openContext(c)}>编辑阶段</button>
-                  <button onClick={() => void inspect(c.id, c.phase)}>历史</button>
-                </td>
-              </tr>
-            )),
-          )}
-        </>
-      )}
-      {tab === 2 && (
-        <>
-          <div className="toolbar">
-            <button onClick={() => openEvent()}>登记材料流水</button>
-          </div>
-          {dateRange()}
-          {table(
-            ['日期/流水', '工地/材料', '类型/基准数量', '班组阶段 / 来源', '价值与操作人', '详情'],
-            events.map((e) => (
-              <tr key={e.id}>
-                <th>
-                  {e.date}
-                  <small>#{e.seq}</small>
-                </th>
-                <td>
-                  {e.projectName}
-                  <small>
-                    {e.materialName} · {e.unit}
-                  </small>
-                </td>
-                <td>
-                  {eventLabels[e.kind]}
-                  <small>
-                    {e.baseQty} {e.unit}（原录{e.quantity}
-                    {e.inputUnit}×{e.conversionFactor}）
-                  </small>
-                </td>
-                <td>
-                  {state.contexts.find((c) => c.id === e.contextId)?.phase}
-                  <small>
-                    {e.purchaseId
-                      ? '关联采购：' +
-                        (data.purchases.find((p) => p.id === e.purchaseId)?.name || e.purchaseId)
-                      : ''}
-                    {e.targetProjectId ? ' → ' + nameProject(e.targetProjectId) : ''}
-                  </small>
-                  <small>{e.reason}</small>
-                </td>
-                <td>
-                  ¥ {yuan(BigInt(e.costMicros || '0'))}
-                  <small>
-                    {e.actorName} · {new Date(e.at).toLocaleString()}
-                  </small>
-                </td>
-                <td>
-                  <button onClick={() => void inspect(e.id, '材料原始流水')}>原始记录</button>
-                  {access.owner && (
                     <button
                       onClick={() => {
-                        openEvent('reverse', e.projectId, e.materialId);
-                        setEdit((v) => (v ? { ...v, v: { ...v.v, referenceId: e.id } } : v));
-                      }}
-                    >
-                      冲销
-                    </button>
-                  )}
-                </td>
-              </tr>
-            )),
-          )}
-        </>
-      )}
-      {tab === 3 && (
-        <>
-          <p className="form-info">
-            建议基于同一规格的现场余料、未完成阶段预算缺口及既有施工计划。需人工核对数量、运输和材料状态；不会自动调拨。
-          </p>
-          <button onClick={() => openEvent('transfer')}>登记跨工地调拨</button>
-          {transfers.map((r, i) => (
-            <article className="material-risk" key={i}>
-              <h3>
-                {mat(r.source.materialId)?.name} · {mat(r.source.materialId)?.specification}
-              </h3>
-              <p>
-                {nameProject(r.source.projectId)} 现场余料 {r.source.siteQty}
-                {mat(r.source.materialId)?.unit} → {r.context.projectName}，该阶段估算缺口{' '}
-                {r.shortage.toFixed(3)}
-                {mat(r.source.materialId)?.unit}
-              </p>
-              <p>
-                施工任务：{data.tasks.find((t) => t.id === r.context.taskId)?.name || '未关联'} ·{' '}
-                {data.tasks.find((t) => t.id === r.context.taskId)?.start || '需核对计划'}
-              </p>
-              <button
-                onClick={() =>
-                  openEvent(
-                    'transfer',
-                    r.source.projectId,
-                    r.source.materialId,
-                    r.context.projectId,
-                  )
-                }
-              >
-                核对后登记调拨
-              </button>
-            </article>
-          ))}
-          {!transfers.length && <p>暂无具备预算缺口和同规格余料的调拨建议。</p>}
-        </>
-      )}
-      {tab === 4 && (
-        <>
-          <p className="form-info">
-            按实际施工区域面积、长度或涂刷面积×遍数比较，绝不直接以建筑面积替代。参考区间为同类项目Q1−1.5IQR至Q3+1.5IQR，至少5个不同项目；是统计核查提示，不是校准概率或责任判断。
-          </p>
-          {rows.map((r) => (
-            <article className="material-risk" key={r.id}>
-              <h3>
-                {r.projectName} · {mat(r.materialId)?.name} · {r.phase} / {r.teamName}
-              </h3>
-              <p>
-                已使用 {r.used} + 已确认损耗 {r.loss} = 总耗 {r.actual}
-                {mat(r.materialId)?.unit}；实际成本 ¥{r.actualCost}；预算量 {r.budgetQty}，成本偏差
-                ¥{r.costVariance}
-              </p>
-              <p>
-                基数：{r.basis} {r.basisValue}；单位消耗 {r.current?.toFixed(4) ?? '暂无'}；损耗率{' '}
-                {r.lossRate === null ? '暂无' : (r.lossRate * 100).toFixed(2) + '%'}
-              </p>
-              <p>
-                可比历史 {r.samples} 个项目；均值 {r.mean?.toFixed(4) ?? '暂无'}；中位数{' '}
-                {r.median?.toFixed(4) ?? '暂无'}；区间{' '}
-                {r.lower === null ? '暂无' : `${r.lower.toFixed(4)}—${r.upper!.toFixed(4)}`}
-              </p>
-              <p>
-                {r.reason}
-                {r.missing.length ? '；缺失/待核实：' + r.missing.join('、') : ''}
-              </p>
-              <p>
-                完工超额估算 {r.estimatedExcess === null ? '暂无' : r.estimatedExcess.toFixed(3)}
-                ，对应成本估算{' '}
-                {r.estimatedCost === null ? '暂无' : '¥' + r.estimatedCost.toFixed(2)}
-                。未经历史校准，不显示精确概率。
-              </p>
-              <p>
-                单位施工基数成本{' '}
-                {r.unitBasisCost === null ? '暂无' : '¥' + r.unitBasisCost.toFixed(2)}
-                ；单位实际面积成本{' '}
-                {r.unitAreaCost === null ? '不适用/缺基数' : '¥' + r.unitAreaCost.toFixed(2)}
-                ；历史单位基数成本中位数{' '}
-                {r.medianUnitCost === null ? '暂无' : '¥' + r.medianUnitCost.toFixed(2)}
-                ；相对历史耗量偏差{' '}
-                {r.relativeConsumption === null
-                  ? '暂无'
-                  : (r.relativeConsumption * 100).toFixed(2) + '%'}
-                ；相对历史成本偏差{' '}
-                {r.relativeCost === null ? '暂无' : (r.relativeCost * 100).toFixed(2) + '%'}
-                ；单位基数成本差额{' '}
-                {r.unitCostDifference === null ? '暂无' : '¥' + r.unitCostDifference.toFixed(2)}。
-              </p>
-              <details>
-                <summary>参考项目与计算口径</summary>
-                {r.references.map((ref) => (
-                  <p key={ref.projectId}>
-                    <button
-                      onClick={() => {
-                        setProject(ref.projectId);
+                        setProject(s.projectId);
                         setFrom('1900-01-01');
                         setTo(today());
-                        setMaterial(r.materialId);
+                        setMaterial(s.materialId);
                         setTab(2);
                       }}
                     >
-                      {ref.projectName}
-                    </button>{' '}
-                    单位耗量 {ref.ratio.toFixed(4)}
-                  </p>
-                ))}
+                      原始流水
+                    </button>
+                    <button onClick={() => openEvent('count_site', s.projectId, s.materialId)}>
+                      盘点
+                    </button>
+                    <button
+                      onClick={() =>
+                        openEvent(s.closed ? 'reopen' : 'close', s.projectId, s.materialId)
+                      }
+                      disabled={s.closed && !access.owner}
+                    >
+                      {s.closed ? '重开' : '完工清仓'}
+                    </button>
+                  </td>
+                </tr>
+              )),
+            )}
+            {table(
+              [
+                '阶段/区域',
+                '工地 / 材料',
+                '班组 / 施工关联',
+                '实际基数与预算',
+                '进度 / 核算',
+                '操作',
+              ],
+              state.contexts.filter(applicable).map((c) => (
+                <tr key={c.id}>
+                  <th>
+                    {c.phase}
+                    <small>{c.zone}</small>
+                  </th>
+                  <td>
+                    {c.projectName}
+                    <small>{mat(c.materialId)?.name}</small>
+                  </td>
+                  <td>
+                    {c.teamName}
+                    <small>
+                      {data.trades.find((g) => g.id === c.tradeId)?.name} ·{' '}
+                      {data.tasks.find((t) => t.id === c.taskId)?.name} ·{' '}
+                      {c.staffIds
+                        .map((id) => data.people?.find((p) => p.id === id)?.name || id)
+                        .join('、')}
+                    </small>
+                  </td>
+                  <td>
+                    {c.basis}{' '}
+                    {c.basisKind === 'length'
+                      ? 'm'
+                      : c.basisKind === 'area_coats'
+                        ? `m²×${c.coats}遍`
+                        : 'm²'}
+                    <small>
+                      预算{c.budgetQty}
+                      {mat(c.materialId)?.unit} / ¥{c.budgetPrice}
+                    </small>
+                  </td>
+                  <td>
+                    {c.progress}% · {c.finalized ? '核算完成' : '核算中'}
+                  </td>
+                  <td>
+                    <button onClick={() => openContext(c)}>编辑阶段</button>
+                    <button onClick={() => void inspect(c.id, c.phase)}>历史</button>
+                  </td>
+                </tr>
+              )),
+            )}
+          </>
+        )}
+        {tab === 2 && (
+          <>
+            <div className="toolbar">
+              <button onClick={() => openEvent()}>登记材料流水</button>
+            </div>
+            {dateRange()}
+            {table(
+              [
+                '日期/流水',
+                '工地/材料',
+                '类型/基准数量',
+                '班组阶段 / 来源',
+                '价值与操作人',
+                '详情',
+              ],
+              events.map((e) => (
+                <tr key={e.id}>
+                  <th>
+                    {e.date}
+                    <small>#{e.seq}</small>
+                  </th>
+                  <td>
+                    {e.projectName}
+                    <small>
+                      {e.materialName} · {e.unit}
+                    </small>
+                  </td>
+                  <td>
+                    {eventLabels[e.kind]}
+                    <small>
+                      {e.baseQty} {e.unit}（原录{e.quantity}
+                      {e.inputUnit}×{e.conversionFactor}）
+                    </small>
+                  </td>
+                  <td>
+                    {state.contexts.find((c) => c.id === e.contextId)?.phase}
+                    <small>
+                      {e.purchaseId
+                        ? '关联采购：' +
+                          (data.purchases.find((p) => p.id === e.purchaseId)?.name || e.purchaseId)
+                        : ''}
+                      {e.targetProjectId ? ' → ' + nameProject(e.targetProjectId) : ''}
+                    </small>
+                    <small>{e.reason}</small>
+                  </td>
+                  <td>
+                    ¥ {yuan(BigInt(e.costMicros || '0'))}
+                    <small>
+                      {e.actorName} · {new Date(e.at).toLocaleString()}
+                    </small>
+                  </td>
+                  <td>
+                    <button onClick={() => void inspect(e.id, '材料原始流水')}>原始记录</button>
+                    {access.owner && (
+                      <button
+                        onClick={() => {
+                          openEvent('reverse', e.projectId, e.materialId);
+                          setEdit((v) => (v ? { ...v, v: { ...v.v, referenceId: e.id } } : v));
+                        }}
+                      >
+                        冲销
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              )),
+            )}
+          </>
+        )}
+        {tab === 3 && project && (
+          <TransferPanel
+            data={data}
+            state={state}
+            project={project}
+            owner={access.owner}
+            onSaved={() => refresh()}
+          />
+        )}
+        {tab === 4 && (
+          <>
+            <p className="form-info">
+              按实际施工区域面积、长度或涂刷面积×遍数比较，绝不直接以建筑面积替代。参考区间为同类项目Q1−1.5IQR至Q3+1.5IQR，至少5个不同项目；是统计核查提示，不是校准概率或责任判断。
+            </p>
+            {rows.map((r) => (
+              <article className="material-risk" key={r.id}>
+                <h3>
+                  {r.projectName} · {mat(r.materialId)?.name} · {r.phase} / {r.teamName}
+                </h3>
                 <p>
-                  相同材料ID（规格/性能/基准单位）、阶段、基数种类、工艺、铺贴方式、项目类型、户型、档次及设计条件；仅纳入核算完成、无未核实差异和班组余料的其他项目。多区域按基数加权合为一项目样本。
+                  已使用 {r.used} + 已确认损耗 {r.loss} = 总耗 {r.actual}
+                  {mat(r.materialId)?.unit}；实际成本 ¥{r.actualCost}；预算量 {r.budgetQty}
+                  ，成本偏差 ¥{r.costVariance}
                 </p>
-              </details>
+                <p>
+                  核实人数 {r.actualWorkers || '未知'} · 核实施工天数 {r.actualDays || '未知'}
+                  ；基数：{r.basis} {r.basisValue}；单位消耗 {r.current?.toFixed(4) ?? '暂无'}
+                  ；损耗率 {r.lossRate === null ? '暂无' : (r.lossRate * 100).toFixed(2) + '%'}
+                </p>
+                <p>
+                  可比历史 {r.samples} 个项目；均值 {r.mean?.toFixed(4) ?? '暂无'}；中位数{' '}
+                  {r.median?.toFixed(4) ?? '暂无'}；区间{' '}
+                  {r.lower === null ? '暂无' : `${r.lower.toFixed(4)}—${r.upper!.toFixed(4)}`}
+                </p>
+                <p>
+                  {r.reason}
+                  {r.missing.length ? '；缺失/待核实：' + r.missing.join('、') : ''}
+                </p>
+                <p>
+                  完工超额估算 {r.estimatedExcess === null ? '暂无' : r.estimatedExcess.toFixed(3)}
+                  ，对应成本估算{' '}
+                  {r.estimatedCost === null ? '暂无' : '¥' + r.estimatedCost.toFixed(2)}
+                  。未经历史校准，不显示精确概率。
+                </p>
+                <p>
+                  单位施工基数成本{' '}
+                  {r.unitBasisCost === null ? '暂无' : '¥' + r.unitBasisCost.toFixed(2)}
+                  ；单位实际面积成本{' '}
+                  {r.unitAreaCost === null ? '不适用/缺基数' : '¥' + r.unitAreaCost.toFixed(2)}
+                  ；历史单位基数成本中位数{' '}
+                  {r.medianUnitCost === null ? '暂无' : '¥' + r.medianUnitCost.toFixed(2)}
+                  ；相对历史耗量偏差{' '}
+                  {r.relativeConsumption === null
+                    ? '暂无'
+                    : (r.relativeConsumption * 100).toFixed(2) + '%'}
+                  ；相对历史成本偏差{' '}
+                  {r.relativeCost === null ? '暂无' : (r.relativeCost * 100).toFixed(2) + '%'}
+                  ；单位基数成本差额{' '}
+                  {r.unitCostDifference === null ? '暂无' : '¥' + r.unitCostDifference.toFixed(2)}。
+                </p>
+                <details>
+                  <summary>参考项目与计算口径</summary>
+                  {r.references.map((ref) => (
+                    <p key={ref.projectId}>
+                      <button
+                        onClick={() => {
+                          setProject(ref.projectId);
+                          setFrom('1900-01-01');
+                          setTo(today());
+                          setMaterial(r.materialId);
+                          setTab(2);
+                        }}
+                      >
+                        {ref.projectName}
+                      </button>{' '}
+                      单位耗量 {ref.ratio.toFixed(4)}
+                    </p>
+                  ))}
+                  <p>
+                    相同材料ID（规格/性能/基准单位）、阶段、基数种类、工艺、铺贴方式、项目类型、户型、档次及设计条件；仅纳入核算完成、无未核实差异和班组余料的其他项目。多区域按基数加权合为一项目样本。
+                  </p>
+                </details>
+                <button
+                  onClick={() => {
+                    setProject(r.projectId);
+                    setFrom('1900-01-01');
+                    setTo(today());
+                    setMaterial(r.materialId);
+                    setTab(2);
+                  }}
+                >
+                  追溯原始流水
+                </button>
+              </article>
+            ))}
+          </>
+        )}
+        {tab === 5 && (
+          <>
+            {!alerts.length && <p>暂无已生成预警；样本不足不会生成虚构异常或概率。</p>}
+            {alerts.map((a) => (
+              <article className="material-risk" key={a.id}>
+                <h3>
+                  {a.detail.level} · {nameProject(a.projectId)} · {mat(a.materialId)?.name}
+                  <span className="material-status">{a.status}</span>
+                </h3>
+                <p>{a.detail.reason}</p>
+                <p>
+                  历史样本 {a.detail.samples}，参考项目{' '}
+                  {a.detail.references.map((p) => p.projectName).join('、') || '无'}
+                  ；数据完整度限制：
+                  {a.detail.missing.join('、') || '当前条件已满足'}。
+                </p>
+                <ul>
+                  {a.detail.suggestions.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+                <p>
+                  {a.sourceResolved
+                    ? '源条件已变化/差异已核销，仍需人工复核关闭。'
+                    : '当前源条件仍需核查。'}{' '}
+                  · 责任账号 {a.assigneeId || '未分配'} · {a.reason}
+                </p>
+                <button onClick={() => openAlert(a)}>记录核查与复核</button>
+                <button onClick={() => void inspect(a.id, '异常处理历史')}>处理历史</button>
+                <button
+                  onClick={() => {
+                    setProject(a.projectId);
+                    setFrom('1900-01-01');
+                    setTo(today());
+                    setMaterial(a.materialId);
+                    setTab(2);
+                  }}
+                >
+                  关联流水
+                </button>
+              </article>
+            ))}
+          </>
+        )}
+        {tab === 6 && (
+          <>
+            {dateRange()}
+            <label>
+              趋势周期
+              <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+                <option value="month">月份</option>
+                <option value="year">年度</option>
+              </select>
+            </label>
+            <p>
+              各材料规格和项目类型分别统计，不将不同单位/规格强行加总排名。数量和成本为当期使用及损耗（含冲销更正），非采购金额。
+            </p>
+            {trendCharts()}
+            <div className="toolbar">
+              <button onClick={() => void exportLedger()}>导出原始流水 CSV</button>
               <button
                 onClick={() => {
-                  setProject(r.projectId);
-                  setFrom('1900-01-01');
-                  setTo(today());
-                  setMaterial(r.materialId);
-                  setTab(2);
-                }}
-              >
-                追溯原始流水
-              </button>
-            </article>
-          ))}
-        </>
-      )}
-      {tab === 5 && (
-        <>
-          {!alerts.length && <p>暂无已生成预警；样本不足不会生成虚构异常或概率。</p>}
-          {alerts.map((a) => (
-            <article className="material-risk" key={a.id}>
-              <h3>
-                {a.detail.level} · {nameProject(a.projectId)} · {mat(a.materialId)?.name}
-                <span className="material-status">{a.status}</span>
-              </h3>
-              <p>{a.detail.reason}</p>
-              <p>
-                历史样本 {a.detail.samples}，参考项目{' '}
-                {a.detail.references.map((p) => p.projectName).join('、') || '无'}；数据完整度限制：
-                {a.detail.missing.join('、') || '当前条件已满足'}。
-              </p>
-              <ul>
-                {a.detail.suggestions.map((s) => (
-                  <li key={s}>{s}</li>
-                ))}
-              </ul>
-              <p>
-                {a.sourceResolved
-                  ? '源条件已变化/差异已核销，仍需人工复核关闭。'
-                  : '当前源条件仍需核查。'}{' '}
-                · 责任账号 {a.assigneeId || '未分配'} · {a.reason}
-              </p>
-              <button onClick={() => openAlert(a)}>记录核查与复核</button>
-              <button onClick={() => void inspect(a.id, '异常处理历史')}>处理历史</button>
-              <button
-                onClick={() => {
-                  setProject(a.projectId);
-                  setFrom('1900-01-01');
-                  setTo(today());
-                  setMaterial(a.materialId);
-                  setTab(2);
-                }}
-              >
-                关联流水
-              </button>
-            </article>
-          ))}
-        </>
-      )}
-      {tab === 6 && (
-        <>
-          {dateRange()}
-          <label>
-            趋势周期
-            <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-              <option value="month">月份</option>
-              <option value="year">年度</option>
-            </select>
-          </label>
-          <p>
-            各材料规格和项目类型分别统计，不将不同单位/规格强行加总排名。数量和成本为当期使用及损耗（含冲销更正），非采购金额。
-          </p>
-          {trendCharts()}
-          <div className="toolbar">
-            <button onClick={() => void exportLedger()}>导出原始流水 CSV</button>
-            <button
-              onClick={() => {
-                const output = periodStats();
-                download(
-                  new Blob(
-                    [
-                      csvRows([
-                        [
-                          '周期',
-                          '项目类型',
-                          '材料ID',
-                          '材料',
-                          '类别',
-                          '规格',
-                          '基准单位',
-                          '净实际总耗',
-                          '实际总耗成本',
-                        ],
-                        ...output.map((r) => [
-                          r.period,
-                          r.projectType,
-                          r.materialId,
-                          r.name,
-                          r.category,
-                          r.specification,
-                          r.unit,
-                          decimal(r.q),
-                          yuan(r.cost),
+                  const output = periodStats();
+                  download(
+                    new Blob(
+                      [
+                        csvRows([
+                          [
+                            '周期',
+                            '项目类型',
+                            '材料ID',
+                            '材料',
+                            '类别',
+                            '规格',
+                            '基准单位',
+                            '净实际总耗',
+                            '实际总耗成本',
+                          ],
+                          ...output.map((r) => [
+                            r.period,
+                            r.projectType,
+                            r.materialId,
+                            r.name,
+                            r.category,
+                            r.specification,
+                            r.unit,
+                            decimal(r.q),
+                            yuan(r.cost),
+                          ]),
                         ]),
-                      ]),
-                    ],
-                    { type: 'text/csv;charset=utf-8' },
-                  ),
-                  '春茉材料趋势.csv',
-                );
-              }}
-            >
-              导出统计 CSV
-            </button>
-          </div>
-          {table(
-            ['周期/项目类型', '材料规格', '实际总耗', '成本', '追溯'],
-            periodStats().map((r) => (
-              <tr key={r.key}>
-                <th>
-                  {r.period}
-                  <small>{r.projectType}</small>
-                </th>
-                <td>
-                  {r.name}
-                  <small>
-                    {r.category} · {r.specification}
-                  </small>
-                </td>
-                <td>
-                  {decimal(r.q)} {r.unit}
-                </td>
-                <td>¥ {yuan(r.cost)}</td>
-                <td>
-                  <button onClick={() => openPeriod(r)}>查看原始记录</button>
-                </td>
-              </tr>
-            )),
-          )}
-        </>
-      )}
-      {!state.materials.length && (
-        <p>暂无材料数据，请由负责人先登记规格、计量单位及明确换算规则。</p>
-      )}
+                      ],
+                      { type: 'text/csv;charset=utf-8' },
+                    ),
+                    '春茉材料趋势.csv',
+                  );
+                }}
+              >
+                导出统计 CSV
+              </button>
+            </div>
+            {table(
+              ['周期/项目类型', '材料规格', '实际总耗', '成本', '追溯'],
+              periodStats().map((r) => (
+                <tr key={r.key}>
+                  <th>
+                    {r.period}
+                    <small>{r.projectType}</small>
+                  </th>
+                  <td>
+                    {r.name}
+                    <small>
+                      {r.category} · {r.specification}
+                    </small>
+                  </td>
+                  <td>
+                    {decimal(r.q)} {r.unit}
+                  </td>
+                  <td>¥ {yuan(r.cost)}</td>
+                  <td>
+                    <button onClick={() => openPeriod(r)}>查看原始记录</button>
+                  </td>
+                </tr>
+              )),
+            )}
+          </>
+        )}
+        {!state.materials.length && (
+          <p>暂无材料数据，请由负责人先登记规格、计量单位及明确换算规则。</p>
+        )}
+      </fieldset>
       {edit && (
         <Modal
           title={
@@ -1412,7 +1395,9 @@ export function MaterialsPanel({
         {label}
       </label>
     );
-    const projects = data.projects.map((p) => [p.id, p.name] as [string, string]),
+    const projects = data.projects
+        .filter((p) => p.id === project)
+        .map((p) => [p.id, p.name] as [string, string]),
       materials = state.materials.map(
         (m) => [m.id, m.name + ' · ' + m.specification + ' / ' + m.unit] as [string, string],
       );
@@ -1441,6 +1426,7 @@ export function MaterialsPanel({
           {input('layout', '户型特征')}
           {input('grade', '装修档次')}
           {input('design', '设计方案/可比条件')}
+          {input('transportRate', '运输估算 元/基准单位（需核实）', false)}
           {area('regions', '施工区域面积：每行 区域名称|面积')}
           <p className="form-info span2">
             建筑面积不自动用作耗量分母；区域和实际基数需监理核对，0代表尚未核实，不能进入可比样本。
@@ -1469,6 +1455,8 @@ export function MaterialsPanel({
             true,
           )}
           {input('teamName', '班组名称')}
+          {input('actualWorkers', '经核实实际施工人数（未知填0）')}
+          {input('actualDays', '经核实实际施工天数（未知填0）')}
           {
             <label>
               班组人员

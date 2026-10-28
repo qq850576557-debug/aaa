@@ -72,10 +72,9 @@ for (const width of [1440, 390])
         p.locator('.online-member').filter({ has: p.locator(`img[src="${source}"]`) }),
       ).toBeVisible();
       await panel.getByRole('tab', { name: '账号通讯录', exact: true }).click();
-      await expect(panel.locator(`[data-member-id="${id}"] .member-card-photo img`)).toBeVisible();
-      await expect(
-        panel.locator(`[data-member-id="${id}"] .member-card-photo img`),
-      ).toHaveAttribute('src', source!);
+      // A system avatar must not populate the independent card image slot.
+      await expect(panel.locator(`[data-member-id="${id}"] .member-card-photo img`)).toHaveCount(0);
+      await expect(p.locator('.current-account img')).toHaveAttribute('src', source!);
       await panel.getByLabel('选择账号', { exact: true }).selectOption(f.id);
       await expect(panel.getByLabel('我的私有备注', { exact: true })).toBeVisible();
       await expect(

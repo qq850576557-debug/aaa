@@ -1,3 +1,4 @@
+import { edgeScrollSpeed } from '../lib/gantt-scroll';
 import { ganttGroups, resizeGanttGroup, type GanttGroup } from '../lib/gantt-groups';
 import { DateField } from './DateField';
 import { timelineRange, timelineWindow } from '../lib/timeline';
@@ -128,6 +129,36 @@ export function Gantt({
   useReorderMotion(scroller, '.trade-row', trades.map((g) => g.id).join('|'));
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragging = useRef<Drag | null>(null);
+  const edge = useRef({ x: 0, previousX: 0, at: 0, held: 0, frame: 0, velocity: 0 });
+  useEffect(() => () => cancelAnimationFrame(edge.current.frame), []);
+  function autoScroll(at: number) {
+    const d = dragging.current,
+      el = scroller.current;
+    if (!d || !el) return;
+    const r = el.getBoundingClientRect(),
+      label = el.querySelector('.sticky-label')?.getBoundingClientRect().width ?? 0;
+    const dt = Math.min(32, Math.max(0, at - edge.current.at));
+    edge.current.at = at;
+    const speed = edgeScrollSpeed(
+      edge.current.x,
+      r.left + label,
+      r.right,
+      edge.current.held,
+      edge.current.velocity,
+    );
+    edge.current.held = speed ? edge.current.held + dt : 0;
+    const old = el.scrollLeft;
+    el.scrollLeft += (speed * dt) / 1000;
+    if (el.scrollLeft !== old) {
+      const delta = Math.round(
+        (edge.current.x - d.x) / d.dayWidth + (el.scrollLeft - d.scroll) / CELL,
+      );
+      dragging.current = { ...d, delta };
+      setDrag(dragging.current);
+      updateWindow();
+    }
+    edge.current.frame = requestAnimationFrame(autoScroll);
+  }
   const lastDrag = useRef(-Infinity);
   const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [range, setRange] = useState<{
@@ -169,6 +200,16 @@ export function Gantt({
     };
     dragging.current = d;
     setDrag(d);
+    cancelAnimationFrame(edge.current.frame);
+    edge.current = {
+      x: e.clientX,
+      previousX: e.clientX,
+      at: performance.now(),
+      held: 0,
+      frame: 0,
+      velocity: 0,
+    };
+    edge.current.frame = requestAnimationFrame(autoScroll);
   }
   function moved(d: Drag): Task {
     const t = d.task;
@@ -184,6 +225,9 @@ export function Gantt({
   function barMove(e: PointerEvent) {
     const d = dragging.current;
     if (!d) return;
+    edge.current.velocity = (e.clientX - edge.current.previousX) * 60;
+    edge.current.previousX = e.clientX;
+    edge.current.x = e.clientX;
     const delta = Math.round(
       (e.clientX - d.x) / d.dayWidth + (scroller.current!.scrollLeft - d.scroll) / CELL,
     );
@@ -571,7 +615,9 @@ export function Gantt({
                   {rows.map((row, lane) =>
                     row
                       .filter(
-                        (t) => t.end >= plus(start, first) && t.start <= plus(start, last - 1),
+                        (t) =>
+                          drag?.task.id === t.id ||
+                          (t.end >= plus(start, first) && t.start <= plus(start, last - 1)),
                       )
                       .map((original) => {
                         const t = drag?.task.id === original.id ? moved(drag) : original;
@@ -582,7 +628,7 @@ export function Gantt({
                             data-task-id={t.id}
                             title={`${original.members.length > 1 ? `合并显示 ${original.members.length} 段（原始记录见任务详情） · ` : ''}${t.name} · ${t.start} — ${t.end}${data.tasks.filter((x) => (x.groupId ?? x.id) === (t.groupId ?? t.id)).length > 1 ? ' · 同任务多段' : ''}`}
                             aria-label={`${t.name}，${t.start} 至 ${t.end}，${duration(t.start, t.end)} 天`}
-                            className={`task-bar ${drag?.task.id === t.id ? 'dragging' : ''} ${t.status === '已完成' ? 'completed' : ''} ${t.start <= today() && t.end >= today() && t.status !== '已完成' ? 'working-today' : ''} ${t.end < today() && t.status !== '已完成' ? 'overdue' : ''}`}
+                            className={`task-bar ${drag?.task.id === t.id ? 'dragging' : ''} ${t.status === '已完成' ? 'completed' : ''} ${t.start <= today() && t.end >= today() && t.status !== '已完成' ? 'working-today' : ''}`}
                             style={{
                               left: distance(start, t.start) * CELL + 4,
                               width: duration(t.start, t.end) * CELL - 8,

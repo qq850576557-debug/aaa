@@ -117,7 +117,8 @@ describe('workspace safety', () => {
   });
   it('excludes archived projects from actionable counts', () => {
     d.tasks = [task()];
-    expect(stats(d, '2027-01-10').overdueTasks).toBe(1);
+    expect(stats(d, '2027-01-10').overdueTasks).toBe(0);
+    expect(d.tasks).toHaveLength(1); // Removing alerts never removes the task.
     d.projects[0].archived = true;
     expect(stats(d, '2027-01-10').overdueTasks).toBe(0);
   });

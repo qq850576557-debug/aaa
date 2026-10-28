@@ -67,6 +67,22 @@ test('V1.1 additive upgrade retains old identities, password hash, business rows
     );
     assert.equal((await db.query('SELECT count(*)::int n FROM project')).rows[0].n, 1);
     assert.equal((await db.query('SELECT count(*)::int n FROM daily_assessment')).rows[0].n, 0);
+    for (const table of [
+      'purchase_record',
+      'purchase_action',
+      'material_transfer',
+      'transfer_submission',
+      'card_avatar',
+    ])
+      assert.equal((await db.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n, 0, table);
+    await db.query(
+      "INSERT INTO member_card(workspace_id,account_id) VALUES('old-workspace','old-owner')",
+    );
+    assert.equal(
+      (await db.query("SELECT job_title FROM member_card WHERE account_id='old-owner'")).rows[0]
+        .job_title,
+      '',
+    );
     assert.equal((await db.query('SELECT count(*)::int n FROM assessment_history')).rows[0].n, 0);
     assert.equal(
       (await db.query("SELECT login_key FROM account WHERE id='old-legacy-separators'")).rows[0]

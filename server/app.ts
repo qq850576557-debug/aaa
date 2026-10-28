@@ -1,3 +1,5 @@
+import { transferRoutes } from './transfers';
+import { purchaseRoutes } from './purchases';
 import { materialRoutes } from './materials';
 import { memberCardRoutes } from './member-cards';
 import { assessmentRoutes } from './assessments';
@@ -124,8 +126,10 @@ export function createApp() {
     req.actor!.auditDevice = auditDevice(req.get('user-agent') ?? '');
     next();
   });
+  purchaseRoutes(app);
   assessmentRoutes(app);
   materialRoutes(app);
+  transferRoutes(app);
   memberCardRoutes(app, announcePresence);
   app.get('/api/auth/session', (req: AuthRequest, res) => {
     const { auditDevice: _device, ...user } = req.actor!;
@@ -199,6 +203,60 @@ export function createApp() {
     try {
       const q = await pool.query(
         'SELECT v.png FROM account_avatar v JOIN account a ON a.id=v.account_id WHERE a.id=$1 AND a.workspace_id=$2 AND a.active=true',
+        [req.params.id, req.actor!.workspaceId],
+      );
+      if (!q.rowCount) throw new ApiError(404, '头像不存在');
+      res.type('png').send(q.rows[0].png);
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.put('/api/auth/card-avatar', async (req: AuthRequest, res, next) => {
+    try {
+      const body = z
+        .object({ image: z.string().max(2800000) })
+        .strict()
+        .parse(req.body);
+      const png = validateAvatar(body.image);
+      await transaction(async (c) => {
+        await c.query(
+          'INSERT INTO card_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now()',
+          [req.actor!.id, png, randomUUID()],
+        );
+        await audit(c, req.actor!, 'account.card-avatar', undefined, {
+          entityType: 'account',
+          entityId: req.actor!.id,
+          operation: 'update',
+          changedFields: ['avatar'],
+        });
+      });
+      announcePresence(req.actor!.workspaceId);
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.delete('/api/auth/card-avatar', async (req: AuthRequest, res, next) => {
+    try {
+      await transaction(async (c) => {
+        await c.query('DELETE FROM card_avatar WHERE account_id=$1', [req.actor!.id]);
+        await audit(c, req.actor!, 'account.card-avatar', undefined, {
+          entityType: 'account',
+          entityId: req.actor!.id,
+          operation: 'update',
+          changedFields: ['avatar'],
+        });
+      });
+      announcePresence(req.actor!.workspaceId);
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.get('/api/accounts/:id/card-avatar', async (req: AuthRequest, res, next) => {
+    try {
+      const q = await pool.query(
+        'SELECT v.png FROM card_avatar v JOIN account a ON a.id=v.account_id WHERE a.id=$1 AND a.workspace_id=$2 AND a.active=true',
         [req.params.id, req.actor!.workspaceId],
       );
       if (!q.rowCount) throw new ApiError(404, '头像不存在');

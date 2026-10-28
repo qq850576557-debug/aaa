@@ -4,9 +4,11 @@ import { cloudApi, cloudSession, type CloudUser } from '../lib/cloud';
 export function AvatarEditor({
   user,
   onUpdated,
+  kind = 'system',
 }: {
   user: CloudUser;
   onUpdated: (user: CloudUser) => void;
+  kind?: 'system' | 'card';
 }) {
   const [candidate, setCandidate] = useState(''),
     [error, setError] = useState(''),
@@ -57,7 +59,11 @@ export function AvatarEditor({
     setBusy(true);
     setError('');
     try {
-      await cloudApi('/auth/avatar', remove ? 'DELETE' : 'PUT', remove ? {} : { image: candidate });
+      await cloudApi(
+        kind === 'card' ? '/auth/card-avatar' : '/auth/avatar',
+        remove ? 'DELETE' : 'PUT',
+        remove ? {} : { image: candidate },
+      );
       const updated = await cloudSession();
       onUpdated(updated);
       window.dispatchEvent(new CustomEvent('chunmo-profile-updated', { detail: updated }));
@@ -72,15 +78,20 @@ export function AvatarEditor({
   }
   return (
     <details className="account-card avatar-editor">
-      <summary>头像设置</summary>
+      <summary>{kind === 'card' ? '名片头像设置' : '头像设置'}</summary>
       <div className="avatar-preview">
-        <Avatar account={user} source={candidate || undefined} label="头像预览" />
+        <Avatar
+          account={user}
+          source={candidate || undefined}
+          kind={kind}
+          label={kind === 'card' ? '名片头像预览' : '头像预览'}
+        />
       </div>
       <label>
         选择头像
         <input
           type="file"
-          aria-label="选择头像"
+          aria-label={kind === 'card' ? '选择名片头像' : '选择头像'}
           accept="image/png,image/jpeg,image/webp"
           disabled={busy}
           onChange={(e) => {
@@ -100,7 +111,7 @@ export function AvatarEditor({
           </button>
         </div>
       )}
-      {user.avatarVersion && (
+      {(kind === 'card' ? user.cardAvatarVersion : user.avatarVersion) && (
         <button disabled={busy} onClick={() => void save(true)}>
           恢复默认头像
         </button>

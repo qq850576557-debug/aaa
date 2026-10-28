@@ -1,0 +1,158 @@
+/* V1.1 workflow surfaces; preserve the established brand and touch sizes. */
+.material-workarea {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.material-workarea[hidden] {
+  display: none;
+}
+.material-project-context {
+  padding: 10px 12px;
+  background: #edf3e9;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.transfer-card {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid #dfe6dc;
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.transfer-card p {
+  margin: 7px 0;
+  font-size: 13px;
+}
+.purchase-trace {
+  font-size: 12px;
+  color: #546a5d;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.purchase-trace p {
+  margin: 5px 0;
+}
+.brief-panel .brief-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.brief-toggle {
+  flex-shrink: 0;
+  font-size: 12px;
+  padding: 4px 8px;
+  min-height: 30px;
+}
+.homepage .brief-panel.brief-expanded .brief-content {
+  max-height: 420px;
+}
+.brief-panel .brief-actions {
+  flex-wrap: wrap;
+}
+.brief-panel small {
+  font-size: 12px;
+}
+.homepage .stats-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.online-accounts {
+  gap: 8px;
+  max-width: 45%;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  min-width: 0;
+  flex: 0 1 auto;
+  padding: 3px;
+}
+.online-accounts > span + span {
+  margin-left: 0;
+}
+.online-accounts > span {
+  flex-shrink: 0;
+}
+.personal-avatar-button {
+  padding: 0;
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.personal-settings {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+.personal-card-dialog .member-cards-grid {
+  grid-template-columns: 1fr;
+}
+.personal-card-dialog .member-cards-section > .section-heading {
+  margin-top: 0;
+}
+.personal-card-dialog {
+  max-width: 430px;
+}
+.collaboration-bar .current-account {
+  min-width: 0;
+}
+.collaboration-bar .current-account strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar > .cloud-control {
+  flex-shrink: 0;
+}
+@media (max-width: 1150px) {
+  .homepage .stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .homepage .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .brief-toggle {
+    min-height: 40px;
+  }
+  .homepage .brief-panel.brief-expanded .brief-content {
+    max-height: 50vh;
+  }
+  .online-accounts {
+    gap: 8px;
+    max-width: 42%;
+  }
+  .transfer-card .toolbar button {
+    min-height: 40px;
+  }
+}
+.purchase-card {
+  flex-wrap: wrap;
+}
+.purchase-card > .purchase-trace {
+  flex: 1 0 100%;
+}
+.brief-panel .brief-content {
+  transition: max-height 0.18s ease;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .brief-panel .brief-content {
+    transition: none;
+  }
+}
+.app-shell .topbar .online-accounts {
+  max-width: 45%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 8px;
+  flex-shrink: 1;
+}
+.app-shell .topbar .online-accounts > span + span {
+  margin-left: 0;
+}

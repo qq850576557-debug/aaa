@@ -8,6 +8,7 @@
     "server/**/*.ts",
     "scripts/cloud-provision.ts",
     "scripts/cloud-owner.ts",
+    "scripts/test-v11-restore.ts",
     "deploy/native/**/*.ts"
   ]
 }

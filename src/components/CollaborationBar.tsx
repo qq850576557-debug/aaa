@@ -1,3 +1,4 @@
+import { PersonalCard } from './PersonalCard';
 import { Avatar } from './Avatar';
 import { useEffect, useState } from 'react';
 import { cloudApi, type CloudUser } from '../lib/cloud';
@@ -8,6 +9,7 @@ export type OnlineAccount = {
   avatarVersion: string | null;
 };
 export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; isCloud: boolean }) {
+  const [card, setCard] = useState(false);
   const [online, setOnline] = useState<OnlineAccount[]>([]);
   const [limit, setLimit] = useState(() => (matchMedia('(max-width:950px)').matches ? 2 : 5));
   useEffect(() => {
@@ -41,8 +43,17 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
   }, [isCloud]);
   return (
     <div className="collaboration-bar">
+      {card && user && <PersonalCard user={user} onClose={() => setCard(false)} />}
       <div className="current-account">
-        {user && <Avatar account={user} />}
+        {user && (
+          <button
+            className="personal-avatar-button"
+            aria-label="打开我的个人名片"
+            onClick={() => setCard(true)}
+          >
+            <Avatar account={user} />
+          </button>
+        )}
         <strong title={user?.login}>{user?.displayName || user?.login || '本地工作空间'}</strong>
       </div>
       <div className="online-accounts" aria-label="在线协作人员">

@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { trackPurchases } from './purchase-tracking';
 import { businessAuditChanges, safeActorDisplayName, type AuditDevice } from './audit';
 type Db = Pick<PoolClient, 'query'>;
 import { randomUUID, createHash } from 'node:crypto';
@@ -36,6 +37,7 @@ export type Actor = {
   owner: boolean;
   displayName?: string;
   avatarVersion?: string | null;
+  cardAvatarVersion?: string | null;
   auditDevice?: AuditDevice;
 };
 export async function getState(c: Db, workspaceId: string, lock = 'SHARE') {
@@ -219,6 +221,7 @@ export async function commit(
       : r,
   );
   const revision = prior.revision + 1;
+  await trackPurchases(c, a, prior.data, result.data, !!(opts?.importing || opts?.restoreId));
   await graph(c, a.workspaceId, result.data);
   await c.query('UPDATE workspace_state SET revision=$2,data=$3,history=$4 WHERE workspace_id=$1', [
     a.workspaceId,

@@ -21,6 +21,11 @@ export type DirectoryAccount = {
 };
 export function CloudControl({ isCloud, dirty }: { isCloud: boolean; dirty: boolean }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const openSettings = () => setOpen(true);
+    window.addEventListener('chunmo-open-account-settings', openSettings);
+    return () => window.removeEventListener('chunmo-open-account-settings', openSettings);
+  }, []);
   return (
     <>
       <button className="cloud-control" onClick={() => setOpen(true)}>

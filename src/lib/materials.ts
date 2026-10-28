@@ -28,6 +28,7 @@ export const projectMaterialSchema = z
     layout: text,
     grade: text,
     design: text,
+    transportRate: money.optional(),
   })
   .strict();
 export type MaterialProject = z.infer<typeof projectMaterialSchema> & {
@@ -54,6 +55,8 @@ export const contextSchema = z
     budgetPrice: money,
     progress: z.number().min(0).max(100),
     finalized: z.boolean(),
+    actualWorkers: z.number().int().min(0).max(10000).optional(),
+    actualDays: z.number().min(0).max(100000).optional(),
   })
   .strict();
 export type MaterialContext = z.infer<typeof contextSchema> & {
@@ -72,6 +75,10 @@ export const eventKinds = [
   'loss_crew',
   'supplier_return',
   'transfer',
+  'transfer_dispatch',
+  'transfer_receive',
+  'transfer_return',
+  'transfer_loss',
   'count_site',
   'count_crew',
   'adjust_in',
@@ -91,7 +98,11 @@ export const eventLabels: Record<EventKind, string> = {
   loss_site: '确认现场库存损耗',
   loss_crew: '确认班组损耗',
   supplier_return: '退货给供应商',
-  transfer: '跨工地调拨',
+  transfer: '历史即时调拨',
+  transfer_dispatch: '调拨发出',
+  transfer_receive: '调拨接收',
+  transfer_return: '在途退回',
+  transfer_loss: '确认在途损耗',
   count_site: '现场库存盘点',
   count_crew: '班组库存盘点',
   adjust_in: '盘盈核实入账',
@@ -206,6 +217,8 @@ export type Stock = {
   loss: bigint;
   usedValue: bigint;
   lossValue: bigint;
+  transitLoss: bigint;
+  transitLossValue: bigint;
   closed: boolean;
   lastDate: string;
   counts: Map<
@@ -223,7 +236,8 @@ export type Stock = {
 export const stockKey = (projectId: string, materialId: string) =>
   JSON.stringify([projectId, materialId]);
 export function inventory(events: MaterialEvent[]) {
-  const stocks = new Map<string, Stock>(),
+  const transit = new Map<string, Bucket>(),
+    stocks = new Map<string, Stock>(),
     trace = new Map<
       string,
       { event: MaterialEvent; cost: bigint; apply: (direction: bigint) => void }
@@ -252,6 +266,8 @@ export function inventory(events: MaterialEvent[]) {
         loss: 0n,
         usedValue: 0n,
         lossValue: 0n,
+        transitLoss: 0n,
+        transitLossValue: 0n,
         closed: false,
         lastDate: '',
         counts: new Map(),
@@ -406,6 +422,41 @@ export function inventory(events: MaterialEvent[]) {
             s.vendorReturn += q * d;
           };
         }
+        if (e.kind.startsWith('transfer_')) {
+          if (!e.referenceId || !e.targetProjectId || e.projectId === e.targetProjectId)
+            throw Error('调拨关联无效');
+          if (!transit.has(e.referenceId)) transit.set(e.referenceId, { qty: 0n, value: 0n });
+          const holding = transit.get(e.referenceId)!,
+            dest = stock(e.targetProjectId, e.materialId);
+          if (e.kind === 'transfer_dispatch') {
+            if (dest.closed) throw Error('接收工地台账已关闭，不能发出');
+            cost = take(s.site);
+            apply = (d) => {
+              move(s.site, holding, d);
+              s.transferOut += q * d;
+            };
+          } else {
+            cost = take(holding);
+            apply = (d) => {
+              if (e.kind === 'transfer_receive') {
+                if (dest.closed) throw Error('接收工地台账已关闭');
+                move(holding, dest.site, d);
+                dest.transferIn += q * d;
+              }
+              if (e.kind === 'transfer_return') {
+                move(holding, s.site, d);
+                s.transferIn += q * d;
+              }
+              if (e.kind === 'transfer_loss') {
+                move(holding, undefined, d);
+                s.transitLoss += q * d;
+                s.transitLossValue += cost * d;
+              }
+            };
+          }
+          dest.lastDate = e.date;
+          dest.siteDate = e.date;
+        }
         if (e.kind === 'transfer') {
           if (e.targetProjectId === e.projectId || !e.targetProjectId)
             throw Error('请选择不同的接收工地');
@@ -481,7 +532,7 @@ export function inventory(events: MaterialEvent[]) {
       for (const b of [x.site, ...x.crews.values()])
         if (b.qty < 0n || b.value < 0n) throw Error('冲销导致数量或价值为负，请先核对后续流水');
   }
-  return { stocks, trace, contextUse, reversed };
+  return { stocks, trace, contextUse, reversed, transit };
 }
 export function stockDTO(s: Stock) {
   const crews = [...s.crews].map(([contextId, b]) => ({
@@ -509,6 +560,8 @@ export function stockDTO(s: Stock) {
     vendorReturn: decimal(s.vendorReturn),
     used: decimal(s.used),
     loss: decimal(s.loss),
+    transitLoss: decimal(s.transitLoss),
+    transitLossCost: yuan(s.transitLossValue),
     usedCost: yuan(s.usedValue),
     lossCost: yuan(s.lossValue),
     closed: s.closed,
@@ -565,6 +618,8 @@ export function materialAnalysis(state: MaterialState, data: Data) {
       c.basisKind === 'area_coats' ? c.coats : 1,
       c.process,
       c.paving,
+      c.actualWorkers || null,
+      c.actualDays || null,
       p?.projectType,
       p?.layout,
       p?.grade,
@@ -673,6 +728,13 @@ export function materialAnalysis(state: MaterialState, data: Data) {
           )
         : null;
       const unitCost = denom > 0 ? Number(use.cost) / 1e6 / denom : null;
+      const below =
+        !ownMissing.length &&
+        c.finalized &&
+        c.progress === 100 &&
+        lower !== null &&
+        current !== null &&
+        current < lower;
       const risk: Risk = {
         key: 'usage:' + c.id,
         projectId: c.projectId,
@@ -681,10 +743,14 @@ export function materialAnalysis(state: MaterialState, data: Data) {
         level:
           actual > budget && budget > 0
             ? '高'
-            : !ownMissing.length && excess! > 0
+            : (!ownMissing.length && excess! > 0) || below
               ? '关注'
               : '提示',
-        reason: actual > budget && budget > 0 ? '已确认使用及损耗超过预算用量；' + reason : reason,
+        reason: below
+          ? '已完成核算的单位用量低于同类参考下限，需核查漏记或范围差异，不据此判断责任'
+          : actual > budget && budget > 0
+            ? '已确认使用及损耗超过预算用量；' + reason
+            : reason,
         samples: values.length,
         references,
         missing: ownMissing,
@@ -711,7 +777,8 @@ export function materialAnalysis(state: MaterialState, data: Data) {
           '查看参考项目原始流水，人工复核后再下结论',
         ],
       };
-      if ((budget > 0 && actual > budget) || (!ownMissing.length && excess! > 0)) risks.push(risk);
+      if (below || (budget > 0 && actual > budget) || (!ownMissing.length && excess! > 0))
+        risks.push(risk);
       return {
         ...risk,
         id: c.id,
@@ -742,6 +809,8 @@ export function materialAnalysis(state: MaterialState, data: Data) {
         costVariance: yuan(use.cost - milli(c.budgetQty) * cents(c.budgetPrice) * 10n),
         lossRate: actual > 0 ? Number(use.loss) / 1000 / actual : null,
         progress: c.progress,
+        actualWorkers: c.actualWorkers ?? 0,
+        actualDays: c.actualDays ?? 0,
         complete: c.finalized,
       };
     });

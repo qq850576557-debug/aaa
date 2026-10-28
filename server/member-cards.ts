@@ -13,7 +13,7 @@ export function memberCardRoutes(app: Express, announce: (workspaceId: string) =
         async (c) =>
           (
             await c.query(
-              `SELECT a.id,a.login,coalesce(nullif(a.display_name,''),a.login) AS "displayName",a.active,(w.owner_account_id=a.id) AS owner,v.version AS "avatarVersion",coalesce(m.english_name,'') AS "englishName",m.department_id AS "departmentId",d.name AS "departmentName",d.english_name AS "departmentEnglishName",to_char(m.joined_on,'YYYY-MM-DD') AS "joinedOn" FROM account a JOIN cloud_workspace w ON w.id=a.workspace_id LEFT JOIN member_card m ON m.account_id=a.id AND m.workspace_id=a.workspace_id LEFT JOIN department d ON d.workspace_id=a.workspace_id AND d.id=m.department_id LEFT JOIN account_avatar v ON v.account_id=a.id WHERE a.workspace_id=$1 ORDER BY a.active DESC,a.login`,
+              `SELECT a.id,a.login,coalesce(nullif(a.display_name,''),a.login) AS "displayName",a.active,(w.owner_account_id=a.id) AS owner,v.version AS "avatarVersion",cv.version AS "cardAvatarVersion",coalesce(m.job_title,'') AS "jobTitle",coalesce(m.english_name,'') AS "englishName",m.department_id AS "departmentId",d.name AS "departmentName",d.english_name AS "departmentEnglishName",to_char(m.joined_on,'YYYY-MM-DD') AS "joinedOn" FROM account a JOIN cloud_workspace w ON w.id=a.workspace_id LEFT JOIN member_card m ON m.account_id=a.id AND m.workspace_id=a.workspace_id LEFT JOIN department d ON d.workspace_id=a.workspace_id AND d.id=m.department_id LEFT JOIN account_avatar v ON v.account_id=a.id LEFT JOIN card_avatar cv ON cv.account_id=a.id WHERE a.workspace_id=$1 ORDER BY a.active DESC,a.login`,
               [a.workspaceId],
             )
           ).rows,
@@ -148,8 +148,16 @@ export function memberCardRoutes(app: Express, announce: (workspaceId: string) =
       b.displayName,
     ]);
     await c.query(
-      'INSERT INTO member_card(workspace_id,account_id,english_name,department_id,joined_on) VALUES($1,$2,$3,$4,$5) ON CONFLICT(workspace_id,account_id) DO UPDATE SET english_name=$3,department_id=$4,joined_on=$5,updated_at=now()',
-      [a.workspaceId, target, b.englishName, departmentId, b.joinedOn || null],
+      'INSERT INTO member_card(workspace_id,account_id,english_name,department_id,joined_on,job_title) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(workspace_id,account_id) DO UPDATE SET english_name=$3,department_id=$4,joined_on=$5,job_title=CASE WHEN $7 THEN $6 ELSE member_card.job_title END,updated_at=now()',
+      [
+        a.workspaceId,
+        target,
+        b.englishName,
+        departmentId,
+        b.joinedOn || null,
+        'jobTitle' in b ? (b.jobTitle ?? '') : '',
+        'jobTitle' in b,
+      ],
     );
     // General audit is readable by employees: never include employment dates/values.
     await audit(c, a, 'account.card', undefined, {
@@ -159,7 +167,7 @@ export function memberCardRoutes(app: Express, announce: (workspaceId: string) =
       changedFields: [
         'displayName',
         'englishName',
-        ...(managed ? ['departmentId'] : []),
+        ...(managed ? ['departmentId', 'jobTitle'] : []),
         'privateProfileChanged',
       ],
     });

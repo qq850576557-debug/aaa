@@ -24,11 +24,10 @@ for (const width of widths)
     const original = await start(page, true);
     await expect(page.locator('.app-shell')).toHaveClass(/homepage/);
     const stats = page.locator('.stat-card');
-    await expect(stats).toHaveCount(6);
+    await expect(stats).toHaveCount(5);
     expect(await stats.locator('strong').allTextContents()).toEqual([
       '1',
       '1',
-      '暂无',
       '暂无',
       '暂无',
       '暂无',
@@ -44,7 +43,7 @@ for (const width of widths)
     expect(new Set(geometry.map((g) => g.h)).size).toBe(1);
     expect(new Set(geometry.map((g) => Math.round(g.offset))).size).toBe(1);
     const topRow = geometry.filter((g) => g.y === geometry[0].y);
-    expect(topRow).toHaveLength(width >= 1280 ? 6 : width === 1024 ? 3 : 2);
+    expect(topRow).toHaveLength(width >= 1280 ? 5 : width === 1024 ? 3 : 2);
     const cards = page.locator('.workspace-brief .panel');
     await expect(cards).toHaveCount(4);
     const boxes = await cards.evaluateAll((es) => es.map((e) => e.getBoundingClientRect().height));
@@ -155,6 +154,7 @@ for (const width of [1280, 390])
     await restore(page, long);
     await closeToast(page);
     await expect.poll(async () => (await state(page)).purchases.length).toBe(8);
+    await today.getByRole('button', { name: '展开今日事项', exact: true }).click();
     const content = today.locator('.brief-content');
     expect(await content.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
     await today.getByRole('button', { name: '编辑采购检查清单材料7', exact: true }).click();

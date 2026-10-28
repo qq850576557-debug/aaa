@@ -6,6 +6,7 @@ export type CloudUser = {
   login: string;
   displayName?: string;
   avatarVersion?: string | null;
+  cardAvatarVersion?: string | null;
   owner: boolean;
 };
 export type CloudState = { data: Data; history: History; revision: number };

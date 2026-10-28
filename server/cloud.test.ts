@@ -8,10 +8,11 @@ import { createApp } from './app';
 import { pool, privatePool } from './db';
 import { fixtureAccounts } from './test-fixtures';
 import { config } from './config';
-import { emptyData, newProject, defaultTrades, type Data } from '../src/lib/model';
+import { emptyData, newProject, defaultTrades, today, type Data } from '../src/lib/model';
 import { migrate } from './migrate';
 import { maintain } from './maintenance';
 let server: Server, base: string;
+let testClientIp = '127.0.0.1';
 before(async () => {
   server = createServer(createApp());
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -35,6 +36,7 @@ async function request(
     method,
     headers: {
       Origin: config.APP_ORIGIN,
+      'X-Forwarded-For': testClientIp,
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...(client ? { Cookie: client.cookie, 'X-CSRF-Token': client.csrf } : {}),
       ...headers,
@@ -1826,27 +1828,29 @@ async function materialFixture() {
     patch: Record<string, unknown> = {},
     client = base.a,
   ) =>
-    request(
-      '/materials/events',
-      'POST',
-      {
-        requestId: randomUUID(),
-        kind,
-        quantity,
-        inputUnit: 'm²',
-        unitPrice: '10',
-        date: '2026-10-01',
-        projectId: d.projects[0].id,
-        materialId: material.id,
-        contextId: context.id,
-        targetProjectId: '',
-        purchaseId: '',
-        referenceId: '',
-        reason: '现场核对原始单据',
-        ...patch,
-      },
-      client,
-    );
+    kind === 'transfer'
+      ? completedTransfer(base.a.user.id, d, material.id, quantity, patch, client)
+      : request(
+          '/materials/events',
+          'POST',
+          {
+            requestId: randomUUID(),
+            kind,
+            quantity,
+            inputUnit: 'm²',
+            unitPrice: '10',
+            date: today(),
+            projectId: d.projects[0].id,
+            materialId: material.id,
+            contextId: context.id,
+            targetProjectId: '',
+            purchaseId: '',
+            referenceId: '',
+            reason: '现场核对原始单据',
+            ...patch,
+          },
+          client,
+        );
   const state = async (client = base.a) => {
     const r = await request('/materials', 'GET', undefined, client);
     assert.equal(r.status, 200, await r.clone().text());
@@ -2066,7 +2070,7 @@ test('materials: concurrent transfers and CAS prevent overselling/overwrites, im
   ]);
   assert.deepEqual(race.map((r) => r.status).sort(), [200, 409]);
   const successful = await race.find((r) => r.status === 200)!.json();
-  assert.equal((await x.event('reverse', '0', { referenceId: successful.id })).status, 200);
+  assert.equal((await x.event('reverse', '0', { referenceId: successful.id })).status, 409); // Received transfers are not reversible ledger edits.
   assert.equal((await x.event('reverse', '0', { referenceId: successful.id })).status, 409);
   assert.equal((await x.event('issue', '20')).status, 200);
   assert.equal((await x.event('use', '20')).status, 200);
@@ -2162,4 +2166,325 @@ test('materials: concurrent transfers and CAS prevent overselling/overwrites, im
   assert.deepEqual(restored.alerts, before.alerts);
   assert.equal((await request('/materials/refresh-alerts', 'POST', {}, x.a)).status, 200);
   assert.deepEqual((await x.state()).events, before.events);
+});
+async function completedTransfer(
+  handlerId: string,
+  d: Data,
+  materialId: string,
+  quantity: string,
+  patch: Record<string, unknown>,
+  client: Client,
+) {
+  let r = await request(
+    '/materials/transfers',
+    'POST',
+    {
+      requestId: randomUUID(),
+      projectId: patch.projectId ?? d.projects[0].id,
+      targetProjectId: patch.targetProjectId,
+      materialId,
+      quantity,
+      handlerId,
+      transportCost: '0',
+      reason: '测试完整交接',
+    },
+    client,
+  );
+  if (r.status !== 200) return r;
+  let t = await r.clone().json();
+  for (const action of ['approve', 'dispatch', 'receive']) {
+    r = await request(
+      '/materials/transfers/' + t.id,
+      'POST',
+      {
+        requestId: randomUUID(),
+        version: t.version,
+        action,
+        quantity,
+        reason: '测试交接 ' + action,
+      },
+      client,
+    );
+    if (r.status !== 200) return r;
+    t = await r.clone().json();
+  }
+  return r;
+}
+test('V1.1 purchases: trusted provenance, completion/reopen history, deletion retention, role checks and re-login persistence', async () => {
+  testClientIp = '192.0.2.10'; // Isolate synthetic clients without disabling rate limits.
+
+  const { a, b, f } = await setup();
+  let s = await (await request('/workspace', 'PUT', { revision: 0, data: data() }, a)).json();
+  const id = s.data.purchases[0].id;
+  const change = async (client: Client, status: string) => {
+    const d = structuredClone(s.data);
+    d.purchases[0].status = status;
+    const r = await request('/workspace', 'PUT', { revision: s.revision, data: d }, client);
+    if (r.status === 200) s = await r.clone().json();
+    return r;
+  };
+  assert.equal((await change(b, '已完成')).status, 200);
+  let meta = (await (await request('/purchase-records', 'GET', undefined, b)).json()).records.find(
+    (x: any) => x.id === id,
+  );
+  assert.ok(meta.createdAt);
+  assert.ok(meta.completedAt);
+  assert.equal(meta.createdName, a.user.displayName);
+  assert.equal(meta.completedName, b.user.displayName);
+  assert.equal((await change(b, '待采购')).status, 403);
+  assert.equal((await change(a, '待采购')).status, 200);
+  assert.equal((await change(b, '已完成')).status, 200);
+  const bad = structuredClone(s.data);
+  bad.purchases[0].completedBy = a.user.id;
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: s.revision, data: bad }, b)).status,
+    400,
+  );
+  const events = (
+    await (await request('/purchase-records/' + id + '/history', 'GET', undefined, b)).json()
+  ).events;
+  assert.deepEqual(
+    events.map((e: any) => e.operation),
+    ['创建', '完成', '恢复待采购', '完成'],
+  );
+  assert.equal(events[1].actorId, b.user.id);
+  assert.ok(events[1].at);
+  await request('/auth/logout', 'POST', {}, b);
+  const fresh = await login(f.employee, f.password);
+  assert.equal(
+    (await (await request('/workspace', 'GET', undefined, fresh)).json()).data.purchases[0].status,
+    '已完成',
+  );
+  const d = structuredClone(s.data);
+  d.purchases = [];
+  s = await (await request('/workspace', 'PUT', { revision: s.revision, data: d }, fresh)).json();
+  meta = (await (await request('/purchase-records', 'GET', undefined, a)).json()).records.find(
+    (x: any) => x.id === id,
+  );
+  assert.equal(meta.deleted, true);
+  assert.ok(meta.completedAt);
+  assert.equal(
+    (await request('/purchase-records/' + id + '/history', 'GET', undefined, a)).status,
+    200,
+  );
+  const forged = structuredClone(s.data);
+  forged.purchases = [{ ...events[0].after, status: '待采购' }];
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: s.revision, data: forged }, fresh)).status,
+    403,
+  );
+  const outsider = await setup();
+  assert.deepEqual(
+    (
+      await (
+        await request('/purchase-records/' + id + '/history', 'GET', undefined, outsider.a)
+      ).json()
+    ).events,
+    [],
+  );
+  const completeTime = meta.completedAt;
+  const restorePoint = s.history.records.findLast((r: any) => r.scope === s.data.projects[0].id);
+  assert.equal(
+    (await request('/history/restore', 'POST', { revision: s.revision, id: restorePoint.id }, a))
+      .status,
+    200,
+  );
+  const restoredMeta = (
+    await (await request('/purchase-records', 'GET', undefined, a)).json()
+  ).records.find((r: any) => r.id === id);
+  assert.equal(restoredMeta.deleted, false);
+  assert.equal(restoredMeta.completedAt, completeTime);
+});
+test('V1.1 transfer lifecycle: request reserves no destination stock, partial reception/returns/loss, roles, duplicate operations and history', async () => {
+  testClientIp = '192.0.2.11'; // Isolate synthetic clients without disabling rate limits.
+
+  const x = await materialFixture();
+  assert.equal((await x.event('opening', '100')).status, 200);
+  const create = {
+    requestId: randomUUID(),
+    projectId: x.d.projects[0].id,
+    targetProjectId: x.d.projects[1].id,
+    materialId: x.material.id,
+    quantity: '60',
+    handlerId: x.a.user.id,
+    transportCost: '12.50',
+    reason: '核对质量和后续需求',
+  };
+  assert.equal((await request('/materials/transfers', 'POST', create, x.b)).status, 403);
+  let t = await (await request('/materials/transfers', 'POST', create, x.a)).json();
+  assert.equal(t.status, '申请');
+  assert.equal((await x.state()).analysis.stocks[0].siteQty, '100.000');
+  assert.equal((await request('/materials/transfers', 'POST', create, x.a)).status, 200);
+  const act = async (action: string, quantity = '0', client = x.a, extra = {}) => {
+    const r = await request(
+      '/materials/transfers/' + t.id,
+      'POST',
+      {
+        requestId: randomUUID(),
+        version: t.version,
+        action,
+        quantity,
+        reason: '核验 ' + action,
+        ...extra,
+      },
+      client,
+    );
+    if (r.status === 200) t = await r.clone().json();
+    return r;
+  };
+  assert.equal((await act('dispatch')).status, 409);
+  assert.equal((await act('approve')).status, 200);
+  assert.equal((await act('dispatch')).status, 200);
+  let state = await x.state();
+  assert.equal(
+    state.analysis.stocks.find((s: any) => s.projectId === x.d.projects[0].id).siteQty,
+    '40.000',
+  );
+  assert.equal(
+    state.analysis.stocks.find((s: any) => s.projectId === x.d.projects[1].id).siteQty,
+    '0.000',
+  );
+  assert.equal((await act('cancel')).status, 409);
+  assert.equal((await act('receive', '25')).status, 200);
+  assert.equal(t.status, '部分接收');
+  assert.equal((await act('receive', '36')).status, 409);
+  const retry = {
+    requestId: randomUUID(),
+    version: t.version,
+    action: 'return',
+    quantity: '20',
+    reason: '退回未使用余量',
+  };
+  assert.equal((await request('/materials/transfers/' + t.id, 'POST', retry, x.a)).status, 200);
+  assert.equal((await request('/materials/transfers/' + t.id, 'POST', retry, x.a)).status, 200);
+  t = await (await request('/materials/transfers/' + t.id, 'POST', retry, x.a)).json();
+  assert.equal(t.returned, '20.000');
+  assert.equal(
+    (await request('/materials/transfers/' + t.id, 'POST', { ...retry, quantity: '21' }, x.a))
+      .status,
+    409,
+  );
+  await request('/materials/operators/' + x.b.user.id, 'PUT', { enabled: true }, x.a);
+  assert.equal((await act('loss', '15', x.b)).status, 403);
+  assert.equal((await act('loss', '15')).status, 200);
+  assert.equal(t.status, '差异关闭');
+  state = await x.state();
+  assert.equal(
+    state.analysis.stocks.find((s: any) => s.projectId === x.d.projects[0].id).siteQty,
+    '60.000',
+  );
+  assert.equal(
+    state.analysis.stocks.find((s: any) => s.projectId === x.d.projects[1].id).siteQty,
+    '25.000',
+  );
+  const history = (
+    await (await request('/materials/history/' + t.id, 'GET', undefined, x.a)).json()
+  ).events;
+  assert.equal(history.length, 6);
+  assert.equal(history[0].actorId, x.a.user.id);
+  const c = await request(
+    '/materials/transfers',
+    'POST',
+    { ...create, requestId: randomUUID(), quantity: '2' },
+    x.a,
+  );
+  t = await c.json();
+  assert.equal((await act('cancel')).status, 200);
+  assert.equal(t.status, '已取消');
+  assert.equal((await act('approve')).status, 409);
+  assert.equal(
+    (
+      await x.event('transfer_dispatch', '1', {
+        referenceId: t.id,
+        targetProjectId: x.d.projects[1].id,
+      })
+    ).status,
+    409,
+  );
+  // Deleting a reminder and restoring project history cannot erase material/transfer facts.
+  assert.equal((await x.event('order', '1', { purchaseId: x.d.purchases[0].id })).status, 200);
+  const transferBefore = await (
+      await request('/materials/transfers', 'GET', undefined, x.a)
+    ).json(),
+    materialBefore = await x.state();
+  const w = await (await request('/workspace', 'GET', undefined, x.a)).json(),
+    change = structuredClone(w.data);
+  change.purchases = [];
+  const changed = await (
+    await request('/workspace', 'PUT', { revision: w.revision, data: change }, x.a)
+  ).json();
+  assert.deepEqual((await x.state()).events, materialBefore.events);
+  const point = changed.history.records.findLast((r: any) => r.scope === x.d.projects[0].id);
+  assert.equal(
+    (await request('/history/restore', 'POST', { revision: changed.revision, id: point.id }, x.a))
+      .status,
+    200,
+  );
+  assert.deepEqual(
+    await (await request('/materials/transfers', 'GET', undefined, x.a)).json(),
+    transferBefore,
+  );
+  assert.deepEqual((await x.state()).events, materialBefore.events);
+});
+test('V1.1 separate card and system images: strict upload validation, privacy and reauthentication preserve independent bytes', async () => {
+  testClientIp = '192.0.2.12'; // Isolate synthetic clients without disabling rate limits.
+
+  const { PNG } = await import('pngjs');
+  const { a, b, f } = await setup();
+  const image = (n: number) => {
+    const p = new PNG({ width: 2, height: 2 });
+    p.data.fill(n);
+    return { image: 'data:image/png;base64,' + PNG.sync.write(p).toString('base64') };
+  };
+  assert.equal((await request('/auth/avatar', 'PUT', image(120), b)).status, 200);
+  const original = Buffer.from(
+    await (
+      await request('/accounts/' + f.employeeId + '/avatar', 'GET', undefined, a)
+    ).arrayBuffer(),
+  );
+  assert.equal((await request('/auth/card-avatar', 'PUT', image(210), b)).status, 200);
+  assert.notDeepEqual(
+    Buffer.from(
+      await (
+        await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, a)
+      ).arrayBuffer(),
+    ),
+    original,
+  );
+  assert.deepEqual(
+    Buffer.from(
+      await (
+        await request('/accounts/' + f.employeeId + '/avatar', 'GET', undefined, a)
+      ).arrayBuffer(),
+    ),
+    original,
+  );
+  assert.equal(
+    (await request('/auth/card-avatar', 'PUT', { ...image(20), accountId: f.id }, b)).status,
+    400,
+  );
+  const other = await setup();
+  assert.equal(
+    (await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, other.a)).status,
+    404,
+  );
+  await request('/auth/logout', 'POST', {}, b);
+  const fresh = await login(f.employee, f.password),
+    profile = await (await request('/auth/session', 'GET', undefined, fresh)).json();
+  assert.ok(profile.user.cardAvatarVersion);
+  assert.ok(profile.user.avatarVersion);
+  await request('/auth/avatar', 'DELETE', {}, fresh);
+  assert.equal(
+    (await request('/accounts/' + f.employeeId + '/avatar', 'GET', undefined, a)).status,
+    404,
+  );
+  assert.equal(
+    (await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, a)).status,
+    200,
+  );
+  assert.equal(
+    (await request('/auth/card-avatar', 'PUT', { image: 'data:image/png;base64,aGVsbG8=' }, fresh))
+      .status,
+    400,
+  );
 });

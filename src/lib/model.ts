@@ -422,9 +422,7 @@ export function stats(d: Data, now = today()) {
       (p) => purchaseDue(p, d) >= now && purchaseDue(p, d) <= plus(now, 15),
     ).length,
     overduePurchases: purchases.filter((p) => purchaseDue(p, d) < now).length,
-    overdueTasks: d.tasks.filter(
-      (t) => active.has(t.projectId) && t.status !== '已完成' && t.end < now,
-    ).length,
+    overdueTasks: 0, // Retired warning; preserve response shape for old consumers.
   };
 }
 export function removeProject(d: Data, pid: string): Data {

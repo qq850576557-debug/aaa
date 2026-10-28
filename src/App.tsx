@@ -1,10 +1,12 @@
+import { BriefPanel } from './components/BriefPanel';
+import { cloudApi } from './lib/cloud';
 import { MaterialsPanel, MaterialAlertSummary } from './components/MaterialsPanel';
 import { nextTradeColor } from './lib/trade-colors';
 import { CloudControl } from './components/CloudControl';
 import { ConflictPanel } from './components/ConflictPanel';
 import { scheduleForecast } from './lib/readiness';
 import { CollaborationBar } from './components/CollaborationBar';
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
   Archive,
@@ -166,6 +168,20 @@ export default function App() {
   const [projectStatusFilter, setProjectStatusFilter] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [onlyOpen, setOnlyOpen] = useState(false);
+  const [purchaseFilter, setPurchaseFilter] = useState('全部');
+  const [purchaseTracking, setPurchaseTracking] = useState<Record<string, any>>({});
+  useEffect(() => {
+    if (!isCloud) return;
+    let active = true;
+    void cloudApi<{ records: any[] }>('/purchase-records')
+      .then((r) => {
+        if (active) setPurchaseTracking(Object.fromEntries(r.records.map((x) => [x.id, x])));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [isCloud, data.purchases, status]);
   const { notices, notify, dismiss } = useNotices();
   const [exporting, setExporting] = useState(false);
   const [backup, setBackup] = useState(false);
@@ -411,7 +427,9 @@ export default function App() {
             ? '该工种及其施工任务将被删除，关联采购将保留当前计算的截止日期。操作无法撤销。'
             : current.kind === 'task'
               ? '该时间条将删除。采购保留当前截止日期并解除关联，事项与备注内容保留，前序引用将清理。操作无法撤销。'
-              : '此记录将永久删除。操作无法撤销。',
+              : current.kind === 'purchase'
+                ? '删除后不再提醒。云端保留操作历史，独立材料和库存流水不会删除。'
+                : '此记录将永久删除。操作无法撤销。',
       run: () => {
         mutate((d) => {
           if (current.kind === 'project') return removeProject(d, current.value.id);
@@ -557,6 +575,8 @@ export default function App() {
       (x) =>
         x.projectId === p?.id &&
         (!onlyOpen || !purchaseComplete(x)) &&
+        (purchaseFilter === '全部' ||
+          (purchaseFilter === '已完成' ? purchaseComplete(x) : !purchaseComplete(x))) &&
         `${x.name} ${x.notes} ${x.owner} ${x.quantity ?? ''} ${x.specification ?? ''}`
           .toLowerCase()
           .includes(search.toLowerCase()),
@@ -570,6 +590,10 @@ export default function App() {
         data={data}
         now={now}
         onEdit={() => purchaseEditor(x)}
+        onDelete={() => deleteEntity({ kind: 'purchase', value: x })}
+        isCloud={isCloud}
+        canReopen={!isCloud || !!cloudUser?.owner}
+        tracking={purchaseTracking[x.id]}
         onStatus={(status) => save('purchase', { ...x, due: purchaseDue(x, data), status })}
       />
     );
@@ -599,34 +623,6 @@ export default function App() {
             </button>
           </div>
         )}
-        <div className="panel" hidden={!!metricFilter && metricFilter !== '已逾期施工'}>
-          <h3>
-            <TriangleAlert size={18} />
-            逾期施工
-          </h3>
-          {data.tasks
-            .filter((t) => active.has(t.projectId) && t.status !== '已完成' && t.end < now)
-            .map((t) => (
-              <button
-                className="reminder-item"
-                key={t.id}
-                onClick={() => {
-                  setSelected(t.projectId);
-                  setArchived(false);
-                  setEdit({ kind: 'task', value: t });
-                }}
-              >
-                <span>
-                  <strong>{t.name}</strong>
-                  <small>{data.projects.find((x) => x.id === t.projectId)?.name}</small>
-                </span>
-                <em>{t.end} 到期</em>
-              </button>
-            ))}
-          {count.overdueTasks === 0 && (
-            <Empty small title="没有逾期施工" text="按计划推进，让每一步都有条不紊。" />
-          )}
-        </div>
         <div
           className="panel"
           hidden={
@@ -981,13 +977,6 @@ export default function App() {
                   icon: <TriangleAlert />,
                   target: 'reminders',
                 },
-                {
-                  label: '已逾期施工',
-                  value: count.overdueTasks,
-                  unit: '段需要跟进',
-                  icon: <CalendarDays />,
-                  target: 'reminders',
-                },
               ] as const
             ).map((s, i) => (
               <button
@@ -1084,22 +1073,37 @@ export default function App() {
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <div className="workspace-brief">
                       <div className="lower-grid" id="project-today">
-                        <section className="panel" data-testid="today-panel">
-                          <header className="brief-heading">
-                            <h2>
-                              今日事项{' '}
-                              {procurement.today.length + dailyNotes.filter((n) => !n.done).length >
-                                0 && (
-                                <span className="count">
-                                  {procurement.today.length +
-                                    dailyNotes.filter((n) => !n.done).length}
-                                </span>
-                              )}
-                            </h2>
-                          </header>
-                          <div className="brief-content">
-                            {procurement.today.map(purchaseCard)}
-                            {dailyNotes.map((n) => (
+                        <BriefPanel
+                          key={'today' + p.id}
+                          title="今日事项"
+                          testId="today-panel"
+                          items={[
+                            ...procurement.today.map(purchaseCard),
+                            ...dailyNotes.map((n) => (
+                              <NoteCard
+                                key={n.id}
+                                note={n}
+                                onEdit={() => noteEditor(n)}
+                                onToggle={() => save('note', { ...n, done: !n.done })}
+                                onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                              />
+                            )),
+                          ]}
+                          actions={
+                            <button className="text-btn" onClick={() => noteEditor()}>
+                              <Plus size={14} />
+                              添加采购事项
+                            </button>
+                          }
+                        />
+                        <BriefPanel
+                          key={'memo' + p.id}
+                          title="项目备忘"
+                          className="memo-panel"
+                          items={data.notes
+                            .filter((n) => n.projectId === p.id && n.kind === '项目备忘')
+                            .sort((a, b) => Number(b.pinned) - Number(a.pinned))
+                            .map((n) => (
                               <NoteCard
                                 key={n.id}
                                 note={n}
@@ -1108,100 +1112,48 @@ export default function App() {
                                 onPin={() => save('note', { ...n, pinned: !n.pinned })}
                               />
                             ))}
-                            {!procurement.today.length && !dailyNotes.length && (
-                              <p className="brief-empty">暂无</p>
-                            )}
-                          </div>
-                          <footer className="brief-actions">
-                            <button className="text-btn" onClick={() => noteEditor()}>
-                              <Plus size={14} />
-                              添加采购事项
-                            </button>
-                          </footer>
-                        </section>
-                        <section className="panel memo-panel">
-                          <header className="brief-heading">
-                            <h2>项目备忘</h2>
-                          </header>
-                          <div className="brief-content">
-                            {data.notes
-                              .filter((n) => n.projectId === p.id && n.kind === '项目备忘')
-                              .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-                              .slice(0, 3)
-                              .map((n) => (
-                                <NoteCard
-                                  key={n.id}
-                                  note={n}
-                                  onEdit={() => noteEditor(n)}
-                                  onToggle={() => save('note', { ...n, done: !n.done })}
-                                  onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                                />
-                              ))}
-                            {!data.notes.some(
-                              (n) => n.projectId === p.id && n.kind === '项目备忘',
-                            ) && <p className="brief-empty">暂无</p>}
-                          </div>
-                          <footer className="brief-actions">
-                            <button
-                              className="text-btn"
-                              onClick={() => noteEditor(undefined, '', true)}
-                            >
-                              <Plus size={14} />
-                              添加
-                            </button>
-                            <button className="text-btn" onClick={() => go('notes')}>
-                              查看全部事项与备忘
-                              <ArrowRight size={14} />
-                            </button>
-                          </footer>
-                        </section>
+                          actions={
+                            <>
+                              <button
+                                className="text-btn"
+                                onClick={() => noteEditor(undefined, '', true)}
+                              >
+                                <Plus size={14} />
+                                添加
+                              </button>
+                              <button className="text-btn" onClick={() => go('notes')}>
+                                查看全部事项与备忘
+                                <ArrowRight size={14} />
+                              </button>
+                            </>
+                          }
+                        />
                       </div>
                       <div className="project-alerts" id="project-procurement">
-                        <section className="panel" data-testid="upcoming-panel">
-                          <header className="brief-heading">
-                            <h3>未来 15 天采购</h3>
-                          </header>
-                          <div className="brief-content">
-                            {procurement.upcoming.map(purchaseCard)}
-                            {!procurement.upcoming.length && <p className="brief-empty">暂无</p>}
-                          </div>
-                          <footer className="brief-actions">
+                        <BriefPanel
+                          key={'upcoming' + p.id}
+                          title="未来15天采购"
+                          testId="upcoming-panel"
+                          items={procurement.upcoming.map(purchaseCard)}
+                          actions={
                             <button className="text-btn" onClick={() => purchaseEditor()}>
                               <Plus size={14} />
                               添加采购
                             </button>
-                          </footer>
-                        </section>
-                        <section className="panel" data-testid="overdue-panel">
-                          <header className="brief-heading">
-                            <h3>逾期提醒</h3>
-                          </header>
-                          <div className="brief-content">
-                            {procurement.overdue.map(purchaseCard)}
-                            {projectTasks
-                              .filter((t) => t.status !== '已完成' && t.end < now)
-                              .map((t) => (
-                                <button
-                                  key={t.id}
-                                  className="reminder-item"
-                                  onClick={() => taskEditor(t)}
-                                >
-                                  <strong>{t.name} · 施工逾期</strong>
-                                  <em>{t.end}</em>
-                                </button>
-                              ))}
-                            {!procurement.overdue.length &&
-                              !projectTasks.some((t) => t.status !== '已完成' && t.end < now) && (
-                                <p className="brief-empty">暂无</p>
-                              )}
-                          </div>
-                          <footer className="brief-actions">
+                          }
+                        />
+                        <BriefPanel
+                          key={'overdue' + p.id}
+                          title="逾期提醒"
+                          testId="overdue-panel"
+                          items={procurement.overdue.map(purchaseCard)}
+                          actions={
                             <button className="text-btn" onClick={() => go('reminders')}>
                               查看提醒
                               <ArrowRight size={14} />
                             </button>
-                          </footer>
-                        </section>
+                          }
+                        />
                       </div>
                     </div>
                   )}
@@ -1300,6 +1252,21 @@ export default function App() {
                             onChange={(e) => setSearch(e.target.value)}
                           />
                         </div>
+                        <label>
+                          采购状态
+                          <select
+                            aria-label="采购记录筛选"
+                            value={purchaseFilter}
+                            onChange={(e) => {
+                              setPurchaseFilter(e.target.value);
+                              setOnlyOpen(false);
+                            }}
+                          >
+                            <option>全部</option>
+                            <option>待采购</option>
+                            <option>已完成</option>
+                          </select>
+                        </label>
                         <label className="check">
                           <input
                             type="checkbox"

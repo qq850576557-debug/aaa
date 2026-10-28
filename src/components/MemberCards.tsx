@@ -14,8 +14,10 @@ import './member-cards.css';
 export function MemberCards({
   user,
   onSaved,
+  onlyId,
 }: {
   user: CloudUser;
+  onlyId?: string;
   onSaved: (card: MemberCard) => Promise<void>;
 }) {
   const [cards, setCards] = useState<MemberCard[]>([]),
@@ -26,6 +28,7 @@ export function MemberCards({
       englishName: '',
       joinedOn: '',
       departmentId: '',
+      jobTitle: '',
     }),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
@@ -43,7 +46,7 @@ export function MemberCards({
   }
   useEffect(() => {
     void load().catch((e) => setError(String(e)));
-  }, [user.id, user.displayName, user.avatarVersion]);
+  }, [user.id, user.displayName, user.avatarVersion, user.cardAvatarVersion]);
   function edit(card: MemberCard) {
     setError('');
     setEditing(card);
@@ -52,6 +55,7 @@ export function MemberCards({
       englishName: card.englishName,
       joinedOn: card.joinedOn ?? '',
       departmentId: card.departmentId ?? '',
+      jobTitle: card.jobTitle ?? '',
     });
   }
   async function save(e: FormEvent) {
@@ -66,7 +70,11 @@ export function MemberCards({
         joinedOn: draft.joinedOn,
       };
       const body = user.owner
-        ? managedCardEdit.parse({ ...b, departmentId: draft.departmentId || null })
+        ? managedCardEdit.parse({
+            ...b,
+            departmentId: draft.departmentId || null,
+            jobTitle: draft.jobTitle,
+          })
         : cardEdit.parse(b);
       await cloudApi(user.owner ? '/member-cards/' + editing.id : '/member-cards/me', 'PUT', body);
       const fresh = await load();
@@ -119,46 +127,49 @@ export function MemberCards({
         )}
       </div>
       <div className="member-cards-grid">
-        {cards.map((card) => (
-          <article className="member-card" key={card.id} data-member-id={card.id}>
-            <div className="member-card-photo">
-              <Avatar account={card} />
-              {!card.active && <small className="member-card-inactive">账号已停用</small>}
-            </div>
-            <div className="member-card-content">
-              <h3>{card.displayName}</h3>
-              {card.englishName ? (
-                <p className="member-card-english">{card.englishName}</p>
-              ) : (
-                <p className="member-card-english muted">英文名未设置</p>
-              )}
-              <div className="member-card-department">
-                <p>{card.departmentName || '部门未设置'}</p>
-                {card.departmentEnglishName && <p>{card.departmentEnglishName}</p>}
+        {cards
+          .filter((card) => !onlyId || card.id === onlyId)
+          .map((card) => (
+            <article className="member-card" key={card.id} data-member-id={card.id}>
+              <div className="member-card-photo">
+                <Avatar account={card} kind="card" />
+                {!card.active && <small className="member-card-inactive">账号已停用</small>}
               </div>
-              {(user.owner || user.id === card.id) && (
-                <p className="member-card-joined">
-                  入职日期 {card.joinedOn || '未设置'}
-                  <small>仅本人和负责人可见</small>
-                </p>
-              )}
-              <footer>
-                <strong>
-                  SJD<span className="brand-name">春茉</span>
-                </strong>
-                {(user.owner || user.id === card.id) && (
-                  <button
-                    className="text-btn"
-                    aria-label={`编辑${card.displayName}名片`}
-                    onClick={() => edit(card)}
-                  >
-                    编辑名片
-                  </button>
+              <div className="member-card-content">
+                <h3>{card.displayName}</h3>
+                {card.englishName ? (
+                  <p className="member-card-english">{card.englishName}</p>
+                ) : (
+                  <p className="member-card-english muted">英文名未设置</p>
                 )}
-              </footer>
-            </div>
-          </article>
-        ))}
+                <div className="member-card-department">
+                  <p>{card.departmentName || '部门未设置'}</p>
+                  <p>{card.jobTitle || '岗位未设置'}</p>
+                  {card.departmentEnglishName && <p>{card.departmentEnglishName}</p>}
+                </div>
+                {(user.owner || user.id === card.id) && (
+                  <p className="member-card-joined">
+                    入职日期 {card.joinedOn || '未设置'}
+                    <small>仅本人和负责人可见</small>
+                  </p>
+                )}
+                <footer>
+                  <strong>
+                    SJD<span className="brand-name">春茉</span>
+                  </strong>
+                  {(user.owner || user.id === card.id) && (
+                    <button
+                      className="text-btn"
+                      aria-label={`编辑${card.displayName}名片`}
+                      onClick={() => edit(card)}
+                    >
+                      编辑名片
+                    </button>
+                  )}
+                </footer>
+              </div>
+            </article>
+          ))}
       </div>
       {error && !editing && !department && (
         <p className="error" role="alert">
@@ -214,14 +225,24 @@ export function MemberCards({
               ) : (
                 <p className="form-info">部门由负责人设置：{editing.departmentName || '未设置'}</p>
               )}
+              {user.owner && (
+                <label>
+                  岗位
+                  <input
+                    aria-label="名片岗位"
+                    maxLength={80}
+                    value={draft.jobTitle}
+                    onChange={(e) => setDraft({ ...draft, jobTitle: e.target.value })}
+                  />
+                </label>
+              )}
               <DateField
                 label="入职日期"
                 value={draft.joinedOn}
                 onChange={(joinedOn) => setDraft({ ...draft, joinedOn })}
               />
               <p className="muted span2">
-                入职日期仅本人和负责人可见。姓名用于展示，不改变登录账号、角色或项目关联。头像在“账号与安全
-                → 头像设置”修改。
+                入职日期仅本人和负责人可见。姓名用于展示，不改变登录账号、角色或项目关联。名片头像在本人浮动名片中单独修改，与系统在线头像互不覆盖。
               </p>
               {error && (
                 <p className="error span2" role="alert">

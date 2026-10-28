@@ -1,3 +1,4 @@
+import { transferSuggestions } from './material-recommendations';
 import { expect, it } from 'vitest';
 import {
   inventory,
@@ -332,4 +333,89 @@ it('restored project completion/links are revalidated before using a historical 
   expect(materialAnalysis(state, data).rows.find((r) => r.id === 'c2')!.missing).toContain(
     '施工关联待复核',
   );
+});
+it('staged transfer keeps in-transit quantities unavailable, partial receipts/returns/loss preserve cost', () => {
+  seq = 0;
+  const ref = { referenceId: 'transfer-ticket', targetProjectId: 'b', contextId: '' };
+  const e = [event('opening', '100'), event('transfer_dispatch', '60', ref)];
+  let r = inventory(e);
+  expect(r.stocks.get(stockKey('a', 'tile'))!.site.qty).toBe(40000n);
+  expect(r.stocks.get(stockKey('b', 'tile'))!.site.qty).toBe(0n);
+  expect(r.transit.get('transfer-ticket')!.qty).toBe(60000n);
+  e.push(event('transfer_receive', '25', ref));
+  r = inventory(e);
+  expect(r.stocks.get(stockKey('b', 'tile'))!.site.qty).toBe(25000n);
+  expect(r.transit.get('transfer-ticket')!.qty).toBe(35000n);
+  expect(() => inventory([...e, event('transfer_receive', '36', ref)])).toThrow(/库存不足/);
+  e.push(event('transfer_return', '20', ref), event('transfer_loss', '15', ref));
+  r = inventory(e);
+  expect(r.transit.get('transfer-ticket')!.qty).toBe(0n);
+  expect(r.stocks.get(stockKey('a', 'tile'))!.site.qty).toBe(60000n);
+  expect(materialPeriod(e, '2026-10-01', '2026-10-01').every((x) => x.check)).toBe(true);
+  expect(
+    r.stocks.get(stockKey('a', 'tile'))!.site.value +
+      r.stocks.get(stockKey('b', 'tile'))!.site.value,
+  ).toBe(850000000n);
+});
+it('low-consumption anomalies only use finished comparable projects with sufficient samples', () => {
+  const { data, state } = comparison();
+  for (const e of state.events) {
+    if (e.projectId === 'p0') {
+      e.quantity = '1';
+      e.baseQty = '1';
+    } else {
+      e.quantity = '100';
+      e.baseQty = '100';
+    }
+  }
+  const a = materialAnalysis(state, data);
+  expect(a.rows[0].lower).toBe(10);
+  expect(a.risks.find((r) => r.contextId === 'c0')!.reason).toContain('低于');
+  state.contexts[0].finalized = false;
+  expect(materialAnalysis(state, data).risks.some((r) => r.contextId === 'c0')).toBe(false);
+});
+
+it('surplus suggestions reserve source future demand, match specifications and disclose transport assumptions', () => {
+  const { data, state } = comparison();
+  state.contexts = state.contexts
+    .slice(0, 2)
+    .map((c) => ({ ...c, progress: 20, finalized: false }));
+  state.contexts[0].budgetQty = '80';
+  state.contexts[1].budgetQty = '30';
+  data.projects[1].status = '施工中';
+  state.projects[0].transportRate = '0.50';
+  state.events = [event('opening', '100', { projectId: 'p0', contextId: 'c0' })];
+  let hints = transferSuggestions(state, data, 'p0');
+  expect(hints).toHaveLength(1);
+  expect(hints[0].reserve).toBe(80);
+  expect(hints[0].quantity).toBe(20);
+  expect(hints[0].transportCost).toBe(10);
+  state.contexts.push({ ...state.contexts[1], id: 'same-target-extra-zone' });
+  expect(transferSuggestions(state, data, 'p0')).toHaveLength(1);
+  state.contexts.pop();
+  delete state.projects[0].transportRate;
+  expect(transferSuggestions(state, data, 'p0')[0].transportCost).toBeNull();
+  state.contexts[0].budgetQty = '120';
+  expect(transferSuggestions(state, data, 'p0')).toHaveLength(0);
+  state.contexts[0].budgetQty = '0';
+  state.contexts[1].materialId = 'different-spec';
+  expect(transferSuggestions(state, data, 'p0')).toHaveLength(0);
+});
+
+it('dispatch rejects a closed destination before removing any source inventory', () => {
+  seq = 0;
+  const records = [
+    event('opening', '100'),
+    event('opening', '1', { projectId: 'b' }),
+    event('supplier_return', '1', { projectId: 'b' }),
+    event('close', '0', { projectId: 'b' }),
+  ];
+  const before = inventory(records);
+  expect(() =>
+    inventory([
+      ...records,
+      event('transfer_dispatch', '10', { referenceId: 'closed-target', targetProjectId: 'b' }),
+    ]),
+  ).toThrow(/关闭/);
+  expect(before.stocks.get(stockKey('a', 'tile'))!.site.qty).toBe(100000n);
 });

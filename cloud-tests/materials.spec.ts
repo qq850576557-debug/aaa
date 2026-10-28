@@ -46,6 +46,8 @@ for (const width of [1440, 390])
       await p.reload();
       await p.getByRole('button', { name: '材料资产管理', exact: true }).click();
       const panel = p.getByRole('region', { name: '材料资产管理', exact: true });
+      await expect(panel).toContainText('请先选择工地');
+      await panel.getByLabel('材料项目', { exact: true }).selectOption(d.projects[0].id);
       const nav = panel.getByRole('navigation', { name: '材料子页面' });
       const layout = await nav.evaluate((e) => ({
         direction: getComputedStyle(e).flexDirection,

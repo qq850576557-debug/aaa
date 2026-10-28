@@ -1,0 +1,9 @@
+-- Additive V1.1 workflow records. Existing business graphs and immutable ledgers remain intact.
+CREATE TABLE purchase_record(workspace_id text NOT NULL REFERENCES cloud_workspace(id),id text NOT NULL,project_id text NOT NULL,payload jsonb NOT NULL,created_by text,created_name text,created_at timestamptz,updated_by text NOT NULL,updated_name text NOT NULL,updated_at timestamptz NOT NULL DEFAULT now(),completed_by text,completed_name text,completed_at timestamptz,deleted boolean NOT NULL DEFAULT false,PRIMARY KEY(workspace_id,id));
+CREATE TABLE purchase_action(workspace_id text NOT NULL REFERENCES cloud_workspace(id),id text NOT NULL,purchase_id text NOT NULL,actor_id text NOT NULL REFERENCES account(id),actor_name text NOT NULL,at timestamptz NOT NULL DEFAULT now(),operation text NOT NULL,before_value jsonb,after_value jsonb,PRIMARY KEY(workspace_id,id));
+CREATE TRIGGER purchase_action_immutable BEFORE UPDATE OR DELETE ON purchase_action FOR EACH ROW EXECUTE FUNCTION immutable_audit_event();
+CREATE TABLE material_transfer(workspace_id text NOT NULL REFERENCES cloud_workspace(id),id text NOT NULL,version integer NOT NULL CHECK(version>0),payload jsonb NOT NULL,PRIMARY KEY(workspace_id,id));
+CREATE TABLE transfer_submission(workspace_id text NOT NULL REFERENCES cloud_workspace(id),request_id text NOT NULL,body_hash text NOT NULL,result jsonb NOT NULL,PRIMARY KEY(workspace_id,request_id));
+CREATE TRIGGER transfer_submission_immutable BEFORE UPDATE OR DELETE ON transfer_submission FOR EACH ROW EXECUTE FUNCTION immutable_audit_event();
+CREATE TABLE card_avatar(account_id text PRIMARY KEY REFERENCES account(id),png bytea NOT NULL CHECK(octet_length(png)<=524288),version text NOT NULL,updated_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE member_card ADD COLUMN job_title text NOT NULL DEFAULT '' CHECK(char_length(job_title)<=80);

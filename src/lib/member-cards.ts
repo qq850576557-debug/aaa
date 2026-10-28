@@ -14,7 +14,7 @@ export const cardEdit = z
   })
   .strict();
 export const managedCardEdit = cardEdit
-  .extend({ departmentId: z.string().max(100).nullable() })
+  .extend({ departmentId: z.string().max(100).nullable(), jobTitle: text(80).optional() })
   .strict();
 export const departmentEdit = z
   .object({ name: text(60).min(1), englishName: text(100), active: z.boolean() })
@@ -33,6 +33,8 @@ export type MemberCard = {
   active: boolean;
   owner: boolean;
   avatarVersion: string | null;
+  cardAvatarVersion?: string | null;
+  jobTitle?: string;
   englishName: string;
   departmentId: string | null;
   departmentName: string | null;
