@@ -1630,3 +1630,536 @@ test('daily assessments: concurrent writes cannot overwrite, batches roll back a
     3,
   );
 });
+
+test('member cards: self/owner employment-date access is server enforced and private values never enter public directory/export/audit', async () => {
+  const { f, a, b } = await setup();
+  const body = { displayName: '陈工', englishName: 'Chris CHEN', joinedOn: '2019-07-08' };
+  assert.equal((await request('/member-cards/me', 'PUT', body, b)).status, 200);
+  const cards = (await (await request('/member-cards', 'GET', undefined, b)).json()).cards;
+  const me = cards.find((r: any) => r.id === f.employeeId);
+  assert.equal(me.joinedOn, body.joinedOn);
+  assert.equal(me.englishName, body.englishName);
+  assert.equal(me.displayName, body.displayName);
+  assert.equal(me.login, f.employee);
+  assert.equal(me.owner, false);
+  assert.equal((await request('/auth/session', 'GET', undefined, b)).status, 200);
+  assert.equal(
+    (await request('/member-cards/me', 'PUT', { ...body, departmentId: 'forged' }, b)).status,
+    400,
+  );
+  assert.equal(
+    (await request('/member-cards/' + f.employeeId, 'PUT', { ...body, departmentId: null }, b))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await request('/member-cards/' + f.id, 'PUT', { ...body, departmentId: null }, b)).status,
+    403,
+  );
+  assert.equal(
+    (await request('/member-cards/me', 'PUT', { ...body, joinedOn: '2026-02-30' }, b)).status,
+    400,
+  );
+  const otherAccount = await request(
+    '/accounts',
+    'POST',
+    { login: 'card_' + randomUUID(), password: f.password, displayName: '另一位员工' },
+    a,
+  );
+  const id = (await otherAccount.json()).id;
+  const other = await login(
+    (await pool.query('SELECT login FROM account WHERE id=$1', [id])).rows[0].login,
+    f.password,
+  );
+  const publicCards = (await (await request('/member-cards', 'GET', undefined, other)).json())
+    .cards;
+  assert.equal(
+    Object.hasOwn(
+      publicCards.find((r: any) => r.id === f.employeeId),
+      'joinedOn',
+    ),
+    false,
+  );
+  assert.equal(JSON.stringify(publicCards).includes(body.joinedOn), false);
+  assert.equal(
+    (await (await request('/member-cards', 'GET', undefined, a)).json()).cards.find(
+      (r: any) => r.id === f.employeeId,
+    ).joinedOn,
+    body.joinedOn,
+  );
+  for (const path of ['/directory', '/export', '/audit'])
+    assert.equal(
+      (await (await request(path, 'GET', undefined, other)).text()).includes(body.joinedOn),
+      false,
+      path,
+    );
+  const outsider = await fixtureAccounts(),
+    outside = await login(outsider.login, outsider.password);
+  assert.equal(
+    (
+      await request(
+        '/member-cards/' + f.employeeId,
+        'PUT',
+        { ...body, departmentId: null },
+        outside,
+      )
+    ).status,
+    404,
+  );
+  assert.equal(
+    (await (await request('/member-cards', 'GET', undefined, outside)).text()).includes(
+      body.joinedOn,
+    ),
+    false,
+  );
+  assert.equal((await request('/member-cards')).status, 401);
+  const row = (await pool.query('SELECT id,login,role FROM account WHERE id=$1', [f.employeeId]))
+    .rows[0];
+  assert.deepEqual(row, { id: f.employeeId, login: f.employee, role: 'employee' });
+});
+test('departments: owner maintains bilingual dictionary, disabled references survive, in-use deletion and staff administration are blocked', async () => {
+  const { f, a, b } = await setup();
+  const dept = { name: '设计部门', englishName: 'Design Studio', active: true };
+  assert.equal((await request('/departments', 'POST', dept, b)).status, 403);
+  const made = await request('/departments', 'POST', dept, a);
+  assert.equal(made.status, 201);
+  const id = (await made.json()).id;
+  assert.equal((await request('/departments', 'POST', dept, a)).status, 409);
+  const card = {
+    displayName: '李设计',
+    englishName: 'Lily LI',
+    joinedOn: '2020-09-01',
+    departmentId: id,
+  };
+  assert.equal((await request('/member-cards/' + f.employeeId, 'PUT', card, a)).status, 200);
+  const publicCard = (
+    await (await request('/member-cards', 'GET', undefined, b)).json()
+  ).cards.find((r: any) => r.id === f.employeeId);
+  assert.equal(publicCard.departmentName, dept.name);
+  assert.equal(publicCard.departmentEnglishName, dept.englishName);
+  assert.equal((await request('/departments/' + id, 'DELETE', {}, a)).status, 409);
+  assert.equal(
+    (await request('/departments/' + id, 'PUT', { ...dept, active: false }, a)).status,
+    200,
+  );
+  assert.equal(
+    (await request('/member-cards/' + f.employeeId, 'PUT', { ...card, englishName: 'Lily' }, a))
+      .status,
+    200,
+  );
+  assert.equal(
+    (await request('/member-cards/' + f.id, 'PUT', { ...card, displayName: '负责人' }, a)).status,
+    409,
+  );
+  assert.equal((await request('/departments/' + id, 'PUT', dept, b)).status, 403);
+  assert.equal((await request('/departments/' + id, 'DELETE', {}, b)).status, 403);
+  assert.equal(
+    (await request('/member-cards/' + f.employeeId, 'PUT', { ...card, departmentId: null }, a))
+      .status,
+    200,
+  );
+  assert.equal((await request('/departments/' + id, 'DELETE', {}, a)).status, 200);
+  const foreign = await fixtureAccounts(),
+    foreignOwner = await login(foreign.login, foreign.password);
+  assert.equal((await request('/departments/' + id, 'PUT', dept, foreignOwner)).status, 404);
+});
+
+async function materialFixture() {
+  const base = await setup(),
+    d = data();
+  d.projects.push({ ...d.projects[0], id: randomUUID(), name: '材料接收工地', status: '已完工' });
+  const saved = await request('/workspace', 'PUT', { revision: 0, data: d }, base.a);
+  assert.equal(saved.status, 200);
+  const m = await request(
+    '/materials/items',
+    'PUT',
+    {
+      id: '',
+      version: 0,
+      value: {
+        name: '防滑地砖',
+        category: '瓷砖',
+        unit: 'm²',
+        specification: '600×600',
+        performance: '防滑A',
+        active: true,
+        conversions: [{ unit: '箱', factor: '1.44' }],
+      },
+    },
+    base.a,
+  );
+  assert.equal(m.status, 200, await m.clone().text());
+  const material = await m.json();
+  const r = await request(
+    '/materials/contexts',
+    'PUT',
+    {
+      id: '',
+      version: 0,
+      value: {
+        projectId: d.projects[0].id,
+        materialId: material.id,
+        phase: '铺贴',
+        zone: '客厅',
+        tradeId: d.trades[0].id,
+        taskId: d.tasks[0].id,
+        teamName: '铺贴一组',
+        staffIds: [d.people![0].id],
+        basisKind: 'area',
+        basis: '10',
+        coats: 1,
+        process: '薄贴',
+        paving: '直铺',
+        budgetQty: '10',
+        budgetPrice: '10',
+        progress: 50,
+        finalized: false,
+      },
+    },
+    base.a,
+  );
+  assert.equal(r.status, 200, await r.clone().text());
+  const context = await r.json();
+  const event = (
+    kind: string,
+    quantity: string,
+    patch: Record<string, unknown> = {},
+    client = base.a,
+  ) =>
+    request(
+      '/materials/events',
+      'POST',
+      {
+        requestId: randomUUID(),
+        kind,
+        quantity,
+        inputUnit: 'm²',
+        unitPrice: '10',
+        date: '2026-10-01',
+        projectId: d.projects[0].id,
+        materialId: material.id,
+        contextId: context.id,
+        targetProjectId: '',
+        purchaseId: '',
+        referenceId: '',
+        reason: '现场核对原始单据',
+        ...patch,
+      },
+      client,
+    );
+  const state = async (client = base.a) => {
+    const r = await request('/materials', 'GET', undefined, client);
+    assert.equal(r.status, 200, await r.clone().text());
+    return r.json();
+  };
+  return { ...base, d, material, context, event, state };
+}
+test('materials: independent authorization, workspace isolation, CSRF, immutable history and exact-idempotent receipt', async () => {
+  const x = await materialFixture(),
+    { a, b, d, material, context } = x;
+  assert.equal((await request('/materials')).status, 401);
+  assert.equal((await request('/materials/access', 'GET', undefined, b)).status, 200);
+  for (const path of [
+    '/materials',
+    '/materials/export',
+    '/materials/alerts',
+    '/materials/history/' + context.id,
+  ])
+    assert.equal((await request(path, 'GET', undefined, b)).status, 403, path);
+  assert.equal((await x.event('receipt', '10', {}, b)).status, 403);
+  assert.equal(
+    (await request('/materials/operators/' + b.user.id, 'PUT', { enabled: true }, b)).status,
+    403,
+  );
+  assert.equal(
+    (await request('/materials/operators/' + b.user.id, 'PUT', { enabled: true }, a)).status,
+    200,
+  );
+  const requestId = randomUUID();
+  const races = await Promise.all([
+    x.event('receipt', '10', { requestId, purchaseId: d.purchases[0].id }, b),
+    x.event('receipt', '10', { requestId, purchaseId: d.purchases[0].id }, b),
+  ]);
+  assert.deepEqual(
+    races.map((r) => r.status),
+    [200, 200],
+  );
+  assert.equal((await races[0].json()).id, (await races[1].json()).id);
+  assert.equal(
+    (await x.event('receipt', '11', { requestId, purchaseId: d.purchases[0].id }, b)).status,
+    409,
+  );
+  const s = await x.state();
+  assert.equal(s.events.length, 1);
+  assert.equal(s.analysis.stocks[0].siteQty, '10.000');
+  assert.equal(s.events[0].actorId, b.user.id);
+  assert.equal(s.events[0].purchaseId, d.purchases[0].id);
+  assert.equal(
+    (
+      await request(
+        '/materials/items',
+        'PUT',
+        {
+          id: '',
+          version: 0,
+          value: {
+            name: '攻击',
+            category: '瓷砖',
+            unit: 'm²',
+            specification: '600',
+            performance: 'A',
+            active: true,
+            conversions: [],
+          },
+        },
+        b,
+      )
+    ).status,
+    403,
+  );
+  assert.equal((await x.event('reverse', '0', { referenceId: s.events[0].id }, b)).status, 403);
+  const foreign = await setup();
+  assert.equal(
+    (await request('/materials/history/' + s.events[0].id, 'GET', undefined, foreign.a)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await (
+        await request('/materials/history/' + s.events[0].id, 'GET', undefined, foreign.a)
+      ).json()
+    ).events.length,
+    0,
+  );
+  assert.equal((await x.event('receipt', '1', { actorId: foreign.a.user.id })).status, 400);
+  assert.equal(
+    (await request('/materials/operators/' + foreign.a.user.id, 'PUT', { enabled: true }, a))
+      .status,
+    404,
+  );
+  assert.equal((await x.event('receipt', '1', { purchaseId: 'foreign-purchase' })).status, 400);
+  const h = (
+    await (await request('/materials/history/' + s.events[0].id, 'GET', undefined, a)).json()
+  ).events;
+  assert.equal(h.length, 1);
+  assert.equal(h[0].actorId, b.user.id);
+  for (const table of [
+    'material_event',
+    'material_history',
+    'material_item',
+    'material_context',
+    'material_project_meta',
+    'material_alert',
+    'member_card',
+  ])
+    await assert.rejects(
+      pool.query(`DELETE FROM ${table} WHERE workspace_id=$1`, [a.user.workspaceId]),
+      (e: any) => e.code === '42501',
+    );
+  assert.equal(
+    (await request('/materials/refresh-alerts', 'POST', {}, a, { 'X-CSRF-Token': 'invalid' }))
+      .status,
+    403,
+  );
+  assert.equal(
+    (await request('/materials/operators/' + b.user.id, 'PUT', { enabled: false }, a)).status,
+    200,
+  );
+  assert.equal((await request('/materials/export', 'GET', undefined, b)).status, 403);
+});
+test('materials: opening/receipt/issue/use/returns/transfer/count/loss/cleanup reconcile quantities and cost, protected CSV remains traceable', async () => {
+  const x = await materialFixture();
+  for (const [kind, q, patch] of [
+    ['order', '500', {}],
+    ['opening', '100', {}],
+    ['receipt', '20', {}],
+    ['issue', '60', {}],
+    ['use', '40', {}],
+    ['loss_crew', '5', {}],
+    ['return', '15', {}],
+    ['supplier_return', '5', {}],
+    ['transfer', '10', { targetProjectId: x.d.projects[1].id }],
+  ] as [string, string, Record<string, unknown>][]) {
+    const r = await x.event(kind, q, patch);
+    assert.equal(r.status, 200, await r.clone().text());
+  }
+  let s = await x.state(),
+    a = s.analysis.stocks.find((r: any) => r.projectId === x.d.projects[0].id),
+    b = s.analysis.stocks.find((r: any) => r.projectId === x.d.projects[1].id);
+  assert.equal(a.siteQty, '60.000');
+  assert.equal(a.used, '40.000');
+  assert.equal(a.loss, '5.000');
+  assert.equal(b.siteQty, '10.000');
+  assert.equal(a.value, '600.00');
+  assert.equal(b.value, '100.00');
+  assert.equal(s.analysis.rows[0].samples, 0);
+  assert.equal(s.analysis.rows[0].probability, null);
+  const count = await x.event('count_site', '55', { contextId: '' });
+  assert.equal(count.status, 200);
+  const id = (await count.json()).id;
+  assert.equal((await x.event('loss_site', '3', { referenceId: id })).status, 200);
+  assert.equal((await x.event('adjust_out', '2', { referenceId: id, contextId: '' })).status, 200);
+  assert.equal((await x.event('adjust_out', '1', { referenceId: id, contextId: '' })).status, 409);
+  assert.equal((await x.event('issue', '56')).status, 409);
+  assert.equal((await x.event('receipt', '1', { date: '2026-09-30' })).status, 409);
+  assert.equal((await x.event('receipt', '1', { date: '2099-01-01' })).status, 400);
+  assert.equal((await x.event('receipt', '1', { inputUnit: 'kg' })).status, 400);
+  assert.equal(
+    (await x.event('close', '0', { projectId: x.d.projects[1].id, contextId: '' })).status,
+    409,
+  );
+  assert.equal(
+    (
+      await x.event('transfer', '10', {
+        projectId: x.d.projects[1].id,
+        contextId: '',
+        targetProjectId: x.d.projects[0].id,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await x.event('close', '0', { projectId: x.d.projects[1].id, contextId: '' })).status,
+    200,
+  );
+  assert.equal(
+    (await x.event('receipt', '1', { projectId: x.d.projects[1].id, contextId: '' })).status,
+    409,
+  );
+  s = await x.state();
+  a = s.analysis.stocks.find((r: any) => r.projectId === x.d.projects[0].id);
+  assert.equal(a.siteQty, '65.000');
+  assert.equal(a.loss, '8.000');
+  assert.equal(a.counts[0].difference, '0.000');
+  assert.equal(a.counts[0].physical, '65.000');
+  const csv = await request('/materials/export', 'GET', undefined, x.a);
+  assert.equal(csv.status, 200);
+  assert.match(csv.headers.get('content-type')!, /text\/csv/);
+  const text = await csv.text();
+  assert.ok(text.includes(id));
+  assert.ok(text.includes(x.a.user.id));
+  assert.ok(text.includes('1.44') === false);
+  assert.ok(text.includes(x.material.id));
+  const filtered = await request(
+    '/materials/export?category=' + encodeURIComponent('水电'),
+    'GET',
+    undefined,
+    x.a,
+  );
+  assert.equal(filtered.status, 200);
+  assert.equal((await filtered.text()).includes(x.material.id), false);
+  const filteredType = await request(
+    '/materials/export?projectType=' + encodeURIComponent('不存在类型'),
+    'GET',
+    undefined,
+    x.a,
+  );
+  assert.equal(filteredType.status, 200);
+  assert.equal((await filteredType.text()).includes(x.material.id), false);
+});
+test('materials: concurrent transfers and CAS prevent overselling/overwrites, immutable correction and alert workflow retain history across project restore', async () => {
+  const x = await materialFixture();
+  assert.equal((await x.event('opening', '100')).status, 200);
+  const race = await Promise.all([
+    x.event('transfer', '70', { targetProjectId: x.d.projects[1].id }),
+    x.event('transfer', '70', { targetProjectId: x.d.projects[1].id }),
+  ]);
+  assert.deepEqual(race.map((r) => r.status).sort(), [200, 409]);
+  const successful = await race.find((r) => r.status === 200)!.json();
+  assert.equal((await x.event('reverse', '0', { referenceId: successful.id })).status, 200);
+  assert.equal((await x.event('reverse', '0', { referenceId: successful.id })).status, 409);
+  assert.equal((await x.event('issue', '20')).status, 200);
+  assert.equal((await x.event('use', '20')).status, 200);
+  let s = await x.state();
+  const alert = s.alerts.find((r: any) => r.detail.key === 'usage:' + x.context.id);
+  assert.ok(alert);
+  assert.equal(alert.detail.samples, 0);
+  assert.equal(alert.detail.probability, null);
+  assert.equal(alert.status, '待核查');
+  assert.equal(
+    (
+      await request(
+        '/materials/alerts/' + alert.id,
+        'PUT',
+        { version: alert.version, status: '已关闭', assigneeId: '', reason: '跳过核查' },
+        x.a,
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (
+      await request(
+        '/materials/alerts/' + alert.id,
+        'PUT',
+        { version: alert.version, status: '核查中', assigneeId: x.a.user.id, reason: '现场复核' },
+        x.a,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        '/materials/alerts/' + alert.id,
+        'PUT',
+        { version: alert.version, status: '已确认异常', assigneeId: '', reason: '旧版本' },
+        x.a,
+      )
+    ).status,
+    409,
+  );
+  for (const status of ['已确认异常', '已处理', '已关闭']) {
+    s = await x.state();
+    const r = s.alerts.find((a: any) => a.id === alert.id);
+    assert.equal(
+      (
+        await request(
+          '/materials/alerts/' + alert.id,
+          'PUT',
+          { version: r.version, status, assigneeId: x.a.user.id, reason: '有据核查并复核' },
+          x.a,
+        )
+      ).status,
+      200,
+    );
+  }
+  const hist = await (
+    await request('/materials/history/' + alert.id, 'GET', undefined, x.a)
+  ).json();
+  assert.equal(hist.events.length, 5);
+  const value = { ...x.context };
+  delete value.id;
+  delete value.version;
+  delete value.projectName;
+  const cas = await Promise.all([
+    request(
+      '/materials/contexts',
+      'PUT',
+      { id: x.context.id, version: 1, value: { ...value, budgetQty: '25' } },
+      x.a,
+    ),
+    request(
+      '/materials/contexts',
+      'PUT',
+      { id: x.context.id, version: 1, value: { ...value, budgetQty: '30' } },
+      x.a,
+    ),
+  ]);
+  assert.deepEqual(cas.map((r) => r.status).sort(), [200, 409]);
+  const before = await x.state();
+  const edited = structuredClone(x.d);
+  edited.projects[0].name = '临时名称';
+  const w = await (await request('/workspace', 'PUT', { revision: 1, data: edited }, x.a)).json();
+  const history = w.history.records.findLast((r: any) => r.scope === x.d.projects[0].id);
+  assert.equal(
+    (await request('/history/restore', 'POST', { revision: 2, id: history.id }, x.a)).status,
+    200,
+  );
+  const restored = await x.state();
+  assert.deepEqual(restored.events, before.events);
+  assert.deepEqual(restored.contexts, before.contexts);
+  assert.deepEqual(restored.alerts, before.alerts);
+  assert.equal((await request('/materials/refresh-alerts', 'POST', {}, x.a)).status, 200);
+  assert.deepEqual((await x.state()).events, before.events);
+});

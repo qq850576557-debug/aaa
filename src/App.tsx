@@ -1,3 +1,4 @@
+import { MaterialsPanel, MaterialAlertSummary } from './components/MaterialsPanel';
 import { nextTradeColor } from './lib/trade-colors';
 import { CloudControl } from './components/CloudControl';
 import { ConflictPanel } from './components/ConflictPanel';
@@ -81,7 +82,15 @@ import {
   type Purchase,
 } from './lib/model';
 
-type View = 'overview' | 'schedule' | 'notes' | 'purchases' | 'reminders' | 'completed' | 'people';
+type View =
+  | 'overview'
+  | 'schedule'
+  | 'notes'
+  | 'purchases'
+  | 'reminders'
+  | 'completed'
+  | 'people'
+  | 'materials';
 type Confirmation = { title: string; message: string; run: () => void; danger?: boolean };
 const navigation: [View, string, ReactNode][] = [
   ['overview', '项目工作空间', <LayoutDashboard size={19} />],
@@ -146,6 +155,7 @@ export default function App() {
       pendingScroll.current = null;
     }
   }, [selected]);
+  const [materialTab, setMaterialTab] = useState(0);
   const [view, setView] = useState<View>('overview');
   const [edit, setEdit] = useState<Edit | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -718,7 +728,7 @@ export default function App() {
           >
             <div>
               {navigation
-                .filter(([key]) => key !== 'overview' && key !== 'people')
+                .filter(([key]) => key !== 'overview' && key !== 'people' && key !== 'materials')
                 .map(([key, label, icon]) => (
                   <button
                     key={key}
@@ -737,6 +747,10 @@ export default function App() {
           <button className={view === 'people' ? 'active' : ''} onClick={() => go('people')}>
             <Users size={19} />
             <span>人员管理</span>
+          </button>
+          <button className={view === 'materials' ? 'active' : ''} onClick={() => go('materials')}>
+            <Package size={19} />
+            <span>材料资产管理</span>
           </button>
         </nav>
         <section
@@ -891,9 +905,11 @@ export default function App() {
                         ? '材料采购管理'
                         : view === 'completed'
                           ? '已完工项目'
-                          : view === 'people'
-                            ? '人员管理'
-                            : '项目提醒中心'}
+                          : view === 'materials'
+                            ? '材料资产管理'
+                            : view === 'people'
+                              ? '人员管理'
+                              : '项目提醒中心'}
               </h1>
               <p>
                 {view === 'overview'
@@ -922,7 +938,7 @@ export default function App() {
               )}
             </div>
           </div>
-          <div className="stats-grid" hidden={view === 'people'}>
+          <div className="stats-grid" hidden={view === 'people' || view === 'materials'}>
             {(
               [
                 {
@@ -995,7 +1011,19 @@ export default function App() {
               正在读取你的工作空间…
             </div>
           ) : view === 'reminders' ? (
-            reminderItems()
+            <>
+              {reminderItems()}
+              {isCloud && (
+                <MaterialAlertSummary
+                  onOpen={() => {
+                    setMaterialTab(5);
+                    go('materials');
+                  }}
+                />
+              )}
+            </>
+          ) : view === 'materials' ? (
+            <MaterialsPanel data={data} isCloud={isCloud} initialTab={materialTab} />
           ) : view === 'people' ? (
             <PeoplePanel isCloud={isCloud} data={data} onChange={(fn) => mutate(fn)} />
           ) : (

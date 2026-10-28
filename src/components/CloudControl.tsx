@@ -1,3 +1,4 @@
+import { MemberCards } from './MemberCards';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Modal, Confirm } from './Modal';
 import { PASSWORD_MIN, PASSWORD_MAX, passwordSchema } from '../lib/password';
@@ -258,6 +259,21 @@ function CloudPanel({
               )}
               {tab === 'directory' && accountPermissions(user.owner).directory && (
                 <section className="account-section" aria-label="账号通讯录">
+                  <MemberCards
+                    user={user}
+                    onSaved={async (card) => {
+                      await directory();
+                      if (target === card.id) setEmployeeName(card.displayName);
+                      if (card.id === user.id) {
+                        const updated = await cloudSession();
+                        setUser(updated);
+                        setDisplayName(updated.displayName || updated.login);
+                        window.dispatchEvent(
+                          new CustomEvent('chunmo-profile-updated', { detail: updated }),
+                        );
+                      }
+                    }}
+                  />
                   <p className="account-muted">
                     正式展示名称属于账号本人；“我的私有备注”仅当前账号可见。
                   </p>
@@ -463,7 +479,8 @@ function CloudPanel({
                 <section className="account-section">
                   <h3>导入本地业务与版本备份</h3>
                   <p className="account-muted">
-                    只合并无冲突的稳定ID；同ID不同内容拒绝，不覆盖已有记录。原浏览器资料保留。
+                    只合并无冲突的稳定ID；同ID不同内容拒绝，不覆盖已有记录。原浏览器资料保留。材料台账、人员考核、名片、入职日期与账号授权由独立服务端记录保存，不在项目
+                    JSON 范围内；完整恢复需服务器加密数据库备份。
                   </p>
                   {isCloud && (
                     <div className="local-backup-access">

@@ -622,16 +622,17 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       )}
       {grantOpen && (
         <Modal title="考核记录人授权" onClose={() => setGrantOpen(false)}>
-          <div className="modal-body">
+          <div className="modal-body recorder-grants">
             <p>
               获授权账号可查看、记录及导出本工作室全部考核。普通员工默认不可读取。负责人始终可操作。
             </p>
             {accounts
               .filter((a) => !a.owner && a.active)
               .map((a) => (
-                <label key={a.id}>
+                <label className="recorder-grant-row" key={a.id}>
                   <input
                     type="checkbox"
+                    aria-label={`${a.displayName || a.login}（${a.login}）`}
                     checked={access.recorders?.includes(a.id) ?? false}
                     onChange={(e) =>
                       setGrant({
@@ -641,7 +642,10 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                       })
                     }
                   />
-                  {a.displayName || a.login}（{a.login}）
+                  <span>
+                    <strong>{a.displayName || a.login}</strong>
+                    <small>（{a.login}）</small>
+                  </span>
                 </label>
               ))}
           </div>

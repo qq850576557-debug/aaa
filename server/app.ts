@@ -1,3 +1,5 @@
+import { materialRoutes } from './materials';
+import { memberCardRoutes } from './member-cards';
 import { assessmentRoutes } from './assessments';
 import express from 'express';
 import { requireAccountPermission } from './permissions';
@@ -123,6 +125,8 @@ export function createApp() {
     next();
   });
   assessmentRoutes(app);
+  materialRoutes(app);
+  memberCardRoutes(app, announcePresence);
   app.get('/api/auth/session', (req: AuthRequest, res) => {
     const { auditDevice: _device, ...user } = req.actor!;
     res.json({ user, csrf: hash('csrf:' + req.token) });
@@ -291,6 +295,7 @@ export function createApp() {
               'note',
               'person',
               'dictionary',
+              'department',
               'account',
               'workspace',
               'person_private',

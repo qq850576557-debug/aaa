@@ -58,6 +58,15 @@ try {
     'audit_event',
     'account_note',
     'account_avatar',
+    'department',
+    'member_card',
+    'material_operator',
+    'material_item',
+    'material_project_meta',
+    'material_context',
+    'material_event',
+    'material_alert',
+    'material_history',
     'assessment_recorder',
     'daily_assessment',
     'assessment_history',
@@ -69,10 +78,12 @@ try {
   await c.query('GRANT USAGE ON SCHEMA public TO chunmo_app,chunmo_private');
   await c.query('GRANT SELECT,INSERT,UPDATE,DELETE ON ' + tables.join(',') + ' TO chunmo_app');
   await c.query(
-    'REVOKE UPDATE,DELETE ON audit_event,assessment_history,assessment_submission FROM chunmo_app,chunmo_private',
+    'REVOKE UPDATE,DELETE ON audit_event,assessment_history,assessment_submission,material_event,material_history FROM chunmo_app,chunmo_private',
   );
   await c.query('GRANT SELECT,INSERT,UPDATE,DELETE ON person_private TO chunmo_private');
-  await c.query('REVOKE DELETE ON daily_assessment FROM chunmo_app');
+  await c.query(
+    'REVOKE DELETE ON daily_assessment,material_item,material_project_meta,material_context,material_alert,member_card FROM chunmo_app',
+  );
   await c.query('GRANT INSERT ON audit_event TO chunmo_private');
   console.log(`Local ${mode} migrations and least-privilege runtime roles ready.`);
 } finally {

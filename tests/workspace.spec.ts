@@ -80,6 +80,7 @@ test('date click, double click, range select, move and both resize handles have 
   await modal.getByLabel('任务名称', { exact: true }).fill('第三段拆改');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   const water = page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' });
+  await water.hover();
   let box = await water.boundingBox();
   await page.mouse.move(box!.x + 30, box!.y + 15);
   await page.mouse.down();
