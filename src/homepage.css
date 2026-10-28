@@ -1,0 +1,672 @@
+/* Project workspace homepage only. Keep shared modules, timeline geometry,
+   account dialogs and persistence behavior on their existing styles. */
+.homepage.app-shell {
+  --home-ink: #293e35;
+  --home-secondary: #617269;
+  --home-line: #e2e8e1;
+  --home-surface: #ffffff;
+  --home-radius: 12px;
+  background: #f7f9f6;
+  color: var(--home-ink);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.homepage main {
+  width: 100%;
+  min-width: 0;
+  padding-bottom: 24px;
+}
+.homepage .page-heading {
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0 18px;
+}
+.homepage .page-heading h1 {
+  font-size: 24px;
+  line-height: 1.35;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+  color: var(--home-ink);
+}
+.homepage .page-heading p {
+  max-width: 620px;
+  margin-top: 7px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--home-secondary);
+}
+.homepage .eyebrow {
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 1.5px;
+  color: var(--home-secondary);
+  margin-bottom: 5px;
+}
+/* Small neutral status group; failures and conflict controls remain explicit. */
+.homepage .workspace-status-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--home-line);
+  border-radius: 9px;
+  background: #f0f4ee;
+}
+.homepage .workspace-status-group .local-notice {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--home-secondary);
+}
+.homepage .local-notice > svg,
+.homepage .local-notice > button {
+  flex-shrink: 0;
+}
+.homepage .local-notice > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.homepage .local-notice > button {
+  min-height: 30px;
+  padding: 4px 8px;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 13px;
+  color: #3e6250;
+}
+.homepage .workspace-status-group .save-state {
+  position: static;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 24px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 20px;
+  color: #59705e;
+}
+.homepage .save-state .undo-quiet {
+  min-height: 30px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.homepage .error-banner {
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+/* Six metrics share their reading baseline, including the genuine empty state. */
+.homepage .stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 22px;
+}
+.homepage .stat-card {
+  display: grid;
+  grid-template-rows: 20px 34px 18px;
+  justify-content: stretch;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 110px;
+  padding: 13px 14px;
+  border: 1px solid var(--home-line);
+  border-radius: var(--home-radius);
+  background: var(--home-surface);
+  box-shadow: 0 2px 5px #253e2e03;
+  text-align: left;
+}
+.homepage .stat-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--home-secondary);
+  font-size: 13px;
+  line-height: 20px;
+}
+.homepage .stat-card svg {
+  width: 16px;
+  height: 16px;
+  color: #819687;
+}
+.homepage .stat-card > strong {
+  margin: 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 500;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+  color: #2d5040;
+}
+.homepage .stat-card > small {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--home-secondary);
+}
+.homepage .stat-card.attention {
+  background: #fffdf9;
+  border-color: #eadfd0;
+}
+.homepage .stat-card.attention > strong,
+.homepage .stat-card.attention svg {
+  color: #97583e;
+}
+.homepage .stat-card:hover {
+  border-color: #b8ccbc;
+  box-shadow: 0 3px 10px #244e4208;
+}
+.homepage .project-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 8px;
+}
+.homepage .current-project-name {
+  min-width: 0;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.homepage .project-toolbar > .toolbar {
+  flex-shrink: 0;
+}
+.homepage .workspace-anchors {
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.homepage .workspace-anchors a {
+  padding: 5px 9px;
+  font-size: 13px;
+  line-height: 20px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  color: var(--home-secondary);
+}
+.homepage .workspace-anchors a:hover,
+.homepage .workspace-anchors a:focus-visible {
+  color: #244e42;
+  background: #eaf0e7;
+}
+/* Let actual content determine card height. Long lists scroll inside the card;
+   an empty card no longer reserves the same large fixed height as a full list. */
+.homepage .workspace-brief {
+  align-items: start;
+  gap: 12px;
+  margin: 0 0 14px;
+}
+.homepage .workspace-brief .panel {
+  display: grid;
+  grid-template-rows: auto minmax(32px, 1fr) auto;
+  height: auto;
+  min-height: 128px;
+  max-height: none;
+  padding: 12px 14px;
+  border-radius: var(--home-radius);
+  border-color: var(--home-line);
+  background: var(--home-surface);
+}
+.homepage .workspace-brief .brief-heading {
+  min-height: 22px;
+  margin: 0 0 6px;
+}
+.homepage .workspace-brief .brief-heading :is(h2, h3) {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--home-ink);
+}
+.homepage .workspace-brief .count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--home-secondary);
+}
+.homepage .workspace-brief .brief-content {
+  min-height: 32px;
+  max-height: 160px;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.homepage .workspace-brief .brief-empty {
+  min-height: 32px;
+  font-size: 13px;
+  color: var(--home-secondary);
+}
+.homepage .workspace-brief .brief-actions {
+  min-height: 28px;
+  margin-top: 6px;
+  padding-top: 6px;
+  gap: 8px;
+  border-top: 1px solid #edf1eb;
+}
+.homepage .workspace-brief .brief-actions .text-btn {
+  min-height: 28px;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: normal;
+}
+.homepage .workspace-brief .purchase-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 0;
+}
+.homepage .workspace-brief .purchase-main {
+  flex: initial;
+  min-width: 0;
+}
+.homepage .workspace-brief .purchase-main strong {
+  font-size: 14px;
+  line-height: 21px;
+}
+.homepage .workspace-brief .purchase-main :is(small, p),
+.homepage .workspace-brief .note-main :is(small, p),
+.homepage .workspace-brief .note-kind {
+  font-size: 12px;
+  line-height: 19px;
+  color: var(--home-secondary);
+}
+.homepage .workspace-brief .purchase-actions {
+  width: 100%;
+  max-width: none;
+  justify-content: flex-start;
+  gap: 6px;
+}
+.homepage .workspace-brief .purchase-actions :is(button, select) {
+  min-height: 30px;
+  font-size: 12px;
+}
+.homepage .workspace-brief .note-card {
+  padding: 9px 0;
+  margin: 0;
+  gap: 8px;
+}
+.homepage .workspace-brief .note-main h3 {
+  font-size: 14px;
+  line-height: 21px;
+}
+.homepage .workspace-brief .reminder-item {
+  padding: 9px 0;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 20px;
+  align-items: flex-start;
+  flex-direction: column;
+}
+.homepage .workspace-brief .reminder-item em {
+  font-size: 12px;
+}
+.homepage .schedule-forecast {
+  margin: 10px 0;
+  color: var(--home-secondary);
+  font-size: 12px;
+  line-height: 20px;
+}
+/* The calendar stays 56px per natural day; JS row heights and original trade
+   colors remain authoritative for drag, resize, virtual dates and export. */
+.homepage .schedule-section {
+  margin-top: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--home-line);
+}
+.homepage .schedule-section > .section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-bottom: 10px;
+}
+.homepage .schedule-section > .section-heading > div:first-child {
+  flex: 1 1 340px;
+  min-width: 0;
+}
+.homepage .schedule-section h2 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 18px;
+  line-height: 26px;
+  color: var(--home-ink);
+}
+.homepage .schedule-section h2 .count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--home-secondary);
+}
+.homepage .schedule-section .section-heading p {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 19px;
+  color: var(--home-secondary);
+}
+.homepage .schedule-section > .section-heading > .toolbar {
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-left: auto;
+}
+.homepage .schedule-section .toolbar > button,
+.homepage .schedule-section .date-picker-compact .date-field {
+  height: 38px;
+  min-height: 38px;
+  font-size: 13px;
+}
+.homepage .schedule-section .date-picker-compact .date-field {
+  width: 158px;
+}
+.homepage .schedule-section .date-picker-compact input {
+  font-size: 13px;
+}
+.homepage .today-construction {
+  margin: 9px 0;
+  font-size: 13px;
+  line-height: 21px;
+  color: var(--home-secondary);
+}
+.homepage .legend {
+  gap: 4px 14px;
+  margin: 10px 0 12px;
+}
+.homepage .legend button {
+  min-height: 28px;
+  gap: 6px;
+  padding: 3px 0;
+  font-size: 13px;
+  color: var(--home-secondary);
+}
+.homepage .legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.homepage .gantt-scroll {
+  border-color: #dce5dc;
+  border-radius: 10px;
+  scrollbar-color: #b8c9b9 #f3f6f0;
+}
+.homepage .month-row,
+.homepage .date-row,
+.homepage .sticky-label {
+  border-color: var(--home-line);
+}
+.homepage .month-label,
+.homepage .month-cells > div,
+.homepage .date-label,
+.homepage .date-label span {
+  color: var(--home-secondary);
+}
+.homepage .date-label span {
+  font-size: 12px;
+}
+.homepage .month-label,
+.homepage .month-cells > div {
+  font-size: 12px;
+}
+.homepage .date-cell span {
+  font-size: 12px;
+  color: #64796b;
+}
+.homepage .date-cell strong {
+  color: #375743;
+  font-size: 15px;
+}
+.homepage .date-cell.today strong {
+  color: #fff;
+}
+.homepage .trade-title > button[title='编辑工种'] > span {
+  font-size: 14px;
+  line-height: 20px;
+}
+.homepage .trade-title small,
+.homepage .trade-workers {
+  font-size: 12px;
+  color: var(--home-secondary);
+}
+/* Business dialogs opened from home only; account and other module dialogs keep
+   their current component rules. Native close/confirm/scroll handling is reused. */
+.homepage > dialog.modal {
+  border-color: var(--home-line);
+  border-radius: 12px;
+  box-shadow:
+    0 8px 40px #233e2b18,
+    0 2px 8px #233e2b0a;
+  font-size: 14px;
+}
+.homepage > dialog.modal .modal-head {
+  padding: 15px 18px;
+}
+.homepage > dialog.modal .modal-head h2 {
+  font-size: 18px;
+  line-height: 26px;
+}
+.homepage > dialog.modal .modal-body {
+  padding: 16px 18px;
+}
+.homepage > dialog.modal .modal-foot {
+  padding: 12px 18px;
+  gap: 8px;
+}
+.homepage > dialog.modal .modal-foot button {
+  min-height: 36px;
+}
+@media (min-width: 951px) {
+  .homepage.app-shell main {
+    padding: 20px 24px 28px;
+  }
+  .homepage.app-shell .topbar {
+    height: 56px;
+    min-height: 56px;
+    padding: 0 24px;
+    background: #fcfdfa;
+    border-color: var(--home-line);
+  }
+  .homepage.app-shell .sidebar {
+    padding: 22px 14px 16px;
+    background: #fcfdfa;
+    border-color: var(--home-line);
+  }
+  .homepage.app-shell .sidebar .brand {
+    gap: 10px;
+    padding-bottom: 19px;
+  }
+  .homepage.app-shell .sidebar .brand img {
+    width: 56px;
+    height: 62px;
+  }
+  .homepage.app-shell .sidebar .brand-name {
+    font-size: 26px;
+  }
+  .homepage.app-shell .sidebar .brand-slogan {
+    font-size: 12px;
+    letter-spacing: 1.5px;
+    margin-top: 8px;
+  }
+  .homepage.app-shell .sidebar-section {
+    padding: 9px 10px;
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--home-secondary);
+  }
+  .homepage.app-shell .sidebar nav {
+    gap: 4px;
+  }
+  .homepage.app-shell .sidebar nav button {
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 11px;
+    font-size: 14px;
+    line-height: 22px;
+    color: #5e7467;
+    border-radius: 8px;
+    text-align: left;
+  }
+  .homepage.app-shell .sidebar .workspace-subnav button {
+    padding-left: 11px !important;
+  }
+  .homepage.app-shell .workspace-nav-heading > button:last-child {
+    display: inline-flex;
+    grid-template-columns: none;
+    flex: 0 0 28px;
+    width: 28px;
+    padding: 6px;
+  }
+  .homepage.app-shell .sidebar nav button.active {
+    background: #e7efe6;
+    color: #244e42;
+    font-weight: 600;
+  }
+  .homepage.app-shell .sidebar-projects {
+    margin: 14px 0;
+  }
+  .homepage.app-shell .sidebar-project-list .project-card {
+    border: 1px solid var(--home-line);
+    border-radius: 9px;
+    box-shadow: none;
+  }
+  .homepage.app-shell .sidebar-project-list .project-card.chosen {
+    border-color: #aec6b0;
+    background: #f3f7ef;
+  }
+  .homepage.app-shell .project-select {
+    padding: 11px 12px;
+    gap: 3px;
+  }
+  .homepage.app-shell .project-card .project-card-name {
+    margin: 3px 0 1px;
+    font-size: 14px;
+    line-height: 21px;
+  }
+  .homepage.app-shell .project-card :is(small, .project-card-dates) {
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--home-secondary);
+  }
+  .homepage.app-shell .sidebar-bottom > button,
+  .homepage.app-shell .sidebar-bottom > p {
+    font-size: 13px;
+    color: var(--home-secondary);
+  }
+}
+@media (max-width: 1150px) {
+  .homepage .stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 950px) {
+  .homepage .page-heading {
+    margin-top: 18px;
+  }
+}
+@media (max-width: 700px) {
+  .homepage .workspace-status-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px;
+    padding: 9px 10px;
+  }
+  .homepage .workspace-status-group .local-notice {
+    grid-column: 1 / -1;
+    align-items: flex-start;
+    font-size: 12px;
+  }
+  .homepage .local-notice > svg {
+    margin-top: 3px;
+  }
+  .homepage .local-notice > button {
+    min-height: 36px;
+    font-size: 12px;
+  }
+  .homepage .workspace-status-group .save-state {
+    grid-column: 1 / -1;
+    font-size: 12px;
+  }
+  .homepage .page-heading {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .homepage .page-heading h1 {
+    font-size: 24px;
+  }
+  .homepage .page-heading p {
+    font-size: 14px;
+  }
+  .homepage .page-heading .primary {
+    min-height: 42px;
+  }
+  .homepage .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin-bottom: 18px;
+  }
+  .homepage .stat-card {
+    min-height: 104px;
+    padding: 10px 12px;
+  }
+  .homepage .current-project-name {
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .homepage .workspace-brief .brief-actions .text-btn,
+  .homepage .workspace-brief .purchase-actions :is(button, select) {
+    min-height: 40px;
+    font-size: 13px;
+  }
+  .homepage .workspace-brief .brief-content {
+    max-height: 220px;
+  }
+  .homepage .workspace-brief .panel {
+    min-height: 146px;
+  }
+  .homepage .schedule-section > .section-heading > div:first-child,
+  .homepage .schedule-section > .section-heading > .toolbar {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+  .homepage .schedule-section .toolbar > button,
+  .homepage .schedule-section .date-picker-compact .date-field {
+    height: 44px;
+    min-height: 44px;
+  }
+  .homepage .schedule-section .date-picker-compact .date-field {
+    width: 152px;
+  }
+  .homepage .schedule-section .date-picker-compact input {
+    font-size: 16px;
+  }
+  .homepage .legend {
+    gap: 4px 12px;
+  }
+  .homepage .legend button {
+    min-height: 40px;
+  }
+  .homepage > dialog.modal .modal-foot button {
+    min-height: 42px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .homepage :is(button, a) {
+    transition: none;
+  }
+}

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { CloudGate } from './components/CloudGate';
 import './style.css';
 import './compact.css';
+import './homepage.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <CloudGate />

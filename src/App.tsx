@@ -687,7 +687,7 @@ export default function App() {
     );
   }
   return (
-    <div className="app-shell">
+    <div className={`app-shell${view === 'overview' ? ' homepage' : ''}`}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -829,35 +829,40 @@ export default function App() {
           <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
         <main>
-          <div className="local-notice">
-            <ShieldCheck size={15} />
-            <span>
-              {isCloud
-                ? `云空间 · ${cloudUser?.displayName || cloudUser?.login || '正在认证'} · 服务端保存，版本冲突不会静默覆盖。`
-                : '本地模式 · 数据仅保存在当前浏览器和设备，不会自动同步。建议定期备份。'}
-            </span>
-            <button onClick={() => setBackup(true)} disabled={!ready}>
-              备份数据
-              <ArrowDownToLine size={13} />
-            </button>
-          </div>
           <div
-            className={`save-state compact-save ${status.includes('失败') ? 'red' : ''}`}
-            role="status"
+            className="workspace-status-group"
+            style={view === 'overview' ? undefined : { display: 'contents' }}
           >
-            <span>{status}</span>
-            {undo && (
-              <button
-                className="undo-quiet"
-                title={undo.label}
-                onClick={() => {
-                  update(() => undo.before);
-                  setUndo(null);
-                }}
-              >
-                撤销
+            <div className="local-notice">
+              <ShieldCheck size={15} />
+              <span>
+                {isCloud
+                  ? `云空间 · ${cloudUser?.displayName || cloudUser?.login || '正在认证'} · 服务端保存，版本冲突不会静默覆盖。`
+                  : '本地模式 · 数据仅保存在当前浏览器和设备，不会自动同步。建议定期备份。'}
+              </span>
+              <button onClick={() => setBackup(true)} disabled={!ready}>
+                备份数据
+                <ArrowDownToLine size={13} />
               </button>
-            )}
+            </div>
+            <div
+              className={`save-state compact-save ${status.includes('失败') ? 'red' : ''}`}
+              role="status"
+            >
+              <span>{status}</span>
+              {undo && (
+                <button
+                  className="undo-quiet"
+                  title={undo.label}
+                  onClick={() => {
+                    update(() => undo.before);
+                    setUndo(null);
+                  }}
+                >
+                  撤销
+                </button>
+              )}
+            </div>
           </div>
           {error && (
             <div className="error-banner" role="alert">
