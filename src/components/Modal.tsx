@@ -10,6 +10,7 @@ export function Modal({
   anchor,
   blocking = false,
   className = '',
+  placement = 'center',
 }: {
   title: string;
   subtitle?: string;
@@ -19,6 +20,7 @@ export function Modal({
   anchor?: Anchor;
   blocking?: boolean;
   className?: string;
+  placement?: 'center' | 'right';
 }) {
   const headingId = useId(),
     ref = useRef<HTMLDialogElement>(null),
@@ -37,6 +39,11 @@ export function Modal({
       const rect = d.getBoundingClientRect(),
         w = window.innerWidth,
         h = window.innerHeight;
+      if (placement === 'right') {
+        d.style.left = `${Math.max(0, w - rect.width)}px`;
+        d.style.top = '0px';
+        return;
+      }
       const source = anchor?.element?.isConnected ? anchor.element.getBoundingClientRect() : null;
       const x = anchor ? anchor.x + (source && initial ? source.left - initial.left : 0) : w / 2;
       const y = anchor ? anchor.y + (source && initial ? source.top - initial.top : 0) : h / 2;
@@ -56,7 +63,12 @@ export function Modal({
     const outside = (e: MouseEvent) => {
       if (e.detail > 0 && !outsidePress) return;
       outsidePress = false;
-      if (blocking || d.contains(e.target as Node) || document.querySelector('dialog:modal'))
+      if (
+        blocking ||
+        placement === 'right' ||
+        d.contains(e.target as Node) ||
+        document.querySelector('dialog:modal')
+      )
         return;
       const last = [...document.querySelectorAll('dialog[open]')].at(-1);
       if (last !== d) return;
@@ -99,7 +111,7 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${className}`}
+      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${className}`}
       aria-modal={blocking}
       aria-labelledby={headingId}
       onCancel={(e) => {

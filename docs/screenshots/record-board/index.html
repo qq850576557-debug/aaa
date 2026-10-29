@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>春茉｜真实页面改前改后</title>
+  <style>
+    :root {
+      font:
+        14px/1.6 system-ui,
+        'Microsoft YaHei',
+        sans-serif;
+      color: #263e33;
+      background: #f4f6f4;
+    }
+    body {
+      max-width: 1700px;
+      margin: auto;
+      padding: 24px;
+    }
+    h1 {
+      font-size: 24px;
+    }
+    p {
+      color: #5e7266;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      background: #f4f6f4ed;
+      padding: 8px 0 18px;
+      z-index: 1;
+    }
+    label {
+      margin-right: 18px;
+    }
+    select {
+      font: inherit;
+      padding: 8px;
+      border: 1px solid #d7e1d9;
+      border-radius: 7px;
+      background: white;
+      color: inherit;
+    }
+    .comparison,
+    .new {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+    figure {
+      margin: 0;
+      background: white;
+      border: 1px solid #e0e6df;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    figcaption {
+      padding: 12px 16px;
+      font-weight: 600;
+    }
+    img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .new {
+      margin-top: 20px;
+    }
+    h2 {
+      font-size: 18px;
+      margin-top: 28px;
+    }
+    code {
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 700px) {
+      .comparison,
+      .new {
+        grid-template-columns: 1fr;
+      }
+      body {
+        padding: 14px;
+      }
+      label {
+        display: block;
+        margin: 8px 0;
+      }
+    }
+  </style>
+  <h1>春茉工作台 · 真实页面对照</h1>
+  <p>
+    全部来自真实 Chromium
+    页面，使用合成测试资料。改前源代码：<code>5e364d0ff093f580aa91dbfb3d10b0d7c11e7eb9</code>，由
+    Git 解包复拍；改后对应本次代码。点击图片可查看原始尺寸。未连接生产。
+  </p>
+  <header>
+    <label
+      >页面
+      <select id="page">
+        <option value="home">项目工作空间</option>
+        <option value="gantt">施工工期</option>
+        <option value="purchase">采购管理</option>
+        <option value="people">人员管理</option>
+        <option value="materials">材料管理</option>
+        <option value="account">账号设置</option>
+        <option value="profile">个人名片</option>
+      </select></label
+    ><label
+      >浏览器宽度
+      <select id="width">
+        <option>1440</option>
+        <option>1280</option>
+        <option>390</option>
+      </select></label
+    >
+  </header>
+  <div class="comparison">
+    <figure>
+      <figcaption>改前 · 实际原始版本</figcaption>
+      <a id="before-link"><img id="before" alt="改前页面截图" /></a>
+    </figure>
+    <figure>
+      <figcaption>改后 · 本次工作台规范</figcaption>
+      <a id="after-link"><img id="after" alt="改后页面截图" /></a>
+    </figure>
+  </div>
+  <h2>新增记录状态看板与详情抽屉</h2>
+  <p>项目分组、横向滚动和右侧编辑。当前版本不包含卡片拖拽或聊天。</p>
+  <div class="new">
+    <figure>
+      <figcaption>记录状态看板</figcaption>
+      <a id="board-link"><img id="board" alt="记录看板" /></a>
+    </figure>
+    <figure>
+      <figcaption>右侧详情面板</figcaption>
+      <a id="drawer-link"><img id="drawer" alt="记录详情" /></a>
+    </figure>
+  </div>
+  <script>
+    const page = document.getElementById('page'),
+      width = document.getElementById('width');
+    function show() {
+      for (const key of ['before', 'after', 'board', 'drawer']) {
+        const path =
+          (key === 'before' || key === 'after' ? key + '-' + page.value : key) +
+          '-' +
+          width.value +
+          '.png';
+        document.getElementById(key).src = path;
+        document.getElementById(key + '-link').href = path;
+      }
+    }
+    page.onchange = width.onchange = show;
+    show();
+  </script>
+</html>

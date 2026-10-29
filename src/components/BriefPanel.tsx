@@ -16,7 +16,7 @@ export function BriefPanel({
   const [expanded, setExpanded] = useState(false);
   return (
     <section
-      className={`panel brief-panel ${expanded ? 'brief-expanded' : ''} ${className}`}
+      className={`panel workbench-card brief-panel ${expanded ? 'brief-expanded' : ''} ${className}`}
       data-testid={testId}
     >
       <header className="brief-heading">

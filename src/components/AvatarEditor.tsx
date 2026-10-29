@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, type RefObject } from 'react';
 import { Avatar } from './Avatar';
 import { cloudApi, cloudSession, type CloudUser } from '../lib/cloud';
 export function AvatarEditor({
   user,
   onUpdated,
   kind = 'system',
+  inputRef,
 }: {
   user: CloudUser;
   onUpdated: (user: CloudUser) => void;
   kind?: 'system' | 'card';
+  inputRef?: RefObject<HTMLInputElement | null>;
 }) {
   const [candidate, setCandidate] = useState(''),
     [error, setError] = useState(''),
@@ -90,6 +92,7 @@ export function AvatarEditor({
       <label>
         选择头像
         <input
+          ref={inputRef}
           type="file"
           aria-label={kind === 'card' ? '选择名片头像' : '选择头像'}
           accept="image/png,image/jpeg,image/webp"
@@ -100,7 +103,10 @@ export function AvatarEditor({
           }}
         />
       </label>
-      <p className="account-muted">小于2MB · PNG、JPEG、WebP · 保存时裁切为圆形头像</p>
+      <p className="account-muted">
+        小于2MB · PNG、JPEG、WebP ·{' '}
+        {kind === 'card' ? '居中裁切；与在线头像独立保存' : '保存时裁切为圆形头像'}
+      </p>
       {candidate && (
         <div className="toolbar">
           <button disabled={busy} onClick={() => void save()}>

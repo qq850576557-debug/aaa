@@ -1,4 +1,5 @@
 import { BriefPanel } from './components/BriefPanel';
+import { RecordBoard } from './components/RecordBoard';
 import { cloudApi } from './lib/cloud';
 import { MaterialsPanel, MaterialAlertSummary } from './components/MaterialsPanel';
 import { nextTradeColor } from './lib/trade-colors';
@@ -18,6 +19,7 @@ import {
   FileJson,
   FolderOpen,
   LayoutDashboard,
+  KanbanSquare,
   History as HistoryIcon,
   Leaf,
   Loader2,
@@ -92,11 +94,13 @@ type View =
   | 'reminders'
   | 'completed'
   | 'people'
-  | 'materials';
+  | 'materials'
+  | 'records';
 type Confirmation = { title: string; message: string; run: () => void; danger?: boolean };
 const navigation: [View, string, ReactNode][] = [
   ['overview', '项目工作空间', <LayoutDashboard size={19} />],
   ['notes', '事项与备忘', <StickyNote size={19} />],
+  ['records', '记录状态看板', <KanbanSquare size={19} />],
   ['purchases', '采购管理', <Package size={19} />],
   ['reminders', '提醒中心', <ClipboardList size={19} />],
   ['completed', '已完工项目', <Archive size={19} />],
@@ -598,7 +602,17 @@ export default function App() {
       />
     );
   }
-  function go(v: View) {
+  function go(v: View, confirmed = false) {
+    if (
+      !confirmed &&
+      !window.dispatchEvent(
+        new CustomEvent('chunmo-before-navigation', {
+          cancelable: true,
+          detail: { resume: () => go(v, true) },
+        }),
+      )
+    )
+      return;
     setView(v);
     if (v === 'completed') {
       setArchived(true);
@@ -683,7 +697,7 @@ export default function App() {
     );
   }
   return (
-    <div className={`app-shell${view === 'overview' ? ' homepage' : ''}`}>
+    <div className={`app-shell${view === 'overview' ? ' homepage' : ''}`} data-view={view}>
       <aside className="sidebar">
         <a
           className="brand"
@@ -825,10 +839,7 @@ export default function App() {
           <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
         <main>
-          <div
-            className="workspace-status-group"
-            style={view === 'overview' ? undefined : { display: 'contents' }}
-          >
+          <div className="workspace-status-group">
             <div className="local-notice">
               <ShieldCheck size={15} />
               <span>
@@ -892,38 +903,42 @@ export default function App() {
               )}
             </div>
           )}
-          <div className="page-heading">
+          <div className="page-heading workbench-page-heading">
             <div>
               <div className="eyebrow">RENOVATION WORKSPACE</div>
               <h1>
-                {view === 'overview'
-                  ? '项目工作空间'
-                  : view === 'schedule'
-                    ? '施工计划'
-                    : view === 'notes'
-                      ? '每日事项与项目备忘'
-                      : view === 'purchases'
-                        ? '材料采购管理'
-                        : view === 'completed'
-                          ? '已完工项目'
-                          : view === 'materials'
-                            ? '材料资产管理'
-                            : view === 'people'
-                              ? '人员管理'
-                              : '项目提醒中心'}
+                {view === 'records'
+                  ? '记录状态看板'
+                  : view === 'overview'
+                    ? '项目工作空间'
+                    : view === 'schedule'
+                      ? '施工计划'
+                      : view === 'notes'
+                        ? '每日事项与项目备忘'
+                        : view === 'purchases'
+                          ? '材料采购管理'
+                          : view === 'completed'
+                            ? '已完工项目'
+                            : view === 'materials'
+                              ? '材料资产管理'
+                              : view === 'people'
+                                ? '人员管理'
+                                : '项目提醒中心'}
               </h1>
               <p>
-                {view === 'overview'
-                  ? '工期有序，细节有据。从设计到落地，悉心照料每一个家。'
-                  : view === 'schedule'
-                    ? '以清晰的时间线，串联每一道施工工序。'
-                    : view === 'notes'
-                      ? '记录现场的每个细节，让重要的事不再遗漏。'
-                      : view === 'purchases'
-                        ? '把材料安排在施工之前，让进度从容向前。'
-                        : view === 'people'
-                          ? '统一管理人员档案与项目分配。'
-                          : '及时关注待办与风险，让计划保持在轨道上。'}
+                {view === 'records'
+                  ? '围绕项目，记录节点、现场进展与每一次跟进。'
+                  : view === 'overview'
+                    ? '工期有序，细节有据。从设计到落地，悉心照料每一个家。'
+                    : view === 'schedule'
+                      ? '以清晰的时间线，串联每一道施工工序。'
+                      : view === 'notes'
+                        ? '记录现场的每个细节，让重要的事不再遗漏。'
+                        : view === 'purchases'
+                          ? '把材料安排在施工之前，让进度从容向前。'
+                          : view === 'people'
+                            ? '统一管理人员档案与项目分配。'
+                            : '及时关注待办与风险，让计划保持在轨道上。'}
               </p>
             </div>
             <div className="heading-actions">
@@ -939,7 +954,10 @@ export default function App() {
               )}
             </div>
           </div>
-          <div className="stats-grid" hidden={view === 'people' || view === 'materials'}>
+          <div
+            className="stats-grid"
+            hidden={view === 'people' || view === 'materials' || view === 'records'}
+          >
             {(
               [
                 {
@@ -1004,6 +1022,8 @@ export default function App() {
               <Loader2 className="spin" />
               正在读取你的工作空间…
             </div>
+          ) : view === 'records' ? (
+            <RecordBoard projects={data.projects} isCloud={isCloud} />
           ) : view === 'reminders' ? (
             <>
               {reminderItems()}

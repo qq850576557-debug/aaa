@@ -5,6 +5,7 @@ import './style.css';
 import './compact.css';
 import './homepage.css';
 import './v11.css';
+import './workbench.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <CloudGate />

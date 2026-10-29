@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { MemberCards } from './MemberCards';
 import { AvatarEditor } from './AvatarEditor';
@@ -6,6 +6,7 @@ import { cloudSession, type CloudUser } from '../lib/cloud';
 export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () => void }) {
   const [profile, setProfile] = useState(user),
     [error, setError] = useState('');
+  const photoInput = useRef<HTMLInputElement>(null);
   return (
     <Modal title="我的个人名片" className="personal-card-dialog" onClose={onClose}>
       <div className="modal-body">
@@ -22,6 +23,13 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
         <MemberCards
           user={profile}
           onlyId={user.id}
+          onPhotoClick={() => {
+            const input = photoInput.current;
+            if (!input) return;
+            const details = input.closest('details');
+            if (details) details.open = true;
+            input.click();
+          }}
           onSaved={async () => {
             try {
               const fresh = await cloudSession();
@@ -32,7 +40,7 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
             }
           }}
         />
-        <AvatarEditor user={profile} kind="card" onUpdated={setProfile} />
+        <AvatarEditor user={profile} kind="card" onUpdated={setProfile} inputRef={photoInput} />
         {error && <p role="alert">{error}</p>}
       </div>
       <footer className="modal-foot">

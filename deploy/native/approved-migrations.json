@@ -7,5 +7,6 @@
   "006_daily_assessments.sql": "592bd6f027a74364ff9dd7fb5e21f84f9dddcbc00b44477cab7eb7aba721fe33",
   "007_member_cards.sql": "18fd8d4fdbdcfb86996303e8c1b36d5e55ac3671b9e2f55c033ee0b5b35245a0",
   "008_material_assets.sql": "8bcdc6f92a0dc6e4e7467b510a4b13a5c4962cf308f92deec22bc39b467de445",
-  "009_experience_v11.sql": "1a103d0185a3680ea2e596ac3cf3ed44a5f49e299aeafc27147d01f671c38f5a"
+  "009_experience_v11.sql": "1a103d0185a3680ea2e596ac3cf3ed44a5f49e299aeafc27147d01f671c38f5a",
+  "010_record_board.sql": "aff19128bc4e3ffc8cb6265493f2b790bf24bb08bafe92eeca351eb5121791da"
 }

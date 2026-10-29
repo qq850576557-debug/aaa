@@ -5,7 +5,7 @@ import { pool, privatePool } from './db';
 const q = await pool.query('SELECT rolsuper FROM pg_roles WHERE rolname=current_user');
 if (q.rows[0]?.rolsuper) throw Error('Refusing to run API with PostgreSQL superuser');
 const migrations = await pool.query('SELECT name FROM schema_migration');
-if (!migrations.rows.some((r) => r.name === '005_account_avatar.sql'))
+if (!migrations.rows.some((r) => r.name === '010_record_board.sql'))
   throw Error('Run database migrations before API startup');
 let maintenanceBusy = false;
 const maintenance = setInterval(

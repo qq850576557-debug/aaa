@@ -101,6 +101,23 @@ try {
         app.query(`DELETE FROM ${table} WHERE workspace_id=$1`, [wid]),
         (e: any) => e.code === '42501',
       );
+    await app.query(
+      "INSERT INTO work_record(workspace_id,id,project_id,project_name,title,status,version,created_by,created_name,updated_by,updated_name) VALUES($1,'record','project','备份工地','核验看板备份','持续跟进',1,$2,'当时姓名',$2,'当时姓名')",
+      [wid, a.id],
+    );
+    await app.query(
+      "INSERT INTO record_history(workspace_id,record_id,actor_id,actor_name,operation,changed_fields,after_value) VALUES($1,'record',$2,'当时姓名','create','[\"status\"]','{\"status\":\"持续跟进\"}')",
+      [wid, a.id],
+    );
+    await app.query(
+      'INSERT INTO record_submission VALUES($1,\'board-request\',$2,\'hash\',\'{"id":"record","version":1}\')',
+      [wid, a.id],
+    );
+    for (const table of ['work_record', 'record_history', 'record_submission'])
+      await assert.rejects(
+        app.query(`DELETE FROM ${table} WHERE workspace_id=$1`, [wid]),
+        (e: any) => e.code === '42501',
+      );
   } finally {
     await app.end();
   }
@@ -153,6 +170,9 @@ try {
       'material_transfer',
       'transfer_submission',
       'card_avatar',
+      'work_record',
+      'record_history',
+      'record_submission',
     ])
       assert.equal(
         (await restored.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n,
@@ -174,8 +194,18 @@ try {
     const manifest = JSON.parse(readFileSync(file + '.json', 'utf8'));
     assert.equal(manifest.counts.material_event, 1);
     assert.equal(manifest.counts.material_history, 1);
+    assert.equal(manifest.counts.work_record, 1);
+    assert.equal(manifest.counts.record_history, 1);
+    assert.equal(
+      (await restored.query('SELECT status FROM work_record')).rows[0].status,
+      '持续跟进',
+    );
+    assert.equal(
+      (await restored.query('SELECT actor_name FROM record_history')).rows[0].actor_name,
+      '当时姓名',
+    );
     console.log(
-      'PASS V1.1 purchase provenance/history, partial transfer/submissions, independent card image, job title, private join date and immutable material rows restored; both isolated databases retained.',
+      'PASS V1.1 record board/history/idempotency, purchase provenance/history, partial transfer/submissions, independent card image, job title, private join date and immutable material rows restored; both isolated databases retained.',
     );
   } finally {
     await restored.end();

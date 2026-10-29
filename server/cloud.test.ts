@@ -102,6 +102,229 @@ async function setup() {
     b = await login(f.employee, f.password);
   return { f, a, b };
 }
+test('record board: authenticated workspace scope, trustworthy history, deletion preservation and no inventory/workspace coupling', async () => {
+  testClientIp = '203.0.113.171';
+  const { a, b, f } = await setup(),
+    d = data();
+  assert.equal((await request('/workspace', 'PUT', { revision: 0, data: d }, a)).status, 200);
+  const originalWorkspace = await (await request('/workspace', 'GET', undefined, a)).json();
+  const value = {
+    projectId: d.projects[0].id,
+    title: '复核门套',
+    nodeDate: '2026-10-29',
+    status: '待执行',
+    notes: '仅存于正文的私密备注',
+    followUp: '明天现场确认',
+  };
+  assert.equal((await request('/records')).status, 401);
+  assert.equal(
+    (
+      await request('/records', 'POST', { requestId: randomUUID(), value }, b, {
+        'X-CSRF-Token': 'wrong',
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await request('/records', 'POST', { requestId: randomUUID(), value, actorId: f.id }, b))
+      .status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        '/records',
+        'POST',
+        { requestId: randomUUID(), value: { ...value, projectId: 'outside' } },
+        b,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        '/records',
+        'POST',
+        { requestId: randomUUID(), value: { ...value, nodeDate: '2026-02-30' } },
+        b,
+      )
+    ).status,
+    400,
+  );
+  await request('/auth/profile', 'PATCH', { displayName: '当时员工姓名' }, b);
+  const body = { requestId: randomUUID(), value };
+  const created = await request('/records', 'POST', body, b);
+  assert.equal(created.status, 200);
+  let r = await created.json();
+  assert.equal(r.createdBy, f.employeeId);
+  assert.equal(r.createdName, '当时员工姓名');
+  assert.ok(Math.abs(Date.now() - Date.parse(r.createdAt)) < 10000);
+  const retry = await (await request('/records', 'POST', body, b)).json();
+  assert.deepEqual(retry, r);
+  assert.equal(
+    (await request('/records', 'POST', { ...body, value: { ...value, title: '另一内容' } }, b))
+      .status,
+    409,
+  );
+  assert.equal((await request('/records', 'POST', body, a)).status, 409);
+  const other = await fixtureAccounts(),
+    stranger = await login(other.login, other.password);
+  assert.equal(
+    (await (await request('/records', 'GET', undefined, stranger)).json()).records.length,
+    0,
+  );
+  assert.equal((await request(`/records/${r.id}/history`, 'GET', undefined, stranger)).status, 404);
+  assert.equal(
+    (
+      await request(
+        `/records/${r.id}`,
+        'PUT',
+        { version: r.version, requestId: randomUUID(), value },
+        stranger,
+      )
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await request(
+        `/records/${r.id}`,
+        'DELETE',
+        { version: r.version, requestId: randomUUID() },
+        stranger,
+      )
+    ).status,
+    404,
+  );
+  await request('/auth/profile', 'PATCH', { displayName: '新的员工姓名' }, b);
+  const update = await request(
+    `/records/${r.id}`,
+    'PUT',
+    {
+      requestId: randomUUID(),
+      version: r.version,
+      value: { ...value, status: '持续跟进', nodeDate: '2026-10-30' },
+    },
+    b,
+  );
+  assert.equal(update.status, 200);
+  r = await update.json();
+  assert.equal(r.updatedName, '新的员工姓名');
+  assert.equal(r.createdName, '当时员工姓名');
+  const h = await (await request(`/records/${r.id}/history`, 'GET', undefined, b)).json();
+  assert.equal(h.events.length, 2);
+  assert.equal(h.events[0].before.status, '待执行');
+  assert.equal(h.events[0].after.status, '持续跟进');
+  assert.equal(h.events[1].actorName, '当时员工姓名');
+  assert.ok(!JSON.stringify(h.events).includes(value.notes));
+  const audited = await (await request('/audit?entityType=record', 'GET', undefined, a)).json();
+  assert.equal(audited.events.length, 2);
+  assert.ok(!JSON.stringify(audited).includes(value.notes));
+  const relogin = await login(f.employee, f.password);
+  assert.equal(
+    (await (await request('/records', 'GET', undefined, relogin)).json()).records[0].version,
+    2,
+  );
+  const deletion = { requestId: randomUUID(), version: r.version };
+  assert.equal((await request(`/records/${r.id}`, 'DELETE', deletion, b)).status, 200);
+  assert.equal((await request(`/records/${r.id}`, 'DELETE', deletion, b)).status, 200);
+  assert.equal((await (await request('/records', 'GET', undefined, b)).json()).records.length, 0);
+  const deleted = await (await request(`/records/${r.id}/history`, 'GET', undefined, a)).json();
+  assert.equal(deleted.record.deleted, true);
+  assert.equal(deleted.events.length, 3);
+  assert.equal(deleted.events[0].operation, 'delete');
+  const saved = await (await request('/workspace', 'GET', undefined, a)).json();
+  assert.equal(saved.revision, 1);
+  assert.deepEqual(saved.data, originalWorkspace.data);
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int n FROM material_event WHERE workspace_id=$1', [
+        f.workspaceId,
+      ])
+    ).rows[0].n,
+    0,
+  );
+});
+test('record board: concurrent edits, duplicate submissions, deleted projects and database append-only protection', async () => {
+  testClientIp = '203.0.113.172';
+  const { a, b, f } = await setup(),
+    d = data();
+  await request('/workspace', 'PUT', { revision: 0, data: d }, a);
+  const value = {
+    projectId: d.projects[0].id,
+    title: '现场收口核验',
+    nodeDate: '',
+    status: '进行中',
+    notes: '',
+    followUp: '',
+  };
+  const r = await (await request('/records', 'POST', { requestId: randomUUID(), value }, a)).json();
+  const updates = await Promise.all(
+    [a, b].map((client, i) =>
+      request(
+        `/records/${r.id}`,
+        'PUT',
+        { requestId: randomUUID(), version: 1, value: { ...value, followUp: '现场反馈' + i } },
+        client,
+      ),
+    ),
+  );
+  assert.deepEqual(updates.map((x) => x.status).sort(), [200, 409]);
+  const winner = await updates.find((x) => x.status === 200)!.json();
+  assert.equal(
+    (await (await request(`/records/${r.id}/history`, 'GET', undefined, a)).json()).events.length,
+    2,
+  );
+  const bad = await request(
+    `/records/${r.id}`,
+    'PUT',
+    { requestId: randomUUID(), version: winner.version, value: { ...value, projectId: 'another' } },
+    a,
+  );
+  assert.equal(bad.status, 400);
+  assert.equal(
+    (await (await request('/records', 'GET', undefined, a)).json()).records[0].version,
+    2,
+  );
+  for (const table of ['record_history', 'record_submission']) {
+    await assert.rejects(
+      pool.query(`DELETE FROM ${table} WHERE workspace_id=$1`, [f.workspaceId]),
+      (e: any) => e.code === '42501',
+    );
+    assert.equal(
+      (await pool.query("SELECT has_table_privilege(current_user,$1,'UPDATE') ok", [table])).rows[0]
+        .ok,
+      false,
+    );
+  }
+  await assert.rejects(
+    pool.query('DELETE FROM work_record WHERE workspace_id=$1', [f.workspaceId]),
+    (e: any) => e.code === '42501',
+  );
+  // Ordinary project graph rebuild/removal cannot cascade-delete records or history.
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: 1, data: emptyData() }, a)).status,
+    200,
+  );
+  const retained = await (await request('/records', 'GET', undefined, a)).json();
+  assert.equal(retained.records[0].projectName, d.projects[0].name);
+  assert.equal(
+    (
+      await request(
+        `/records/${r.id}`,
+        'PUT',
+        {
+          requestId: randomUUID(),
+          version: winner.version,
+          value: { ...value, notes: '项目移除后仍可收尾' },
+        },
+        a,
+      )
+    ).status,
+    200,
+  );
+});
 test('real authentication, cookie policy, CSRF, role escalation rejection, password reset and disabled-session revocation', async () => {
   const { f, a, b } = await setup();
   assert.equal((await request('/workspace')).status, 401);

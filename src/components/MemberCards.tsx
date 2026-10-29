@@ -8,6 +8,7 @@ import {
   type Department,
 } from '../lib/member-cards';
 import { Avatar } from './Avatar';
+import { Camera } from 'lucide-react';
 import { DateField } from './DateField';
 import { Modal, Confirm } from './Modal';
 import './member-cards.css';
@@ -15,9 +16,11 @@ export function MemberCards({
   user,
   onSaved,
   onlyId,
+  onPhotoClick,
 }: {
   user: CloudUser;
   onlyId?: string;
+  onPhotoClick?: () => void;
   onSaved: (card: MemberCard) => Promise<void>;
 }) {
   const [cards, setCards] = useState<MemberCard[]>([]),
@@ -132,7 +135,22 @@ export function MemberCards({
           .map((card) => (
             <article className="member-card" key={card.id} data-member-id={card.id}>
               <div className="member-card-photo">
-                <Avatar account={card} kind="card" />
+                {onPhotoClick && card.id === user.id ? (
+                  <button
+                    type="button"
+                    className="member-photo-edit"
+                    aria-label="点击更换名片照片"
+                    onClick={onPhotoClick}
+                  >
+                    <Avatar account={card} kind="card" />
+                    <span>
+                      <Camera size={16} />
+                      点击更换照片
+                    </span>
+                  </button>
+                ) : (
+                  <Avatar account={card} kind="card" />
+                )}
                 {!card.active && <small className="member-card-inactive">账号已停用</small>}
               </div>
               <div className="member-card-content">

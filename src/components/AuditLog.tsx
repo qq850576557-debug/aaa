@@ -24,6 +24,7 @@ const entities: Record<string, string> = {
   person: '人员',
   dictionary: '标准字典',
   account: '账号',
+  record: '看板记录',
 };
 const operations: Record<string, string> = { create: '新增', update: '修改', delete: '删除' };
 const devices: Record<string, string> = { desktop: '电脑', mobile: '手机', tablet: '平板' };
@@ -76,6 +77,8 @@ const fields: Record<string, string> = {
   avatar: '头像',
   login: '登录账号',
   loginChangedAt: '登录账号修改时间',
+  nodeDate: '节点日期',
+  followUp: '跟进',
 };
 function safeValue(value: unknown): string {
   if (value === null || value === undefined) return '无';

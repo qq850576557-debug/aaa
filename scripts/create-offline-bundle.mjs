@@ -32,6 +32,10 @@ if (cloned !== target) throw Error('Fresh clone does not resolve to source HEAD'
 git('-C', validation, 'fsck', '--full', '--strict');
 const required = [
   'server/migrations/009_experience_v11.sql',
+  'server/migrations/010_record_board.sql',
+  'server/records.ts',
+  'src/components/RecordBoard.tsx',
+  'src/workbench.css',
   'server/purchases.ts',
   'server/transfers.ts',
   'src/homepage.css',

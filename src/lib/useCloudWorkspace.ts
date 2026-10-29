@@ -67,6 +67,9 @@ export function useCloudWorkspace(enabled: boolean) {
         events.addEventListener('presence', () =>
           window.dispatchEvent(new Event('chunmo-presence')),
         );
+        events.addEventListener('records', () =>
+          window.dispatchEvent(new Event('chunmo-records-changed')),
+        );
         window.dispatchEvent(new Event('chunmo-presence'));
         events.addEventListener('revision', (event) => {
           const value = JSON.parse((event as MessageEvent).data);

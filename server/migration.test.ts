@@ -73,6 +73,9 @@ test('V1.1 additive upgrade retains old identities, password hash, business rows
       'material_transfer',
       'transfer_submission',
       'card_avatar',
+      'work_record',
+      'record_history',
+      'record_submission',
     ])
       assert.equal((await db.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n, 0, table);
     await db.query(

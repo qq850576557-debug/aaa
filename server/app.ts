@@ -1,4 +1,5 @@
 import { transferRoutes } from './transfers';
+import { recordRoutes } from './records';
 import { purchaseRoutes } from './purchases';
 import { materialRoutes } from './materials';
 import { memberCardRoutes } from './member-cards';
@@ -127,6 +128,7 @@ export function createApp() {
     next();
   });
   purchaseRoutes(app);
+  recordRoutes(app);
   assessmentRoutes(app);
   materialRoutes(app);
   transferRoutes(app);
@@ -356,6 +358,7 @@ export function createApp() {
               'department',
               'account',
               'workspace',
+              'record',
               'person_private',
             ])
             .optional(),
@@ -926,6 +929,7 @@ export function createApp() {
       res.flushHeaders();
       let busy = false,
         last = -1,
+        lastRecord = '',
         ticks = 0;
       const close = () => {
         if (!res.writableEnded && !res.destroyed) res.write('event: session-expired\ndata: {}\n\n');
@@ -959,6 +963,18 @@ export function createApp() {
           if (revision !== last) {
             last = revision;
             res.write(`event: revision\ndata: ${JSON.stringify({ revision })}\n\n`);
+          }
+          const recordRevision = String(
+            (
+              await pool.query(
+                'SELECT coalesce(max(id),0)::text revision FROM record_history WHERE workspace_id=$1',
+                [actor.workspaceId],
+              )
+            ).rows[0].revision,
+          );
+          if (recordRevision !== lastRecord) {
+            lastRecord = recordRevision;
+            res.write(`event: records\ndata: ${JSON.stringify({ revision: recordRevision })}\n\n`);
           }
           if (++ticks % 5 === 0) res.write('event: presence\ndata: {}\n\n');
         } catch {
