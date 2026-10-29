@@ -160,14 +160,6 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
             <Plus size={16} />
             新增记录
           </button>
-          <span className="board-total">
-            {visible.length} 条记录<span> · 项目跟进</span>
-          </span>
-          <button className="icon-btn" aria-label="刷新看板" onClick={() => void load()}>
-            <RefreshCw size={16} />
-          </button>
-        </div>
-        <div className="board-filters">
           <label className="board-search">
             <Search size={16} />
             <span className="sr-only">搜索看板记录</span>
@@ -178,6 +170,8 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
               placeholder="搜索事项、备注或跟进"
             />
           </label>
+        </div>
+        <div className="board-filters">
           <label>
             <SlidersHorizontal size={14} />
             <span className="sr-only">看板项目筛选</span>
@@ -224,6 +218,12 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
             </select>
           </label>
         </div>
+        <div className="board-tool-meta">
+          <span className="board-total">{visible.length} 条记录</span>
+          <button className="icon-btn" aria-label="刷新看板" onClick={() => void load()}>
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
       {notice && (
         <div role="status" className="board-notice">
@@ -250,7 +250,11 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
               group === 'status' ? r.status === col.id : r.projectId === col.id,
             );
             return (
-              <section className={`board-lane tone-${i % 4}`} key={col.id} aria-label={col.name}>
+              <section
+                className={`board-lane tone-${(group === 'project' ? projectGroups.findIndex((p) => p.id === col.id) : i) % 6}`}
+                key={col.id}
+                aria-label={col.name}
+              >
                 <header className="board-lane-head">
                   <h2 className={group === 'project' ? 'project-context-title' : undefined}>
                     {col.name}

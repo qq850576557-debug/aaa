@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Modal } from './Modal';
 import { cloudApi } from '../lib/cloud';
-import { Check, Pencil } from 'lucide-react';
+import { Check, Pencil, Trash2, History } from 'lucide-react';
 import {
   purchaseDue,
   purchaseComplete,
@@ -77,7 +77,7 @@ export function PurchaseCard({
           </small>
         )}
       </div>
-      <div className="purchase-actions">
+      <div className="purchase-actions" role="group" aria-label={`采购操作：${p.name}`}>
         <select
           aria-label={`采购状态${p.name}`}
           value={p.status}
@@ -88,13 +88,13 @@ export function PurchaseCard({
           <option>已完成</option>
           {p.status === '已到货' && <option>已到货</option>}
         </select>
-        <button className="text-btn" onClick={onEdit} aria-label={`编辑采购${p.name}`}>
+        <button className="purchase-edit" onClick={onEdit} aria-label={`编辑采购${p.name}`}>
           <Pencil size={14} />
           编辑
         </button>
         {!done && (
           <button
-            className="text-btn"
+            className="purchase-complete"
             onClick={() => onStatus('已完成')}
             aria-label={`完成采购${p.name}`}
           >
@@ -103,13 +103,14 @@ export function PurchaseCard({
           </button>
         )}
         {onDelete && (
-          <button className="text-btn red" aria-label={`删除采购${p.name}`} onClick={onDelete}>
+          <button className="purchase-delete" aria-label={`删除采购${p.name}`} onClick={onDelete}>
+            <Trash2 size={14} />
             删除
           </button>
         )}
         {isCloud && (
           <button
-            className="text-btn"
+            className="purchase-history"
             onClick={() => {
               setError('');
               void cloudApi<NonNullable<typeof history>>(
@@ -119,6 +120,7 @@ export function PurchaseCard({
                 .catch((e) => setError(String(e)));
             }}
           >
+            <History size={14} />
             采购历史
           </button>
         )}

@@ -154,7 +154,8 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
 }) => {
   await boot(page);
   await restore(page);
-  await page.getByRole('button', { name: '事项与备忘', exact: true }).click();
+  await page.getByRole('button', { name: '记录状态看板', exact: true }).click();
+  await page.locator('.daily-records > summary').click();
   await page.getByRole('button', { name: '项目备忘', exact: true }).click();
   let modal = page.getByRole('dialog');
   await modal.getByLabel('备忘标题', { exact: true }).fill('核对门洞尺寸');
@@ -169,6 +170,7 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
   await page.getByLabel('只看未完成').uncheck();
   await page.getByPlaceholder('搜索标题、内容或负责人…').fill('小陈');
   await expect(page.locator('.notes-grid .note-card')).toHaveCount(1);
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
   await expect.poll(async () => (await state(page)).projects.length).toBe(2);

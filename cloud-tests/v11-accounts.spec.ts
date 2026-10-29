@@ -73,7 +73,7 @@ test('V1.1 Chinese formal names stay separate from author-private notes; owner c
     await p.getByLabel('我的展示名称', { exact: true }).fill('马春旭');
     await p.getByRole('button', { name: '保存展示名称', exact: true }).click();
     await expect(p.getByRole('heading', { name: '马春旭', exact: true })).toBeVisible();
-    await expect(owner.locator('.local-notice')).toContainText('马春旭');
+    await expect(owner.locator('.current-account')).toContainText('马春旭');
     const identity = await (await api(ownerContext, '/auth/session')).json();
     expect(identity.user.login).toBe(f.login);
     expect(identity.user.id).toBe(f.id);

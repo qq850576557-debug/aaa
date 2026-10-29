@@ -30,7 +30,6 @@ import {
   Plus,
   Search,
   ShieldCheck,
-  StickyNote,
   TriangleAlert,
   Trash2,
   Upload,
@@ -92,7 +91,6 @@ import {
 type View =
   | 'overview'
   | 'schedule'
-  | 'notes'
   | 'purchases'
   | 'reminders'
   | 'completed'
@@ -102,7 +100,6 @@ type View =
 type Confirmation = { title: string; message: string; run: () => void; danger?: boolean };
 const navigation: [View, string, ReactNode][] = [
   ['overview', '项目工作空间', <LayoutDashboard size={19} />],
-  ['notes', '事项与备忘', <StickyNote size={19} />],
   ['records', '记录状态看板', <KanbanSquare size={19} />],
   ['purchases', '采购管理', <Package size={19} />],
   ['reminders', '提醒中心', <ClipboardList size={19} />],
@@ -171,6 +168,7 @@ export default function App() {
   const [day, setDay] = useState<string | null>(null);
   const [archived, setArchived] = useState(false);
   const [search, setSearch] = useState('');
+  const [dailyRecordsOpen, setDailyRecordsOpen] = useState(false);
   const [metricFilter, setMetricFilter] = useState('');
   const [projectStatusFilter, setProjectStatusFilter] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
@@ -627,6 +625,13 @@ export default function App() {
     setShowAllProjects(false);
     setProjectStatusFilter(false);
   }
+  function openDailyRecords() {
+    go('records');
+    setDailyRecordsOpen(true);
+    requestAnimationFrame(() =>
+      document.getElementById('daily-records')?.scrollIntoView({ block: 'start' }),
+    );
+  }
   function reminderItems() {
     const active = new Set(data.projects.filter((p) => !isHistorical(p)).map((p) => p.id));
     return (
@@ -839,41 +844,36 @@ export default function App() {
           <div className="mobile-brand">
             <strong className="brand-name">{BRAND_NAME}</strong>
           </div>
+          <button
+            className="icon-btn workspace-backup"
+            aria-label="备份数据"
+            title="备份数据"
+            onClick={() => setBackup(true)}
+            disabled={!ready}
+          >
+            <ArrowDownToLine size={17} />
+          </button>
+          <div
+            className={`save-state compact-save ${status.includes('已保存') && !undo ? 'sr-only' : ''} ${status.includes('失败') ? 'red' : ''}`}
+            role="status"
+          >
+            <span>{status}</span>
+            {undo && (
+              <button
+                className="undo-quiet"
+                title={undo.label}
+                onClick={() => {
+                  update(() => undo.before);
+                  setUndo(null);
+                }}
+              >
+                撤销
+              </button>
+            )}
+          </div>
           <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
         <main className="workspace-content">
-          <div className="workspace-status-group">
-            <div className="local-notice">
-              <ShieldCheck size={15} />
-              <span>
-                {isCloud
-                  ? `云空间 · ${cloudUser?.displayName || cloudUser?.login || '正在认证'} · 服务端保存，版本冲突不会静默覆盖。`
-                  : '本地模式 · 数据仅保存在当前浏览器和设备，不会自动同步。建议定期备份。'}
-              </span>
-              <button onClick={() => setBackup(true)} disabled={!ready}>
-                备份数据
-                <ArrowDownToLine size={13} />
-              </button>
-            </div>
-            <div
-              className={`save-state compact-save ${status.includes('失败') ? 'red' : ''}`}
-              role="status"
-            >
-              <span>{status}</span>
-              {undo && (
-                <button
-                  className="undo-quiet"
-                  title={undo.label}
-                  onClick={() => {
-                    update(() => undo.before);
-                    setUndo(null);
-                  }}
-                >
-                  撤销
-                </button>
-              )}
-            </div>
-          </div>
           {error && (
             <div className="error-banner" role="alert">
               <TriangleAlert size={18} />
@@ -906,7 +906,9 @@ export default function App() {
               )}
             </div>
           )}
-          <div className="page-heading workbench-page-heading">
+          <div
+            className={`page-heading workbench-page-heading ${view === 'records' ? 'board-page-heading' : ''}`}
+          >
             <div>
               <div className="eyebrow">RENOVATION WORKSPACE</div>
               <h1>
@@ -916,17 +918,15 @@ export default function App() {
                     ? '项目工作空间'
                     : view === 'schedule'
                       ? '施工计划'
-                      : view === 'notes'
-                        ? '每日事项与项目备忘'
-                        : view === 'purchases'
-                          ? '材料采购管理'
-                          : view === 'completed'
-                            ? '已完工项目'
-                            : view === 'materials'
-                              ? '材料资产管理'
-                              : view === 'people'
-                                ? '人员管理'
-                                : '项目提醒中心'}
+                      : view === 'purchases'
+                        ? '材料采购管理'
+                        : view === 'completed'
+                          ? '已完工项目'
+                          : view === 'materials'
+                            ? '材料资产管理'
+                            : view === 'people'
+                              ? '人员管理'
+                              : '项目提醒中心'}
               </h1>
               <p>
                 {view === 'records'
@@ -935,13 +935,11 @@ export default function App() {
                     ? '工期有序，细节有据。从设计到落地，悉心照料每一个家。'
                     : view === 'schedule'
                       ? '以清晰的时间线，串联每一道施工工序。'
-                      : view === 'notes'
-                        ? '记录现场的每个细节，让重要的事不再遗漏。'
-                        : view === 'purchases'
-                          ? '把材料安排在施工之前，让进度从容向前。'
-                          : view === 'people'
-                            ? '统一管理人员档案与项目分配。'
-                            : '及时关注待办与风险，让计划保持在轨道上。'}
+                      : view === 'purchases'
+                        ? '把材料安排在施工之前，让进度从容向前。'
+                        : view === 'people'
+                          ? '统一管理人员档案与项目分配。'
+                          : '及时关注待办与风险，让计划保持在轨道上。'}
               </p>
             </div>
             <div className="heading-actions">
@@ -958,7 +956,7 @@ export default function App() {
             </div>
           </div>
           <div
-            className="stats-grid"
+            className="stats-grid ui-module-group"
             hidden={view === 'people' || view === 'materials' || view === 'records'}
           >
             {(
@@ -1026,7 +1024,100 @@ export default function App() {
               正在读取你的工作空间…
             </div>
           ) : view === 'records' ? (
-            <RecordBoard projects={data.projects} isCloud={isCloud} />
+            <>
+              <RecordBoard projects={data.projects} isCloud={isCloud} />
+              <details
+                id="daily-records"
+                className="daily-records panel"
+                open={dailyRecordsOpen}
+                onToggle={(e) => setDailyRecordsOpen(e.currentTarget.open)}
+              >
+                <summary>
+                  日常记录 <span className="count">{data.notes.length}</span>
+                </summary>
+                <p className="daily-records-hint">
+                  今日、明日及项目备忘的原有记录，可在这里按工地查看和处理。
+                </p>
+                {p ? (
+                  <>
+                    <div className="daily-records-toolbar">
+                      <ProjectContext project={p} />
+                      <label>
+                        <span className="sr-only">日常记录工地</span>
+                        <select
+                          aria-label="日常记录工地"
+                          value={p.id}
+                          onChange={(e) => {
+                            const project = data.projects.find((x) => x.id === e.target.value);
+                            if (project) {
+                              setSelected(project.id);
+                              setArchived(isHistorical(project));
+                            }
+                          }}
+                        >
+                          {data.projects.map((project) => (
+                            <option key={project.id} value={project.id}>
+                              {project.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button onClick={() => noteEditor(undefined, '', true)}>
+                        <Plus size={15} />
+                        项目备忘
+                      </button>
+                      <button className="primary" onClick={() => noteEditor()}>
+                        <Plus size={15} />
+                        新增事项
+                      </button>
+                    </div>
+                    <div className="filter-row">
+                      <label className="search-field">
+                        <Search size={16} />
+                        <span className="sr-only">搜索日常记录</span>
+                        <input
+                          aria-label="搜索日常记录"
+                          placeholder="搜索标题、内容或负责人…"
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                        />
+                      </label>
+                      <label className="check">
+                        <input
+                          type="checkbox"
+                          checked={onlyOpen}
+                          onChange={(e) => setOnlyOpen(e.target.checked)}
+                        />
+                        只看未完成
+                      </label>
+                      <span className="count">{matchingNotes.length} 条记录</span>
+                    </div>
+                    <div className="notes-grid">
+                      {matchingNotes.map((n) => (
+                        <NoteCard
+                          key={n.id}
+                          note={n}
+                          now={now}
+                          onEdit={() => noteEditor(n)}
+                          onToggle={() => save('note', { ...n, done: !n.done })}
+                          onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                          onDelete={() => deleteEntity({ kind: 'note', value: n })}
+                        />
+                      ))}
+                      {!matchingNotes.length && (
+                        <Empty
+                          small
+                          title="暂无匹配事项"
+                          text="添加一条事项或项目备忘，把重要细节记录下来。"
+                        />
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p>请先创建项目，再添加日常记录。</p>
+                )}
+              </details>
+            </>
           ) : view === 'reminders' ? (
             <>
               {reminderItems()}
@@ -1099,7 +1190,10 @@ export default function App() {
                     <a href="#project-timeline">施工时间轴</a>
                   </nav>
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <div className="workspace-brief agenda-brief" aria-label="当前工地事项安排">
+                    <div
+                      className="workspace-brief agenda-brief ui-module-group"
+                      aria-label="当前工地事项安排"
+                    >
                       <BriefPanel
                         key={'today' + p.id}
                         title="今日事项"
@@ -1125,7 +1219,7 @@ export default function App() {
                               <Plus size={14} />
                               添加今日事项
                             </button>
-                            <button className="text-btn" onClick={() => go('notes')}>
+                            <button className="text-btn" onClick={openDailyRecords}>
                               全部事项
                               <ArrowRight size={14} />
                             </button>
@@ -1189,8 +1283,8 @@ export default function App() {
                               <Plus size={14} />
                               添加备忘
                             </button>
-                            <button className="text-btn" onClick={() => go('notes')}>
-                              全部事项与备忘
+                            <button className="text-btn" onClick={openDailyRecords}>
+                              查看日常记录
                               <ArrowRight size={14} />
                             </button>
                           </>
@@ -1252,62 +1346,41 @@ export default function App() {
                       }}
                     />
                   )}
-                  {(view === 'notes' || view === 'purchases') && (
+                  {view === 'purchases' && (
                     <section className="records-section">
                       <div className="section-heading">
                         <h2>
-                          {view === 'notes' ? '事项与备忘' : '采购清单'}{' '}
-                          <span className="count">
-                            {view === 'notes' ? matchingNotes.length : projectPurchases.length}{' '}
-                            条记录
-                          </span>
+                          采购清单 <span className="count">{projectPurchases.length} 条记录</span>
                         </h2>
-                        <div className="toolbar">
-                          {view === 'notes' && (
-                            <button onClick={() => noteEditor(undefined, '', true)}>
-                              <Plus size={15} />
-                              项目备忘
-                            </button>
-                          )}
-                          <button
-                            className="primary"
-                            onClick={() => (view === 'notes' ? noteEditor() : purchaseEditor())}
-                          >
-                            <Plus size={15} />
-                            {view === 'notes' ? '新增事项' : '新增采购'}
-                          </button>
-                        </div>
+                        <button className="primary" onClick={() => purchaseEditor()}>
+                          <Plus size={15} />
+                          新增采购
+                        </button>
                       </div>
                       <div className="filter-row">
                         <div className="search-field">
                           <Search size={16} />
                           <input
-                            placeholder={
-                              view === 'notes'
-                                ? '搜索标题、内容或负责人…'
-                                : '搜索材料、规格或负责人…'
-                            }
+                            placeholder="搜索材料、规格或负责人…"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                           />
                         </div>
-                        {view === 'purchases' && (
-                          <label>
-                            采购状态
-                            <select
-                              aria-label="采购记录筛选"
-                              value={purchaseFilter}
-                              onChange={(e) => {
-                                setPurchaseFilter(e.target.value);
-                                setOnlyOpen(false);
-                              }}
-                            >
-                              <option>全部</option>
-                              <option>待采购</option>
-                              <option>已完成</option>
-                            </select>
-                          </label>
-                        )}
+                        <label>
+                          采购状态
+                          <select
+                            aria-label="采购记录筛选"
+                            value={purchaseFilter}
+                            onChange={(e) => {
+                              setPurchaseFilter(e.target.value);
+                              setOnlyOpen(false);
+                            }}
+                          >
+                            <option>全部</option>
+                            <option>待采购</option>
+                            <option>已完成</option>
+                          </select>
+                        </label>
                         <label className="check">
                           <input
                             type="checkbox"
@@ -1317,39 +1390,16 @@ export default function App() {
                           只看未完成
                         </label>
                       </div>
-                      {view === 'notes' ? (
-                        <div className="notes-grid">
-                          {matchingNotes.map((n) => (
-                            <NoteCard
-                              key={n.id}
-                              note={n}
-                              onEdit={() => noteEditor(n)}
-                              onToggle={() => save('note', { ...n, done: !n.done })}
-                              onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                              onDelete={() => deleteEntity({ kind: 'note', value: n })}
-                              now={now}
-                            />
-                          ))}
-                          {!matchingNotes.length && (
-                            <Empty
-                              small
-                              title="暂无匹配事项"
-                              text="添加一条事项或项目备忘，把重要细节记录下来。"
-                            />
-                          )}
-                        </div>
-                      ) : (
-                        <div className="purchase-list">
-                          {projectPurchases.map(purchaseCard)}
-                          {!projectPurchases.length && (
-                            <Empty
-                              small
-                              title="采购清单还是空的"
-                              text="添加材料并关联施工任务，提前安排到货时间。"
-                            />
-                          )}
-                        </div>
-                      )}
+                      <div className="purchase-list">
+                        {projectPurchases.map(purchaseCard)}
+                        {!projectPurchases.length && (
+                          <Empty
+                            small
+                            title="采购清单还是空的"
+                            text="添加材料并关联施工任务，提前安排到货时间。"
+                          />
+                        )}
+                      </div>
                     </section>
                   )}
                 </>

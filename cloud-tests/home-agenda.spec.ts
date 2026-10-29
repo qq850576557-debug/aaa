@@ -47,7 +47,6 @@ for (const width of [1440, 1280, 390])
       );
     const baseline = await geometry();
     for (const [name, menu] of [
-      ['notes', '事项与备忘'],
       ['purchases', '采购管理'],
       ['records', '记录状态看板'],
       ['reminders', '提醒中心'],
@@ -74,9 +73,9 @@ for (const width of [1440, 1280, 390])
         true,
       );
       if (width === 1440) {
-        await mkdir('docs/screenshots/home-agenda', { recursive: true });
+        await mkdir('/tmp/chunmo-regression-screenshots/home-agenda', { recursive: true });
         await page.screenshot({
-          path: `docs/screenshots/home-agenda/page-${name}-1440.png`,
+          path: `/tmp/chunmo-regression-screenshots/home-agenda/page-${name}-1440.png`,
           animations: 'disabled',
         });
       }
@@ -91,7 +90,7 @@ for (const width of [1440, 1280, 390])
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
     await page.screenshot({
-      path: `docs/screenshots/home-agenda/tomorrow-editor-${width}.png`,
+      path: `/tmp/chunmo-regression-screenshots/home-agenda/tomorrow-editor-${width}.png`,
       animations: 'disabled',
     });
     await dialog.getByRole('button', { name: '取消', exact: true }).click();

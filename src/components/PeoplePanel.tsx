@@ -3,10 +3,13 @@ import { ConflictPanel } from './ConflictPanel';
 import { categoryName, tradeNames } from '../lib/dictionaries';
 import { staffWork } from '../lib/readiness';
 import { useCurrentDate } from '../lib/useCurrentDate';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { ChevronRight, Palette, UserRound } from 'lucide-react';
+import { ColorControls } from './ColorPopover';
 import {
   id,
   personSchema,
+  palette,
   usedNames,
   tradeNames as standardTrades,
   type Data,
@@ -31,6 +34,29 @@ export function PeoplePanel({
   const [error, setError] = useState(''),
     [filter, setFilter] = useState('');
   const [removeAssignment, setRemoveAssignment] = useState(false);
+  // Card colors are browser presentation preferences, never workspace or schedule fields.
+  const [cardColors, setCardColors] = useState<Record<string, string>>(() => {
+    try {
+      const value: unknown = JSON.parse(localStorage.getItem('chunmo-people-card-colors') || '{}');
+      return value && typeof value === 'object' && !Array.isArray(value)
+        ? Object.fromEntries(
+            Object.entries(value).filter(
+              ([key, color]) =>
+                key.length <= 300 && typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color),
+            ),
+          )
+        : {};
+    } catch {
+      return {};
+    }
+  });
+  const [coloring, setColoring] = useState<{
+    key: string;
+    label: string;
+    color: string;
+    defaultColor: string;
+  } | null>(null);
+  const [colorError, setColorError] = useState('');
   const now = useCurrentDate();
   const people = data.people ?? [];
   const names = data.nameHistory ?? usedNames(data);
@@ -103,6 +129,36 @@ export function PeoplePanel({
   const registered = people.filter(
     (p) => !p.deleted && `${p.name}${categoryName(data, p)}${tradeNames(data, p)}`.includes(filter),
   );
+  const tradesFor = (person: Person) =>
+    person.tradeIds?.length
+      ? person.tradeIds.map((key) => ({
+          key: 'id:' + key,
+          label: data.dictionaries?.find((x) => x.id === key)?.label ?? key,
+        }))
+      : [{ key: 'name:' + person.trade, label: person.trade || '未设置工种' }];
+  const cardTrades = [
+    ...new Map(
+      people
+        .filter((x) => !x.deleted)
+        .flatMap(tradesFor)
+        .map((x) => [x.key, x]),
+    ).values(),
+  ];
+  const defaultCardColor = (key: string, label: string) =>
+    data.trades.find((x) => x.name === label)?.color ??
+    palette[
+      Math.max(
+        0,
+        cardTrades.findIndex((x) => x.key === key),
+      ) % palette.length
+    ];
+  const openColor = (key = cardTrades[0]?.key) => {
+    const trade = cardTrades.find((x) => x.key === key);
+    if (!trade) return;
+    const defaultColor = defaultCardColor(trade.key, trade.label);
+    setColorError('');
+    setColoring({ ...trade, defaultColor, color: cardColors[trade.key] || defaultColor });
+  };
   return (
     <section className="panel people-panel">
       <div className="section-heading">
@@ -110,9 +166,15 @@ export function PeoplePanel({
           <h2>人员档案</h2>
           <p>统一维护人员，并分配至项目、工种或施工任务。</p>
         </div>
-        <button className="primary" onClick={() => add()}>
-          新增人员
-        </button>
+        <div className="toolbar">
+          <button onClick={() => openColor()} disabled={!cardTrades.length}>
+            <Palette size={15} />
+            工种配色
+          </button>
+          <button className="primary" onClick={() => add()}>
+            新增人员
+          </button>
+        </div>
       </div>
       <p className="form-info">
         手机号、出生日期等私密资料未开放采集。云端私密 API
@@ -129,54 +191,92 @@ export function PeoplePanel({
       <AssessmentPanel data={data} isCloud={isCloud} />
       <ConflictPanel data={data} />
       <div className="people-grid">
-        {registered.map((p) => (
-          <article className="person-card" key={p.id} data-person-id={p.id}>
-            <strong>{p.name}</strong>
-            <span>
-              {categoryName(data, p)} · {tradeNames(data, p) || '未设置工种'} ·{' '}
-              {!p.active ? '暂不参与新分配' : ''}
-            </span>
-            <p>{p.notes}</p>
-            <details>
-              <summary>内部评价</summary>
-              <p>
-                尚未开放。没有真实账号与服务端授权前不采集或展示内部评价；项目普通备份不含评价。
-              </p>
-            </details>
-            <details className="staff-projects">
-              <summary>项目履历 · {staffWork(data, p.id, now).length} 个项目</summary>
-              <ul className="staff-project-names">
-                {staffWork(data, p.id, now).map((w) => (
-                  <li key={w.project.id}>{w.project.name}</li>
-                ))}
-              </ul>
+        {registered.map((p) => {
+          const trades = tradesFor(p),
+            first = trades[0];
+          const color = cardColors[first.key] || defaultCardColor(first.key, first.label);
+          return (
+            <article
+              className="person-card"
+              key={p.id}
+              data-person-id={p.id}
+              style={{ '--person-color': color } as CSSProperties}
+            >
               <button
-                disabled={!p.active}
-                onClick={() => {
-                  setError('');
-                  setAssigning(p);
-                  setProject(data.projects[0]?.id ?? '');
-                  setTarget('project');
-                }}
-              >
-                管理项目分配
-              </button>
-            </details>
-            <div className="toolbar">
-              <button
+                className="person-card-open"
+                aria-label={`打开人员档案：${p.name}`}
                 onClick={() => {
                   setError('');
                   setEditing(p);
                 }}
               >
-                编辑人员
+                <span className="person-card-symbol" aria-hidden="true">
+                  <UserRound size={21} />
+                </span>
+                <span>
+                  <strong>{p.name}</strong>
+                  <small>{categoryName(data, p)}</small>
+                </span>
+                <ChevronRight size={17} />
               </button>
-              <button className="destructive" onClick={() => setDeleting(p)}>
-                删除人员
-              </button>
-            </div>
-          </article>
-        ))}
+              <div className="person-trade-tags">
+                {trades.map((trade) => (
+                  <span
+                    key={trade.key}
+                    style={
+                      {
+                        '--person-color':
+                          cardColors[trade.key] || defaultCardColor(trade.key, trade.label),
+                      } as CSSProperties
+                    }
+                  >
+                    {trade.label}
+                  </span>
+                ))}
+              </div>
+              {!p.active && <small className="person-inactive">暂不参与新分配</small>}
+              {p.notes && <p>{p.notes}</p>}
+              <details>
+                <summary>内部评价</summary>
+                <p>
+                  尚未开放。没有真实账号与服务端授权前不采集或展示内部评价；项目普通备份不含评价。
+                </p>
+              </details>
+              <details className="staff-projects">
+                <summary>项目履历 · {staffWork(data, p.id, now).length} 个项目</summary>
+                <ul className="staff-project-names">
+                  {staffWork(data, p.id, now).map((w) => (
+                    <li key={w.project.id}>{w.project.name}</li>
+                  ))}
+                </ul>
+                <button
+                  disabled={!p.active}
+                  onClick={() => {
+                    setError('');
+                    setAssigning(p);
+                    setProject(data.projects[0]?.id ?? '');
+                    setTarget('project');
+                  }}
+                >
+                  管理项目分配
+                </button>
+              </details>
+              <div className="toolbar">
+                <button
+                  onClick={() => {
+                    setError('');
+                    setEditing(p);
+                  }}
+                >
+                  编辑人员
+                </button>
+                <button className="destructive" onClick={() => setDeleting(p)}>
+                  删除人员
+                </button>
+              </div>
+            </article>
+          );
+        })}
       </div>
       {!registered.length && <p>暂无符合条件的人员档案。</p>}
       <details className="legacy-people">
@@ -202,6 +302,62 @@ export function PeoplePanel({
             </p>
           ))}
       </details>
+      {coloring && (
+        <Modal
+          title="工种卡片配色"
+          subtitle="仅调整当前浏览器的人员卡片外观"
+          className="people-color-dialog"
+          onClose={() => setColoring(null)}
+        >
+          <div className="modal-body">
+            <label className="form-field">
+              选择工种
+              <select
+                aria-label="卡片配色工种"
+                value={coloring.key}
+                onChange={(e) => openColor(e.target.value)}
+              >
+                {cardTrades.map((trade) => (
+                  <option key={trade.key} value={trade.key}>
+                    {trade.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ColorControls
+              compact
+              color={coloring.color}
+              defaultColor={coloring.defaultColor}
+              recent={[]}
+              onChange={(color) => setColoring({ ...coloring, color })}
+            />
+            {colorError && (
+              <p role="alert" className="error">
+                {colorError}
+              </p>
+            )}
+          </div>
+          <footer className="modal-foot">
+            <button onClick={() => setColoring(null)}>取消</button>
+            <button
+              className="primary"
+              disabled={!/^#[0-9a-f]{6}$/i.test(coloring.color)}
+              onClick={() => {
+                const next = { ...cardColors, [coloring.key]: coloring.color };
+                try {
+                  localStorage.setItem('chunmo-people-card-colors', JSON.stringify(next));
+                  setCardColors(next);
+                  setColoring(null);
+                } catch {
+                  setColorError('浏览器未能保存配色，请检查存储权限后重试。');
+                }
+              }}
+            >
+              保存配色
+            </button>
+          </footer>
+        </Modal>
+      )}
       {removeAssignment && assigning && (
         <Confirm
           title="解除人员分配？"

@@ -16,7 +16,7 @@ async function enter(page: Page, login: string, password = accounts.password) {
   await page.getByLabel('登录账号', { exact: true }).fill(login);
   await page.getByLabel('登录密码', { exact: true }).fill(password);
   await page.getByRole('button', { name: '登录', exact: true }).click();
-  await expect(page.locator('.local-notice')).toContainText('云空间');
+  await expect(page.locator('.sidebar-bottom p')).toContainText('云端工作空间');
   await expect(page.locator('.save-state')).toContainText('已保存');
 }
 async function accountPanel(page: Page) {
@@ -29,7 +29,7 @@ async function localSpace(page: Page) {
   const dialog = await accountPanel(page);
   await dialog.getByRole('tab', { name: '备份导入', exact: true }).click();
   await dialog.getByRole('button', { name: '切换本地空间（保留账号会话）', exact: true }).click();
-  await expect(page.locator('.local-notice')).toContainText('本地模式');
+  await expect(page.locator('.sidebar-bottom p')).toContainText('本地工作空间');
   await expect(page.locator('.save-state')).toContainText('已保存');
 }
 async function clientApi(page: Page, path: string, method = 'GET', body?: unknown) {
@@ -115,7 +115,7 @@ test('two real accounts: API-backed saves, SSE, dirty-form conflict, explicit re
   expect((await clientApi(b, '/people/cloud-worker/private')).status).toBe(403);
   expect(JSON.stringify((await clientApi(b, '/export')).body)).not.toContain(phone);
   await a.reload();
-  await expect(a.locator('.local-notice')).toContainText('云空间');
+  await expect(a.locator('.sidebar-bottom p')).toContainText('云端工作空间');
   await expect(a.locator('.current-project-name')).toHaveText('员工实时更新');
   const local = await a.evaluate(
     async () =>
@@ -189,7 +189,7 @@ test('owner-controlled import from a real local backup previews and commits with
   await expect(account).toContainText('此备份已导入');
   await account.getByRole('tab', { name: '账号与安全', exact: true }).click();
   await account.getByRole('button', { name: '进入云空间', exact: true }).click();
-  await expect(p.locator('.local-notice')).toContainText('云空间');
+  await expect(p.locator('.sidebar-bottom p')).toContainText('云端工作空间');
   await expect(p.locator('.project-card')).toHaveCount(2);
   await p.locator('[data-project-id="import-project"]').click();
   expect((await clientApi(p, '/workspace')).body.data.tasks.length).toBe(3);

@@ -1,0 +1,161 @@
+{
+  "branch": "feat/chunmo-project-manager",
+  "baselineCommit": "1c6f1a5986d65d2506258c7353107feb92b7088c",
+  "capture": "Actual Chromium screenshots from the tested working tree, synthetic accounts/projects only; no production data",
+  "screenshots": [
+    {
+      "file": "board-1280.png",
+      "width": 1280,
+      "height": 1000,
+      "bytes": 121963,
+      "sha256": "f414e62e26f09a94f61db40fbff4de69e280fb8f8287d88304fe914f519cc313"
+    },
+    {
+      "file": "board-1440.png",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 126214,
+      "sha256": "828926007b04445cef7f3c361348ac30c9f5e1d3a1c3331b2abff3eb59d61639"
+    },
+    {
+      "file": "board-390.png",
+      "width": 390,
+      "height": 1000,
+      "bytes": 70680,
+      "sha256": "b1b3bc155f223107fb50ed79a22e0a83fdc672fc6d961c2256db61976fe371c3"
+    },
+    {
+      "file": "drawer-1280.png",
+      "width": 1280,
+      "height": 1000,
+      "bytes": 172165,
+      "sha256": "9fb61b504a824e3d006c1867e1d392774d558f38729965c3d6945129674e442f"
+    },
+    {
+      "file": "drawer-1440.png",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 180932,
+      "sha256": "a5cc2a97e8da648c0d0ce1ede89e3147191c3343298b8e942c12f128b29e3e23"
+    },
+    {
+      "file": "drawer-390.png",
+      "width": 390,
+      "height": 1000,
+      "bytes": 57010,
+      "sha256": "ed7d715d5ca6be429f4cac8ed10384b4e874abae4ff738b8c4fb48737112fe1a"
+    },
+    {
+      "file": "home-1280.png",
+      "width": 1280,
+      "height": 1997,
+      "bytes": 242403,
+      "sha256": "34c016269fe0ce5ad21116a441aa861530f22f930bc7bc95bf671182559cad22"
+    },
+    {
+      "file": "home-1440.png",
+      "width": 1440,
+      "height": 1997,
+      "bytes": 247762,
+      "sha256": "9166d774807637e3de4a7aaea2f95f84d6af9f99213dedc6aeaa5dbbf463b47e"
+    },
+    {
+      "file": "home-320.png",
+      "width": 320,
+      "height": 3701,
+      "bytes": 190330,
+      "sha256": "d707e8ea5ad77bca3c394390c1de5eed9821abad419ffbd83036e0861d485f30"
+    },
+    {
+      "file": "home-390.png",
+      "width": 390,
+      "height": 3520,
+      "bytes": 200268,
+      "sha256": "811e3472436c77c5eef8d7ab3f6908b3d6486cc660c2e122a8d6ddae1ccf06fa"
+    },
+    {
+      "file": "people-1280.png",
+      "width": 1280,
+      "height": 1000,
+      "bytes": 174534,
+      "sha256": "00e23ee1203f80abe2e84572c9da1f8c1faf934330f14f023bccb036475ee6ce"
+    },
+    {
+      "file": "people-1440.png",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 168721,
+      "sha256": "9b3f37faeb1271510b2a812a568e4ce591ad3b1a0b392660141567251629f06d"
+    },
+    {
+      "file": "people-320.png",
+      "width": 320,
+      "height": 1599,
+      "bytes": 125844,
+      "sha256": "e88633a97ddddcfe73ce83e93c144b15629d4569321aa29c4d489caf560be3a3"
+    },
+    {
+      "file": "people-390.png",
+      "width": 390,
+      "height": 1529,
+      "bytes": 129953,
+      "sha256": "f73952ffc1cd9fa5b3233c30eb94617b33f5748352256a96b60380f4a55da702"
+    },
+    {
+      "file": "people-colors-1280.png",
+      "width": 1280,
+      "height": 1000,
+      "bytes": 188042,
+      "sha256": "dc3448e5b75a61fdaba6e9fed3421ca2edcbae3a15ad5d58f1046cc556d4c2dc"
+    },
+    {
+      "file": "people-colors-1440.png",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 193085,
+      "sha256": "8457df8323fccae81139636a45d963f5f8b9391f359b5f78931f3e324f70ca26"
+    },
+    {
+      "file": "people-colors-320.png",
+      "width": 320,
+      "height": 1000,
+      "bytes": 71044,
+      "sha256": "034e18e22abe539861d2b4b40ddb882224feb9d2ab5b29a0e91f188ea3c87b9b"
+    },
+    {
+      "file": "people-colors-390.png",
+      "width": 390,
+      "height": 1000,
+      "bytes": 75296,
+      "sha256": "716eaf0151823d46c575454105efdb8d00ecf3286098476791348c0c6c932c16"
+    },
+    {
+      "file": "purchases-1280.png",
+      "width": 1280,
+      "height": 1000,
+      "bytes": 128305,
+      "sha256": "ef8e69a452db81b7dd1d2fee76c62857494bdc81553844aa8344deb66c0ea1f2"
+    },
+    {
+      "file": "purchases-1440.png",
+      "width": 1440,
+      "height": 1000,
+      "bytes": 130480,
+      "sha256": "5e6ce1332a5f344cdd043e6af58fc4d80693594735ea10fba4d88cf4b5654db8"
+    },
+    {
+      "file": "purchases-320.png",
+      "width": 320,
+      "height": 1562,
+      "bytes": 85851,
+      "sha256": "afb9d59975a83006ac7f3cfba4e1c4bafa29fdc68697daef867c9a09a2a479ed"
+    },
+    {
+      "file": "purchases-390.png",
+      "width": 390,
+      "height": 1399,
+      "bytes": 85656,
+      "sha256": "f9832011858c725adab3c57298e2705210874cb4030ba2b0acb1329d292d78d3"
+    }
+  ]
+}

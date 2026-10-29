@@ -50,9 +50,9 @@ for (const width of widths)
     expect(new Set(boxes).size).toBe(1);
     expect(Math.max(...boxes)).toBeLessThan(270);
     await expect(page.locator('.brief-empty')).toHaveCount(3);
-    const status = page.locator('.workspace-status-group');
-    await expect(status.getByRole('button', { name: '备份数据' })).toBeVisible();
-    await expect(status.getByRole('status')).toContainText('已保存');
+    await expect(page.locator('.workspace-status-group,.local-notice')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '备份数据', exact: true })).toBeVisible();
+    await expect(page.locator('.save-state')).toContainText('已保存');
     expect(await page.locator('h1').evaluate((e) => parseFloat(getComputedStyle(e).fontSize))).toBe(
       24,
     );
@@ -166,7 +166,7 @@ test('home and subpages share layout rules without altering saved records', asyn
       }),
     );
   const home = await sample();
-  for (const name of ['事项与备忘', '人员管理', '材料资产管理']) {
+  for (const name of ['记录状态看板', '人员管理', '材料资产管理']) {
     await page.getByRole('button', { name, exact: true }).click();
     expect(await sample()).toEqual(home);
   }

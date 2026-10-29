@@ -84,9 +84,9 @@ for (const width of [1440, 1280, 390])
         await today.getByRole('button', { name: '收起今日事项', exact: true }).click();
         expect((await state(page)).notes).toHaveLength(24);
       }
-      await mkdir('docs/screenshots/home-agenda', { recursive: true });
+      await mkdir('/tmp/chunmo-regression-screenshots/home-agenda', { recursive: true });
       await page.screenshot({
-        path: `docs/screenshots/home-agenda/home-${count === 0 ? 'empty' : count === 1 ? 'filled' : 'long'}-${width}.png`,
+        path: `/tmp/chunmo-regression-screenshots/home-agenda/home-${count === 0 ? 'empty' : count === 1 ? 'filled' : 'long'}-${width}.png`,
         fullPage: true,
         animations: 'disabled',
       });

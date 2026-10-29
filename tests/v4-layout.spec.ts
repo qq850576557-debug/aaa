@@ -95,7 +95,7 @@ test('V4 future task dates persist, dragging stays aligned and hidden project fi
   await expect(scroll.locator('.date-cell.today')).toBeVisible();
 });
 
-test('V4 switching projects in notes preserves the module and returning to workspace keeps selection', async ({
+test('V4 switching projects in board daily records preserves the module and returning to workspace keeps selection', async ({
   page,
 }) => {
   await boot(page);
@@ -103,10 +103,11 @@ test('V4 switching projects in notes preserves the module and returning to works
   d.projects.push({ ...d.projects[0], id: 'second-context', name: '第二工作上下文' });
   await restore(page, d);
   await closeToast(page);
-  await page.getByRole('button', { name: '事项与备忘', exact: true }).click();
+  await page.getByRole('button', { name: '记录状态看板', exact: true }).click();
+  await page.locator('.daily-records > summary').click();
   await page.getByRole('button', { name: '切换项目第二工作上下文', exact: true }).click();
   await expect(
-    page.getByRole('heading', { level: 1, name: '每日事项与项目备忘', exact: true }),
+    page.getByRole('heading', { level: 1, name: '记录状态看板', exact: true }),
   ).toBeVisible();
   await expect(page.locator('.current-project-name')).toHaveText('第二工作上下文');
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
