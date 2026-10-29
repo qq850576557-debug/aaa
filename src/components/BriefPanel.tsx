@@ -5,12 +5,20 @@ export function BriefPanel({
   actions,
   testId,
   className = '',
+  emptyText = '暂无',
+  date,
+  id,
+  caption,
 }: {
   title: string;
   items: ReactNode[];
   actions: ReactNode;
   testId?: string;
   className?: string;
+  emptyText?: string;
+  date?: string;
+  id?: string;
+  caption?: string;
 }) {
   const content = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -18,6 +26,7 @@ export function BriefPanel({
     <section
       className={`panel workbench-card brief-panel ${expanded ? 'brief-expanded' : ''} ${className}`}
       data-testid={testId}
+      id={id}
     >
       <header className="brief-heading">
         <h2>
@@ -37,8 +46,19 @@ export function BriefPanel({
           {expanded ? '收起' : '展开'}
         </button>
       </header>
+      {(date || caption) && (
+        <div className="brief-date">{date ? <time dateTime={date}>{date}</time> : caption}</div>
+      )}
       <div className="brief-content" ref={content}>
-        {items.length ? expanded ? items : items.slice(0, 3) : <p className="brief-empty">暂无</p>}
+        {items.length ? (
+          expanded ? (
+            items
+          ) : (
+            items.slice(0, 3)
+          )
+        ) : (
+          <p className="brief-empty">{emptyText}</p>
+        )}
       </div>
       <footer className="brief-actions">
         {actions}

@@ -1,4 +1,6 @@
 import { BriefPanel } from './components/BriefPanel';
+import { ProjectContext } from './components/ProjectContext';
+import { projectAgenda } from './lib/agenda';
 import { RecordBoard } from './components/RecordBoard';
 import { cloudApi } from './lib/cloud';
 import { MaterialsPanel, MaterialAlertSummary } from './components/MaterialsPanel';
@@ -30,6 +32,7 @@ import {
   ShieldCheck,
   StickyNote,
   TriangleAlert,
+  Trash2,
   Upload,
   Users,
 } from 'lucide-react';
@@ -201,7 +204,10 @@ export default function App() {
   const p = projects.find((p) => p.id === selected) ?? projects[0];
   const count = stats(data, now);
   const procurement = procurementView(data, p?.id, now);
-  const dailyNotes = todayNotes(data, p?.id, now);
+  const agenda = projectAgenda(data, p?.id, now);
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [view]);
   const projectTasks = data.tasks.filter((t) => t.projectId === p?.id);
   const projectTrades = data.trades
     .filter((t) => t.projectId === p?.id)
@@ -359,11 +365,6 @@ export default function App() {
   }
   function noteEditor(n?: Note, date = day ?? now, memo = false) {
     if (!p) return;
-    if (!n && !memo) {
-      setDay(null);
-      purchaseEditor(undefined, date);
-      return;
-    }
     setDay(null);
     setEdit({
       kind: 'note',
@@ -433,7 +434,7 @@ export default function App() {
               ? '该时间条将删除。采购保留当前截止日期并解除关联，事项与备注内容保留，前序引用将清理。操作无法撤销。'
               : current.kind === 'purchase'
                 ? '删除后不再提醒。云端保留操作历史，独立材料和库存流水不会删除。'
-                : '此记录将永久删除。操作无法撤销。',
+                : '此事项将从列表移除；原有审计及15天版本历史按原规则保留。不删除项目、采购或施工任务。',
       run: () => {
         mutate((d) => {
           if (current.kind === 'project') return removeProject(d, current.value.id);
@@ -598,6 +599,7 @@ export default function App() {
         isCloud={isCloud}
         canReopen={!isCloud || !!cloudUser?.owner}
         tracking={purchaseTracking[x.id]}
+        showProject={view === 'reminders'}
         onStatus={(status) => save('purchase', { ...x, due: purchaseDue(x, data), status })}
       />
     );
@@ -742,6 +744,7 @@ export default function App() {
                 .map(([key, label, icon]) => (
                   <button
                     key={key}
+                    aria-label={label}
                     className={view === key ? 'active' : ''}
                     onClick={() => go(key)}
                   >
@@ -838,7 +841,7 @@ export default function App() {
           </div>
           <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
-        <main>
+        <main className="workspace-content">
           <div className="workspace-status-group">
             <div className="local-notice">
               <ShieldCheck size={15} />
@@ -1051,7 +1054,11 @@ export default function App() {
                 </div>
               )}
               <div className="project-toolbar">
-                <strong className="current-project-name">{p?.name || '暂无项目'}</strong>
+                {p ? (
+                  <ProjectContext project={p} />
+                ) : (
+                  <strong className="current-project-name">暂无项目</strong>
+                )}
                 <div className="toolbar">
                   {p && (
                     <>
@@ -1086,95 +1093,109 @@ export default function App() {
               ) : (
                 <>
                   <nav className="workspace-anchors" aria-label="当前项目分区">
-                    <a href="#project-today">今日事项与备忘</a>
-                    <a href="#project-procurement">采购与风险</a>
+                    <a href="#project-today">今日事项</a>
+                    <a href="#project-tomorrow">明日提醒</a>
+                    <a href="#project-memo">项目备忘</a>
                     <a href="#project-timeline">施工时间轴</a>
                   </nav>
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <div className="workspace-brief">
-                      <div className="lower-grid" id="project-today">
-                        <BriefPanel
-                          key={'today' + p.id}
-                          title="今日事项"
-                          testId="today-panel"
-                          items={[
-                            ...procurement.today.map(purchaseCard),
-                            ...dailyNotes.map((n) => (
-                              <NoteCard
-                                key={n.id}
-                                note={n}
-                                onEdit={() => noteEditor(n)}
-                                onToggle={() => save('note', { ...n, done: !n.done })}
-                                onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                              />
-                            )),
-                          ]}
-                          actions={
+                    <div className="workspace-brief agenda-brief" aria-label="当前工地事项安排">
+                      <BriefPanel
+                        key={'today' + p.id}
+                        title="今日事项"
+                        testId="today-panel"
+                        id="project-today"
+                        className="today-panel"
+                        emptyText="今日暂无待办事项"
+                        date={agenda.date}
+                        items={agenda.today.map((n) => (
+                          <NoteCard
+                            key={n.id}
+                            note={n}
+                            now={now}
+                            onEdit={() => noteEditor(n)}
+                            onToggle={() => save('note', { ...n, done: !n.done })}
+                            onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                            onDelete={() => deleteEntity({ kind: 'note', value: n })}
+                          />
+                        ))}
+                        actions={
+                          <>
                             <button className="text-btn" onClick={() => noteEditor()}>
                               <Plus size={14} />
-                              添加采购事项
+                              添加今日事项
                             </button>
-                          }
-                        />
-                        <BriefPanel
-                          key={'memo' + p.id}
-                          title="项目备忘"
-                          className="memo-panel"
-                          items={data.notes
-                            .filter((n) => n.projectId === p.id && n.kind === '项目备忘')
-                            .sort((a, b) => Number(b.pinned) - Number(a.pinned))
-                            .map((n) => (
-                              <NoteCard
-                                key={n.id}
-                                note={n}
-                                onEdit={() => noteEditor(n)}
-                                onToggle={() => save('note', { ...n, done: !n.done })}
-                                onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                              />
-                            ))}
-                          actions={
-                            <>
-                              <button
-                                className="text-btn"
-                                onClick={() => noteEditor(undefined, '', true)}
-                              >
-                                <Plus size={14} />
-                                添加
-                              </button>
-                              <button className="text-btn" onClick={() => go('notes')}>
-                                查看全部事项与备忘
-                                <ArrowRight size={14} />
-                              </button>
-                            </>
-                          }
-                        />
-                      </div>
-                      <div className="project-alerts" id="project-procurement">
-                        <BriefPanel
-                          key={'upcoming' + p.id}
-                          title="未来15天采购"
-                          testId="upcoming-panel"
-                          items={procurement.upcoming.map(purchaseCard)}
-                          actions={
-                            <button className="text-btn" onClick={() => purchaseEditor()}>
-                              <Plus size={14} />
-                              添加采购
-                            </button>
-                          }
-                        />
-                        <BriefPanel
-                          key={'overdue' + p.id}
-                          title="逾期提醒"
-                          testId="overdue-panel"
-                          items={procurement.overdue.map(purchaseCard)}
-                          actions={
-                            <button className="text-btn" onClick={() => go('reminders')}>
-                              查看提醒
+                            <button className="text-btn" onClick={() => go('notes')}>
+                              全部事项
                               <ArrowRight size={14} />
                             </button>
-                          }
-                        />
-                      </div>
+                          </>
+                        }
+                      />
+                      <BriefPanel
+                        key={'tomorrow' + p.id}
+                        title="明日提醒"
+                        testId="tomorrow-panel"
+                        id="project-tomorrow"
+                        className="tomorrow-panel"
+                        emptyText="明日暂无安排"
+                        date={agenda.tomorrowDate}
+                        items={agenda.tomorrow.map((n) => (
+                          <NoteCard
+                            key={n.id}
+                            note={n}
+                            now={now}
+                            onEdit={() => noteEditor(n)}
+                            onToggle={() => save('note', { ...n, done: !n.done })}
+                            onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                            onDelete={() => deleteEntity({ kind: 'note', value: n })}
+                          />
+                        ))}
+                        actions={
+                          <button
+                            className="text-btn"
+                            onClick={() => noteEditor(undefined, agenda.tomorrowDate)}
+                          >
+                            <Plus size={14} />
+                            添加明日事项
+                          </button>
+                        }
+                      />
+                      <BriefPanel
+                        key={'memo' + p.id}
+                        title="项目备忘"
+                        testId="memo-panel"
+                        id="project-memo"
+                        className="memo-panel"
+                        emptyText="暂无项目备忘"
+                        caption="长期记录"
+                        items={agenda.memos.map((n) => (
+                          <NoteCard
+                            key={n.id}
+                            note={n}
+                            now={now}
+                            onEdit={() => noteEditor(n)}
+                            onToggle={() => save('note', { ...n, done: !n.done })}
+                            onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                            onDelete={() => deleteEntity({ kind: 'note', value: n })}
+                          />
+                        ))}
+                        actions={
+                          <>
+                            <button
+                              className="text-btn"
+                              onClick={() => noteEditor(undefined, '', true)}
+                            >
+                              <Plus size={14} />
+                              添加备忘
+                            </button>
+                            <button className="text-btn" onClick={() => go('notes')}>
+                              全部事项与备忘
+                              <ArrowRight size={14} />
+                            </button>
+                          </>
+                        }
+                      />
                     </div>
                   )}
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
@@ -1237,9 +1258,7 @@ export default function App() {
                         <h2>
                           {view === 'notes' ? '事项与备忘' : '采购清单'}{' '}
                           <span className="count">
-                            {view === 'notes'
-                              ? matchingNotes.length + projectPurchases.length
-                              : projectPurchases.length}{' '}
+                            {view === 'notes' ? matchingNotes.length : projectPurchases.length}{' '}
                             条记录
                           </span>
                         </h2>
@@ -1272,21 +1291,23 @@ export default function App() {
                             onChange={(e) => setSearch(e.target.value)}
                           />
                         </div>
-                        <label>
-                          采购状态
-                          <select
-                            aria-label="采购记录筛选"
-                            value={purchaseFilter}
-                            onChange={(e) => {
-                              setPurchaseFilter(e.target.value);
-                              setOnlyOpen(false);
-                            }}
-                          >
-                            <option>全部</option>
-                            <option>待采购</option>
-                            <option>已完成</option>
-                          </select>
-                        </label>
+                        {view === 'purchases' && (
+                          <label>
+                            采购状态
+                            <select
+                              aria-label="采购记录筛选"
+                              value={purchaseFilter}
+                              onChange={(e) => {
+                                setPurchaseFilter(e.target.value);
+                                setOnlyOpen(false);
+                              }}
+                            >
+                              <option>全部</option>
+                              <option>待采购</option>
+                              <option>已完成</option>
+                            </select>
+                          </label>
+                        )}
                         <label className="check">
                           <input
                             type="checkbox"
@@ -1298,7 +1319,6 @@ export default function App() {
                       </div>
                       {view === 'notes' ? (
                         <div className="notes-grid">
-                          {projectPurchases.map(purchaseCard)}
                           {matchingNotes.map((n) => (
                             <NoteCard
                               key={n.id}
@@ -1306,9 +1326,11 @@ export default function App() {
                               onEdit={() => noteEditor(n)}
                               onToggle={() => save('note', { ...n, done: !n.done })}
                               onPin={() => save('note', { ...n, pinned: !n.pinned })}
+                              onDelete={() => deleteEntity({ kind: 'note', value: n })}
+                              now={now}
                             />
                           ))}
-                          {!matchingNotes.length && !projectPurchases.length && (
+                          {!matchingNotes.length && (
                             <Empty
                               small
                               title="暂无匹配事项"
@@ -1670,14 +1692,18 @@ function NoteCard({
   onEdit,
   onToggle,
   onPin,
+  onDelete,
+  now,
 }: {
   note: Note;
   onEdit: () => void;
   onToggle: () => void;
   onPin: () => void;
+  onDelete?: () => void;
+  now?: string;
 }) {
   return (
-    <article className={`note-card ${n.done ? 'done' : ''}`}>
+    <article className={`note-card ${n.done ? 'done' : ''}`} data-note-id={n.id}>
       <button
         className={`todo-check ${n.done ? 'checked' : ''}`}
         aria-label={`${n.done ? '标记未完成' : '完成'}${n.title}`}
@@ -1687,15 +1713,17 @@ function NoteCard({
       </button>
       <button className="note-main" onClick={onEdit}>
         <span className="note-kind">
-          {n.kind} {n.date && `· ${n.date}`}{' '}
-          {noteDue(n) && !n.done && `· ${remainingTime(noteDue(n))}`}
+          {n.kind} {n.kind !== '项目备忘' && n.date && `· ${n.date}`}{' '}
+          {n.kind !== '项目备忘' && noteDue(n) && !n.done && `· ${remainingTime(noteDue(n), now)}`}
         </span>
         <h3>{n.title}</h3>
         {n.content && <p>{n.content}</p>}
-        <small>
-          {n.owner || '未指定负责人'}
-          {n.reminder && ` · 提醒 ${n.reminder}`}
-        </small>
+        {(n.owner || n.reminder) && (
+          <small>
+            {n.owner}
+            {n.reminder && ` · 提醒 ${n.reminder}`}
+          </small>
+        )}
       </button>
       <button
         className={`pin-btn ${n.pinned ? 'pinned' : ''}`}
@@ -1704,6 +1732,15 @@ function NoteCard({
       >
         <Pin size={15} />
       </button>
+      {onDelete && (
+        <button
+          className="note-delete text-btn destructive"
+          aria-label={`删除事项${n.title}`}
+          onClick={onDelete}
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
     </article>
   );
 }

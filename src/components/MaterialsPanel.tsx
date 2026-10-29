@@ -1,3 +1,4 @@
+import { ProjectContext } from './ProjectContext';
 import { transferSuggestions } from '../lib/material-recommendations';
 import { TransferPanel } from './TransferPanel';
 import { useEffect, useState } from 'react';
@@ -556,11 +557,16 @@ export function MaterialsPanel({
         </p>
       )}
       {busy && <p role="status">正在保存/核验…</p>}
-      <p className="material-project-context" role="status">
-        {project
-          ? `当前操作工地：${nameProject(project)}`
-          : '请先选择工地。未选择时材料操作不可用。'}
-      </p>
+      {project ? (
+        <ProjectContext
+          project={{ id: project, name: nameProject(project) }}
+          label="当前操作工地："
+        />
+      ) : (
+        <p className="material-project-context" role="status">
+          请先选择工地。未选择时材料操作不可用。
+        </p>
+      )}
       <fieldset className="material-workarea" disabled={!project} hidden={!project}>
         {tab === 0 && (
           <>

@@ -313,7 +313,7 @@ export function Editor({
           '所属项目',
           data.projects.filter((p) => p.id === v.projectId).map((p) => [p.id, p.name]),
         )}
-        {v.kind !== '项目备忘' && input('date', '事项截止日期', 'date', true)}
+        {v.kind !== '项目备忘' && input('date', '计划日期', 'date', true)}
         {area('content', '详细备注（可选）')}
       </>
     );

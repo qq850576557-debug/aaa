@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>春茉｜首页事项与全局UI验收</title
+  ><style>
+    :root {
+      font:
+        14px/1.65 system-ui,
+        'Microsoft YaHei',
+        sans-serif;
+      color: #294435;
+      background: #f5f7f4;
+    }
+    body {
+      margin: 24px auto;
+      max-width: 1600px;
+      padding: 0 20px;
+    }
+    h1 {
+      font-size: 24px;
+    }
+    h2 {
+      font-size: 18px;
+    }
+    p {
+      color: #5e7263;
+    }
+    label {
+      display: inline-block;
+      margin: 8px 18px 12px 0;
+    }
+    select {
+      font: inherit;
+      padding: 7px;
+      border: 1px solid #cfddcd;
+      border-radius: 7px;
+      background: white;
+      color: inherit;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .pages {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    figure {
+      margin: 0;
+      background: white;
+      border: 1px solid #dce5d9;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    figcaption {
+      padding: 10px 14px;
+    }
+    img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    button,
+    a {
+      color: #285640;
+    }
+    a {
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 700px) {
+      .row,
+      .pages {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+  <h1>春茉 · 全局UI与今日/明日事项验收</h1>
+  <p>2026-10-29。以下均为真实浏览器截图、合成测试资料。点击图片查看原始尺寸。本轮未部署生产。</p>
+  <label
+    >首页屏宽
+    <select id="width">
+      <option>1440</option>
+      <option>1280</option>
+      <option>390</option>
+    </select></label
+  >
+  <div class="row">
+    <figure>
+      <figcaption>空状态</figcaption>
+      <a id="link-empty"><img id="empty" alt="空状态" /></a>
+    </figure>
+    <figure>
+      <figcaption>有事项</figcaption>
+      <a id="link-filled"><img id="filled" alt="有事项" /></a>
+    </figure>
+    <figure>
+      <figcaption>内容较多</figcaption>
+      <a id="link-long"><img id="long" alt="内容较多" /></a>
+    </figure>
+  </div>
+  <h2>主要子页面（桌面）</h2>
+  <p>检查统一的标题、边距、卡片和绿色工地框；跨工地汇总保留归属。</p>
+  <div class="pages">
+    <figure>
+      <figcaption>事项与备忘</figcaption>
+      <a href="page-notes-1440.png"
+        ><img loading="lazy" src="page-notes-1440.png" alt="事项与备忘"
+      /></a>
+    </figure>
+    <figure>
+      <figcaption>采购管理</figcaption>
+      <a href="page-purchases-1440.png"
+        ><img loading="lazy" src="page-purchases-1440.png" alt="采购管理"
+      /></a>
+    </figure>
+    <figure>
+      <figcaption>记录看板</figcaption>
+      <a href="page-records-1440.png"
+        ><img loading="lazy" src="page-records-1440.png" alt="记录看板"
+      /></a>
+    </figure>
+    <figure>
+      <figcaption>提醒中心</figcaption>
+      <a href="page-reminders-1440.png"
+        ><img loading="lazy" src="page-reminders-1440.png" alt="提醒中心"
+      /></a>
+    </figure>
+    <figure>
+      <figcaption>人员管理</figcaption>
+      <a href="page-people-1440.png"
+        ><img loading="lazy" src="page-people-1440.png" alt="人员管理"
+      /></a>
+    </figure>
+    <figure>
+      <figcaption>材料管理</figcaption>
+      <a href="page-materials-1440.png"
+        ><img loading="lazy" src="page-materials-1440.png" alt="材料管理"
+      /></a>
+    </figure>
+    <figure>
+      <figcaption>已完工项目</figcaption>
+      <a href="page-completed-1440.png"
+        ><img loading="lazy" src="page-completed-1440.png" alt="已完工项目"
+      /></a>
+    </figure>
+    <figure>
+      <figcaption>云端项目工作空间</figcaption>
+      <a href="page-home-1440.png"
+        ><img loading="lazy" src="page-home-1440.png" alt="云端项目工作空间"
+      /></a>
+    </figure>
+  </div>
+  <h2>手机明日事项录入</h2>
+  <a href="tomorrow-editor-390.png">打开完整截图</a
+  ><img
+    src="tomorrow-editor-390.png"
+    alt="手机明日事项表单"
+    style="max-width: 390px; border-radius: 10px; margin-top: 12px"
+  />
+  <script>
+    const w = document.getElementById('width');
+    function show() {
+      for (const key of ['empty', 'filled', 'long']) {
+        const p = 'home-' + key + '-' + w.value + '.png';
+        document.getElementById(key).src = p;
+        document.getElementById('link-' + key).href = p;
+      }
+    }
+    w.onchange = show;
+    show();
+  </script>
+</html>

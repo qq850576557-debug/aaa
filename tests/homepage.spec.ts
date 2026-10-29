@@ -45,11 +45,11 @@ for (const width of widths)
     const topRow = geometry.filter((g) => g.y === geometry[0].y);
     expect(topRow).toHaveLength(width >= 1280 ? 5 : width === 1024 ? 3 : 2);
     const cards = page.locator('.workspace-brief .panel');
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(3);
     const boxes = await cards.evaluateAll((es) => es.map((e) => e.getBoundingClientRect().height));
     expect(new Set(boxes).size).toBe(1);
-    expect(Math.max(...boxes)).toBeLessThan(160);
-    await expect(page.locator('.brief-empty')).toHaveCount(4);
+    expect(Math.max(...boxes)).toBeLessThan(270);
+    await expect(page.locator('.brief-empty')).toHaveCount(3);
     const status = page.locator('.workspace-status-group');
     await expect(status.getByRole('button', { name: '备份数据' })).toBeVisible();
     await expect(status.getByRole('status')).toContainText('已保存');
@@ -123,91 +123,53 @@ for (const width of widths)
     await page.screenshot({ path: `/tmp/chunmo-home-empty-${width}.png`, fullPage: true });
   });
 for (const width of [1280, 390])
-  test(`home ${width}: complete purchase actions, content growth, long lists and unchanged business data`, async ({
-    page,
-  }) => {
+  test(`home ${width}: note actions, long lists and stable procurement data`, async ({ page }) => {
     await page.setViewportSize({ width, height: 950 });
-    const original = await start(page);
-    const today = page.getByTestId('today-panel');
-    await expect(
-      today.getByRole('button', { name: '编辑采购电线及线管', exact: true }),
-    ).toBeVisible();
-    await expect(
-      today.getByRole('button', { name: '完成采购电线及线管', exact: true }),
-    ).toBeVisible();
-    await expect(today.locator('.deadline-countdown')).toContainText('已逾期 5 天');
-    expect(await today.evaluate((e) => e.getBoundingClientRect().height)).toBeGreaterThan(160);
-    await today.getByRole('button', { name: '编辑采购电线及线管', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '编辑采购事项', exact: true })).toBeVisible();
+    const original = await start(page),
+      today = page.getByTestId('today-panel');
+    await expect(today).toContainText('确认厨房插座定位');
+    await expect(today).not.toContainText('电线及线管');
+    await today.locator('.note-main').first().click();
+    await expect(page.getByRole('dialog', { name: '编辑每日事项', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '关闭浮窗', exact: true }).click();
     expect(await state(page)).toEqual(original);
     const long = structuredClone(original);
-    long.purchases = Array.from({ length: 8 }, (_, i) => ({
-      ...long.purchases[0],
+    long.notes = Array.from({ length: 8 }, (_, i) => ({
+      ...original.notes[0],
       id: `home-list-${i}`,
-      name: `检查清单材料${i}`,
-      due: '2026-10-28',
-      taskId: '',
-      originalDue: '2026-10-28',
-      notes: '逐项核对规格及施工需求，不省略采购操作。',
+      title: `现场复核${i}`,
+      date: '2026-10-28',
+      content: '逐项核对现场要求。',
     }));
     await restore(page, long);
     await closeToast(page);
-    await expect.poll(async () => (await state(page)).purchases.length).toBe(8);
     await today.getByRole('button', { name: '展开今日事项', exact: true }).click();
-    const content = today.locator('.brief-content');
-    expect(await content.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(true);
-    await today.getByRole('button', { name: '编辑采购检查清单材料7', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: '编辑采购事项', exact: true })).toBeVisible();
+    expect(
+      await today.locator('.brief-content').evaluate((e) => e.scrollHeight > e.clientHeight),
+    ).toBe(true);
+    await today.locator('[data-note-id="home-list-7"] .note-main').click();
+    await expect(page.getByRole('dialog', { name: '编辑每日事项', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '关闭浮窗', exact: true }).click();
+    expect((await state(page)).purchases).toEqual(original.purchases);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
   });
-test('home stylesheet stays isolated from existing modules and their shared components', async ({
-  page,
-}) => {
+test('home and subpages share layout rules without altering saved records', async ({ page }) => {
   const original = await start(page);
-  const sheet = page.locator('style[data-vite-dev-id$="/src/homepage.css"]');
-  await expect(sheet).toHaveCount(1);
-  const settle = () =>
-    page.locator('.app-shell').evaluate(async (e) => {
-      await Promise.all(
-        e
-          .getAnimations({ subtree: true })
-          .filter((a) => a.effect?.getTiming().iterations !== Infinity)
-          .map((a) => a.finished.catch(() => {})),
-      );
-    });
+  const sample = () =>
+    page.locator('main,.topbar').evaluateAll((es) =>
+      es.map((e) => {
+        const s = getComputedStyle(e),
+          r = e.getBoundingClientRect();
+        return [s.padding, r.x, r.width];
+      }),
+    );
+  const home = await sample();
   for (const name of ['事项与备忘', '人员管理', '材料资产管理']) {
     await page.getByRole('button', { name, exact: true }).click();
-    await expect(page.locator('.app-shell')).not.toHaveClass(/homepage/);
-    const sample = () =>
-      page.locator('main,.sidebar,.topbar,.page-heading h1,.panel,.stat-card').evaluateAll((es) =>
-        es.map((e) => {
-          const s = getComputedStyle(e);
-          return [
-            s.fontSize,
-            s.padding,
-            s.backgroundColor,
-            s.borderRadius,
-            e.getBoundingClientRect().width,
-            e.getBoundingClientRect().height,
-          ];
-        }),
-      );
-    await settle();
-    const enabled = await sample();
-    await sheet.evaluate((e) => {
-      (e as HTMLStyleElement).sheet!.disabled = true;
-    });
-    await settle();
-    expect(await sample()).toEqual(enabled);
-    await sheet.evaluate((e) => {
-      (e as HTMLStyleElement).sheet!.disabled = false;
-    });
+    expect(await sample()).toEqual(home);
   }
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
-  await expect(page.locator('.app-shell')).toHaveClass(/homepage/);
   expect(await state(page)).toEqual(original);
 });

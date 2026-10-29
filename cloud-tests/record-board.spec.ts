@@ -145,9 +145,12 @@ for (const width of [1440, 1280, 390])
       .getByRole('dialog', { name: '放弃未保存的修改？' })
       .getByRole('button', { name: '确认操作', exact: true })
       .click();
-    await mkdir('docs/screenshots/record-board', { recursive: true });
+    await mkdir(
+      process.env.CHUNMO_VISUAL_OUTPUT || '/tmp/chunmo-regression-screenshots/record-board',
+      { recursive: true },
+    );
     await page.screenshot({
-      path: `docs/screenshots/record-board/board-${width}.png`,
+      path: `${process.env.CHUNMO_VISUAL_OUTPUT || '/tmp/chunmo-regression-screenshots/record-board'}/board-${width}.png`,
       animations: 'disabled',
     });
     await card.click();
@@ -155,7 +158,7 @@ for (const width of [1440, 1280, 390])
       '核对高度，保留全部字段',
     );
     await page.screenshot({
-      path: `docs/screenshots/record-board/drawer-${width}.png`,
+      path: `${process.env.CHUNMO_VISUAL_OUTPUT || '/tmp/chunmo-regression-screenshots/record-board'}/drawer-${width}.png`,
       animations: 'disabled',
     });
     await drawer.getByRole('button', { name: '删除记录', exact: true }).click();
@@ -299,7 +302,7 @@ for (const width of [1440, 390])
     await card.getByText('名片头像设置', { exact: true }).click();
     await card.locator('.modal-body').evaluate((e) => (e.scrollTop = 0));
     await page.screenshot({
-      path: `docs/screenshots/record-board/personal-card-${width}.png`,
+      path: `${process.env.CHUNMO_VISUAL_OUTPUT || '/tmp/chunmo-regression-screenshots/record-board'}/personal-card-${width}.png`,
       animations: 'disabled',
     });
     await card.getByRole('button', { name: '关闭', exact: true }).click();

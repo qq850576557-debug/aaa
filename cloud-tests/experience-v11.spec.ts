@@ -38,16 +38,15 @@ for (const width of [1440, 390]) {
       d.notes = [];
       await api(c, '/workspace', 'PUT', { revision: 0, data: d });
       await p.reload();
-      await p
-        .getByTestId('today-panel')
-        .getByRole('button', { name: '添加采购事项', exact: true })
-        .click();
+      await p.getByRole('button', { name: '采购管理', exact: true }).click();
+      await p.getByRole('button', { name: '新增采购', exact: true }).click();
       let modal = p.getByRole('dialog', { name: '新增采购事项', exact: true });
       if (!(await modal.count())) modal = p.getByRole('dialog', { name: /新建采购事项/ });
       await modal.getByLabel('采购内容 / 事项标题', { exact: true }).fill('V11测试采购');
       await modal.getByLabel('采购截止日期', { exact: true }).fill(today());
       await modal.getByRole('button', { name: '保存', exact: true }).click();
-      const panel = p.getByTestId('today-panel');
+      await p.getByLabel('采购记录筛选', { exact: true }).selectOption('待采购');
+      const panel = p.locator('.purchase-list');
       await expect(panel).toContainText('V11测试采购');
       await panel.getByRole('button', { name: '完成采购V11测试采购', exact: true }).click();
       await expect(panel).not.toContainText('V11测试采购');

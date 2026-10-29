@@ -24,7 +24,7 @@ for (const width of [1440, 390])
     if (width === 390) await page.locator('.mobile-project-toggle').click();
     if (width === 1440) {
       const boxes = await page
-        .locator('.workspace-brief>.lower-grid>.panel,.workspace-brief>.project-alerts>.panel')
+        .locator('.agenda-brief>.panel')
         .evaluateAll((es) => es.map((e) => e.getBoundingClientRect().top));
       expect(new Set(boxes).size).toBe(1);
     }

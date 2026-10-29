@@ -1,5 +1,5 @@
-/* Project workspace homepage only. Keep shared modules, timeline geometry,
-   account dialogs and persistence behavior on their existing styles. */
+/* Homepage content rules plus the shared workspace shell/editor baseline.
+   Keep timeline coordinates and persistence behavior on their existing logic. */
 .homepage.app-shell {
   --home-ink: #293e35;
   --home-secondary: #617269;
@@ -440,9 +440,8 @@
   font-size: 12px;
   color: var(--home-secondary);
 }
-/* Business dialogs opened from home only; account and other module dialogs keep
-   their current component rules. Native close/confirm/scroll handling is reused. */
-.homepage > dialog.modal {
+/* The existing editor layout is shared by project pages; reuse native close/confirm. */
+.app-shell > dialog.modal {
   border-color: var(--home-line);
   border-radius: 12px;
   box-shadow:
@@ -450,65 +449,65 @@
     0 2px 8px #233e2b0a;
   font-size: 14px;
 }
-.homepage > dialog.modal .modal-head {
+.app-shell > dialog.modal .modal-head {
   padding: 15px 18px;
 }
-.homepage > dialog.modal .modal-head h2 {
+.app-shell > dialog.modal .modal-head h2 {
   font-size: 18px;
   line-height: 26px;
 }
-.homepage > dialog.modal .modal-body {
+.app-shell > dialog.modal .modal-body {
   padding: 16px 18px;
 }
-.homepage > dialog.modal .modal-foot {
+.app-shell > dialog.modal .modal-foot {
   padding: 12px 18px;
   gap: 8px;
 }
-.homepage > dialog.modal .modal-foot button {
+.app-shell > dialog.modal .modal-foot button {
   min-height: 36px;
 }
 @media (min-width: 951px) {
-  .homepage.app-shell main {
+  .app-shell main {
     padding: 20px 24px 28px;
   }
-  .homepage.app-shell .topbar {
+  .app-shell .topbar {
     height: 56px;
     min-height: 56px;
     padding: 0 24px;
     background: #fcfdfa;
-    border-color: var(--home-line);
+    border-color: var(--ui-border);
   }
-  .homepage.app-shell .sidebar {
+  .app-shell .sidebar {
     padding: 22px 14px 16px;
     background: #fcfdfa;
-    border-color: var(--home-line);
+    border-color: var(--ui-border);
   }
-  .homepage.app-shell .sidebar .brand {
+  .app-shell .sidebar .brand {
     gap: 10px;
     padding-bottom: 19px;
   }
-  .homepage.app-shell .sidebar .brand img {
+  .app-shell .sidebar .brand img {
     width: 56px;
     height: 62px;
   }
-  .homepage.app-shell .sidebar .brand-name {
+  .app-shell .sidebar .brand-name {
     font-size: 26px;
   }
-  .homepage.app-shell .sidebar .brand-slogan {
+  .app-shell .sidebar .brand-slogan {
     font-size: 12px;
     letter-spacing: 1.5px;
     margin-top: 8px;
   }
-  .homepage.app-shell .sidebar-section {
+  .app-shell .sidebar-section {
     padding: 9px 10px;
     font-size: 12px;
     line-height: 18px;
-    color: var(--home-secondary);
+    color: var(--ui-secondary);
   }
-  .homepage.app-shell .sidebar nav {
+  .app-shell .sidebar nav {
     gap: 4px;
   }
-  .homepage.app-shell .sidebar nav button {
+  .app-shell .sidebar nav button {
     display: grid;
     grid-template-columns: 20px minmax(0, 1fr) auto;
     align-items: center;
@@ -522,51 +521,51 @@
     border-radius: 8px;
     text-align: left;
   }
-  .homepage.app-shell .sidebar .workspace-subnav button {
+  .app-shell .sidebar .workspace-subnav button {
     padding-left: 11px !important;
   }
-  .homepage.app-shell .workspace-nav-heading > button:last-child {
+  .app-shell .workspace-nav-heading > button:last-child {
     display: inline-flex;
     grid-template-columns: none;
     flex: 0 0 28px;
     width: 28px;
     padding: 6px;
   }
-  .homepage.app-shell .sidebar nav button.active {
+  .app-shell .sidebar nav button.active {
     background: #e7efe6;
     color: #244e42;
     font-weight: 600;
   }
-  .homepage.app-shell .sidebar-projects {
+  .app-shell .sidebar-projects {
     margin: 14px 0;
   }
-  .homepage.app-shell .sidebar-project-list .project-card {
-    border: 1px solid var(--home-line);
+  .app-shell .sidebar-project-list .project-card {
+    border: 1px solid var(--ui-border);
     border-radius: 9px;
     box-shadow: none;
   }
-  .homepage.app-shell .sidebar-project-list .project-card.chosen {
+  .app-shell .sidebar-project-list .project-card.chosen {
     border-color: #aec6b0;
     background: #f3f7ef;
   }
-  .homepage.app-shell .project-select {
+  .app-shell .project-select {
     padding: 11px 12px;
     gap: 3px;
   }
-  .homepage.app-shell .project-card .project-card-name {
+  .app-shell .project-card .project-card-name {
     margin: 3px 0 1px;
     font-size: 14px;
     line-height: 21px;
   }
-  .homepage.app-shell .project-card :is(small, .project-card-dates) {
+  .app-shell .project-card :is(small, .project-card-dates) {
     font-size: 12px;
     line-height: 18px;
-    color: var(--home-secondary);
+    color: var(--ui-secondary);
   }
-  .homepage.app-shell .sidebar-bottom > button,
-  .homepage.app-shell .sidebar-bottom > p {
+  .app-shell .sidebar-bottom > button,
+  .app-shell .sidebar-bottom > p {
     font-size: 13px;
-    color: var(--home-secondary);
+    color: var(--ui-secondary);
   }
 }
 @media (max-width: 1150px) {
@@ -661,7 +660,7 @@
   .homepage .legend button {
     min-height: 40px;
   }
-  .homepage > dialog.modal .modal-foot button {
+  .app-shell > dialog.modal .modal-foot button {
     min-height: 42px;
   }
 }

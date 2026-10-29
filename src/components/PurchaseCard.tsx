@@ -19,6 +19,7 @@ export function PurchaseCard({
   canReopen = true,
   isCloud = false,
   tracking,
+  showProject = true,
 }: {
   purchase: Purchase;
   data: Data;
@@ -28,6 +29,7 @@ export function PurchaseCard({
   onDelete?: () => void;
   canReopen?: boolean;
   isCloud?: boolean;
+  showProject?: boolean;
   tracking?: {
     createdName?: string;
     createdAt?: string;
@@ -56,7 +58,8 @@ export function PurchaseCard({
       <div className="purchase-main">
         <strong>{p.name}</strong>
         <small>
-          {data.projects.find((x) => x.id === p.projectId)?.name} · {due} 前采购
+          {showProject && <>{data.projects.find((x) => x.id === p.projectId)?.name} · </>}
+          {due} 前采购
         </small>
         <span className={`deadline-countdown ${!done && due < now ? 'red' : ''}`}>
           {done ? '采购已完成' : remainingTime(due, now)}

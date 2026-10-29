@@ -11,6 +11,8 @@
   --green: #285447;
   --muted: #63766b;
   --border: var(--ui-border);
+  --ui-control-height: 36px;
+  --agenda-height: 224px;
 }
 body {
   color: var(--ui-ink);
@@ -83,7 +85,7 @@ textarea::placeholder {
   line-height: 1.6;
 }
 .app-shell main {
-  padding: 22px 28px 32px;
+  padding: 20px 24px 28px;
   max-width: 1920px;
   width: 100%;
   min-width: 0;
@@ -134,7 +136,7 @@ textarea::placeholder {
 .app-shell .topbar {
   background: #ffffffed;
   border-bottom: 1px solid var(--ui-border);
-  min-height: 60px;
+  min-height: 56px;
   padding-left: 28px;
   padding-right: 28px;
 }
@@ -185,6 +187,8 @@ textarea::placeholder {
   margin: 0;
   font-size: 12px;
   white-space: nowrap;
+  min-height: 24px;
+  line-height: 20px;
 }
 .app-shell .page-heading {
   display: flex;
@@ -754,5 +758,227 @@ textarea::placeholder {
 @media (prefers-reduced-motion: reduce) {
   .record-card {
     transition: none;
+  }
+}
+
+/* Shared project identity and stable, date-based agenda surfaces. */
+.app-shell .project-toolbar {
+  align-items: center;
+  gap: 14px;
+}
+.project-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 9px 14px;
+  margin: 0;
+  border: 1px solid #9dbb9f;
+  border-radius: 10px;
+  background: #f7fbf5;
+  color: #315c40;
+}
+.project-context > span {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: #617d66;
+}
+.project-context > .current-project-name {
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.project-context-title {
+  padding: 5px 8px;
+  border: 1px solid #abc4ad;
+  border-radius: 7px;
+  background: #f7fbf5;
+  color: #315c40;
+}
+.materials-panel > .project-context {
+  display: flex;
+  margin: 12px 0;
+}
+.app-shell .workspace-brief.agenda-brief {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+.app-shell .workspace-brief.agenda-brief .brief-panel {
+  display: grid;
+  grid-template-rows: 28px 18px minmax(0, 1fr) auto;
+  height: var(--agenda-height);
+  min-height: var(--agenda-height);
+  padding: 14px;
+  overflow: hidden;
+}
+.app-shell .agenda-brief .brief-heading {
+  margin: 0;
+}
+.app-shell .agenda-brief .brief-date {
+  color: #6d8072;
+  font-size: 12px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell .agenda-brief .brief-content {
+  min-height: 0;
+  max-height: none;
+  margin-top: 8px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+.app-shell .agenda-brief .brief-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+  color: #6c7f72;
+}
+.app-shell .agenda-brief .brief-actions {
+  min-height: 31px;
+  padding-top: 7px;
+  margin-top: 7px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.app-shell .agenda-brief .brief-actions button {
+  min-height: 28px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.app-shell .agenda-brief .brief-panel.brief-expanded {
+  height: min(440px, 65dvh);
+}
+.app-shell .agenda-brief .tomorrow-panel {
+  border-color: #d7e1e6;
+  background: #fbfcfe;
+}
+.app-shell .agenda-brief .tomorrow-panel .brief-heading h2 {
+  color: #416474;
+}
+.app-shell .agenda-brief .memo-panel {
+  background: #fafbf7;
+}
+.agenda-brief .note-card {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 28px;
+  grid-template-rows: auto auto;
+  gap: 3px 5px;
+  align-items: start;
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid #edf0eb;
+}
+.agenda-brief .note-card > .todo-check {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+}
+.agenda-brief .note-card > .note-main {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 100%;
+}
+.agenda-brief .note-card > .pin-btn {
+  grid-column: 3;
+  grid-row: 1;
+}
+.agenda-brief .note-card > .note-delete {
+  grid-column: 3;
+  grid-row: 2;
+}
+.note-delete {
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  justify-content: center;
+  align-self: flex-start;
+}
+.agenda-brief .note-main {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.agenda-brief .note-main h3 {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 3px 0;
+}
+.agenda-brief .note-main p {
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.agenda-brief .note-main small {
+  font-size: 12px;
+}
+.app-shell .page-heading > div:first-child {
+  min-width: 0;
+}
+.app-shell .workspace-content > .page-heading {
+  min-height: 85px;
+  align-items: flex-start;
+}
+.app-shell .workspace-content > .page-heading .heading-actions {
+  align-self: center;
+}
+.app-shell .toolbar > button:not(.text-btn):not(.icon-btn) {
+  min-height: var(--ui-control-height);
+}
+@media (max-width: 1100px) and (min-width: 701px) {
+  .app-shell .workspace-brief.agenda-brief {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .app-shell {
+    --agenda-height: 236px;
+    --ui-control-height: 44px;
+  }
+  .app-shell .workspace-brief.agenda-brief {
+    grid-template-columns: 1fr;
+  }
+  .app-shell .workspace-brief.agenda-brief .brief-panel {
+    padding: 12px;
+    grid-template-rows: 40px 18px minmax(0, 1fr) auto;
+  }
+  .app-shell .agenda-brief .brief-actions {
+    min-height: 40px;
+  }
+  .app-shell .agenda-brief .brief-actions button {
+    min-height: 40px;
+  }
+  .project-context {
+    padding: 8px 11px;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+  .project-context > .current-project-name {
+    font-size: 18px;
+  }
+  .app-shell .project-toolbar {
+    align-items: center;
+  }
+  .app-shell .project-toolbar > .toolbar {
+    flex-shrink: 0;
+  }
+  .agenda-brief .note-card {
+    grid-template-columns: 32px minmax(0, 1fr) 36px;
+  }
+  .agenda-brief .note-card > .note-delete,
+  .agenda-brief .note-card > .pin-btn {
+    min-height: 36px;
+    width: 36px;
+  }
+  .app-shell .workspace-content > .page-heading {
+    min-height: 88px;
   }
 }

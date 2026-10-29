@@ -40,7 +40,8 @@ for (const width of [1440, 1280, 390]) {
     await page.reload();
     await expect(page.locator('.save-state')).toContainText('已保存');
     const phase = process.env.CHUNMO_CAPTURE_BASELINE ? 'before' : 'after';
-    const dir = 'docs/screenshots/record-board';
+    const dir =
+      process.env.CHUNMO_VISUAL_OUTPUT || '/tmp/chunmo-regression-screenshots/record-board';
     await mkdir(dir, { recursive: true });
     const capture = async (name: string) => {
       await page.evaluate(() => document.fonts.ready);

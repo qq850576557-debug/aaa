@@ -1,70 +1,69 @@
 import { test, expect } from '@playwright/test';
 import { boot, fixture, restore, state, closeToast } from './helpers';
 for (const width of [1440, 390])
-  test(`V1.1 ${width}: four cards share inline expand/collapse, all records accessible and procurement delete is distinct`, async ({
+  test(`V1.1 ${width}: three agenda cards expand; procurement delete and completion stay distinct`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 950 });
     await page.clock.setFixedTime(new Date('2026-10-28T02:00:00Z'));
     await boot(page);
     const d = fixture(),
-      purchase = d.purchases[0],
       memo = d.notes.find((n) => n.kind === '项目备忘')!;
     d.purchases = Array.from({ length: 8 }, (_, i) => ({
-      ...purchase,
+      ...d.purchases[0],
       id: 'v11-p' + i,
       taskId: '',
-      due: i < 4 ? '2026-10-28' : '2026-10-27',
+      due: '2026-10-28',
       deadlineMode: 'fixed' as const,
       name: '核查材料' + i,
     }));
-    d.notes = Array.from({ length: 4 }, (_, i) => ({
-      ...memo,
-      id: 'v11-m' + i,
-      title: '完整备忘' + i,
-    }));
+    d.notes = Array.from({ length: 4 }, (_, i) => [
+      {
+        ...memo,
+        id: 'today' + i,
+        kind: '施工安排' as const,
+        title: '今日记录' + i,
+        date: '2026-10-28',
+      },
+      {
+        ...memo,
+        id: 'tomorrow' + i,
+        kind: '施工安排' as const,
+        title: '明日记录' + i,
+        date: '2026-10-29',
+      },
+      { ...memo, id: 'memo' + i, title: '完整备忘' + i },
+    ]).flat();
     await restore(page, d);
     await closeToast(page);
-    for (const title of ['今日事项', '项目备忘', '未来15天采购', '逾期提醒']) {
-      const toggle = page.getByRole('button', { name: '展开' + title, exact: true });
+    for (const title of ['今日事项', '明日提醒', '项目备忘']) {
       const panel = page
         .locator('.brief-panel')
         .filter({ has: page.getByRole('heading', { name: new RegExp('^' + title) }) });
-      await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-      expect(
-        await panel.locator('.brief-content').evaluate((e) => e.children.length),
-      ).toBeLessThanOrEqual(3);
-      await toggle.click();
-      await expect(page.getByRole('button', { name: '收起' + title, exact: true })).toHaveAttribute(
-        'aria-expanded',
-        'true',
-      );
-      expect(
-        await panel.locator('.brief-content').evaluate((e) => e.children.length),
-      ).toBeGreaterThan(3);
-      await page.getByRole('button', { name: '收起' + title, exact: true }).click();
+      await expect(
+        panel.getByRole('button', { name: '展开' + title, exact: true }),
+      ).toHaveAttribute('aria-expanded', 'false');
+      expect(await panel.locator('.brief-content').evaluate((e) => e.children.length)).toBe(3);
+      await panel.getByRole('button', { name: '展开' + title, exact: true }).click();
+      expect(await panel.locator('.brief-content').evaluate((e) => e.children.length)).toBe(4);
+      await panel.getByRole('button', { name: '收起' + title, exact: true }).click();
     }
-    const today = page.getByTestId('today-panel');
-    await today.getByRole('button', { name: '展开今日事项', exact: true }).click();
-    await today.getByRole('button', { name: '删除采购核查材料0', exact: true }).click();
+    await page.getByRole('button', { name: '采购管理', exact: true }).click();
+    const list = page.locator('.purchase-list');
+    await list.getByRole('button', { name: '删除采购核查材料0', exact: true }).click();
     await expect(
       page.getByRole('dialog', { name: '删除「核查材料0」？', exact: true }),
     ).toBeVisible();
     await page.getByRole('button', { name: '取消', exact: true }).click();
     expect((await state(page)).purchases).toHaveLength(8);
-    await today.getByRole('button', { name: '删除采购核查材料0', exact: true }).click();
+    await list.getByRole('button', { name: '删除采购核查材料0', exact: true }).click();
     await page.getByRole('button', { name: '确认操作', exact: true }).click();
     expect((await state(page)).purchases).toHaveLength(7);
-    await today.getByRole('button', { name: '完成采购核查材料1', exact: true }).click();
-    await expect(today).not.toContainText('核查材料1');
+    await list.getByRole('button', { name: '完成采购核查材料1', exact: true }).click();
     expect((await state(page)).purchases.find((p) => p.id === 'v11-p1')?.status).toBe('已完成');
-    await page.getByRole('button', { name: '采购管理', exact: true }).click();
     await page.getByLabel('采购记录筛选', { exact: true }).selectOption('已完成');
-    await expect(page.locator('.purchase-list')).toContainText('核查材料1');
-    await expect(page.locator('.purchase-list .purchase-row')).toHaveCount(1);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-      true,
-    );
+    await expect(list.locator('.purchase-row')).toHaveCount(1);
+    expect((await state(page)).notes).toHaveLength(12);
   });
 test('V1.1 held pointer scrolls continuously at the timeline edge, stops in center and saves aligned dates', async ({
   page,

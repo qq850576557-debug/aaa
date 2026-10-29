@@ -54,11 +54,13 @@ test('history: successful timestamp, readable diffs, arbitrary multi-change rest
       r.scope === 'p-home' &&
       r.changes.some((c) => c.label.endsWith('名称') && c.after === '修改后的项目'),
   )!;
+  await page.getByRole('button', { name: '采购管理', exact: true }).click();
   await page.getByRole('button', { name: '编辑采购电线及线管', exact: true }).first().click();
   let f = page.getByRole('dialog');
   await f.getByLabel('采购截止日期', { exact: true }).fill('2026-10-22');
   await f.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).purchases[0].due).toBe('2026-10-22');
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page
     .getByTestId('task-bar')
     .filter({ hasText: '水电定位与布线' })
@@ -103,7 +105,8 @@ test('history: successful timestamp, readable diffs, arbitrary multi-change rest
   expect(actual.projects[0].name).toBe('修改后的项目');
   expect(actual.purchases[0].due).toBe('2026-10-22');
   await history.getByRole('button', { name: '关闭', exact: true }).click();
-  await expect(page.getByTestId('today-panel')).toContainText('已逾期 1 天');
+  await page.getByRole('button', { name: '提醒中心', exact: true }).click();
+  await expect(page.locator('.reminder-columns')).toContainText('已逾期 1 天');
   await page.reload();
   await expect(page.locator('.save-state')).toContainText('已保存');
   history = await openHistory(page);

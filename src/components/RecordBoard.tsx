@@ -252,7 +252,9 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
             return (
               <section className={`board-lane tone-${i % 4}`} key={col.id} aria-label={col.name}>
                 <header className="board-lane-head">
-                  <h2>{col.name}</h2>
+                  <h2 className={group === 'project' ? 'project-context-title' : undefined}>
+                    {col.name}
+                  </h2>
                   <span className="lane-count" aria-label="记录数量">
                     {list.length}
                   </span>
@@ -293,9 +295,11 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
                         onClick={() => switchEditor({ record: r })}
                         aria-label={`打开记录：${r.title}`}
                       >
-                        <span className="record-project">
-                          {projects.find((p) => p.id === r.projectId)?.name ?? r.projectName}
-                        </span>
+                        {group !== 'project' && (
+                          <span className="record-project">
+                            {projects.find((p) => p.id === r.projectId)?.name ?? r.projectName}
+                          </span>
+                        )}
                         <h3>{r.title}</h3>
                         <div className="record-card-meta">
                           <span className="record-date">

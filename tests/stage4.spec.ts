@@ -7,12 +7,15 @@ test.beforeEach(async ({ page }, info) => {
   if (!info.title.includes('midnight'))
     await page.clock.setFixedTime(new Date('2026-10-23T04:00:00Z'));
 });
-const todayPanel = (page: Page) => page.getByTestId('today-panel');
-const upcoming = (page: Page) => page.getByTestId('upcoming-panel');
+const purchaseList = (page: Page) => page.locator('.purchase-list');
+async function showPurchases(page: Page) {
+  await page.getByRole('button', { name: '采购管理', exact: true }).click();
+}
 const metric = (page: Page, label: string) =>
   page.locator('.stat-card').filter({ hasText: label }).locator('strong');
 async function addPurchase(page: Page, name: string, date: string) {
-  await todayPanel(page).getByRole('button', { name: '添加采购事项', exact: true }).click();
+  await showPurchases(page);
+  await page.getByRole('button', { name: '新增采购', exact: true }).click();
   const panel = page.getByRole('dialog', { name: '新建采购事项', exact: true });
   await panel.getByLabel('采购内容 / 事项标题', { exact: true }).fill(name);
   await panel.getByLabel('采购截止日期', { exact: true }).fill(date);
@@ -30,6 +33,8 @@ function record(
   return { id: id(), projectId, name, due, taskId: '', leadDays: 0, status, owner: '', notes: '' };
 }
 async function drag(page: Page, name: string, delta: number) {
+  if ((await page.locator('.app-shell').getAttribute('data-view')) !== 'overview')
+    await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   const bar = page.getByTestId('task-bar').filter({ hasText: name }).first();
   await bar.scrollIntoViewIfNeeded();
@@ -40,64 +45,49 @@ async function drag(page: Page, name: string, delta: number) {
   await page.mouse.up();
 }
 
-test('stage 4: one compact daily purchase updates all panels, indicators and counts; advance and complete persist', async ({
+test('stage 4: compact procurement updates statistics and calendar independently of home agenda', async ({
   page,
 }) => {
   await boot(page);
   await restore(page);
   const initial = await state(page);
-  await todayPanel(page).getByRole('button', { name: '添加采购事项', exact: true }).click();
-  let form = page.getByRole('dialog', { name: '新建采购事项', exact: true });
-  await expect(form.getByLabel('所属项目', { exact: true })).toHaveCount(0);
-  await expect(form).toContainText('所属项目：栖桐里');
-  await expect(form.getByLabel('采购内容 / 事项标题', { exact: true })).toBeVisible();
-  for (const label of [
-    '持续天数',
-    '前序任务（可选）',
-    '提醒日期',
-    '关联施工任务（可选）',
-    '施工人员姓名',
-    '负责人',
-    '采购状态',
-  ])
+  await showPurchases(page);
+  await page.getByRole('button', { name: '新增采购', exact: true }).click();
+  let form = page.getByRole('dialog');
+  for (const label of ['持续天数', '前序任务', '负责人', '关联施工任务', '提醒日期'])
     await expect(form.getByLabel(label, { exact: true })).toHaveCount(0);
-  await expect(form.locator('.personnel-fields')).toHaveCount(0);
   await form.getByLabel('采购内容 / 事项标题', { exact: true }).fill('厨房五金');
   await form.getByLabel('采购截止日期', { exact: true }).fill('2026-10-26');
-  await form.getByLabel('详细备注（可选）', { exact: true }).fill('按图纸核对规格');
+  await form.getByLabel('详细备注（可选）', { exact: true }).fill('核对尺寸和数量');
   await form.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(upcoming(page)).toContainText('厨房五金');
-  await expect(upcoming(page)).toContainText('剩余 3 天');
-  await expect(todayPanel(page)).not.toContainText('厨房五金');
+  await expect(purchaseList(page)).toContainText('剩余 3 天');
   await expect(metric(page, '未来 15 天采购')).toHaveText('2');
   let data = await state(page);
   const purchase = data.purchases.find((p) => p.name === '厨房五金')!;
   expect(data.notes).toEqual(initial.notes);
   expect(data.tasks).toEqual(initial.tasks);
   expect(purchase.originalDue).toBe('2026-10-26');
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
+  await expect(page.locator('.agenda-brief')).not.toContainText('厨房五金');
   const day = page.getByRole('button', { name: '查看 2026-10-26 事项', exact: true });
   await expect(day.locator('i')).toHaveAttribute('title', '1 条待办（采购 1 条）');
   await day.click();
   await expect(page.getByRole('dialog')).toContainText('厨房五金');
-  await page.getByRole('button', { name: '关闭浮窗' }).click();
-  await upcoming(page).getByRole('button', { name: '编辑采购厨房五金', exact: true }).click();
+  await page.getByRole('button', { name: '关闭浮窗', exact: true }).click();
+  await showPurchases(page);
+  await purchaseList(page).getByRole('button', { name: '编辑采购厨房五金', exact: true }).click();
   form = page.getByRole('dialog');
   await form.getByLabel('采购截止日期', { exact: true }).fill('2026-10-23');
   await form.getByRole('button', { name: '保存', exact: true }).click();
-  await expect(todayPanel(page)).toContainText('厨房五金');
-  const todayCard = todayPanel(page).locator(`[data-purchase-id="${purchase.id}"]`),
-    futureCard = upcoming(page).locator(`[data-purchase-id="${purchase.id}"]`);
-  await expect(todayCard).toContainText('今天截止');
-  await expect(futureCard).toContainText('今天截止');
+  const card = purchaseList(page).locator(`[data-purchase-id="${purchase.id}"]`);
+  await expect(card).toContainText('今天截止');
   await expect(metric(page, '今日待办')).toHaveText('3');
-  await expect(day.locator('i')).toHaveCount(0);
-  await todayCard.getByRole('button', { name: '完成采购厨房五金', exact: true }).click();
-  await expect(todayCard).toHaveCount(0);
-  await expect(futureCard).toHaveCount(0);
+  await page.getByLabel('采购记录筛选', { exact: true }).selectOption('待采购');
+  await card.getByRole('button', { name: '完成采购厨房五金', exact: true }).click();
+  await expect(card).toHaveCount(0);
   await expect(metric(page, '今日待办')).toHaveText('2');
   await expect(metric(page, '未来 15 天采购')).toHaveText('1');
   await page.reload();
-  await expect(page.locator('.save-state')).toContainText('已保存');
   data = await state(page);
   expect(data.purchases.filter((p) => p.id === purchase.id)).toHaveLength(1);
   expect(data.purchases.find((p) => p.id === purchase.id)).toMatchObject({
@@ -114,7 +104,7 @@ test('stage 4: ordinary edits cannot move deadline past original; explicit local
   await boot(page);
   await restore(page);
   await addPurchase(page, '定制柜五金', '2026-10-26');
-  await upcoming(page).getByRole('button', { name: '编辑采购定制柜五金', exact: true }).click();
+  await purchaseList(page).getByRole('button', { name: '编辑采购定制柜五金', exact: true }).click();
   let form = page.getByRole('dialog');
   await form.getByRole('button', { name: '选择采购截止日期', exact: true }).click();
   await expect(
@@ -135,7 +125,7 @@ test('stage 4: ordinary edits cannot move deadline past original; explicit local
   );
   await form.getByRole('button', { name: '取消', exact: true }).click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
-  await upcoming(page).getByRole('button', { name: '编辑采购定制柜五金', exact: true }).click();
+  await purchaseList(page).getByRole('button', { name: '编辑采购定制柜五金', exact: true }).click();
   form = page.getByRole('dialog');
   await form.getByRole('button', { name: '变更原定期限', exact: true }).click();
   const confirm = page.getByRole('dialog', { name: '确认变更原定采购期限', exact: true });
@@ -169,7 +159,8 @@ test('stage 4: ordinary edits cannot move deadline past original; explicit local
   await page.getByRole('button', { name: '关闭', exact: true }).click();
   await restore(page, backup);
   expect((await state(page)).purchases).toEqual(backup.purchases);
-  await upcoming(page).getByRole('button', { name: '编辑采购定制柜五金', exact: true }).click();
+  await showPurchases(page);
+  await purchaseList(page).getByRole('button', { name: '编辑采购定制柜五金', exact: true }).click();
   form = page.getByRole('dialog');
   await form.getByLabel('采购截止日期', { exact: true }).fill('2026-10-31');
   await form.getByRole('button', { name: '保存', exact: true }).click();
@@ -180,7 +171,7 @@ test('stage 4: ordinary edits cannot move deadline past original; explicit local
   ).toBe(false);
 });
 
-test('stage 4: overdue days, completed compatibility, inclusive future boundary and projects remain isolated', async ({
+test('stage 4: overdue/completed compatibility, inclusive future boundary and project isolation remain intact', async ({
   page,
 }) => {
   const d = fixture();
@@ -195,37 +186,32 @@ test('stage 4: overdue days, completed compatibility, inclusive future boundary 
   ];
   await boot(page);
   await restore(page, d);
-  await expect(todayPanel(page)).toContainText('逾期瓷砖');
-  await expect(todayPanel(page)).toContainText('已逾期 2 天');
-  await expect(todayPanel(page)).not.toContainText('已完成材料');
-  await expect(todayPanel(page)).not.toContainText('旧已到货');
-  await expect(todayPanel(page)).not.toContainText('乙工地材料');
-  await expect(upcoming(page)).toContainText('十五天材料');
-  await expect(upcoming(page)).toContainText('剩余 15 天');
-  await expect(upcoming(page)).not.toContainText('十六天材料');
+  await showPurchases(page);
+  await page.getByLabel('采购记录筛选', { exact: true }).selectOption('待采购');
+  await expect(purchaseList(page)).toContainText('已逾期 2 天');
+  await expect(purchaseList(page)).not.toContainText('已完成材料');
+  await expect(purchaseList(page)).not.toContainText('旧已到货');
+  await expect(purchaseList(page)).not.toContainText('乙工地材料');
   await expect(metric(page, '今日待办')).toHaveText('3');
   await expect(metric(page, '未来 15 天采购')).toHaveText('2');
   await expect(metric(page, '已逾期采购')).toHaveText('1');
-  await page.locator('[data-project-id="project-two"]').click();
-  await expect(todayPanel(page)).toContainText('乙工地材料');
-  await expect(todayPanel(page)).not.toContainText('逾期瓷砖');
-  await expect(upcoming(page)).not.toContainText('十五天材料');
-  await todayPanel(page).getByRole('button', { name: '完成采购乙工地材料', exact: true }).click();
+  await metric(page, '未来 15 天采购').click();
+  await expect(page.locator('.reminder-columns')).toContainText('十五天材料');
+  await expect(page.locator('.reminder-columns')).toContainText('剩余 15 天');
+  await expect(page.locator('.reminder-columns')).not.toContainText('十六天材料');
+  await showPurchases(page);
+  await page.locator('.sidebar-project-list [data-project-id="project-two"]').click();
+  await expect(purchaseList(page)).toContainText('乙工地材料');
+  await expect(purchaseList(page)).not.toContainText('逾期瓷砖');
+  await purchaseList(page).getByRole('button', { name: '完成采购乙工地材料', exact: true }).click();
   await expect(metric(page, '今日待办')).toHaveText('2');
   await expect(metric(page, '未来 15 天采购')).toHaveText('1');
-  await page.locator('[data-project-id="p-home"]').click();
-  await expect(todayPanel(page)).toContainText('已逾期 2 天');
+  await page.locator('.sidebar-project-list [data-project-id="p-home"]').click();
+  await expect(purchaseList(page)).toContainText('已逾期 2 天');
   expect((await state(page)).purchases.find((p) => p.name === '逾期瓷砖')?.status).toBe('待采购');
-  await mkdir('/workspace/chunmo-stage4', { recursive: true });
-  await closeToast(page);
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({
-    path: '/workspace/chunmo-stage4/procurement-workspace.png',
-    fullPage: true,
-  });
 });
 
-test('stage 4: midnight automatically updates relative time and today projection without edits', async ({
+test('stage 4: midnight updates procurement countdown and global statistics without changing records', async ({
   page,
 }) => {
   await page.clock.install({ time: new Date('2026-10-23T23:59:50+08:00') });
@@ -234,13 +220,14 @@ test('stage 4: midnight automatically updates relative time and today projection
   d.purchases = [record('跨日材料', '2026-10-24')];
   await boot(page);
   await restore(page, d);
-  await expect(upcoming(page)).toContainText('剩余 1 天');
-  await expect(todayPanel(page)).not.toContainText('跨日材料');
+  await showPurchases(page);
+  const before = await state(page);
+  await expect(purchaseList(page)).toContainText('剩余 1 天');
   await expect(metric(page, '今日待办')).toHaveText('暂无');
   await page.clock.runFor(31000);
-  await expect(todayPanel(page)).toContainText('跨日材料');
-  await expect(upcoming(page)).toContainText('今天截止');
+  await expect(purchaseList(page)).toContainText('今天截止');
   await expect(metric(page, '今日待办')).toHaveText('1');
+  expect(await state(page)).toEqual(before);
 });
 
 test('stage 4: bar double click never edits; context menu deletion confirms and preserves related procurement and notes', async ({
@@ -284,11 +271,12 @@ test('stage 4: bar double click never edits; context menu deletion confirms and 
   expect(data.notes[0].taskId).toBeUndefined();
   expect(data.notes[0].content).toBe(initial.notes[0].content);
   expect(data.tasks[0].dependsOn).toEqual([]);
-  await expect(todayPanel(page)).toContainText('电线及线管');
-  await expect(upcoming(page)).toContainText('电线及线管');
+  await showPurchases(page);
+  await expect(purchaseList(page)).toContainText('电线及线管');
   await page.reload();
   expect((await state(page)).tasks).toHaveLength(2);
   await expect(page.getByTestId('task-bar')).toHaveCount(1);
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.locator('.task-details-list summary').click();
   await page.getByRole('button', { name: '编辑任务现场保护与拆改', exact: true }).click();
   await expect(page.getByRole('heading', { name: '编辑施工任务', exact: true })).toBeVisible();
@@ -304,7 +292,8 @@ test('stage 4: linked procurement follows an earlier drag but later construction
   await expect
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
     .toBe('2026-10-28');
-  await expect(todayPanel(page)).toContainText('今天截止');
+  await showPurchases(page);
+  await expect(purchaseList(page)).toContainText('今天截止');
   expect((await state(page)).purchases[0].originalDue).toBe('2026-10-23');
   await drag(page, '水电定位与布线', -4);
   await page
@@ -314,16 +303,19 @@ test('stage 4: linked procurement follows an earlier drag but later construction
   await expect
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
     .toBe('2026-10-24');
-  const card = todayPanel(page).locator(`[data-purchase-id="${initial.purchases[0].id}"]`);
+  await showPurchases(page);
+  const card = purchaseList(page).locator(`[data-purchase-id="${initial.purchases[0].id}"]`);
   await expect(card).toContainText('2026-10-21 前采购');
   await expect(card).toContainText('已逾期 2 天');
-  await expect(upcoming(page)).not.toContainText('电线及线管');
+  await metric(page, '未来 15 天采购').click();
+  await expect(page.locator('.reminder-columns')).not.toContainText('电线及线管');
+  await showPurchases(page);
   await expect(metric(page, '已逾期采购')).toHaveText('1');
   await page.getByRole('button', { name: '撤销', exact: true }).click();
   await expect
     .poll(async () => (await state(page)).tasks.find((t) => t.id === 't-water')?.start)
     .toBe('2026-10-28');
-  await expect(todayPanel(page)).toContainText('2026-10-23 前采购');
+  await expect(purchaseList(page)).toContainText('2026-10-23 前采购');
 });
 
 test('stage 4: personnel navigation is separate, old preparation statuses display as construction and survive editing', async ({
@@ -365,7 +357,8 @@ test('stage 4: mobile has separate people navigation and compact procurement; ta
   await boot(page);
   await restore(page);
   await closeToast(page);
-  await todayPanel(page).getByRole('button', { name: '添加采购事项', exact: true }).click();
+  await showPurchases(page);
+  await page.getByRole('button', { name: '新增采购', exact: true }).click();
   const form = page.getByRole('dialog');
   await expect(form.locator('.personnel-fields')).toHaveCount(0);
   await expect(form.getByLabel('采购截止日期', { exact: true })).toBeVisible();
@@ -373,6 +366,7 @@ test('stage 4: mobile has separate people navigation and compact procurement; ta
   await form.getByRole('button', { name: '取消', exact: true }).click();
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   await expect(page.locator('.people-panel')).toBeVisible();
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.locator('.task-details-list summary').click();
   await page.getByRole('button', { name: '编辑任务现场保护与拆改', exact: true }).click();

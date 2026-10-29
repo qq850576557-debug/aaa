@@ -260,7 +260,7 @@ test('monthly 2x export produces independent titled PNGs and top success feedbac
   await expect(page.locator('.toast-stack .toast')).toHaveCount(0, { timeout: 5000 });
 });
 
-test('today, memo and purchase panels precede timeline, completion and project switching remain isolated', async ({
+test('today, tomorrow and memo panels precede timeline, completion and project switching remain isolated', async ({
   page,
 }) => {
   const d = fixture();
@@ -280,7 +280,7 @@ test('today, memo and purchase panels precede timeline, completion and project s
   await expect(
     page.getByRole('button', { name: '标记未完成材料与施工注意事项', exact: true }),
   ).toHaveCount(0);
-  await expect(page.locator('.project-alerts')).not.toContainText('电线及线管');
+  await expect(page.locator('.agenda-brief')).not.toContainText('电线及线管');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
     true,
   );

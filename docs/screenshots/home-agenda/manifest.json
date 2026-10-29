@@ -1,0 +1,148 @@
+{
+  "date": "2026-10-29",
+  "timezone": "Asia/Shanghai",
+  "baselineCommit": "3b0b74910a73d24e9d186db8da6236a30b836dc0",
+  "source": "This feature-branch change: actual Chromium screenshots, synthetic test workspaces only",
+  "files": [
+    {
+      "file": "home-empty-1280.png",
+      "bytes": 236008,
+      "width": 1280,
+      "height": 2022,
+      "sha256": "d7ab4b77855deb92fd5bef2e224d814f288b90cf81efea04a88b370277c6ec7e"
+    },
+    {
+      "file": "home-empty-1440.png",
+      "bytes": 241016,
+      "width": 1440,
+      "height": 2022,
+      "sha256": "6b10f8a953764ef010081a97f848e5e6d0d67f90dade8d89da28b554d47408d9"
+    },
+    {
+      "file": "home-empty-390.png",
+      "bytes": 195770,
+      "width": 390,
+      "height": 3605,
+      "sha256": "f6d80d2bfb480eeff6d7566bb181f9f98607ef7d709b125969f0270bb7115c1d"
+    },
+    {
+      "file": "home-filled-1280.png",
+      "bytes": 253769,
+      "width": 1280,
+      "height": 2022,
+      "sha256": "6e573aa5afbc9a4434815b87b9b2aef0bd93eec611883c44d41dec239e4efc69"
+    },
+    {
+      "file": "home-filled-1440.png",
+      "bytes": 261147,
+      "width": 1440,
+      "height": 2022,
+      "sha256": "82150ab61899686e4544769f9a834fcba4c2216334c41ea27f0f9110c8e22975"
+    },
+    {
+      "file": "home-filled-390.png",
+      "bytes": 211171,
+      "width": 390,
+      "height": 3605,
+      "sha256": "5905a3841365157cf621984c89c69417586cf43efcc5d65fa308c82393838cf6"
+    },
+    {
+      "file": "home-long-1280.png",
+      "bytes": 256066,
+      "width": 1280,
+      "height": 2022,
+      "sha256": "67500bcb2a3a9af77c902c698b3a22f6d8450298a189716af370d8c5eb6c5a4c"
+    },
+    {
+      "file": "home-long-1440.png",
+      "bytes": 263988,
+      "width": 1440,
+      "height": 2022,
+      "sha256": "ae9634b6cf75f7e7fb7d09eba51dccd2573262f1072f14ddf80bd918fc046d32"
+    },
+    {
+      "file": "home-long-390.png",
+      "bytes": 215640,
+      "width": 390,
+      "height": 3605,
+      "sha256": "863352361ae3ce46b1667c33b904a42315344decc8dd2aff14a61a53b2306cb4"
+    },
+    {
+      "file": "page-completed-1440.png",
+      "bytes": 109095,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "2d623d9f3d9f005aaded54c311dce451e5ca52ab20f698c4a36a684ec94a9efd"
+    },
+    {
+      "file": "page-home-1440.png",
+      "bytes": 193091,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "67313994f2f87d4c220735bcb9460b9759d3c34789b7068748ef79558476ec9b"
+    },
+    {
+      "file": "page-materials-1440.png",
+      "bytes": 166368,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "503067613ac87b0ae23ab68cfda98f1e163422eae6702fb7f622c27924eac8d2"
+    },
+    {
+      "file": "page-notes-1440.png",
+      "bytes": 149262,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "58934f3165ef77a214df7d7909b1685f884f4f5f031997fed7fec6a62086995d"
+    },
+    {
+      "file": "page-people-1440.png",
+      "bytes": 152444,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "5dc3f8fb270567064908d298416ec0a4f1c8c1d0bb3ef6f08e039b8a6dfee0df"
+    },
+    {
+      "file": "page-purchases-1440.png",
+      "bytes": 147325,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "7947f694b79fb8aa6f8e8131e2685c16e278e052f576224a9536c0c8246ff01e"
+    },
+    {
+      "file": "page-records-1440.png",
+      "bytes": 111470,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "33f4b2cacbf2ec7b93a74c48d91e1ad41441fb641bbf00ea570edb4ad8218816"
+    },
+    {
+      "file": "page-reminders-1440.png",
+      "bytes": 149221,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "f9433437394901ac5336169d4cc2554927f1c6030a6d09997d204dc7159fe9a9"
+    },
+    {
+      "file": "tomorrow-editor-1280.png",
+      "bytes": 201235,
+      "width": 1280,
+      "height": 1000,
+      "sha256": "07f1aee67496e156fa6d0ad1c950678c5a2768a08d1bad149ed068843bfc5b2c"
+    },
+    {
+      "file": "tomorrow-editor-1440.png",
+      "bytes": 211471,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "2cd39e1898c651fa4400c6c21aa62ddc5a4325ea08713122fd3978cabd764188"
+    },
+    {
+      "file": "tomorrow-editor-390.png",
+      "bytes": 79916,
+      "width": 390,
+      "height": 1000,
+      "sha256": "13a7eb1b79554073e97f64c6a94f0988cfd8f19b0ccb1a1c243d17d3beccc4c5"
+    }
+  ]
+}

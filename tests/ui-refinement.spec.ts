@@ -23,11 +23,16 @@ for (const width of [1440, 390])
         return { w: r.width, h: r.height };
       }),
     );
-    expect(boxes).toHaveLength(4);
+    expect(boxes).toHaveLength(3);
     expect(new Set(boxes.map((b) => b.h)).size).toBe(1);
-    expect(new Set(boxes.map((b) => b.w)).size).toBe(1);
-    await expect(page.locator('.brief-empty')).toHaveCount(4);
-    for (const p of await page.locator('.brief-empty').all()) await expect(p).toHaveText('暂无');
+    // Three equal CSS grid columns can differ by a fractional layout pixel.
+    expect(Math.max(...boxes.map((b) => b.w)) - Math.min(...boxes.map((b) => b.w))).toBeLessThan(1);
+    await expect(page.locator('.brief-empty')).toHaveCount(3);
+    expect(await page.locator('.brief-empty').allTextContents()).toEqual([
+      '今日暂无待办事项',
+      '明日暂无安排',
+      '暂无项目备忘',
+    ]);
     await expect(
       page.locator('.project-toolbar').getByRole('button', { name: '编辑当前项目', exact: true }),
     ).toHaveCount(0);
