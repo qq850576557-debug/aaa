@@ -1,3 +1,4 @@
+import { displayedTradeRGB } from './helpers';
 import { editTask } from './helpers';
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
@@ -205,7 +206,7 @@ test('trade drag sorting has a drop line, inserts inline, and live color persist
   await m.getByLabel('自定义颜色', { exact: true }).fill('#244e42');
   await expect(page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' })).toHaveCSS(
     'border-color',
-    'rgb(36, 78, 66)',
+    await displayedTradeRGB(page, '#244e42'),
   );
   await m.getByLabel('明度', { exact: true }).fill('60');
   await page.keyboard.press('Escape');

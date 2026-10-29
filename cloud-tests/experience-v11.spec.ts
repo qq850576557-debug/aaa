@@ -223,8 +223,8 @@ for (const width of [1440, 390]) {
         .getByLabel('选择名片头像', { exact: true })
         .setInputFiles({ name: 'card.png', mimeType: 'image/png', buffer: png(220) });
       await m.getByRole('button', { name: '保存头像', exact: true }).click();
-      await expect(m.locator('.member-card img')).toHaveAttribute('src', /card-avatar/);
-      const card = await m.locator('.member-card img').getAttribute('src');
+      await expect(m.locator('.member-card-photo img')).toHaveAttribute('src', /card-avatar/);
+      const card = await m.locator('.member-card-photo img').getAttribute('src');
       await expect(p.locator('.current-account img')).toHaveAttribute('src', system!);
       await m.getByRole('button', { name: '账号设置', exact: true }).click();
       await expect(p.getByRole('dialog', { name: '账号管理', exact: true })).toBeVisible();
@@ -234,11 +234,13 @@ for (const width of [1440, 390]) {
       await expect(p.locator('.current-account img')).toHaveAttribute('src', system!);
       await p.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
       m = p.getByRole('dialog', { name: '我的个人名片', exact: true });
-      await expect(m.locator('.member-card img')).toHaveAttribute('src', card!);
+      await expect(m.locator('.member-card-photo img')).toHaveAttribute('src', card!);
       await p.reload();
       await p.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
       await expect(
-        p.getByRole('dialog', { name: '我的个人名片', exact: true }).locator('.member-card img'),
+        p
+          .getByRole('dialog', { name: '我的个人名片', exact: true })
+          .locator('.member-card-photo img'),
       ).toHaveAttribute('src', card!);
       await p.screenshot({ path: `/tmp/chunmo-v11-profile-${width}.png`, animations: 'disabled' });
       expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

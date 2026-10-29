@@ -1,3 +1,4 @@
+import { ProjectSurface, useProjectThemeStyles } from './ProjectThemes';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Plus,
@@ -53,6 +54,7 @@ export function RecordStatus({ status }: { status: string }) {
   );
 }
 export function RecordBoard({ projects, isCloud }: { projects: Project[]; isCloud: boolean }) {
+  const themeStyle = useProjectThemeStyles();
   const [records, setRecords] = useState<WorkRecord[]>([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
@@ -144,12 +146,12 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
       <section className="panel board-unavailable">
         <h2>在云端协作中跟进项目</h2>
         <p>
-          记录状态看板由服务器保存并生成真实历史。请登录云端工作空间使用；现有本地项目资料保持不变。
+          事项管理由服务器保存并生成真实历史。请登录云端工作空间使用；现有本地项目资料保持不变。
         </p>
       </section>
     );
   return (
-    <section className="record-board" aria-label="记录状态看板">
+    <section className="record-board" aria-label="事项管理">
       <div className="board-tools workbench-toolbar">
         <div className="board-tool-primary">
           <button
@@ -250,8 +252,10 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
               group === 'status' ? r.status === col.id : r.projectId === col.id,
             );
             return (
-              <section
-                className={`board-lane tone-${(group === 'project' ? projectGroups.findIndex((p) => p.id === col.id) : i) % 6}`}
+              <ProjectSurface
+                role="region"
+                projectId={group === 'project' ? col.id : undefined}
+                className={`board-lane ${group === 'project' ? 'project-themed-lane' : `tone-${i % 6}`}`}
                 key={col.id}
                 aria-label={col.name}
               >
@@ -295,6 +299,7 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
                     list.map((r) => (
                       <button
                         className="workbench-card record-card"
+                        style={themeStyle(r.projectId)}
                         key={r.id}
                         onClick={() => switchEditor({ record: r })}
                         aria-label={`打开记录：${r.title}`}
@@ -334,7 +339,7 @@ export function RecordBoard({ projects, isCloud }: { projects: Project[]; isClou
                   <Plus size={16} />
                   新增记录
                 </button>
-              </section>
+              </ProjectSurface>
             );
           })}
         </div>

@@ -93,7 +93,7 @@ for (const width of [1440, 1280, 390])
     }
     await page.getByRole('button', { name: '采购管理', exact: true }).click();
     await expect(page.locator('.purchase-list')).toContainText(originalPurchases[0].name);
-    await expect(page.locator('.purchase-list')).not.toContainText(d.projects[0].name);
+    await expect(page.locator('.purchase-list')).toContainText(d.projects[0].name);
     await expect(page.locator('.project-context')).toContainText(d.projects[0].name);
     await page.getByRole('button', { name: '提醒中心', exact: true }).click();
     await expect(page.locator('.reminder-columns')).toContainText(originalPurchases[0].name);

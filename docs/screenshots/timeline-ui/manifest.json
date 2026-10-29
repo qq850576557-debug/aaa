@@ -1,0 +1,140 @@
+{
+  "baselineCommit": "47b92ac0aa564335cff9e5db0c5050a2b3b9d269",
+  "branch": "feat/chunmo-project-manager",
+  "capture": "Actual Chromium, synthetic test data; profile image is a resolution/aspect test pattern",
+  "files": [
+    {
+      "file": "after-home-1440.png",
+      "bytes": 189940,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "f01b2f28333880db42ddbdc5e200ec1aff35143c002e2a4c3310f78fde02e734"
+    },
+    {
+      "file": "after-purchases-1440.png",
+      "bytes": 162126,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "f9a8c7b8db8cf320cc1ac2b972e6ad72946f0b5982a1f44f688ce8c74b033a08"
+    },
+    {
+      "file": "before-home-1440.png",
+      "bytes": 187438,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "cc49e74a59b8526e4350cc52f40eaac82527893e4bfda43ac1fb3868e2446bee"
+    },
+    {
+      "file": "before-purchases-1440.png",
+      "bytes": 164646,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "bb4ae52ab012fe6833f1e37af3fcb7d3163720961a77b7fbfdd6e00694ecf192"
+    },
+    {
+      "file": "board-1440.png",
+      "bytes": 122388,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "e935658189a19d3cae71a308d3aca9c5b99153c832aafb2647042977addc6a05"
+    },
+    {
+      "file": "board-320.png",
+      "bytes": 60762,
+      "width": 320,
+      "height": 1000,
+      "sha256": "7fbf815df5473b1ea0b8bd4705a74e02e5d648dc3f2c2d6e3dd501dc5a8b86d1"
+    },
+    {
+      "file": "board-390.png",
+      "bytes": 68119,
+      "width": 390,
+      "height": 1000,
+      "sha256": "260505cfcb84d58e49edcd1dc2e76a87b34ae25c799a969f8cc5dd80a8cbaa59"
+    },
+    {
+      "file": "edge-1280.png",
+      "bytes": 135306,
+      "width": 1280,
+      "height": 1000,
+      "sha256": "ace392bb27898909e7d794eeeb26698d3d2e8c80c43fd90699103c4cb1aadd54"
+    },
+    {
+      "file": "edge-1440.png",
+      "bytes": 138200,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "fed8d214fd27d86921e5f34bb5f28ce37fec96724b8c7cf085ba46b7a354bef8"
+    },
+    {
+      "file": "home-1440.png",
+      "bytes": 253880,
+      "width": 1440,
+      "height": 1981,
+      "sha256": "3799ad7ab4bf82509cdaeac29b74166fb7651ae892b053e4b507456c18b5e652"
+    },
+    {
+      "file": "home-390.png",
+      "bytes": 201124,
+      "width": 390,
+      "height": 3555,
+      "sha256": "26082fdd24f3c7762e4850cff70692b17e7c2371e4e592f5923b17dae1ef7e1d"
+    },
+    {
+      "file": "photo-1440.png",
+      "bytes": 158390,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "1ff43a25d436d9852391241d2989787b08dee738c1b5d50a1807a84f05f9fafe"
+    },
+    {
+      "file": "photo-320.png",
+      "bytes": 76107,
+      "width": 320,
+      "height": 1000,
+      "sha256": "db85570f5edebb61e5fd787876b3ffb12549e4871cc5220f52d01a4ae1c1def8"
+    },
+    {
+      "file": "photo-390.png",
+      "bytes": 87966,
+      "width": 390,
+      "height": 1000,
+      "sha256": "063629359b597aa8198a68ea751f3ebbc84c693168e452b516a3f54b1b0a5679"
+    },
+    {
+      "file": "portrait-1440.png",
+      "bytes": 285169,
+      "width": 1440,
+      "height": 1000,
+      "sha256": "96830160a0e7f864a9fb01c5640a8b2d9d61eb93a8374726c91d67349100a8ab"
+    },
+    {
+      "file": "portrait-320.png",
+      "bytes": 72968,
+      "width": 320,
+      "height": 1000,
+      "sha256": "15254d1219b559f771793b8bb5a9a38f7cd55aed6cd7b7aeb79bbd124952d4dc"
+    },
+    {
+      "file": "portrait-390.png",
+      "bytes": 89352,
+      "width": 390,
+      "height": 1000,
+      "sha256": "4579fe48615ae6fa551fadccbb07005ea8e9baf9d56bd5f6cd5d6877bdf9bb99"
+    },
+    {
+      "file": "purchases-1440.png",
+      "bytes": 180194,
+      "width": 1440,
+      "height": 1296,
+      "sha256": "2cbc812dfbdc123f3214bfc19d656c03915cd28e81bfc8054d8faa5f5f5ba343"
+    },
+    {
+      "file": "purchases-390.png",
+      "bytes": 161888,
+      "width": 390,
+      "height": 2357,
+      "sha256": "ae34594e303db522c4f3b14bb4a63678a6b918a0efd59583c775e7863623e6ca"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import type { Project } from '../lib/model';
+import { projectThemeStyle, useProjectTheme } from './ProjectThemes';
 export function ProjectContext({
   project,
   label = '当前工地：',
@@ -9,6 +10,7 @@ export function ProjectContext({
   return (
     <div
       className="project-context"
+      style={projectThemeStyle(useProjectTheme(project.id))}
       data-context-project-id={project.id}
       aria-label={`当前操作工地：${project.name}`}
     >

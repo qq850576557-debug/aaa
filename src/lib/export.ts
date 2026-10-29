@@ -1,4 +1,5 @@
 import { ganttGroups } from './gantt-groups';
+import { projectTradeColor } from './project-themes';
 import {
   days,
   distance,
@@ -37,7 +38,7 @@ export function backupJSON(data: Data, history?: History) {
 }
 export const exportFilename = (name: string) =>
   `${name.replace(/[\\/:*?"<>|]/g, '-')}-施工工期.png`;
-export type PNGOptions = { scale?: 1 | 2; start?: string; end?: string };
+export type PNGOptions = { scale?: 1 | 2; start?: string; end?: string; themeHue?: number };
 export function monthRanges(start: string, end: string) {
   const result: { start: string; end: string }[] = [];
   for (const d of days(start, end)) {
@@ -88,7 +89,12 @@ export async function schedulePNG(
   };
   const trades = data.trades
       .filter((g) => g.projectId === project.id)
-      .sort((a, b) => a.order - b.order),
+      .sort((a, b) => a.order - b.order)
+      .map((g) => ({
+        ...g,
+        color:
+          options.themeHue === undefined ? g.color : projectTradeColor(options.themeHue, g.color),
+      })),
     tasks = data.tasks.filter((t) => t.projectId === project.id);
   const groups = trades.map((g) => ({
     g,

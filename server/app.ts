@@ -219,7 +219,7 @@ export function createApp() {
         .object({ image: z.string().max(2800000) })
         .strict()
         .parse(req.body);
-      const png = validateAvatar(body.image);
+      const png = validateAvatar(body.image, 1024);
       await transaction(async (c) => {
         await c.query(
           'INSERT INTO card_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now()',

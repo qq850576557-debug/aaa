@@ -103,11 +103,11 @@ test('V4 switching projects in board daily records preserves the module and retu
   d.projects.push({ ...d.projects[0], id: 'second-context', name: '第二工作上下文' });
   await restore(page, d);
   await closeToast(page);
-  await page.getByRole('button', { name: '记录状态看板', exact: true }).click();
+  await page.getByRole('button', { name: '事项管理', exact: true }).click();
   await page.locator('.daily-records > summary').click();
   await page.getByRole('button', { name: '切换项目第二工作上下文', exact: true }).click();
   await expect(
-    page.getByRole('heading', { level: 1, name: '记录状态看板', exact: true }),
+    page.getByRole('heading', { level: 1, name: '事项管理', exact: true }),
   ).toBeVisible();
   await expect(page.locator('.current-project-name')).toHaveText('第二工作上下文');
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();

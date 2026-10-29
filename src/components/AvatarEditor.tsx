@@ -33,23 +33,36 @@ export function AvatarEditor({
       try {
         if (bitmap.width * bitmap.height > 16000000) throw Error('图片尺寸过大，请选择较小的图片');
         const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
         const ctx = canvas.getContext('2d');
         if (!ctx) throw Error('浏览器无法预览图片');
         const side = Math.min(bitmap.width, bitmap.height);
-        ctx.drawImage(
-          bitmap,
-          (bitmap.width - side) / 2,
-          (bitmap.height - side) / 2,
-          side,
-          side,
-          0,
-          0,
-          256,
-          256,
-        );
-        setCandidate(canvas.toDataURL('image/png'));
+        let scale = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
+        let encoded = '';
+        for (let attempt = 0; attempt < 10; attempt++) {
+          canvas.width = kind === 'card' ? Math.max(1, Math.round(bitmap.width * scale)) : 256;
+          canvas.height = kind === 'card' ? Math.max(1, Math.round(bitmap.height * scale)) : 256;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          if (kind === 'card') ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          else
+            ctx.drawImage(
+              bitmap,
+              (bitmap.width - side) / 2,
+              (bitmap.height - side) / 2,
+              side,
+              side,
+              0,
+              0,
+              256,
+              256,
+            );
+          encoded = canvas.toDataURL('image/png');
+          if (((encoded.length - 'data:image/png;base64,'.length) * 3) / 4 < 2 * 1024 * 1024) break;
+          encoded = '';
+          scale *= 0.85;
+        }
+        if (!encoded) throw Error('处理后的图片仍过大，请选择较小的照片');
+        setCandidate(encoded);
       } finally {
         bitmap.close();
       }
@@ -105,7 +118,9 @@ export function AvatarEditor({
       </label>
       <p className="account-muted">
         小于2MB · PNG、JPEG、WebP ·{' '}
-        {kind === 'card' ? '居中裁切；与在线头像独立保存' : '保存时裁切为圆形头像'}
+        {kind === 'card'
+          ? '保留原比例，长边最多1024px；与在线头像独立保存'
+          : '保存时裁切为圆形头像'}
       </p>
       {candidate && (
         <div className="toolbar">

@@ -2711,3 +2711,36 @@ test('V1.1 separate card and system images: strict upload validation, privacy an
     400,
   );
 });
+
+test('card photo: higher resolution preserves aspect and old images; system dimensions, scope and immutable private access stay restricted', async () => {
+  testClientIp = '192.0.2.28';
+  const { PNG } = await import('pngjs');
+  const { a, b, f } = await setup();
+  const encode = (width: number, height: number) => {
+    const image = new PNG({ width, height });
+    image.data.fill(180);
+    return { image: 'data:image/png;base64,' + PNG.sync.write(image).toString('base64') };
+  };
+  assert.equal((await request('/auth/card-avatar', 'PUT', encode(1024, 640), b)).status, 200);
+  const saved = await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, a);
+  const png = PNG.sync.read(Buffer.from(await saved.arrayBuffer()));
+  assert.equal(png.width, 1024);
+  assert.equal(png.height, 640);
+  assert.equal((await request('/auth/avatar', 'PUT', encode(1024, 640), b)).status, 400);
+  assert.equal((await request('/auth/card-avatar', 'PUT', encode(1025, 1), b)).status, 400);
+  const other = await setup();
+  assert.equal(
+    (await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, other.a)).status,
+    404,
+  );
+  assert.equal((await request('/auth/card-avatar', 'PUT', encode(256, 256), b)).status, 200);
+  const old = PNG.sync.read(
+    Buffer.from(
+      await (
+        await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, a)
+      ).arrayBuffer(),
+    ),
+  );
+  assert.equal(old.width, 256);
+  assert.equal(old.height, 256);
+});

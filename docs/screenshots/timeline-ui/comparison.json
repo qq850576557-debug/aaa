@@ -1,0 +1,17 @@
+{
+  "baseline": "47b92ac0aa564335cff9e5db0c5050a2b3b9d269",
+  "sameSyntheticDataset": true,
+  "geometry": {
+    "before": {
+      "height": 166.1875,
+      "width": 189,
+      "padding": "11px 12px"
+    },
+    "after": {
+      "height": 133.1875,
+      "width": 189,
+      "padding": "7px 10px"
+    }
+  },
+  "heightReductionPercent": 19.857089131252348
+}

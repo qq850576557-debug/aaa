@@ -1,7 +1,7 @@
 import { PNG } from 'pngjs';
 import { ApiError } from './store';
 // Decode pixels and re-encode; never serve client-supplied metadata or active formats.
-export function validateAvatar(value: string) {
+export function validateAvatar(value: string, maxDimension: 256 | 1024 = 256) {
   const prefix = 'data:image/png;base64,';
   if (!value.startsWith(prefix)) throw new ApiError(400, '头像需要有效的 PNG 图片');
   const raw = value.slice(prefix.length);
@@ -26,8 +26,8 @@ export function validateAvatar(value: string) {
     throw new ApiError(400, '请使用标准非交错 PNG 头像');
   const width = bytes.readUInt32BE(16),
     height = bytes.readUInt32BE(20);
-  if (width < 1 || height < 1 || width > 256 || height > 256)
-    throw new ApiError(400, '头像尺寸需在256×256以内');
+  if (width < 1 || height < 1 || width > maxDimension || height > maxDimension)
+    throw new ApiError(400, `图片长边需在${maxDimension}px以内`);
   try {
     const image = PNG.sync.read(bytes, { checkCRC: true });
     if (image.width !== width || image.height !== height) throw Error();

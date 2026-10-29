@@ -1,4 +1,6 @@
-import { edgeScrollSpeed } from '../lib/gantt-scroll';
+import { edgeScrollSpeed, timelineWheelDelta } from '../lib/gantt-scroll';
+import { useProjectTheme } from './ProjectThemes';
+import { projectTradeColor } from '../lib/project-themes';
 import { ganttGroups, resizeGanttGroup, type GanttGroup } from '../lib/gantt-groups';
 import { DateField } from './DateField';
 import { timelineRange, timelineWindow } from '../lib/timeline';
@@ -63,6 +65,8 @@ export function Gantt({
   onReorder,
   onColor,
 }: Props) {
+  const theme = useProjectTheme(project.id);
+  const tradeColor = (g: Trade) => projectTradeColor(theme.hue, g.color);
   const [touchLayout, setTouchLayout] = useState(
     () => window.matchMedia('(max-width: 700px)').matches,
   );
@@ -170,6 +174,59 @@ export function Gantt({
     dayWidth: number;
   } | null>(null);
   const selecting = useRef<typeof range>(null);
+  const wheel = useRef({ frame: 0, pending: 0 });
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const handle = (e: WheelEvent) => {
+      const target = e.target instanceof Element ? e.target : null;
+      if (
+        !target ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.shiftKey ||
+        e.defaultPrevented ||
+        dragging.current ||
+        selecting.current ||
+        !target.closest('.track,.date-cells,.month-cells') ||
+        target.closest(
+          '.task-bar,.sticky-label,input,select,textarea,[contenteditable="true"],[data-wheel-native]',
+        )
+      )
+        return;
+      // Respect any independently scrollable child without intercepting the whole page.
+      for (let node = target.parentElement; node && node !== el; node = node.parentElement) {
+        if (
+          node.scrollHeight > node.clientHeight + 1 &&
+          /(auto|scroll)/.test(getComputedStyle(node).overflowY)
+        )
+          return;
+      }
+      const delta = timelineWheelDelta(e.deltaX, e.deltaY, e.deltaMode, el.clientWidth);
+      if (!delta) return;
+      e.preventDefault();
+      wheel.current.pending += delta;
+      if (wheel.current.frame) return;
+      wheel.current.frame = requestAnimationFrame(() => {
+        wheel.current.frame = 0;
+        const before = el.scrollLeft;
+        el.scrollLeft += wheel.current.pending;
+        wheel.current.pending -= el.scrollLeft - before;
+        if (
+          Math.abs(wheel.current.pending) >= 1 ||
+          (el.scrollLeft <= 0 && wheel.current.pending < 0) ||
+          (el.scrollLeft >= el.scrollWidth - el.clientWidth && wheel.current.pending > 0)
+        )
+          wheel.current.pending = 0;
+      });
+    };
+    el.addEventListener('wheel', handle, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handle);
+      cancelAnimationFrame(wheel.current.frame);
+      wheel.current = { frame: 0, pending: 0 };
+    };
+  }, [project.id, start, end]);
   useEffect(
     () => () => {
       if (clickTimer.current) clearTimeout(clickTimer.current);
@@ -187,6 +244,8 @@ export function Gantt({
   function barDown(e: PointerEvent, task: GanttGroup, mode: Drag['mode']) {
     if (e.button !== 0) return;
     e.stopPropagation();
+    cancelAnimationFrame(wheel.current.frame);
+    wheel.current = { frame: 0, pending: 0 };
     clearClick();
     lastAnchor.current = { x: e.clientX, y: e.clientY, element: e.currentTarget as HTMLElement };
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -373,7 +432,7 @@ export function Gantt({
             key={g.id}
             onClick={(e) => onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget })}
           >
-            <i style={{ background: g.color }} />
+            <i style={{ background: tradeColor(g) }} />
             {g.name}
           </button>
         ))}
@@ -550,7 +609,7 @@ export function Gantt({
                     <button
                       className="trade-color"
                       aria-label={`设置${g.name}颜色`}
-                      style={{ background: g.color }}
+                      style={{ background: tradeColor(g) }}
                       onClick={(e) =>
                         onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget })
                       }
@@ -626,6 +685,7 @@ export function Gantt({
                             key={t.id}
                             data-testid="task-bar"
                             data-task-id={t.id}
+                            data-resizing={drag?.task.id === t.id ? drag.mode : undefined}
                             title={`${original.members.length > 1 ? `合并显示 ${original.members.length} 段（原始记录见任务详情） · ` : ''}${t.name} · ${t.start} — ${t.end}${data.tasks.filter((x) => (x.groupId ?? x.id) === (t.groupId ?? t.id)).length > 1 ? ' · 同任务多段' : ''}`}
                             aria-label={`${t.name}，${t.start} 至 ${t.end}，${duration(t.start, t.end)} 天`}
                             className={`task-bar ${drag?.task.id === t.id ? 'dragging' : ''} ${t.status === '已完成' ? 'completed' : ''} ${t.start <= today() && t.end >= today() && t.status !== '已完成' ? 'working-today' : ''}`}
@@ -636,8 +696,8 @@ export function Gantt({
                                 (height - rows.length * laneHeight) / 2 +
                                 (touchLayout ? 2 : 7) +
                                 lane * laneHeight,
-                              background: `${g.color}26`,
-                              borderColor: g.color,
+                              background: `${tradeColor(g)}26`,
+                              borderColor: tradeColor(g),
                               color: '#273c34',
                             }}
                             onPointerDown={(e) => barDown(e, original, 'move')}

@@ -1,3 +1,4 @@
+import { ThemedWorkspace } from './components/ProjectThemes';
 import { BriefPanel } from './components/BriefPanel';
 import { ProjectContext } from './components/ProjectContext';
 import { projectAgenda } from './lib/agenda';
@@ -100,7 +101,7 @@ type View =
 type Confirmation = { title: string; message: string; run: () => void; danger?: boolean };
 const navigation: [View, string, ReactNode][] = [
   ['overview', '项目工作空间', <LayoutDashboard size={19} />],
-  ['records', '记录状态看板', <KanbanSquare size={19} />],
+  ['records', '事项管理', <KanbanSquare size={19} />],
   ['purchases', '采购管理', <Package size={19} />],
   ['reminders', '提醒中心', <ClipboardList size={19} />],
   ['completed', '已完工项目', <Archive size={19} />],
@@ -597,7 +598,7 @@ export default function App() {
         isCloud={isCloud}
         canReopen={!isCloud || !!cloudUser?.owner}
         tracking={purchaseTracking[x.id]}
-        showProject={view === 'reminders'}
+        showProject={view === 'reminders' || view === 'purchases'}
         onStatus={(status) => save('purchase', { ...x, due: purchaseDue(x, data), status })}
       />
     );
@@ -704,7 +705,13 @@ export default function App() {
     );
   }
   return (
-    <div className={`app-shell${view === 'overview' ? ' homepage' : ''}`} data-view={view}>
+    <ThemedWorkspace
+      projects={data.projects}
+      scope={cloudUser?.workspaceId || 'local'}
+      projectId={p?.id}
+      className={`app-shell${view === 'overview' ? ' homepage' : ''}`}
+      data-view={view}
+    >
       <aside className="sidebar">
         <a
           className="brand"
@@ -812,7 +819,9 @@ export default function App() {
           <button
             disabled={!ready}
             onClick={() =>
-              setHistoryOpen({ scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE) })
+              setHistoryOpen({
+                scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE),
+              })
             }
           >
             版本历史 · 15天
@@ -836,7 +845,9 @@ export default function App() {
             title="版本历史 · 15天"
             disabled={!ready}
             onClick={() =>
-              setHistoryOpen({ scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE) })
+              setHistoryOpen({
+                scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE),
+              })
             }
           >
             <HistoryIcon size={17} />
@@ -913,7 +924,7 @@ export default function App() {
               <div className="eyebrow">RENOVATION WORKSPACE</div>
               <h1>
                 {view === 'records'
-                  ? '记录状态看板'
+                  ? '事项管理'
                   : view === 'overview'
                     ? '项目工作空间'
                     : view === 'schedule'
@@ -1712,7 +1723,7 @@ export default function App() {
           onConfirm={confirmation.run}
         />
       )}
-    </div>
+    </ThemedWorkspace>
   );
 }
 function Empty({

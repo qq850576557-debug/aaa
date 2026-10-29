@@ -1,3 +1,4 @@
+import { displayedTradeRGB } from './helpers';
 import { editTask } from './helpers';
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
@@ -128,7 +129,7 @@ test('continuous creation, accessible ordering, color wheel and default colors',
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' })).toHaveCSS(
     'border-color',
-    'rgb(36, 78, 66)',
+    await displayedTradeRGB(page, '#244e42'),
   );
   await page.getByRole('button', { name: '编辑水电改造', exact: true }).click();
   await page.getByRole('dialog').locator('.trade-colors > summary').click();
@@ -154,7 +155,7 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
 }) => {
   await boot(page);
   await restore(page);
-  await page.getByRole('button', { name: '记录状态看板', exact: true }).click();
+  await page.getByRole('button', { name: '事项管理', exact: true }).click();
   await page.locator('.daily-records > summary').click();
   await page.getByRole('button', { name: '项目备忘', exact: true }).click();
   let modal = page.getByRole('dialog');

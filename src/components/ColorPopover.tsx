@@ -131,7 +131,7 @@ export function ColorPopover({
     <Modal
       title={`${trade.name} · 工种颜色`}
       className="color-panel"
-      subtitle="即时保存 · 同步时间轴与导出"
+      subtitle="项目统一色相 · 即时保存工种深浅"
       anchor={anchor}
       onClose={close}
     >

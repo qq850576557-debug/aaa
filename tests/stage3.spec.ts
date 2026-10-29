@@ -1,3 +1,4 @@
+import { displayedTradeRGB } from './helpers';
 import { editTask } from './helpers';
 import { test, expect, type Page } from '@playwright/test';
 import { mkdir, readFile } from 'node:fs/promises';
@@ -226,7 +227,7 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
     await panel.getByLabel('自定义颜色', { exact: true }).fill('#244e42');
     await expect(page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' })).toHaveCSS(
       'border-color',
-      'rgb(36, 78, 66)',
+      await displayedTradeRGB(page, '#244e42'),
     );
     await page.keyboard.press('Escape');
   }

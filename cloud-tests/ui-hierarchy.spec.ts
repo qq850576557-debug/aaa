@@ -55,8 +55,8 @@ for (const width of [1440, 1280, 390])
       ).toBe(200);
     const before = await (await api(context, '/workspace')).json();
     await page.reload();
-    await page.getByRole('button', { name: '记录状态看板', exact: true }).click();
-    const board = page.getByRole('region', { name: '记录状态看板', exact: true });
+    await page.getByRole('button', { name: '事项管理', exact: true }).click();
+    const board = page.getByRole('region', { name: '事项管理', exact: true });
     await expect(board.locator('.board-lane')).toHaveCount(6);
     await expect(page.locator('.workspace-status-group,.local-notice')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '事项与备忘', exact: true })).toHaveCount(0);

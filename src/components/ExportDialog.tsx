@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { Modal } from './Modal';
+import { useProjectTheme } from './ProjectThemes';
 import { DateField } from './DateField';
 import { dateOK, projectRange, type Data, type Project } from '../lib/model';
 import { downloadBlob, exportFilename, monthRanges, schedulePNG } from '../lib/export';
@@ -15,6 +16,7 @@ export function ExportDialog({
   onClose: () => void;
   onNotice: (message: string) => void;
 }) {
+  const theme = useProjectTheme(project.id);
   const [a, b] = projectRange(data, project);
   const [start, setStart] = useState(a),
     [end, setEnd] = useState(b),
@@ -43,7 +45,7 @@ export function ExportDialog({
         setProgress(`正在生成 ${i + 1} / ${ranges.length}`);
         await new Promise(requestAnimationFrame);
         const r = ranges[i],
-          blob = await schedulePNG(data, project, { ...r, scale });
+          blob = await schedulePNG(data, project, { ...r, scale, themeHue: theme.hue });
         result.push({
           blob,
           name:

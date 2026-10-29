@@ -192,7 +192,7 @@ test('legacy notes remain editable and project isolated inside the board, no aut
   expect((await state(page)).purchases).toEqual(original.purchases);
   expect((await state(page)).tasks).toEqual(original.tasks);
   await page.reload();
-  await page.getByRole('button', { name: '记录状态看板', exact: true }).click();
+  await page.getByRole('button', { name: '事项管理', exact: true }).click();
   await page.locator('.daily-records > summary').click();
   await expect(page.locator('.notes-grid')).toContainText('明年现场复核完成尺寸');
 });

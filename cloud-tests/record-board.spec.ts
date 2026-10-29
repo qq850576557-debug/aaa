@@ -63,8 +63,8 @@ for (const width of [1440, 1280, 390])
     await login(page, f.login, f.password);
     const d = await seed(context);
     await page.reload();
-    await page.getByRole('button', { name: '记录状态看板', exact: true }).click();
-    const board = page.getByRole('region', { name: '记录状态看板', exact: true });
+    await page.getByRole('button', { name: '事项管理', exact: true }).click();
+    const board = page.getByRole('region', { name: '事项管理', exact: true });
     await expect(board.locator('.board-lane')).toHaveCount(6);
     await expect(board.locator('.record-card')).toHaveCount(6);
     const lane = board.getByRole('region', { name: d.projects[0].name, exact: true });
@@ -105,7 +105,7 @@ for (const width of [1440, 1280, 390])
     await expect(drawer).toContainText('林设计');
     await drawer.getByRole('button', { name: '关闭浮窗', exact: true }).click();
     await page.reload();
-    await page.getByRole('button', { name: '记录状态看板', exact: true }).click();
+    await page.getByRole('button', { name: '事项管理', exact: true }).click();
     await expect(card).toContainText('已完成');
     await board.getByLabel('看板状态筛选', { exact: true }).selectOption('已完成');
     await expect(board.locator('.record-card')).toHaveCount(1);
@@ -132,7 +132,7 @@ for (const width of [1440, 1280, 390])
       .getByRole('dialog', { name: '放弃未保存的修改？' })
       .getByRole('button', { name: '取消', exact: true })
       .click();
-    await expect(page.getByRole('heading', { name: '记录状态看板', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '事项管理', exact: true })).toBeVisible();
     await drawer.getByRole('button', { name: '关闭浮窗', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '放弃未保存的修改？' })).toBeVisible();
     await page
@@ -197,7 +197,7 @@ test.describe('record board touch device', () => {
     const databases = await page.evaluate(async () =>
       (await indexedDB.databases()).map((d) => d.name),
     );
-    await page.getByRole('button', { name: '记录状态看板', exact: true }).tap();
+    await page.getByRole('button', { name: '事项管理', exact: true }).tap();
     await page
       .locator('.board-tool-primary')
       .getByRole('button', { name: '新增记录', exact: true })
@@ -227,8 +227,7 @@ test('record board: two accounts receive SSE changes, preserve dirty drafts and 
     await seed(c);
     await login(b, f.employee, f.password);
     await a.reload();
-    for (const p of [a, b])
-      await p.getByRole('button', { name: '记录状态看板', exact: true }).click();
+    for (const p of [a, b]) await p.getByRole('button', { name: '事项管理', exact: true }).click();
     const title = '栖桐里 · 理想之家 · 确认现场收口与成品保护';
     for (const p of [a, b])
       await p.getByRole('button', { name: '打开记录：' + title, exact: true }).click();
@@ -305,7 +304,7 @@ for (const width of [1440, 390])
       path: `${process.env.CHUNMO_VISUAL_OUTPUT || '/tmp/chunmo-regression-screenshots/record-board'}/personal-card-${width}.png`,
       animations: 'disabled',
     });
-    await card.getByRole('button', { name: '关闭', exact: true }).click();
+    await card.getByRole('button', { name: '关闭浮窗', exact: true }).click();
     await page.reload();
     await page.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
     await expect(card.locator('.member-card-photo img')).toHaveAttribute(

@@ -1,3 +1,4 @@
+import { projectTradeColor } from '../src/lib/project-themes';
 import { expect, type Page, type Locator } from '@playwright/test';
 import { emptyData, newProject, defaultTrades, id, type Data } from '../src/lib/model';
 export function fixture(): Data {
@@ -132,4 +133,12 @@ export async function closeToast(page: Page) {
 export async function editTask(page: Page, target: Locator) {
   await target.click({ button: 'right' });
   await page.getByRole('menuitem', { name: '编辑任务详情', exact: true }).click();
+}
+
+export async function displayedTradeRGB(page: Page, raw: string) {
+  const hue = await page
+    .locator('.app-shell')
+    .evaluate((e) => Number(getComputedStyle(e).getPropertyValue('--project-hue')));
+  const hex = projectTradeColor(hue, raw);
+  return `rgb(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)})`;
 }

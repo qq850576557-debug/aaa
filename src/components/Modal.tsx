@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 export type Anchor = { x: number; y: number; element?: HTMLElement };
 export function Modal({
@@ -11,6 +11,7 @@ export function Modal({
   blocking = false,
   className = '',
   placement = 'center',
+  animateClose = false,
 }: {
   title: string;
   subtitle?: string;
@@ -21,11 +22,22 @@ export function Modal({
   blocking?: boolean;
   className?: string;
   placement?: 'center' | 'right';
+  animateClose?: boolean;
 }) {
+  const [closing, setClosing] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestClose = useRef(onClose);
+  latestClose.current = onClose;
   const headingId = useId(),
     ref = useRef<HTMLDialogElement>(null),
     closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  closeRef.current = () => {
+    if (closeTimer.current) return;
+    if (!animateClose || matchMedia('(prefers-reduced-motion: reduce)').matches)
+      return latestClose.current();
+    setClosing(true);
+    closeTimer.current = setTimeout(() => latestClose.current(), 150);
+  };
   useEffect(() => {
     const d = ref.current!,
       previous = document.activeElement as HTMLElement | null,
@@ -67,7 +79,8 @@ export function Modal({
         blocking ||
         placement === 'right' ||
         d.contains(e.target as Node) ||
-        document.querySelector('dialog:modal')
+        (document.querySelector('dialog:modal') &&
+          !document.querySelector('dialog:modal')!.contains(d))
       )
         return;
       const last = [...document.querySelectorAll('dialog[open]')].at(-1);
@@ -81,7 +94,8 @@ export function Modal({
         blocking ||
         e.key !== 'Escape' ||
         e.defaultPrevented ||
-        document.querySelector('dialog:modal') ||
+        (document.querySelector('dialog:modal') &&
+          !document.querySelector('dialog:modal')!.contains(d)) ||
         document.querySelector('[popover]:popover-open')
       )
         return;
@@ -97,6 +111,7 @@ export function Modal({
     document.addEventListener('click', outside, true);
     document.addEventListener('keydown', escape);
     return () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
       observer.disconnect();
       window.removeEventListener('resize', position);
       document.removeEventListener('scroll', position, true);
@@ -111,18 +126,19 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${className}`}
+      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${closing ? 'closing' : ''} ${className}`}
       aria-modal={blocking}
       aria-labelledby={headingId}
       onCancel={(e) => {
         e.preventDefault();
+        e.stopPropagation();
         closeRef.current();
       }}
       onClick={(e) => {
         if (!blocking || e.target !== ref.current) return;
         const r = ref.current.getBoundingClientRect();
         if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
-          onClose();
+          closeRef.current();
       }}
     >
       <header className="modal-head">
@@ -130,7 +146,7 @@ export function Modal({
           <h2 id={headingId}>{title}</h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
-        <button className="icon-btn" aria-label="关闭浮窗" onClick={onClose}>
+        <button className="icon-btn" aria-label="关闭浮窗" onClick={() => closeRef.current()}>
           <X size={20} />
         </button>
       </header>

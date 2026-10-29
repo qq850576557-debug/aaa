@@ -54,7 +54,18 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
             <Avatar account={user} />
           </button>
         )}
-        <strong title={user?.login}>{user?.displayName || user?.login || '本地工作空间'}</strong>
+        {user ? (
+          <button
+            className="personal-name-button"
+            title={user.login}
+            aria-label="点击姓名打开我的个人名片"
+            onClick={() => setCard(true)}
+          >
+            <strong>{user.displayName || user.login}</strong>
+          </button>
+        ) : (
+          <strong>本地工作空间</strong>
+        )}
       </div>
       <div className="online-accounts" aria-label="在线协作人员">
         {online.slice(0, limit).map((a) => (

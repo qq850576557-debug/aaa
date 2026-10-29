@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useReorderMotion } from '../lib/useReorderMotion';
 import { ArrowRight, GripVertical, Settings2 } from 'lucide-react';
 import { shortDate, projectStatus, type Data, type Project } from '../lib/model';
+import { ProjectSurface } from './ProjectThemes';
 
 export function ProjectCards({
   data,
@@ -29,7 +30,9 @@ export function ProjectCards({
     <div ref={root} className="project-cards" aria-label="项目列表">
       {projects.map((p, index) => {
         return (
-          <article
+          <ProjectSurface
+            role="article"
+            projectId={p.id}
             key={p.id}
             data-project-id={p.id}
             draggable
@@ -103,7 +106,7 @@ export function ProjectCards({
             >
               <Settings2 size={16} />
             </button>
-          </article>
+          </ProjectSurface>
         );
       })}
     </div>

@@ -8,6 +8,8 @@ import {
   type Department,
 } from '../lib/member-cards';
 import { Avatar } from './Avatar';
+import { AvatarLightbox } from './AvatarLightbox';
+import { BRAND_LOGO_SRC } from '../lib/brand';
 import { Camera } from 'lucide-react';
 import { DateField } from './DateField';
 import { Modal, Confirm } from './Modal';
@@ -38,6 +40,7 @@ export function MemberCards({
     [manage, setManage] = useState(false),
     [department, setDepartment] = useState<Department | null>(null),
     [removing, setRemoving] = useState<Department | null>(null);
+  const [preview, setPreview] = useState<MemberCard | null>(null);
   async function load() {
     const [c, d] = await Promise.all([
       cloudApi<{ cards: MemberCard[] }>('/member-cards'),
@@ -135,6 +138,13 @@ export function MemberCards({
           .map((card) => (
             <article className="member-card" key={card.id} data-member-id={card.id}>
               <div className="member-card-photo">
+                <button
+                  className="member-photo-preview"
+                  aria-label={`查看${card.displayName}名片照片大图`}
+                  onClick={() => setPreview(card)}
+                >
+                  <Avatar account={card} kind="card" showStatus />
+                </button>
                 {onPhotoClick && card.id === user.id ? (
                   <button
                     type="button"
@@ -142,15 +152,12 @@ export function MemberCards({
                     aria-label="点击更换名片照片"
                     onClick={onPhotoClick}
                   >
-                    <Avatar account={card} kind="card" />
                     <span>
                       <Camera size={16} />
-                      点击更换照片
+                      更换照片
                     </span>
                   </button>
-                ) : (
-                  <Avatar account={card} kind="card" />
-                )}
+                ) : null}
                 {!card.active && <small className="member-card-inactive">账号已停用</small>}
               </div>
               <div className="member-card-content">
@@ -173,6 +180,7 @@ export function MemberCards({
                 )}
                 <footer>
                   <strong>
+                    {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉品牌 Logo" />}
                     SJD<span className="brand-name">春茉</span>
                   </strong>
                   {(user.owner || user.id === card.id) && (
@@ -189,6 +197,7 @@ export function MemberCards({
             </article>
           ))}
       </div>
+      {preview && <AvatarLightbox account={preview} onClose={() => setPreview(null)} />}
       {error && !editing && !department && (
         <p className="error" role="alert">
           {error}

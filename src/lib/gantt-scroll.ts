@@ -20,3 +20,12 @@ export function edgeScrollSpeed(
     (1 + Math.min(0.2, Math.abs(velocity) / 4000))
   );
 }
+
+/** Wheel units become a bounded pixel movement; diagonal trackpads use one dominant axis. */
+export function timelineWheelDelta(x: number, y: number, mode: number, width: number) {
+  if (![x, y, width].every(Number.isFinite) || width <= 0) return 0;
+  const delta = Math.abs(x) > Math.abs(y) ? x : y;
+  const pixels = delta * (mode === 1 ? 20 : mode === 2 ? width : 1);
+  const limit = Math.min(280, width * 0.8);
+  return Math.max(-limit, Math.min(limit, pixels));
+}

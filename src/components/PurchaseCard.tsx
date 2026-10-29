@@ -1,3 +1,4 @@
+import { projectThemeStyle, useProjectTheme } from './ProjectThemes';
 import { useState } from 'react';
 import { Modal } from './Modal';
 import { cloudApi } from '../lib/cloud';
@@ -54,16 +55,28 @@ export function PurchaseCard({
   const due = purchaseDue(p, data),
     done = purchaseComplete(p);
   return (
-    <article className={`purchase-row purchase-card ${done ? 'done' : ''}`} data-purchase-id={p.id}>
+    <article
+      className={`purchase-row purchase-card ${done ? 'done' : ''}`}
+      data-purchase-id={p.id}
+      style={projectThemeStyle(useProjectTheme(p.projectId))}
+    >
       <div className="purchase-main">
-        <strong>{p.name}</strong>
+        <div className="purchase-card-title">
+          <strong>{p.name}</strong>
+          <span className="purchase-status-tag">{p.status}</span>
+        </div>
         <small>
-          {showProject && <>{data.projects.find((x) => x.id === p.projectId)?.name} · </>}
+          {showProject && (
+            <span className="purchase-project-tag">
+              {data.projects.find((x) => x.id === p.projectId)?.name}
+            </span>
+          )}
           {due} 前采购
         </small>
         <span className={`deadline-countdown ${!done && due < now ? 'red' : ''}`}>
           {done ? '采购已完成' : remainingTime(due, now)}
         </span>
+        {p.owner && <small className="purchase-responsible">负责人：{p.owner}</small>}
         {(p.quantity || p.specification) && (
           <small>
             {p.quantity} {p.specification}
@@ -126,7 +139,7 @@ export function PurchaseCard({
         )}
       </div>
       {isCloud && (
-        <details className="purchase-trace">
+        <details className="purchase-trace" open>
           <summary>责任与时间</summary>
           <p>
             创建：{tracking?.createdName || '历史记录未知'} · {time(tracking?.createdAt)}

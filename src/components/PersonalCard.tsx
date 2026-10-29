@@ -8,7 +8,13 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
     [error, setError] = useState('');
   const photoInput = useRef<HTMLInputElement>(null);
   return (
-    <Modal title="我的个人名片" className="personal-card-dialog" onClose={onClose}>
+    <Modal
+      title="我的个人名片"
+      className="personal-card-dialog"
+      onClose={onClose}
+      blocking
+      animateClose
+    >
       <div className="modal-body">
         <div className="personal-settings">
           <button
@@ -43,9 +49,6 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
         <AvatarEditor user={profile} kind="card" onUpdated={setProfile} inputRef={photoInput} />
         {error && <p role="alert">{error}</p>}
       </div>
-      <footer className="modal-foot">
-        <button onClick={onClose}>关闭</button>
-      </footer>
     </Modal>
   );
 }
