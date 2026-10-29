@@ -78,8 +78,12 @@ test('two real accounts: API-backed saves, SSE, dirty-form conflict, explicit re
   await expect(b.locator('.save-state')).toContainText('保存冲突');
   expect((await clientApi(a, '/workspace')).body.data.projects[0].name).toBe('负责人更新');
   await expect(b.locator('.current-project-name')).toHaveText('员工旧版草稿');
-  await b.getByRole('button', { name: '重新读取云端', exact: true }).click();
-  await b.getByRole('button', { name: '确认操作', exact: true }).click();
+  const conflict = b.getByRole('dialog', { name: '核对保存冲突', exact: true });
+  await expect(conflict).toContainText('员工旧版草稿');
+  await expect(conflict).toContainText('负责人更新');
+  await conflict.getByRole('radio', { name: '采用云端内容' }).check();
+  await conflict.getByRole('button', { name: '确认选择并保存', exact: true }).click();
+  await expect(b.locator('.save-state')).toContainText('已保存');
   await expect(b.locator('.current-project-name')).toHaveText('负责人更新');
   form = await editor(b);
   await form.getByLabel('项目备注', { exact: true }).fill('普通员工同步修改');

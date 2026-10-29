@@ -5,10 +5,11 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { createApp } from './app';
-import { pool, privatePool } from './db';
+import { pool, privatePool, transaction } from './db';
+import { saveWorkspaceSubmission } from './workspace-save';
 import { fixtureAccounts } from './test-fixtures';
 import { config } from './config';
-import { emptyData, newProject, defaultTrades, today, type Data } from '../src/lib/model';
+import { emptyData, newProject, defaultTrades, today, plus, type Data } from '../src/lib/model';
 import { migrate } from './migrate';
 import { maintain } from './maintenance';
 let server: Server, base: string;
@@ -2743,4 +2744,405 @@ test('card photo: higher resolution preserves aspect and old images; system dime
   );
   assert.equal(old.width, 256);
   assert.equal(old.height, 256);
+});
+
+// The legacy CAS test below intentionally remains strict. Signed bases only enable safe intent merging.
+async function workspaceBase(client: Client) {
+  const r = await request('/workspace', 'GET', undefined, client);
+  assert.equal(r.status, 200);
+  return await r.json();
+}
+function submission(s: any, edit: (d: Data) => void, requestId = randomUUID()) {
+  const next = structuredClone(s.data) as Data;
+  edit(next);
+  return { revision: s.revision, base: s.data, baseProof: s.baseProof, data: next, requestId };
+}
+async function seededWorkspace() {
+  const f = await setup(),
+    d = data();
+  d.projects.push({ ...newProject(), name: '独立工地乙' });
+  d.notes = [
+    {
+      id: randomUUID(),
+      projectId: d.projects[0].id,
+      title: '现场备忘',
+      kind: '项目备忘',
+      date: '',
+      reminder: '',
+      owner: '',
+      content: '原始备注',
+      done: false,
+      pinned: false,
+    },
+  ];
+  const r = await request('/workspace', 'PUT', { revision: 0, data: d }, f.a);
+  assert.equal(r.status, 200);
+  return f;
+}
+test('workspace concurrency: legacy global CAS reproduces invalid conflict; signed independent projects, records and fields all merge', async () => {
+  testClientIp = '203.0.113.211';
+  const { a, b } = await seededWorkspace();
+  let sa = await workspaceBase(a),
+    sb = await workspaceBase(b);
+  const one = structuredClone(sa.data),
+    two = structuredClone(sb.data);
+  one.projects[0].notes = '甲编辑';
+  two.projects[1].notes = '乙编辑';
+  const legacy = await Promise.all([
+    request('/workspace', 'PUT', { revision: sa.revision, data: one }, a),
+    request('/workspace', 'PUT', { revision: sb.revision, data: two }, b),
+  ]);
+  assert.deepEqual(
+    legacy.map((r) => r.status).sort(),
+    [200, 409],
+    'existing full-workspace CAS rejects independent changes',
+  );
+  [sa, sb] = await Promise.all([workspaceBase(a), workspaceBase(b)]);
+  const independent = await Promise.all([
+    request(
+      '/workspace',
+      'PUT',
+      submission(sa, (d) => {
+        d.projects[0].notes = '独立甲';
+      }),
+      a,
+    ),
+    request(
+      '/workspace',
+      'PUT',
+      submission(sb, (d) => {
+        d.projects[1].notes = '独立乙';
+      }),
+      b,
+    ),
+  ]);
+  assert.deepEqual(
+    independent.map((r) => r.status),
+    [200, 200],
+  );
+  [sa, sb] = await Promise.all([workspaceBase(a), workspaceBase(b)]);
+  const originalEnd = sa.data.tasks[0].end;
+  const records = await Promise.all([
+    request(
+      '/workspace',
+      'PUT',
+      submission(sa, (d) => {
+        d.tasks[0].end = plus(d.tasks[0].end, 1);
+      }),
+      a,
+    ),
+    request(
+      '/workspace',
+      'PUT',
+      submission(sb, (d) => {
+        d.notes[0].content = '监理备忘';
+      }),
+      b,
+    ),
+  ]);
+  assert.deepEqual(
+    records.map((r) => r.status),
+    [200, 200],
+  );
+  [sa, sb] = await Promise.all([workspaceBase(a), workspaceBase(b)]);
+  const fields = await Promise.all([
+    request(
+      '/workspace',
+      'PUT',
+      submission(sa, (d) => {
+        d.purchases[0].status = '已完成';
+      }),
+      a,
+    ),
+    request(
+      '/workspace',
+      'PUT',
+      submission(sb, (d) => {
+        d.purchases[0].notes = '不同字段';
+      }),
+      b,
+    ),
+  ]);
+  assert.deepEqual(
+    fields.map((r) => r.status),
+    [200, 200],
+  );
+  const final = await workspaceBase(a);
+  assert.equal(final.data.projects[0].notes, '独立甲');
+  assert.equal(final.data.projects[1].notes, '独立乙');
+  assert.equal(final.data.tasks[0].end, plus(originalEnd, 1));
+  assert.equal(final.data.notes[0].content, '监理备忘');
+  assert.equal(final.data.purchases[0].status, '已完成');
+  assert.equal(final.data.purchases[0].notes, '不同字段');
+  const tracked = (await (await request('/purchase-records', 'GET', undefined, a)).json())
+    .records[0];
+  assert.equal(tracked.completedName, a.user.displayName);
+  assert.ok(final.history.records.some((r: any) => r.actorId === b.user.id));
+});
+test('workspace concurrency: same field conflicts expose exact latest values; deletion/edit and invalid relation merges roll back', async () => {
+  testClientIp = '203.0.113.212';
+  const { a, b } = await seededWorkspace();
+  let [sa, sb] = await Promise.all([workspaceBase(a), workspaceBase(b)]);
+  const race = await Promise.all([
+    request(
+      '/workspace',
+      'PUT',
+      submission(sa, (d) => {
+        d.purchases[0].notes = '负责人先改';
+      }),
+      a,
+    ),
+    request(
+      '/workspace',
+      'PUT',
+      submission(sb, (d) => {
+        d.purchases[0].notes = '员工先改';
+      }),
+      b,
+    ),
+  ]);
+  assert.deepEqual(race.map((r) => r.status).sort(), [200, 409]);
+  const success = await race.find((r) => r.status === 200)!.json(),
+    conflict = await race.find((r) => r.status === 409)!.json();
+  assert.equal(conflict.conflicts.length, 1);
+  assert.equal(conflict.conflicts[0].field, 'notes');
+  assert.equal(conflict.conflicts[0].remote, success.data.purchases[0].notes);
+  assert.equal(conflict.current.revision, success.revision);
+  assert.equal((await workspaceBase(a)).revision, success.revision);
+  [sa, sb] = await Promise.all([workspaceBase(a), workspaceBase(b)]);
+  const deletion = await Promise.all([
+    request(
+      '/workspace',
+      'PUT',
+      submission(sa, (d) => {
+        d.notes = [];
+      }),
+      a,
+    ),
+    request(
+      '/workspace',
+      'PUT',
+      submission(sb, (d) => {
+        d.notes[0].title = '编辑未删除';
+      }),
+      b,
+    ),
+  ]);
+  assert.deepEqual(deletion.map((r) => r.status).sort(), [200, 409]);
+  // Both input snapshots are valid. Merged date bounds are not: transaction must not write them.
+  sa = await workspaceBase(a);
+  sb = await workspaceBase(b);
+  const task = sa.data.tasks[0],
+    earlier = task.start,
+    later = task.end;
+  const changedA = submission(sa, (d) => {
+    d.tasks[0].start = later;
+  });
+  const changedB = submission(sb, (d) => {
+    d.tasks[0].end = earlier;
+  });
+  const dates = await Promise.all([
+    request('/workspace', 'PUT', changedA, a),
+    request('/workspace', 'PUT', changedB, b),
+  ]);
+  assert.deepEqual(dates.map((r) => r.status).sort(), [200, 409]);
+  const after = await workspaceBase(a);
+  assert.equal(after.revision, sa.revision + 1);
+  assert.ok(after.data.tasks[0].start <= after.data.tasks[0].end);
+  const row = await pool.query('SELECT payload FROM task WHERE workspace_id=$1 AND id=$2', [
+    a.user.workspaceId,
+    task.id,
+  ]);
+  assert.deepEqual(row.rows[0].payload, after.data.tasks[0]);
+});
+test('workspace concurrency: simultaneous duplicate receipts execute once and proof/permissions remain enforced', async () => {
+  testClientIp = '203.0.113.213';
+  const { a, b } = await seededWorkspace();
+  const s = await workspaceBase(a),
+    body = submission(s, (d) => {
+      d.purchases[0].status = '已完成';
+    });
+  const r = await Promise.all(
+    Array.from({ length: 4 }, () => request('/workspace', 'PUT', body, a)),
+  );
+  assert.deepEqual(
+    r.map((x) => x.status),
+    [200, 200, 200, 200],
+  );
+  const final = await workspaceBase(a);
+  assert.equal(final.revision, s.revision + 1);
+  const receipts = await pool.query(
+    "SELECT count(*)::int n FROM audit_event WHERE workspace_id=$1 AND action='workspace.submit' AND entity_id=$2",
+    [a.user.workspaceId, body.requestId],
+  );
+  assert.equal(receipts.rows[0].n, 1);
+  const trace = await pool.query(
+    "SELECT count(*)::int n FROM purchase_action WHERE workspace_id=$1 AND purchase_id=$2 AND operation='完成'",
+    [a.user.workspaceId, body.data.purchases[0].id],
+  );
+  assert.equal(trace.rows[0].n, 1, 'retry cannot execute completion twice');
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        { ...body, data: { ...body.data, recentColors: ['#123456'] } },
+        a,
+      )
+    ).status,
+    409,
+  );
+  assert.equal(
+    (await request('/workspace', 'PUT', body, b)).status,
+    403,
+    'proof cannot be reused by a different account',
+  );
+  const forged = submission(final, (d) => {
+    d.projects[0].name = '伪造';
+  });
+  forged.base.projects[0].name = '篡改基线';
+  assert.equal((await request('/workspace', 'PUT', forged, a)).status, 403);
+  const employee = await workspaceBase(b);
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(employee, (d) => {
+          d.projects = [];
+          d.tasks = [];
+          d.trades = [];
+          d.notes = [];
+          d.purchases = [];
+        }),
+        b,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(employee, (d) => {
+          d.purchases[0].originalDue = '2027-01-01';
+        }),
+        b,
+      )
+    ).status,
+    403,
+  );
+  const stranger = await fixtureAccounts(),
+    c = await login(stranger.login, stranger.password);
+  assert.equal(
+    (await request('/workspace', 'PUT', { ...body, requestId: randomUUID() }, c)).status,
+    403,
+  );
+  assert.equal((await workspaceBase(a)).revision, final.revision);
+  const tracking = (await (await request('/purchase-records', 'GET', undefined, a)).json())
+    .records[0];
+  assert.equal(tracking.completedName, a.user.displayName);
+});
+test('workspace concurrency: four authenticated people repeatedly save distinct projects from the same stale revision without loss or duplicates', async () => {
+  testClientIp = '203.0.113.214';
+  const { a, b, f } = await seededWorkspace(),
+    clients = [a, b];
+  for (let n = 0; n < 2; n++) {
+    const name = 'four_' + randomUUID().replaceAll('-', '');
+    assert.equal(
+      (await request('/accounts', 'POST', { login: name, password: f.password }, a)).status,
+      201,
+    );
+    clients.push(await login(name, f.password));
+  }
+  const initial = await workspaceBase(a),
+    extra = structuredClone(initial.data);
+  extra.projects.push({ ...newProject(), name: '第三工地' }, { ...newProject(), name: '第四工地' });
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: initial.revision, data: extra }, a)).status,
+    200,
+  );
+  const uniqueNotes: string[] = [];
+  for (let round = 0; round < 6; round++) {
+    const bases = await Promise.all(clients.map(workspaceBase));
+    assert.equal(new Set(bases.map((s) => s.revision)).size, 1);
+    const results = await Promise.all(
+      clients.map((client, i) => {
+        const nid = randomUUID();
+        uniqueNotes.push(nid);
+        return request(
+          '/workspace',
+          'PUT',
+          submission(bases[i], (d) => {
+            d.projects[i].notes = `人员${i}-轮次${round}`;
+            d.notes.push({
+              id: nid,
+              projectId: d.projects[i].id,
+              title: `记录${i}-${round}`,
+              kind: '项目备忘',
+              date: '',
+              reminder: '',
+              owner: '',
+              content: '',
+              done: false,
+              pinned: false,
+            });
+          }),
+          client,
+        );
+      }),
+    );
+    assert.deepEqual(
+      results.map((r) => r.status),
+      [200, 200, 200, 200],
+    );
+  }
+  const final = await workspaceBase(a);
+  for (let i = 0; i < 4; i++) assert.equal(final.data.projects[i].notes, `人员${i}-轮次5`);
+  assert.equal(final.data.notes.length, 25);
+  assert.equal(new Set(final.data.notes.map((n: any) => n.id)).size, 25);
+  assert.ok(uniqueNotes.every((id) => final.data.notes.some((n: any) => n.id === id)));
+  for (const c of clients)
+    assert.ok(final.history.records.some((r: any) => r.actorId === c.user.id));
+});
+
+test('workspace concurrency: a failed durable receipt rolls graph/history/completion back before an exact retry commits once', async () => {
+  testClientIp = '203.0.113.215';
+  const { a } = await seededWorkspace(),
+    before = await workspaceBase(a);
+  const body = submission(before, (d) => {
+    d.purchases[0].status = '已完成';
+    d.projects[0].notes = '必须与回执一起提交';
+  });
+  await assert.rejects(
+    transaction(async (c) => {
+      const query = (async (sql: string, values?: any[]) => {
+        if (sql.includes('INSERT INTO audit_event') && values?.[3] === 'workspace.submit')
+          throw Error('injected receipt failure after graph and business history');
+        return c.query(sql, values);
+      }) as pg.PoolClient['query'];
+      return saveWorkspaceSubmission({ query }, a.user, body);
+    }),
+    /injected receipt failure/,
+  );
+  assert.deepEqual(await workspaceBase(a), before);
+  const graph = await pool.query('SELECT payload FROM project WHERE workspace_id=$1 AND id=$2', [
+    a.user.workspaceId,
+    before.data.projects[0].id,
+  ]);
+  assert.deepEqual(graph.rows[0].payload, before.data.projects[0]);
+  const completion = await pool.query(
+    "SELECT count(*)::int n FROM purchase_action WHERE workspace_id=$1 AND operation='完成'",
+    [a.user.workspaceId],
+  );
+  assert.equal(completion.rows[0].n, 0);
+  const receipt = await pool.query(
+    'SELECT count(*)::int n FROM audit_event WHERE workspace_id=$1 AND entity_id=$2',
+    [a.user.workspaceId, body.requestId],
+  );
+  assert.equal(receipt.rows[0].n, 0);
+  const retry = await request('/workspace', 'PUT', body, a);
+  assert.equal(retry.status, 200);
+  assert.equal((await retry.json()).revision, before.revision + 1);
 });

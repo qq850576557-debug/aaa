@@ -1,4 +1,6 @@
 import { ThemedWorkspace } from './components/ProjectThemes';
+import { WorkspaceSaveConflict } from './components/WorkspaceSaveConflict';
+import { mergeWorkspace } from './lib/workspace-merge';
 import { BriefPanel } from './components/BriefPanel';
 import { ProjectContext } from './components/ProjectContext';
 import { projectAgenda } from './lib/agenda';
@@ -124,6 +126,9 @@ export default function App() {
     reloadCloud,
     changeDeadline,
     hasUnsavedChanges,
+    saveConflict,
+    resolveSaveConflict,
+    dismissSaveConflict,
   } = useWorkspace();
   const [historyOpen, setHistoryOpen] = useState<{ scope: string; anchor?: Anchor } | null>(null);
   const [navExpanded, setNavExpanded] = useState(() => {
@@ -146,7 +151,7 @@ export default function App() {
   const now = useCurrentDate();
   const [deadlineChange, setDeadlineChange] = useState<string | null>(null);
   const [scheduleProposal, setScheduleProposal] = useState<ScheduleProposal | null>(null);
-  const [undo, setUndo] = useState<{ before: Data; label: string } | null>(null);
+  const [undo, setUndo] = useState<{ before: Data; after: Data; label: string } | null>(null);
   const [colorEdit, setColorEdit] = useState<{ id: string; anchor: Anchor } | null>(null);
   const [selected, setSelected] = useState('');
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
@@ -233,7 +238,7 @@ export default function App() {
       ),
     };
     update(() => stamped);
-    setUndo({ before, label });
+    setUndo({ before, after: stamped, label });
   }
   function changeTask(value: Task) {
     const plan = data.tasks.some((t) => t.id === value.id)
@@ -874,7 +879,12 @@ export default function App() {
                 className="undo-quiet"
                 title={undo.label}
                 onClick={() => {
-                  update(() => undo.before);
+                  const reverted = mergeWorkspace(undo.after, undo.before, data);
+                  if (reverted.conflicts.length) {
+                    notify('该工序已有新的修改，未执行撤销。请核对当前日期后再调整。');
+                    return;
+                  }
+                  update(() => parseBackup(reverted.data));
                   setUndo(null);
                 }}
               >
@@ -893,20 +903,7 @@ export default function App() {
                 <>
                   <button onClick={() => void retry()}>重试保存</button>
                   {isCloud && (
-                    <button
-                      onClick={() =>
-                        setConfirmation({
-                          title: '重新读取云端并放弃草稿？',
-                          message:
-                            '请先下载紧急备份。重新读取只替换当前云页面，不写入或清理本地IndexedDB。',
-                          run: () => {
-                            void reloadCloud()
-                              .then(() => setConfirmation(null))
-                              .catch((e) => notify(String(e)));
-                          },
-                        })
-                      }
-                    >
+                    <button onClick={() => void reloadCloud().catch((e) => notify(String(e)))}>
                       重新读取云端
                     </button>
                   )}
@@ -1425,6 +1422,14 @@ export default function App() {
         </main>
       </div>
       <Notifications notices={notices} onDismiss={dismiss} />
+      {saveConflict && (
+        <WorkspaceSaveConflict
+          key={saveConflict.current.revision}
+          conflict={saveConflict}
+          onResolve={resolveSaveConflict}
+          onClose={dismissSaveConflict}
+        />
+      )}
       {edit && (
         <Editor
           key={`${edit.kind}-${edit.value.id}`}

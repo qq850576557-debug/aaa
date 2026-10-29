@@ -1951,3 +1951,60 @@ textarea::placeholder {
   width: 100%;
   min-width: 0;
 }
+
+/* Cloud conflicts use the existing dialog and keep both versions readable. */
+.workspace-save-conflict {
+  max-width: min(760px, calc(100vw - 24px));
+}
+.save-conflict-field {
+  border: 1px solid var(--border, #dae3da);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 12px 0;
+  min-width: 0;
+}
+.save-conflict-field legend {
+  font-weight: 600;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.workspace-save-conflict .modal-foot {
+  flex-wrap: wrap;
+}
+.save-conflict-field pre {
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+  max-height: 180px;
+  overflow: auto;
+}
+.save-conflict-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+.save-conflict-options label {
+  display: block;
+  background: #f3f6f2;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 0;
+}
+.save-conflict-options label > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.save-conflict-options input[type='radio'] {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .save-conflict-options {
+    grid-template-columns: 1fr;
+  }
+}

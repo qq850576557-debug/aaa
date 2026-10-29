@@ -14,5 +14,8 @@ export function useWorkspace() {
         cloudUser: null,
         reloadCloud: async () => {},
         changeDeadline: async (_id: string, _date: string, _reason: string) => {},
+        saveConflict: null,
+        resolveSaveConflict: async (_choices: import('./workspace-merge').MergeChoices) => {},
+        dismissSaveConflict: () => {},
       };
 }

@@ -9,11 +9,15 @@ export type CloudUser = {
   cardAvatarVersion?: string | null;
   owner: boolean;
 };
-export type CloudState = { data: Data; history: History; revision: number };
+export type CloudState = { data: Data; history: History; revision: number; baseProof: string };
 export class CloudError extends Error {
   constructor(
     public status: number,
     message: string,
+    public details?: {
+      conflicts?: import('./workspace-merge').WorkspaceConflict[];
+      current?: CloudState;
+    },
   ) {
     super(message);
   }
@@ -36,7 +40,7 @@ export async function cloudApi<T = Record<string, unknown>>(
   } catch {
     throw new CloudError(r.status, '云端API不可用或响应无效');
   }
-  if (!r.ok) throw new CloudError(r.status, value.error ?? '请求失败');
+  if (!r.ok) throw new CloudError(r.status, value.error ?? '请求失败', value);
   return value;
 }
 export async function cloudSession() {

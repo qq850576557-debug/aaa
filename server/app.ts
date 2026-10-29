@@ -1,3 +1,8 @@
+import {
+  saveWorkspaceSubmission,
+  workspaceStateWithProof,
+  WorkspaceConflictError,
+} from './workspace-save';
 import { transferRoutes } from './transfers';
 import { recordRoutes } from './records';
 import { purchaseRoutes } from './purchases';
@@ -29,7 +34,7 @@ import {
   tokenFrom,
   type AuthRequest,
 } from './auth';
-import { parseBackup, dateOK, emptyData, plus } from '../src/lib/model';
+import { parseBackup, prepareWorkspace, dateOK, emptyData, plus } from '../src/lib/model';
 import { parseArchive, canonical, differences, type History } from '../src/lib/history';
 const credentials = z
   .object({
@@ -692,7 +697,12 @@ export function createApp() {
   );
   app.get('/api/workspace', async (req: AuthRequest, res, next) => {
     try {
-      res.json(await transaction((c) => getState(c, req.actor!.workspaceId)));
+      res.json(
+        workspaceStateWithProof(
+          await transaction((c) => getState(c, req.actor!.workspaceId)),
+          req.actor!,
+        ),
+      );
     } catch (e) {
       next(e);
     }
@@ -707,9 +717,43 @@ export function createApp() {
   });
   app.put('/api/workspace', async (req: AuthRequest, res, next) => {
     try {
-      const b = z.object({ revision: version, data: z.unknown() }).strict().parse(req.body);
-      const data = valid(() => parseBackup(b.data));
-      res.json(await transaction((c) => commit(c, req.actor!, b.revision, data)));
+      const b = z
+        .object({
+          revision: version,
+          data: z.unknown(),
+          base: z.unknown().optional(),
+          baseProof: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/i)
+            .optional(),
+          requestId: z.string().uuid().optional(),
+        })
+        .strict()
+        .parse(req.body);
+      const data = valid(() => prepareWorkspace(parseBackup(b.data)));
+      if (b.base !== undefined || b.baseProof !== undefined || b.requestId !== undefined) {
+        if (b.base === undefined || !b.baseProof || !b.requestId)
+          throw new ApiError(400, '保存基线与提交编号必须完整');
+        const base = valid(() => prepareWorkspace(parseBackup(b.base)));
+        res.json(
+          await transaction((c) =>
+            saveWorkspaceSubmission(c, req.actor!, {
+              ...b,
+              base,
+              data,
+              baseProof: b.baseProof!,
+              requestId: b.requestId!,
+            }),
+          ),
+        );
+      } else {
+        res.json(
+          workspaceStateWithProof(
+            await transaction((c) => commit(c, req.actor!, b.revision, data)),
+            req.actor!,
+          ),
+        );
+      }
     } catch (e) {
       next(e);
     }
@@ -729,7 +773,7 @@ export function createApp() {
           commit(c, req.actor!, b.revision, emptyData(), {
             deadlineChange: { id: String(req.params.id), date: b.date, reason: b.reason },
           }),
-        ),
+        ).then((state) => workspaceStateWithProof(state, req.actor!)),
       );
     } catch (e) {
       next(e);
@@ -745,7 +789,7 @@ export function createApp() {
         await transaction(async (c) => {
           const current = await getState(c, req.actor!.workspaceId, 'UPDATE');
           return commit(c, req.actor!, b.revision, current.data, { restoreId: b.id });
-        }),
+        }).then((state) => workspaceStateWithProof(state, req.actor!)),
       );
     } catch (e) {
       next(e);
@@ -996,6 +1040,12 @@ export function createApp() {
     (error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
       if (res.headersSent) {
         res.end();
+        return;
+      }
+      if (error instanceof WorkspaceConflictError) {
+        res
+          .status(409)
+          .json({ error: error.message, conflicts: error.conflicts, current: error.current });
         return;
       }
       const e = error as { code?: string; status?: number };
