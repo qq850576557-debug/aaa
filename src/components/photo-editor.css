@@ -1,0 +1,160 @@
+/* Profile tools are in document flow, never over the photo or its notices. */
+.modal.personal-card-dialog > .modal-head {
+  position: relative;
+  inset: auto;
+  pointer-events: auto;
+  background: #fff;
+  justify-content: space-between;
+}
+.personal-card-dialog > .modal-head > div {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+}
+.personal-card-dialog > .modal-body {
+  position: relative;
+}
+.personal-card-dialog .personal-settings {
+  position: static;
+  padding: 0 14px 8px;
+  display: flex;
+  justify-content: flex-start;
+}
+.personal-card-dialog .member-cards-section > .section-heading {
+  position: static;
+  padding: 0 14px 8px;
+  margin: 0;
+  justify-content: flex-start;
+}
+.personal-card-dialog .member-cards-section > .section-heading button {
+  margin: 0;
+}
+.personal-card-dialog .member-card-photo {
+  height: auto;
+  aspect-ratio: 1.43;
+}
+.member-photo-preview .account-avatar img {
+  object-fit: cover;
+}
+.avatar-image-quality,
+.avatar-image-message {
+  position: static;
+  display: block;
+  max-width: 100%;
+  border-radius: 0;
+  padding: 7px 12px;
+}
+.member-photo-preview {
+  overflow: hidden;
+}
+.member-photo-preview .account-avatar:has(.avatar-image-quality),
+.member-photo-preview .account-avatar:has(.avatar-image-message) {
+  display: flex;
+  flex-direction: column;
+}
+.member-photo-preview .account-avatar:has(.avatar-image-quality) img {
+  min-height: 0;
+  flex: 1;
+  object-fit: cover;
+}
+.card-photo-upload:empty {
+  display: none;
+}
+.photo-upload-error,
+.photo-upload-notice {
+  padding: 10px 14px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.photo-upload-error {
+  color: #8d4e40;
+  background: #fbf0eb;
+}
+.photo-upload-notice {
+  color: #315f49;
+  background: #edf4ee;
+}
+.member-card-content footer strong {
+  font-weight: 400;
+  font-size: 21px;
+  letter-spacing: 0;
+  gap: 5px;
+  line-height: 1.2;
+}
+.member-card-content footer .brand-name {
+  margin-left: 0;
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.member-card-content footer strong img {
+  width: 26px;
+  height: 29px;
+}
+.member-card-content footer .member-card-edit {
+  border-radius: 999px;
+  padding: 7px 11px;
+  min-height: 34px;
+  border: 1px solid #dce7de;
+}
+.photo-crop-dialog {
+  width: 500px;
+}
+.photo-crop-frame {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  border-radius: 14px;
+  background: #edf3ee;
+  box-shadow: 0 0 0 1px #d9e5da;
+  touch-action: none;
+  cursor: grab;
+}
+.photo-crop-frame:active {
+  cursor: grabbing;
+}
+.photo-crop-frame img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+  height: auto;
+  user-select: none;
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+.crop-zoom {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 16px;
+}
+.crop-zoom label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 13px;
+}
+.crop-zoom input {
+  min-width: 0;
+  width: 100%;
+}
+.crop-size {
+  font-size: 12px;
+  line-height: 1.6;
+  margin-top: 12px;
+}
+.photo-crop-dialog .modal-foot {
+  flex-wrap: wrap;
+}
+@media (max-width: 520px) {
+  .photo-crop-dialog .modal-foot button {
+    flex: 1 1 auto;
+  }
+}

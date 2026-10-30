@@ -202,7 +202,7 @@ for (const width of [1440, 390]) {
       );
       await p.screenshot({ path: `/tmp/chunmo-v11-transfer-${width}.png`, animations: 'disabled' });
       const png = (n: number) => {
-        const image = new PNG({ width: 16, height: 16 });
+        const image = new PNG({ width: 1080, height: 1080 });
         image.data.fill(n);
         return PNG.sync.write(image);
       };
@@ -218,7 +218,7 @@ for (const width of [1440, 390]) {
       const system = await p.locator('.current-account img').getAttribute('src');
       await p.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
       m = p.getByRole('dialog', { name: '我的个人名片', exact: true });
-      await m.getByText('名片头像设置', { exact: true }).click();
+      await expect(m.getByText('名片头像设置', { exact: true })).toHaveCount(0);
       await m
         .getByLabel('选择名片头像', { exact: true })
         .setInputFiles({ name: 'card.png', mimeType: 'image/png', buffer: png(220) });

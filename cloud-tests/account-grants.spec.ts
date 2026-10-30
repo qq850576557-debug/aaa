@@ -55,7 +55,7 @@ for (const width of [1440, 390])
       await panel.getByRole('button', { name: '保存展示名称', exact: true }).click();
       await expect(p.locator('.current-account strong')).toHaveText('陈工新展示名');
       await panel.getByText('头像设置', { exact: true }).click();
-      const png = new PNG({ width: 12, height: 20 });
+      const png = new PNG({ width: 1080, height: 1080 });
       png.data.fill(170);
       await panel.getByLabel('选择头像', { exact: true }).setInputFiles({
         name: 'employee.png',

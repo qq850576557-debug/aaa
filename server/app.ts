@@ -11,7 +11,7 @@ import { memberCardRoutes } from './member-cards';
 import { assessmentRoutes } from './assessments';
 import express from 'express';
 import { requireAccountPermission } from './permissions';
-import { validateAvatar } from './avatar';
+import { validateAvatar, avatarInput, avatarMime } from './avatar';
 import { auditDevice } from './audit';
 import { loginSchema, loginInputSchema } from '../src/lib/login';
 import { passwordSchema } from '../src/lib/password';
@@ -166,22 +166,20 @@ export function createApp() {
   });
   app.put('/api/auth/avatar', async (req: AuthRequest, res, next) => {
     try {
-      const body = z
-        .object({ image: z.string().max(2800000) })
-        .strict()
-        .parse(req.body);
-      const png = validateAvatar(body.image);
+      const body = avatarInput.parse(req.body);
+      const image = await validateAvatar(body);
       await transaction(async (c) => {
-        await c.query(
-          'INSERT INTO account_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now()',
-          [req.actor!.id, png, randomUUID()],
+        const changed = await c.query(
+          'INSERT INTO account_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now() WHERE account_avatar.png IS DISTINCT FROM $2 RETURNING version',
+          [req.actor!.id, image.bytes, image.version],
         );
-        await audit(c, req.actor!, 'account.avatar', undefined, {
-          entityType: 'account',
-          entityId: req.actor!.id,
-          operation: 'update',
-          changedFields: ['avatar'],
-        });
+        if (changed.rowCount)
+          await audit(c, req.actor!, 'account.avatar', undefined, {
+            entityType: 'account',
+            entityId: req.actor!.id,
+            operation: 'update',
+            changedFields: ['avatar'],
+          });
       });
       announcePresence(req.actor!.workspaceId);
       res.json({ ok: true });
@@ -213,29 +211,27 @@ export function createApp() {
         [req.params.id, req.actor!.workspaceId],
       );
       if (!q.rowCount) throw new ApiError(404, '头像不存在');
-      res.type('png').send(q.rows[0].png);
+      res.type(avatarMime(q.rows[0].png)).send(q.rows[0].png);
     } catch (e) {
       next(e);
     }
   });
   app.put('/api/auth/card-avatar', async (req: AuthRequest, res, next) => {
     try {
-      const body = z
-        .object({ image: z.string().max(2800000) })
-        .strict()
-        .parse(req.body);
-      const png = validateAvatar(body.image, 1024);
+      const body = avatarInput.parse(req.body);
+      const image = await validateAvatar(body);
       await transaction(async (c) => {
-        await c.query(
-          'INSERT INTO card_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now()',
-          [req.actor!.id, png, randomUUID()],
+        const changed = await c.query(
+          'INSERT INTO card_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now() WHERE card_avatar.png IS DISTINCT FROM $2 RETURNING version',
+          [req.actor!.id, image.bytes, image.version],
         );
-        await audit(c, req.actor!, 'account.card-avatar', undefined, {
-          entityType: 'account',
-          entityId: req.actor!.id,
-          operation: 'update',
-          changedFields: ['avatar'],
-        });
+        if (changed.rowCount)
+          await audit(c, req.actor!, 'account.card-avatar', undefined, {
+            entityType: 'account',
+            entityId: req.actor!.id,
+            operation: 'update',
+            changedFields: ['avatar'],
+          });
       });
       announcePresence(req.actor!.workspaceId);
       res.json({ ok: true });
@@ -267,7 +263,7 @@ export function createApp() {
         [req.params.id, req.actor!.workspaceId],
       );
       if (!q.rowCount) throw new ApiError(404, '头像不存在');
-      res.type('png').send(q.rows[0].png);
+      res.type(avatarMime(q.rows[0].png)).send(q.rows[0].png);
     } catch (e) {
       next(e);
     }

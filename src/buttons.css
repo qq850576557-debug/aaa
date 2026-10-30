@@ -1,0 +1,114 @@
+/* One interaction layer; geometry and business handlers remain owned by their components. */
+:root {
+  --button-soft: #edf3ee;
+  --button-soft-hover: #dfeae2;
+  --button-ink: #294f40;
+  --button-radius: 9px;
+}
+:is(button, [role='button'], input[type='submit'], input[type='button']) {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    translate 180ms ease,
+    scale 150ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Color swatches and task bars already have meaningful business colors. */
+button:where(:not(.task-bar):not(.trade-color):not([style*='background'])),
+[role='button']:where(:not([style*='background'])),
+input[type='submit'],
+input[type='button'],
+summary {
+  background-color: var(--button-soft) !important;
+  color: var(--button-ink);
+  border-radius: var(--button-radius);
+}
+button.primary,
+button:is(.active, .selected, [aria-pressed='true'], [aria-selected='true']),
+input[type='submit'] {
+  background-color: #245346 !important;
+  color: #fff !important;
+}
+button:is(.danger, .destructive),
+button[aria-label^='删除'] {
+  background-color: #faeeeb !important;
+  color: #944f43;
+  border-color: #ead4ce;
+}
+button.icon-btn,
+button.text-btn {
+  border-radius: var(--button-radius);
+}
+button:is(.purchase-complete, .success, .todo-check.checked) {
+  background-color: #dcece2 !important;
+  color: #235447;
+  border-color: #b8d0c1;
+}
+summary {
+  padding: 9px 11px;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  button:where(
+      :not(:disabled):not(.task-bar):not(.drag-handle):not(.trade-color):not([style*='background'])
+    ):hover,
+  [role='button']:not([aria-disabled='true']):hover {
+    background-color: var(--button-soft-hover) !important;
+    translate: 0 -1px;
+    box-shadow: 0 3px 9px #244e3512;
+  }
+  button.primary:not(:disabled):hover,
+  button.active:not(:disabled):hover {
+    background-color: #326657 !important;
+    color: #fff !important;
+  }
+  button:is(.danger, .destructive):not(:disabled):hover {
+    background-color: #f1ddd7 !important;
+  }
+  button:is(.purchase-complete, .success, .todo-check.checked):not(:disabled):hover {
+    background-color: #c9e2d3 !important;
+  }
+  .calendar-grid button:hover {
+    translate: none !important;
+  }
+}
+button:not(:disabled):not(.task-bar):not(.drag-handle):not(.trade-color):active,
+[role='button']:not([aria-disabled='true']):active {
+  scale: 0.98;
+  translate: 0 0;
+  box-shadow: none;
+}
+button:disabled,
+button[aria-busy='true'],
+[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  translate: none !important;
+  scale: 1;
+  box-shadow: none;
+}
+button[aria-busy='true'] {
+  cursor: progress;
+}
+:is(button, [role='button'], summary):focus-visible {
+  outline: 2px solid #4c8269;
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(button, [role='button'], input[type='submit'], input[type='button']) {
+    transition: none !important;
+    translate: none !important;
+    scale: 1 !important;
+  }
+}
+@media (pointer: coarse) {
+  .toolbar button,
+  .modal-foot button,
+  .personal-settings button,
+  .section-heading button,
+  .icon-btn,
+  .member-card-edit {
+    min-height: 40px;
+  }
+}

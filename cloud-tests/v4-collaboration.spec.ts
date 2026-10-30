@@ -42,10 +42,10 @@ for (const width of [1440, 390])
       await upload.setInputFiles({
         name: 'huge.png',
         mimeType: 'image/png',
-        buffer: Buffer.alloc(2097152),
+        buffer: Buffer.alloc(10485761),
       });
-      await expect(panel.getByRole('alert')).toContainText('小于2MB');
-      const png = new PNG({ width: 16, height: 16 });
+      await expect(panel.getByRole('alert')).toContainText('10MB');
+      const png = new PNG({ width: 1080, height: 1080 });
       png.data.fill(180);
       await upload.setInputFiles({
         name: 'photo.png',

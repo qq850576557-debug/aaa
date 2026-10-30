@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { cloudApi, type CloudUser } from '../lib/cloud';
 import {
   cardEdit,
@@ -19,10 +19,12 @@ export function MemberCards({
   onSaved,
   onlyId,
   onPhotoClick,
+  headerAction,
 }: {
   user: CloudUser;
   onlyId?: string;
-  onPhotoClick?: () => void;
+  onPhotoClick?: (aspect: number) => void;
+  headerAction?: ReactNode;
   onSaved: (card: MemberCard) => Promise<void>;
 }) {
   const [cards, setCards] = useState<MemberCard[]>([]),
@@ -121,6 +123,7 @@ export function MemberCards({
     <section className="member-cards-section" aria-label="员工名片">
       <div className="section-heading">
         <h3>团队名片</h3>
+        {headerAction}
         {user.owner && (
           <button
             onClick={() => {
@@ -150,7 +153,12 @@ export function MemberCards({
                     type="button"
                     className="member-photo-edit"
                     aria-label="点击更换名片照片"
-                    onClick={onPhotoClick}
+                    onClick={(e) => {
+                      const r = e.currentTarget
+                        .closest('.member-card-photo')!
+                        .getBoundingClientRect();
+                      onPhotoClick(r.width / r.height);
+                    }}
                   >
                     <span>
                       <Camera size={16} />
@@ -185,7 +193,7 @@ export function MemberCards({
                   </strong>
                   {(user.owner || user.id === card.id) && (
                     <button
-                      className="text-btn"
+                      className="text-btn member-card-edit"
                       aria-label={`编辑${card.displayName}名片`}
                       onClick={() => edit(card)}
                     >

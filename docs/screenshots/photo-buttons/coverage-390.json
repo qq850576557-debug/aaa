@@ -1,0 +1,30 @@
+[
+  {
+    "page": "项目工作空间",
+    "controls": 108
+  },
+  {
+    "page": "事项管理",
+    "controls": 17
+  },
+  {
+    "page": "采购管理",
+    "controls": 25
+  },
+  {
+    "page": "提醒中心",
+    "controls": 24
+  },
+  {
+    "page": "已完工项目",
+    "controls": 20
+  },
+  {
+    "page": "人员管理",
+    "controls": 20
+  },
+  {
+    "page": "材料资产管理",
+    "controls": 23
+  }
+]

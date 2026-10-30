@@ -266,7 +266,7 @@ for (const width of [1440, 390])
     await pool.query('UPDATE account SET display_name=$1 WHERE id=$2', ['林设计', f.employeeId]);
     await login(page, f.employee, f.password);
     const image = (red: number, green: number) => {
-      const p = new PNG({ width: 20, height: 20 });
+      const p = new PNG({ width: 1080, height: 1080 });
       for (let i = 0; i < p.data.length; i += 4) {
         p.data[i] = red;
         p.data[i + 1] = green;
@@ -291,14 +291,18 @@ for (const width of [1440, 390])
     const chooser = await picker;
     await chooser.setFiles({ name: 'card.png', mimeType: 'image/png', buffer: image(150, 90) });
     const card = page.getByRole('dialog', { name: '我的个人名片', exact: true });
-    await expect(card.getByRole('img', { name: '名片头像预览' }).locator('img')).toBeVisible();
+    await expect(
+      page.getByRole('dialog', { name: '调整头像照片', exact: true }).locator('img'),
+    ).toBeVisible();
     await card.getByRole('button', { name: '保存头像', exact: true }).click();
-    await expect(card.getByRole('status')).toContainText('头像已保存');
+    await expect(card.getByRole('status').filter({ hasText: '头像已保存' })).toContainText(
+      '头像已保存',
+    );
     const after = await (await context.request.get('/api/auth/session')).json();
     expect(after.user.avatarVersion).toBe(before.user.avatarVersion);
     expect(after.user.cardAvatarVersion).toBeTruthy();
     await expect(card.locator('.member-card-photo img')).toHaveAttribute('src', /card-avatar/);
-    await card.getByText('名片头像设置', { exact: true }).click();
+    await expect(card.getByText('名片头像设置', { exact: true })).toHaveCount(0);
     await card.locator('.modal-body').evaluate((e) => (e.scrollTop = 0));
     await page.screenshot({
       path: `${process.env.CHUNMO_VISUAL_OUTPUT || '/tmp/chunmo-regression-screenshots/record-board'}/personal-card-${width}.png`,

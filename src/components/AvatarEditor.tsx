@@ -1,148 +1,181 @@
-import { useState, type RefObject } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { Avatar } from './Avatar';
+import { PhotoCropper, type PhotoSource } from './PhotoCropper';
+import {
+  AVATAR_MIN_SIDE,
+  AVATAR_MAX_BYTES,
+  AVATAR_RESOLUTION_ERROR,
+  type Crop,
+} from '../lib/avatar-crop';
 import { cloudApi, cloudSession, type CloudUser } from '../lib/cloud';
 export function AvatarEditor({
   user,
   onUpdated,
   kind = 'system',
   inputRef,
+  aspect = 1,
 }: {
   user: CloudUser;
   onUpdated: (user: CloudUser) => void;
   kind?: 'system' | 'card';
   inputRef?: RefObject<HTMLInputElement | null>;
+  aspect?: number;
 }) {
-  const [candidate, setCandidate] = useState(''),
+  const [photo, setPhoto] = useState<PhotoSource | null>(null),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
+  const localInput = useRef<HTMLInputElement>(null),
+    fileInput = inputRef || localInput,
+    saving = useRef(false),
+    choosing = useRef(0);
   async function choose(file?: File) {
+    if (!file || saving.current) return;
+    const seq = ++choosing.current;
     setError('');
     setNotice('');
-    setCandidate('');
-    if (!file) return;
-    if (
-      !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
-      file.size >= 2 * 1024 * 1024
-    ) {
-      setError('请选择小于2MB的 PNG、JPEG 或 WebP 图片');
-      return;
-    }
     try {
+      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type))
+        throw Error('请选择 PNG、JPEG 或 WebP 照片');
+      if (file.size > AVATAR_MAX_BYTES)
+        throw Error('原图不能超过10MB，请选择保留高清尺寸的 JPEG 照片');
       const bitmap = await createImageBitmap(file);
+      let width, height;
       try {
-        if (bitmap.width * bitmap.height > 16000000) throw Error('图片尺寸过大，请选择较小的图片');
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) throw Error('浏览器无法预览图片');
-        const side = Math.min(bitmap.width, bitmap.height);
-        let scale = Math.min(1, 1024 / Math.max(bitmap.width, bitmap.height));
-        let encoded = '';
-        for (let attempt = 0; attempt < 10; attempt++) {
-          canvas.width = kind === 'card' ? Math.max(1, Math.round(bitmap.width * scale)) : 256;
-          canvas.height = kind === 'card' ? Math.max(1, Math.round(bitmap.height * scale)) : 256;
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = 'high';
-          if (kind === 'card') ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-          else
-            ctx.drawImage(
-              bitmap,
-              (bitmap.width - side) / 2,
-              (bitmap.height - side) / 2,
-              side,
-              side,
-              0,
-              0,
-              256,
-              256,
-            );
-          encoded = canvas.toDataURL('image/png');
-          if (((encoded.length - 'data:image/png;base64,'.length) * 3) / 4 < 2 * 1024 * 1024) break;
-          encoded = '';
-          scale *= 0.85;
-        }
-        if (!encoded) throw Error('处理后的图片仍过大，请选择较小的照片');
-        setCandidate(encoded);
+        width = bitmap.width;
+        height = bitmap.height;
+        if (Math.min(width, height) < AVATAR_MIN_SIDE) throw Error(AVATAR_RESOLUTION_ERROR);
+        if (width * height > 16000000) throw Error('图片像素超过1600万，请选择较小的高清原图');
       } finally {
         bitmap.close();
       }
-    } catch {
-      setError('图片无法读取，请选择有效的图片文件');
+      const image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(Error('图片无法读取，请重试'));
+        reader.readAsDataURL(file);
+      });
+      if (seq === choosing.current)
+        setPhoto({ image, width, height, aspect: kind === 'card' ? aspect : 1 });
+    } catch (e) {
+      if (seq === choosing.current)
+        setError(
+          e instanceof DOMException
+            ? '图片无法读取，请选择有效的 PNG、JPEG 或 WebP 原图'
+            : e instanceof Error
+              ? e.message
+              : '图片无法读取，请选择有效原图',
+        );
     }
   }
-  async function save(remove = false) {
+  async function save(crop?: Crop, remove = false) {
+    if (saving.current || (!remove && !photo)) return;
+    saving.current = true;
     setBusy(true);
     setError('');
+    let uploaded = false;
     try {
       await cloudApi(
         kind === 'card' ? '/auth/card-avatar' : '/auth/avatar',
         remove ? 'DELETE' : 'PUT',
-        remove ? {} : { image: candidate },
+        remove ? {} : { image: photo!.image, crop },
       );
+      uploaded = true;
       const updated = await cloudSession();
       onUpdated(updated);
       window.dispatchEvent(new CustomEvent('chunmo-profile-updated', { detail: updated }));
-      setCandidate('');
-      setNotice(remove ? '已恢复默认头像' : '头像已保存');
       window.dispatchEvent(new Event('chunmo-presence'));
+      setPhoto(null);
+      setNotice(remove ? '已恢复默认头像' : '头像已保存');
     } catch (e) {
-      setError(String(e));
+      const message = e instanceof Error ? e.message : '照片保存失败，请重试';
+      setError(
+        uploaded
+          ? '照片已保存，但资料刷新失败。可重试刷新，不会重复创建图片。'
+          : `${message}。已保留照片和裁切位置，可直接重试。`,
+      );
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
-  return (
-    <details className="account-card avatar-editor">
-      <summary>{kind === 'card' ? '名片头像设置' : '头像设置'}</summary>
-      <div className="avatar-preview">
-        <Avatar
-          account={user}
-          source={candidate || undefined}
-          kind={kind}
-          label={kind === 'card' ? '名片头像预览' : '头像预览'}
-        />
-      </div>
-      <label>
-        选择头像
-        <input
-          ref={inputRef}
-          type="file"
-          aria-label={kind === 'card' ? '选择名片头像' : '选择头像'}
-          accept="image/png,image/jpeg,image/webp"
-          disabled={busy}
-          onChange={(e) => {
-            void choose(e.target.files?.[0]);
-            e.target.value = '';
-          }}
-        />
-      </label>
-      <p className="account-muted">
-        小于2MB · PNG、JPEG、WebP ·{' '}
-        {kind === 'card'
-          ? '保留原比例，长边最多1024px；与在线头像独立保存'
-          : '保存时裁切为圆形头像'}
-      </p>
-      {candidate && (
-        <div className="toolbar">
-          <button disabled={busy} onClick={() => void save()}>
-            保存头像
-          </button>
-          <button disabled={busy} onClick={() => setCandidate('')}>
-            取消预览
-          </button>
-        </div>
-      )}
-      {(kind === 'card' ? user.cardAvatarVersion : user.avatarVersion) && (
-        <button disabled={busy} onClick={() => void save(true)}>
-          恢复默认头像
-        </button>
-      )}
-      {error && (
-        <p className="error" role="alert">
+  const input = (
+    <input
+      ref={fileInput}
+      type="file"
+      hidden
+      aria-label={kind === 'card' ? '选择名片头像' : '选择头像'}
+      accept="image/png,image/jpeg,image/webp"
+      disabled={busy}
+      onChange={(e) => {
+        void choose(e.target.files?.[0]);
+        e.target.value = '';
+      }}
+    />
+  );
+  const messages = (
+    <>
+      {error && !photo && (
+        <p className="photo-upload-error" role="alert">
           {error}
         </p>
       )}
-      {notice && <p role="status">{notice}</p>}
+      {notice && (
+        <p className="photo-upload-notice" role="status">
+          {notice}
+        </p>
+      )}
+    </>
+  );
+  const cropper = photo && (
+    <PhotoCropper
+      key={photo.image}
+      source={photo}
+      busy={busy}
+      error={error}
+      onClose={() => {
+        if (!busy) {
+          setPhoto(null);
+          setError('');
+        }
+      }}
+      onChoose={() => fileInput.current?.click()}
+      onSave={(crop) => void save(crop)}
+      onRemove={
+        (kind === 'card' ? user.cardAvatarVersion : user.avatarVersion)
+          ? () => void save(undefined, true)
+          : undefined
+      }
+    />
+  );
+  if (kind === 'card')
+    return (
+      <div className="card-photo-upload">
+        {input}
+        {messages}
+        {cropper}
+      </div>
+    );
+  return (
+    <details className="account-card avatar-editor">
+      <summary>头像设置</summary>
+      <div className="avatar-preview">
+        <Avatar account={user} label="头像预览" />
+      </div>
+      {input}
+      <button onClick={() => fileInput.current?.click()} disabled={busy}>
+        选择头像
+      </button>
+      <p className="account-muted">
+        原图短边至少720px，建议1080px以上 · PNG、JPEG、WebP · 最大10MB
+      </p>
+      {user.avatarVersion && (
+        <button disabled={busy} onClick={() => void save(undefined, true)}>
+          恢复默认头像
+        </button>
+      )}
+      {messages}
+      {cropper}
     </details>
   );
 }

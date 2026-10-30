@@ -1,4 +1,5 @@
 import pg from 'pg';
+import sharp from 'sharp';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
@@ -1469,7 +1470,7 @@ test('V4 avatar: authenticated own writes, decoded PNG, size/CRC limits and work
   const a = await login(f.login, f.password),
     b = await login(f.employee, f.password),
     c = await login(other.login, other.password);
-  const image = PNG.sync.write(new PNG({ width: 2, height: 2 }));
+  const image = PNG.sync.write(new PNG({ width: 720, height: 720 }));
   const payload = { image: 'data:image/png;base64,' + image.toString('base64') };
   assert.equal((await request('/auth/avatar', 'PUT', payload)).status, 401);
   assert.equal(
@@ -1479,9 +1480,9 @@ test('V4 avatar: authenticated own writes, decoded PNG, size/CRC limits and work
   assert.equal((await request('/auth/avatar', 'PUT', payload, b)).status, 200);
   const read = await request('/accounts/' + b.user.id + '/avatar', 'GET', undefined, a);
   assert.equal(read.status, 200);
-  assert.equal(read.headers.get('content-type'), 'image/png');
+  assert.equal(read.headers.get('content-type'), 'image/jpeg');
   assert.equal(read.headers.get('cache-control'), 'no-store');
-  assert.equal(PNG.sync.read(Buffer.from(await read.arrayBuffer())).width, 2);
+  assert.equal((await sharp(Buffer.from(await read.arrayBuffer())).metadata()).width, 720);
   assert.equal(
     (await request('/accounts/' + b.user.id + '/avatar', 'GET', undefined, c)).status,
     404,
@@ -2656,7 +2657,7 @@ test('V1.1 separate card and system images: strict upload validation, privacy an
   const { PNG } = await import('pngjs');
   const { a, b, f } = await setup();
   const image = (n: number) => {
-    const p = new PNG({ width: 2, height: 2 });
+    const p = new PNG({ width: 720, height: 720 });
     p.data.fill(n);
     return { image: 'data:image/png;base64,' + PNG.sync.write(p).toString('base64') };
   };
@@ -2713,37 +2714,66 @@ test('V1.1 separate card and system images: strict upload validation, privacy an
   );
 });
 
-test('card photo: higher resolution preserves aspect and old images; system dimensions, scope and immutable private access stay restricted', async () => {
+test('card photo: source resolution, original high pixels, retained legacy images and workspace scope', async () => {
   testClientIp = '192.0.2.28';
   const { PNG } = await import('pngjs');
   const { a, b, f } = await setup();
   const encode = (width: number, height: number) => {
-    const image = new PNG({ width, height });
-    image.data.fill(180);
-    return { image: 'data:image/png;base64,' + PNG.sync.write(image).toString('base64') };
+    const p = new PNG({ width, height });
+    p.data.fill(180);
+    return { image: 'data:image/png;base64,' + PNG.sync.write(p).toString('base64') };
   };
-  assert.equal((await request('/auth/card-avatar', 'PUT', encode(1024, 640), b)).status, 200);
+  assert.equal((await request('/auth/card-avatar', 'PUT', encode(1440, 1080), b)).status, 200);
   const saved = await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, a);
-  const png = PNG.sync.read(Buffer.from(await saved.arrayBuffer()));
-  assert.equal(png.width, 1024);
-  assert.equal(png.height, 640);
-  assert.equal((await request('/auth/avatar', 'PUT', encode(1024, 640), b)).status, 400);
-  assert.equal((await request('/auth/card-avatar', 'PUT', encode(1025, 1), b)).status, 400);
+  const image = await sharp(Buffer.from(await saved.arrayBuffer())).metadata();
+  assert.equal(image.width, 1440);
+  assert.equal(image.height, 1080);
+  for (const path of ['/auth/card-avatar', '/auth/avatar']) {
+    const low = await request(path, 'PUT', encode(1080, 719), b);
+    assert.equal(low.status, 400);
+    assert.match((await low.json()).error, /720px/);
+    assert.equal((await request(path, 'PUT', encode(720, 720), b)).status, 200);
+  }
   const other = await setup();
   assert.equal(
     (await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, other.a)).status,
     404,
   );
-  assert.equal((await request('/auth/card-avatar', 'PUT', encode(256, 256), b)).status, 200);
-  const old = PNG.sync.read(
-    Buffer.from(
-      await (
-        await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, a)
-      ).arrayBuffer(),
-    ),
+  const transparent = await sharp({
+    create: { width: 720, height: 720, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 0 } },
+  })
+    .png()
+    .toBuffer();
+  assert.equal(
+    (
+      await request(
+        '/auth/card-avatar',
+        'PUT',
+        { image: 'data:image/png;base64,' + transparent.toString('base64') },
+        b,
+      )
+    ).status,
+    200,
   );
-  assert.equal(old.width, 256);
-  assert.equal(old.height, 256);
+  const painted = await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, a);
+  const pixel = await sharp(Buffer.from(await painted.arrayBuffer()))
+    .raw()
+    .toBuffer();
+  for (const [i, value] of [237, 243, 238].entries())
+    assert.ok(
+      Math.abs(pixel[i] - value) <= 2,
+      'transparent source matches the crop preview background',
+    );
+  // Historical lower-resolution bytes remain readable; new upload rules do not delete or rewrite them.
+  const legacy = Buffer.from(encode(256, 256).image.split(',')[1], 'base64');
+  await pool.query('UPDATE card_avatar SET png=$2,version=$3 WHERE account_id=$1', [
+    f.employeeId,
+    legacy,
+    'retained-legacy',
+  ]);
+  const old = await request('/accounts/' + f.employeeId + '/card-avatar', 'GET', undefined, a);
+  assert.equal(old.headers.get('content-type'), 'image/png');
+  assert.equal(PNG.sync.read(Buffer.from(await old.arrayBuffer())).width, 256);
 });
 
 // The legacy CAS test below intentionally remains strict. Signed bases only enable safe intent merging.
@@ -3145,4 +3175,79 @@ test('workspace concurrency: a failed durable receipt rolls graph/history/comple
   const retry = await request('/workspace', 'PUT', body, a);
   assert.equal(retry.status, 200);
   assert.equal((await retry.json()).revision, before.revision + 1);
+});
+
+test('avatar: high-detail photo fits unchanged DB bound, duplicate concurrency is idempotent and independent workspace saves do not conflict', async () => {
+  testClientIp = '203.0.113.216';
+  const { a, b, f } = await seededWorkspace();
+  const raw = Buffer.alloc(1080 * 1080 * 3);
+  let seed = 314159;
+  for (let i = 0; i < raw.length; i++) {
+    seed = (Math.imul(seed, 1664525) + 1013904223) | 0;
+    raw[i] = seed >>> 24;
+  }
+  const png = await sharp(raw, { raw: { width: 1080, height: 1080, channels: 3 } })
+    .png()
+    .toBuffer();
+  assert.ok(png.length > 524288);
+  const before = await workspaceBase(a),
+    body = {
+      image: 'data:image/png;base64,' + png.toString('base64'),
+      crop: { x: 10, y: 10, width: 1000, height: 700 },
+    };
+  const [photo, workspace] = await Promise.all([
+    request('/auth/card-avatar', 'PUT', body, b),
+    request(
+      '/workspace',
+      'PUT',
+      submission(before, (d) => {
+        d.projects[0].notes = '头像保存不参与全局CAS';
+      }),
+      a,
+    ),
+  ]);
+  assert.equal(photo.status, 200, await photo.text());
+  assert.equal(workspace.status, 200);
+  const stored = await pool.query('SELECT png,version FROM card_avatar WHERE account_id=$1', [
+    f.employeeId,
+  ]);
+  assert.ok(stored.rows[0].png.length <= 524288);
+  const meta = await sharp(stored.rows[0].png).metadata();
+  assert.equal(meta.width, 1000);
+  assert.equal(meta.height, 700);
+  const repeated = await Promise.all([
+    request('/auth/card-avatar', 'PUT', body, b),
+    request('/auth/card-avatar', 'PUT', body, b),
+  ]);
+  assert.deepEqual(
+    repeated.map((r) => r.status),
+    [200, 200],
+  );
+  const count = await pool.query(
+    "SELECT count(*)::int n FROM audit_event WHERE workspace_id=$1 AND actor_id=$2 AND action='account.card-avatar'",
+    [f.workspaceId, f.employeeId],
+  );
+  assert.equal(count.rows[0].n, 1);
+  assert.equal((await workspaceBase(a)).revision, before.revision + 1);
+  assert.equal(
+    (await request('/auth/card-avatar', 'PUT', { ...body, crop: { ...body.crop, x: 1000 } }, b))
+      .status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        '/auth/card-avatar',
+        'PUT',
+        { ...body, crop: { x: 0, y: 0, width: 1000, height: 1 } },
+        b,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (await pool.query('SELECT version FROM card_avatar WHERE account_id=$1', [f.employeeId]))
+      .rows[0].version,
+    stored.rows[0].version,
+  );
 });

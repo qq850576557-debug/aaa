@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
+import sharp from 'sharp';
 import { mkdir } from 'node:fs/promises';
 import { fixtureAccounts } from '../server/test-fixtures';
 import { fixture } from '../tests/helpers';
@@ -112,7 +113,7 @@ for (const width of [1440, 390, 320])
       await page.screenshot({ path: `${output}/board-${width}.png`, animations: 'disabled' });
       await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
 
-      const sys = photo(64, 64);
+      const sys = photo(1080, 1080);
       expect(
         (
           await api(context, '/auth/avatar', 'PUT', {
@@ -136,7 +137,7 @@ for (const width of [1440, 390, 320])
         buffer: photo(1600, 1000),
       });
       await expect(
-        card.getByRole('img', { name: '名片头像预览', exact: true }).locator('img'),
+        page.getByRole('dialog', { name: '调整头像照片', exact: true }).locator('img'),
       ).toBeVisible();
       await card.getByRole('button', { name: '保存头像', exact: true }).click();
       await expect(card.getByText('头像已保存', { exact: true })).toBeVisible();
@@ -146,17 +147,21 @@ for (const width of [1440, 390, 320])
       );
       const after = await (await api(context, '/auth/session')).json();
       expect(after.user.avatarVersion).toBe(identity.user.avatarVersion);
-      const image = PNG.sync.read(
+      const image = await sharp(
         Buffer.from(
           await (await api(context, '/accounts/' + f.employeeId + '/card-avatar')).body(),
         ),
-      );
-      expect(image.width).toBe(1024);
-      expect(image.height).toBe(640);
-      expect(await (await api(context, '/accounts/' + f.employeeId + '/avatar')).body()).toEqual(
-        sys,
-      );
-      await card.getByText('名片头像设置', { exact: true }).click();
+      ).metadata();
+      expect(image.width).toBe(1430);
+      expect(image.height).toBe(1000);
+      expect(
+        (
+          await sharp(
+            await (await api(context, '/accounts/' + f.employeeId + '/avatar')).body(),
+          ).metadata()
+        ).width,
+      ).toBe(1080);
+      await expect(card.getByText('名片头像设置', { exact: true })).toHaveCount(0);
       await card.locator(':scope > .modal-body').evaluate((e) => (e.scrollTop = 0));
       const geo = await card.locator('.member-card-photo,.member-card-content').evaluateAll((es) =>
         es.map((e) => {
@@ -184,7 +189,7 @@ for (const width of [1440, 390, 320])
       await card.getByRole('button', { name: '查看林知夏名片照片大图', exact: true }).click();
       const lightbox = page.getByRole('dialog', { name: '名片照片预览', exact: true });
       await expect(lightbox.locator('img')).toBeVisible();
-      await expect(lightbox).toContainText('原图 1024 × 640');
+      await expect(lightbox).toContainText('原图 1430 × 1000');
       await page.screenshot({ path: `${output}/photo-${width}.png`, animations: 'disabled' });
       await page.keyboard.press('Escape');
       await expect(lightbox).toHaveCount(0);
@@ -204,7 +209,7 @@ for (const width of [1440, 390, 320])
       await expect(lightbox.getByRole('alert')).toContainText('照片暂时无法加载');
       await lightbox.getByRole('button', { name: '重新加载', exact: true }).click();
       await expect(lightbox.locator('img')).toBeVisible();
-      await expect(lightbox).toContainText('原图 1024 × 640');
+      await expect(lightbox).toContainText('原图 1430 × 1000');
       await page.keyboard.press('Escape');
       await expect(lightbox).toHaveCount(0);
       await page.keyboard.press('Escape');
