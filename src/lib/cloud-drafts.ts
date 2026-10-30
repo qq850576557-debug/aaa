@@ -1,6 +1,7 @@
 import { openDB } from 'idb';
 import type { CloudState } from './cloud';
 import { parseBackup, type Data } from './model';
+import type { SaveHold } from './workspace-save-plan';
 export type WorkspaceSubmission = Pick<CloudState, 'revision' | 'baseProof'> & {
   base: Data;
   data: Data;
@@ -16,6 +17,7 @@ export type CloudDraft = {
   mergeBase: Data;
   data: Data;
   inFlight: { body: WorkspaceSubmission; view: Data } | null;
+  holds?: SaveHold[];
 };
 // A separate browser journal. Never opens or writes the original local business database.
 const database = () =>
@@ -84,7 +86,113 @@ export async function readCloudDraft(workspaceId: string, accountId: string, tab
       parseBackup(d.inFlight.body.data);
       parseBackup(d.inFlight.view);
     }
+    if (
+      d.holds &&
+      (!Array.isArray(d.holds) ||
+        d.holds.some(
+          (x) =>
+            !x ||
+            !['validation', 'conflict', 'dependency'].includes(x.kind) ||
+            ![
+              'projects',
+              'trades',
+              'tasks',
+              'notes',
+              'purchases',
+              'people',
+              'dictionaries',
+              'workspace',
+            ].includes(x.collection) ||
+            typeof x.id !== 'string' ||
+            typeof x.reason !== 'string',
+        ))
+    )
+      throw Error('草稿的待处理记录标记无效；原草稿保留');
     return d;
+  } finally {
+    db.close();
+  }
+}
+export async function recoverCloudDraft(workspaceId: string, accountId: string, tabId: string) {
+  try {
+    return { draft: await readCloudDraft(workspaceId, accountId, tabId), archived: false };
+  } catch (error) {
+    const db = await database();
+    try {
+      const raw = await db.get('drafts', draftKey(workspaceId, accountId, tabId));
+      if (
+        !raw ||
+        raw.workspaceId !== workspaceId ||
+        raw.accountId !== accountId ||
+        raw.tabId !== tabId
+      )
+        throw error;
+      // Keep the original slot too. A fresh tab slot is claimed before any new journal write.
+      await db.put(
+        'drafts',
+        raw,
+        JSON.stringify(['archive', workspaceId, accountId, tabId, crypto.randomUUID()]),
+      );
+      return { draft: undefined, archived: true };
+    } finally {
+      db.close();
+    }
+  }
+}
+export async function cloudDraftRecoveryPackage(workspaceId: string, accountId: string) {
+  const db = await database();
+  try {
+    const tx = db.transaction('drafts'),
+      entries = [];
+    let cursor = await tx.store.openCursor();
+    while (cursor) {
+      const value = cursor.value;
+      if (value?.workspaceId === workspaceId && value?.accountId === accountId)
+        entries.push({ key: cursor.key, draft: value });
+      cursor = await cursor.continue();
+    }
+    await tx.done;
+    return { format: 'chunmo-cloud-draft-recovery', version: 1, workspaceId, accountId, entries };
+  } finally {
+    db.close();
+  }
+}
+export async function hasCloudDraftArchive(workspaceId: string, accountId: string) {
+  const db = await database();
+  try {
+    return (await db.getAllKeys('drafts')).some((key) => {
+      if (typeof key !== 'string') return false;
+      try {
+        const parts = JSON.parse(key);
+        return parts[0] === 'archive' && parts[1] === workspaceId && parts[2] === accountId;
+      } catch {
+        return false;
+      }
+    });
+  } finally {
+    db.close();
+  }
+}
+export async function retainCloudDraftSnapshot(
+  workspaceId: string,
+  accountId: string,
+  tabId: string,
+) {
+  const db = await database();
+  try {
+    const raw = await db.get('drafts', draftKey(workspaceId, accountId, tabId));
+    if (
+      !raw ||
+      raw.workspaceId !== workspaceId ||
+      raw.accountId !== accountId ||
+      raw.tabId !== tabId
+    )
+      throw Error('无法确认原草稿备份，未应用恢复选择');
+    await db.put(
+      'drafts',
+      raw,
+      JSON.stringify(['recovery', workspaceId, accountId, tabId, crypto.randomUUID()]),
+    );
   } finally {
     db.close();
   }

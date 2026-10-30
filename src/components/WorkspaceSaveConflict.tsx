@@ -50,8 +50,12 @@ export function WorkspaceSaveConflict({
     [error, setError] = useState('');
   return (
     <Modal
-      title="核对保存冲突"
-      subtitle="草稿已保留。只有你确认的冲突字段会被替换，其余修改会自动合并。"
+      title={conflict.kind === 'validation' ? '核对未保存记录' : '核对保存冲突'}
+      subtitle={
+        conflict.kind === 'validation'
+          ? '相关记录保存失败。请修正资料，或明确采用云端内容；原草稿会保留恢复副本。'
+          : '草稿已保留。只有你确认的冲突字段会被替换，其余修改会自动合并。'
+      }
       onClose={onClose}
       blocking
       wide
@@ -65,21 +69,20 @@ export function WorkspaceSaveConflict({
           </p>
         )}
         {conflict.fields.map((f) => {
-          const record = [
-            ...conflict.local.projects,
-            ...conflict.local.trades,
-            ...conflict.local.tasks,
-            ...conflict.local.notes,
-            ...conflict.local.purchases,
-            ...(conflict.local.people || []),
-          ].find((x) => x.id === f.id);
-          const name =
-            record && ('name' in record ? record.name : 'title' in record ? record.title : '');
+          const record = [conflict.local, conflict.current.data, conflict.base].flatMap((data) => {
+            const rows = data[f.collection as keyof typeof data];
+            return Array.isArray(rows)
+              ? rows.filter((x) => x && typeof x === 'object' && 'id' in x && x.id === f.id)
+              : [];
+          })[0] as { name?: string; title?: string; label?: string } | undefined;
+          const name = record?.name || record?.title || record?.label;
           return (
             <fieldset key={f.key} className="save-conflict-field">
               <legend>
                 {collections[f.collection] || f.collection} · {name || f.id} ·{' '}
-                {labels[f.field] || f.field}
+                {conflict.kind === 'validation' && f.field === '$record'
+                  ? '相关记录（新增、删除或资料校验）'
+                  : labels[f.field] || f.field}
               </legend>
               <details>
                 <summary>编辑前的内容</summary>
@@ -91,6 +94,7 @@ export function WorkspaceSaveConflict({
                     <span>
                       <input
                         type="radio"
+                        aria-label={option === 'local' ? '保留我的修改' : '采用云端内容'}
                         name={f.key}
                         checked={choices[f.key] === option}
                         onChange={() => setChoices({ ...choices, [f.key]: option })}

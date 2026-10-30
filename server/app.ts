@@ -3,6 +3,7 @@ import {
   workspaceStateWithProof,
   WorkspaceConflictError,
 } from './workspace-save';
+import { parseWorkspaceInput, WorkspaceValidationError } from './workspace-validation';
 import { transferRoutes } from './transfers';
 import { recordRoutes } from './records';
 import { purchaseRoutes } from './purchases';
@@ -34,7 +35,7 @@ import {
   tokenFrom,
   type AuthRequest,
 } from './auth';
-import { parseBackup, prepareWorkspace, dateOK, emptyData, plus } from '../src/lib/model';
+import { parseBackup, dateOK, emptyData, plus } from '../src/lib/model';
 import { parseArchive, canonical, differences, type History } from '../src/lib/history';
 const credentials = z
   .object({
@@ -80,7 +81,7 @@ export function createApp() {
   app.get('/api/health', async (_req, res, next) => {
     try {
       await pool.query('SELECT 1');
-      res.json({ ok: true, environment: config.APP_ENV });
+      res.json({ ok: true, environment: config.APP_ENV, workspaceSaveProtocol: 2 });
     } catch (e) {
       next(e);
     }
@@ -130,6 +131,10 @@ export function createApp() {
   });
   app.use('/api', authenticate, (req: AuthRequest, _res, next) => {
     req.actor!.auditDevice = auditDevice(req.get('user-agent') ?? '');
+    next();
+  });
+  app.use('/api/workspace', (_req, res, next) => {
+    res.set('X-Chunmo-Workspace-Protocol', '2');
     next();
   });
   purchaseRoutes(app);
@@ -726,11 +731,11 @@ export function createApp() {
         })
         .strict()
         .parse(req.body);
-      const data = valid(() => prepareWorkspace(parseBackup(b.data)));
+      const data = parseWorkspaceInput(b.data, 'data');
       if (b.base !== undefined || b.baseProof !== undefined || b.requestId !== undefined) {
         if (b.base === undefined || !b.baseProof || !b.requestId)
           throw new ApiError(400, '保存基线与提交编号必须完整');
-        const base = valid(() => prepareWorkspace(parseBackup(b.base)));
+        const base = parseWorkspaceInput(b.base, 'base');
         res.json(
           await transaction((c) =>
             saveWorkspaceSubmission(c, req.actor!, {
@@ -1033,9 +1038,31 @@ export function createApp() {
   });
   app.use('/api', (_req, _res, next) => next(new ApiError(404, '接口不存在')));
   app.use(
-    (error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    (error: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
       if (res.headersSent) {
         res.end();
+        return;
+      }
+      if (error instanceof WorkspaceValidationError) {
+        const actor = (req as AuthRequest).actor;
+        console.warn(
+          JSON.stringify({
+            event: 'workspace.validation_rejected',
+            workspaceId: actor?.workspaceId,
+            actorId: actor?.id,
+            requestId:
+              typeof req.body?.requestId === 'string' && /^[a-f0-9-]{36}$/i.test(req.body.requestId)
+                ? req.body.requestId
+                : undefined,
+            revision: req.body?.revision,
+            issues: error.issues.map(({ path, code }) => ({ path, code })),
+          }),
+        );
+        res.status(400).json({
+          error: error.message,
+          code: 'WORKSPACE_VALIDATION_FAILED',
+          issues: error.issues,
+        });
         return;
       }
       if (error instanceof WorkspaceConflictError) {

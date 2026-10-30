@@ -64,7 +64,7 @@ import {
 } from './lib/scheduling';
 import { Editor, nextTask, type Edit, type Entity } from './components/Forms';
 import { useWorkspace } from './lib/useWorkspaceMode';
-import { backupJSON } from './lib/export';
+import { backupJSON, downloadBlob } from './lib/export';
 import { ExportDialog } from './components/ExportDialog';
 import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_SLOGAN } from './lib/brand';
 import {
@@ -144,6 +144,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     saveConflict,
     resolveSaveConflict,
     dismissSaveConflict,
+    draftRecoveryNotice,
+    draftRecoveryPackage,
   } = useWorkspace(initialUser);
   const [historyOpen, setHistoryOpen] = useState<{ scope: string; anchor?: Anchor } | null>(null);
   const [navExpanded, setNavExpanded] = useState(() => {
@@ -908,6 +910,25 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
         <main className="workspace-content">
+          {draftRecoveryNotice && (
+            <div className="error-banner" role="status">
+              <span>{draftRecoveryNotice}</span>
+              <button
+                onClick={() =>
+                  void draftRecoveryPackage()
+                    .then((value) =>
+                      downloadBlob(
+                        new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }),
+                        '春茉-旧草稿恢复包.json',
+                      ),
+                    )
+                    .catch((e) => notify(String(e)))
+                }
+              >
+                下载旧草稿恢复包
+              </button>
+            </div>
+          )}
           {error && (
             <div className="error-banner" role="alert">
               <TriangleAlert size={18} />

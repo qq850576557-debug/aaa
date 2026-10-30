@@ -13,6 +13,7 @@ import { config } from './config';
 import { emptyData, newProject, defaultTrades, today, plus, type Data } from '../src/lib/model';
 import { migrate } from './migrate';
 import { maintain } from './maintenance';
+import { removeProject } from '../src/lib/model';
 let server: Server, base: string;
 let testClientIp = '127.0.0.1';
 before(async () => {
@@ -3335,4 +3336,282 @@ test('trade colors and personnel order: real concurrent saves preserve fields, s
   });
   assert.equal((await request('/workspace', 'PUT', invalid, a)).status, 400);
   assert.deepEqual((await workspaceBase(a)).data, beforeBad.data);
+});
+
+test('SYS-COLLAB-004 validation paths identify rejected personnel without echoing private input or changing database rows', async () => {
+  testClientIp = '203.0.113.230';
+  const { a } = await seededWorkspace();
+  const before = await workspaceBase(a);
+  for (const mutation of [
+    (x: any) => {
+      x.people[0].role = '不合法岗位';
+    },
+    (x: any) => {
+      x.people[0].phone = 'PRIVATE_VALUE_MUST_NOT_ECHO';
+    },
+    (x: any) => {
+      x.people.push({ ...x.people[0] });
+    },
+    (x: any) => {
+      x.people[0].tradeIds = ['missing-dictionary'];
+    },
+  ]) {
+    const response = await request('/workspace', 'PUT', submission(before, mutation), a);
+    assert.equal(response.status, 400);
+    const body = await response.json();
+    assert.equal(body.code, 'WORKSPACE_VALIDATION_FAILED');
+    assert.equal(response.headers.get('X-Chunmo-Workspace-Protocol'), '2');
+    assert(body.issues.length > 0);
+    assert.equal(body.issues[0].path[0], 'data');
+    assert.equal(JSON.stringify(body).includes('PRIVATE_VALUE_MUST_NOT_ECHO'), false);
+    assert.deepEqual(await workspaceBase(a), before);
+  }
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int n FROM person WHERE workspace_id=$1', [
+        a.user.workspaceId,
+      ])
+    ).rows[0].n,
+    before.data.people.length,
+  );
+});
+
+test('SYS-COLLAB-004 metadata: concurrent global personnel creation and project deletion do not conflict on incidental updatedAt stamps', async () => {
+  testClientIp = '203.0.113.232';
+  const { a, b } = await seededWorkspace();
+  const [owner, employee] = await Promise.all([workspaceBase(a), workspaceBase(b)]);
+  const personId = randomUUID();
+  const creation = submission(employee, (d) => {
+    d.people!.push({
+      id: personId,
+      name: '与工地删除无关的新师傅',
+      role: '施工人员',
+      trade: '',
+      notes: '',
+      active: true,
+    });
+    d.projects[0].updatedAt = new Date().toISOString();
+  });
+  const deletion = submission(owner, (d) => {
+    Object.assign(d, removeProject(d, d.projects[0].id));
+  });
+  const gate = await pool.connect();
+  let open = true;
+  let results: Response[];
+  const pendingRequests: Promise<Response>[] = [];
+  try {
+    await gate.query('BEGIN');
+    await gate.query('SELECT workspace_id FROM workspace_state WHERE workspace_id=$1 FOR UPDATE', [
+      a.user.workspaceId,
+    ]);
+    const pid = (await gate.query('SELECT pg_backend_pid() pid')).rows[0].pid;
+    const waitForBlocked = async (count: number) => {
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const blocked = await pool.query(
+          'WITH RECURSIVE waiting(pid) AS (SELECT pid FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)) UNION SELECT a.pid FROM pg_stat_activity a JOIN waiting w ON w.pid=ANY(pg_blocking_pids(a.pid))) SELECT count(*)::int n FROM waiting',
+          [pid],
+        );
+        if (blocked.rows[0].n >= count) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw Error('Concurrent requests did not reach the database barrier');
+    };
+    const deleting = request('/workspace', 'PUT', deletion, a);
+    pendingRequests.push(deleting);
+    await waitForBlocked(1);
+    const creating = request('/workspace', 'PUT', creation, b);
+    pendingRequests.push(creating);
+    await waitForBlocked(2);
+    await gate.query('COMMIT');
+    open = false;
+    results = await Promise.all([creating, deleting]);
+  } finally {
+    if (open) await gate.query('ROLLBACK');
+    gate.release();
+    await Promise.allSettled(pendingRequests);
+  }
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [200, 200],
+  );
+  const final = await workspaceBase(a);
+  assert.equal(final.data.projects.length, 1);
+  assert.equal(final.data.projects[0].id, owner.data.projects[1].id);
+  assert(final.data.people.some((p: any) => p.id === personId));
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int n FROM person WHERE workspace_id=$1 AND id=$2', [
+        a.user.workspaceId,
+        personId,
+      ])
+    ).rows[0].n,
+    1,
+  );
+});
+
+test('SYS-COLLAB-004 personnel lifecycle: creation, assignment, order, assessment, soft deletion and trusted history restore retain the complete graph', async () => {
+  testClientIp = '203.0.113.231';
+  const { a, b } = await seededWorkspace();
+  let saved = await workspaceBase(a);
+  const original = structuredClone(saved.data);
+  async function save(change: (d: Data) => void) {
+    const response = await request('/workspace', 'PUT', submission(saved, change), a);
+    assert.equal(response.status, 200, await response.clone().text());
+    saved = await response.json();
+  }
+  const worker = {
+    id: randomUUID(),
+    name: '新施工人员',
+    role: '施工人员' as const,
+    trade: '',
+    notes: '',
+    active: true,
+  };
+  const manager = { ...worker, id: randomUUID(), name: '新项目经理', role: '项目经理' as const };
+  await save((d) => {
+    d.people!.push(worker);
+  });
+  await save((d) => {
+    d.people!.push(manager);
+  });
+  await save((d) => {
+    d.dictionaries = [
+      {
+        id: 'worker-default:carpentry',
+        kind: 'trade',
+        usage: 'worker',
+        label: '木工',
+        active: true,
+        order: 0,
+      },
+      {
+        id: 'worker-default:electrical',
+        kind: 'trade',
+        usage: 'worker',
+        label: '水电工',
+        active: true,
+        order: 1,
+      },
+    ];
+    d.people!.find((x) => x.id === worker.id)!.tradeIds = d.dictionaries.map((x) => x.id);
+    d.people!.find((x) => x.id === worker.id)!.notes = '立即编辑的原始备注';
+  });
+  await save((d) => {
+    d.projects[0].staffIds = [worker.id, manager.id];
+    d.trades[0].staffIds = [...new Set([...(d.trades[0].staffIds ?? []), worker.id])];
+    d.tasks[0].staffIds = [worker.id];
+  });
+  const assigned = structuredClone(saved.data);
+  await save((d) => {
+    const p = d.people!.pop()!;
+    d.people!.unshift(p);
+  });
+  assert.equal(saved.data.people[0].id, manager.id);
+  assert(
+    saved.history.records.some((r: any) => r.changes.some((c: any) => c.label === '人员显示顺序')),
+  );
+  assert.equal(
+    saved.data.people.some((p: any) => p.id === '$order'),
+    false,
+  );
+  for (let i = 0; i < 3; i++)
+    await save((d) => {
+      d.people!.push({ ...worker, id: randomUUID(), name: '连续新增' + i });
+    });
+  const assessment = await request(
+    '/assessments/batch',
+    'POST',
+    {
+      requestId: randomUUID(),
+      confirmed: true,
+      edits: [
+        {
+          date: today(),
+          personId: worker.id,
+          projectId: saved.data.projects[0].id,
+          tradeId: saved.data.trades[0].id,
+          version: 0,
+          changes: { attendance: 'yes', photo: 'yes', cleaning: 'pending' },
+        },
+      ],
+    },
+    a,
+  );
+  assert.equal(assessment.status, 200, await assessment.clone().text());
+  const record = (await assessment.json()).records[0];
+  assert.equal(record.personId, worker.id);
+  await save((d) => {
+    Object.assign(
+      d.people!.find((p) => p.id === worker.id)!,
+      { deleted: true, active: false },
+    );
+  });
+  assert.deepEqual(saved.data.projects[0].staffIds, assigned.projects[0].staffIds);
+  assert.deepEqual(saved.data.tasks, assigned.tasks);
+  const removed = saved.history.records.findLast((r: any) => r.scope === '@global');
+  const response = await request(
+    '/history/restore',
+    'POST',
+    { revision: saved.revision, id: removed.id },
+    a,
+  );
+  assert.equal(response.status, 200, await response.clone().text());
+  saved = await response.json();
+  assert.equal(saved.data.people.find((p: any) => p.id === worker.id).deleted, undefined);
+  assert.equal(saved.data.people.find((p: any) => p.id === worker.id).notes, '立即编辑的原始备注');
+  assert.deepEqual(
+    saved.data.tasks.map((t: any) => [t.id, t.start, t.end]),
+    original.tasks.map((t: any) => [t.id, t.start, t.end]),
+  );
+  assert.equal(
+    (await request('/people/' + worker.id + '/private', 'GET', undefined, b)).status,
+    403,
+  );
+  const people = await pool.query('SELECT id,payload FROM person WHERE workspace_id=$1', [
+    a.user.workspaceId,
+  ]);
+  assert.equal(people.rowCount, saved.data.people.length);
+  for (const p of people.rows)
+    assert.deepEqual(
+      p.payload,
+      saved.data.people.find((x: any) => x.id === p.id),
+    );
+  assert.equal(
+    (
+      await pool.query(
+        'SELECT count(*)::int n FROM assignment WHERE workspace_id=$1 AND person_id=$2',
+        [a.user.workspaceId, worker.id],
+      )
+    ).rows[0].n,
+    3,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        'SELECT count(*)::int n FROM daily_assessment WHERE workspace_id=$1 AND person_id=$2',
+        [a.user.workspaceId, worker.id],
+      )
+    ).rows[0].n,
+    1,
+  );
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int n FROM account WHERE workspace_id=$1', [
+        a.user.workspaceId,
+      ])
+    ).rows[0].n,
+    2,
+  );
+  const beforeUnsafe = await workspaceBase(a);
+  const prePersonnel = beforeUnsafe.history.records.find((r: any) => r.scope === '@global');
+  const unsafe = await request(
+    '/history/restore',
+    'POST',
+    { revision: beforeUnsafe.revision, id: prePersonnel.id },
+    a,
+  );
+  assert.equal(unsafe.status, 409);
+  assert.match((await unsafe.json()).error, /关联/);
+  assert.deepEqual(await workspaceBase(a), beforeUnsafe);
 });

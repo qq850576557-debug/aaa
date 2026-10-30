@@ -1,5 +1,5 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
-import { fixtureAccounts } from '../server/test-fixtures';
+import { fixtureAccounts, fixtureQuery } from '../server/test-fixtures';
 import { pool, privatePool } from '../server/db';
 import { emptyData, newProject, defaultTrades, type Data } from '../src/lib/model';
 test.afterAll(async () => {
@@ -132,6 +132,12 @@ test('conflicting fields keep the full draft through reload and cloud reread; ex
     for (const width of [1440, 390]) {
       await b.setViewportSize({ width, height: 900 });
       await expect(review).toBeVisible();
+      await expect
+        .poll(async () => {
+          const rect = await review.boundingBox();
+          return rect!.x + rect!.width;
+        })
+        .toBeLessThanOrEqual(width);
       const rect = await review.boundingBox();
       expect(rect!.x).toBeGreaterThanOrEqual(0);
       expect(rect!.x + rect!.width).toBeLessThanOrEqual(width);
@@ -244,12 +250,15 @@ test('a committed response lost in transit survives refresh and replays the exac
     await enter(a, f.login, f.password);
     await seed(a);
     await enter(b, f.employee, f.password);
-    let failed = false;
+    let restoring = false,
+      restored = false;
     await a.route('**/api/workspace', async (route) => {
-      if (route.request().method() !== 'PUT') return route.continue();
+      if (route.request().method() !== 'PUT') {
+        if (restoring) restored = true;
+        return route.continue();
+      }
       bodies.push(route.request().postDataJSON());
-      if (!failed) {
-        failed = true;
+      if (!restored) {
         await route.fetch();
         await route.abort('failed');
       } else await route.continue();
@@ -266,12 +275,36 @@ test('a committed response lost in transit survives refresh and replays the exac
     });
     expect(change.status).toBe(200);
     const after = change.value.revision;
+    const requestId = (bodies[0] as { requestId: string }).requestId;
+    await expect
+      .poll(() =>
+        a.evaluate(async (requestId) => {
+          const db = await new Promise<IDBDatabase>((resolve) => {
+            const r = indexedDB.open('chunmo-cloud-drafts', 1);
+            r.onsuccess = () => resolve(r.result);
+          });
+          const all = await new Promise<any[]>((resolve) => {
+            const q = db.transaction('drafts').objectStore('drafts').getAll();
+            q.onsuccess = () => resolve(q.result);
+          });
+          db.close();
+          return all.some((x) => x.inFlight?.body?.requestId === requestId);
+        }, requestId),
+      )
+      .toBe(true);
+    restoring = true;
     await a.reload();
-    await expect(a.locator('.save-state')).toContainText('草稿待恢复');
-    await a.getByRole('button', { name: '重试保存', exact: true }).click();
     await saved(a);
-    expect(bodies).toHaveLength(2);
-    expect(bodies[1]).toEqual(bodies[0]);
+    expect(bodies.length).toBeGreaterThanOrEqual(2);
+    for (const body of bodies.slice(1)) expect(body).toEqual(bodies[0]);
+    expect(
+      (
+        await fixtureQuery(
+          "SELECT count(*)::int n FROM audit_event WHERE workspace_id=$1 AND actor_id=$2 AND entity_type='workspace_submission' AND entity_id=$3",
+          [f.workspaceId, f.id, requestId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
     const final = (await api(a)).value;
     expect(final.revision).toBe(after);
     expect(final.data.projects[0].notes).toBe('响应丢失但已提交');

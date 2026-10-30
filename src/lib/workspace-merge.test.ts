@@ -38,6 +38,36 @@ const fixture = () => {
   return prepareWorkspace(d);
 };
 describe('safe workspace intent merge', () => {
+  it('adding a global person with only a project timestamp must not conflict with an independent project deletion', () => {
+    const base = fixture(),
+      local = structuredClone(base),
+      remote = structuredClone(base);
+    local.people = [
+      {
+        id: 'independent-person',
+        name: '新师傅',
+        role: '施工人员',
+        trade: '',
+        active: true,
+        notes: '',
+      },
+    ];
+    local.projects[0].updatedAt = '2026-10-30T12:00:00Z';
+    remote.projects = remote.projects.filter((x) => x.id !== 'a');
+    remote.trades = [];
+    remote.notes = [];
+    remote.purchases = [];
+    const merged = mergeWorkspace(base, local, remote);
+    expect(merged.conflicts).toHaveLength(0);
+    expect(merged.data.people![0].name).toBe('新师傅');
+    expect(merged.data.projects.map((x) => x.id)).toEqual(['b']);
+    local.projects[0].notes = '真实项目修改仍须保护';
+    expect(mergeWorkspace(base, local, remote).conflicts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ collection: 'projects', id: 'a', field: '$record' }),
+      ]),
+    );
+  });
   it('merges independent projects/records and different fields without changing its inputs', () => {
     const b = fixture(),
       l = structuredClone(b),

@@ -17,5 +17,11 @@ export function useWorkspace(initialUser?: CloudUser) {
         saveConflict: null,
         resolveSaveConflict: async (_choices: import('./workspace-merge').MergeChoices) => {},
         dismissSaveConflict: () => {},
+        draftRecoveryNotice: '',
+        draftRecoveryPackage: async () => ({
+          format: 'chunmo-cloud-draft-recovery',
+          version: 1,
+          entries: [],
+        }),
       };
 }

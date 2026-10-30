@@ -8,6 +8,7 @@ export type WorkspaceConflict = {
   base: unknown;
   local: unknown;
   remote: unknown;
+  graph?: true;
 };
 export type MergeChoices = Record<string, 'local' | 'remote'>;
 const collections = [
@@ -32,10 +33,20 @@ export function mergeWorkspace(base: Data, local: Data, remote: Data, choices: M
     b: unknown,
     l: unknown,
     r: unknown,
+    graph = false,
   ) => {
     const key = JSON.stringify([collection, id, field]);
     if (choices[key]) return choices[key] === 'local' ? l : r;
-    conflicts.push({ key, collection, id, field, base: b, local: l, remote: r });
+    conflicts.push({
+      key,
+      collection,
+      id,
+      field,
+      base: b,
+      local: l,
+      remote: r,
+      ...(graph ? { graph: true as const } : {}),
+    });
     return l;
   };
   const value = (
@@ -102,9 +113,16 @@ export function mergeWorkspace(base: Data, local: Data, remote: Data, choices: M
       rm = new Map(r.map((x) => [x.id, x]));
     const merged = new Map<string, unknown>();
     for (const id of new Set([...bm.keys(), ...lm.keys(), ...rm.keys()])) {
-      const bv = bm.get(id),
-        lv = lm.get(id),
+      const bv = bm.get(id);
+      let lv = lm.get(id),
         rv = rm.get(id);
+      // A global personnel edit may stamp the selected project without changing it.
+      // Its incidental timestamp must not turn a concurrent deletion into an edit conflict.
+      if (collection === 'projects' && bv && (!lv || !rv)) {
+        const content = (row: object) => ({ ...row, updatedAt: '' });
+        if (lv && same(content(lv), content(bv))) lv = bv;
+        if (rv && same(content(rv), content(bv))) rv = bv;
+      }
       const recordChoice = choices[JSON.stringify([collection, id, '$record'])];
       const next = recordChoice
         ? recordChoice === 'local'
@@ -148,7 +166,8 @@ export function mergeWorkspace(base: Data, local: Data, remote: Data, choices: M
       for (const id of new Set([...b.keys(), ...l.keys()])) {
         if (!same(b.get(id), l.get(id)) && !same(l.get(id), r.get(id))) {
           const key = JSON.stringify([collection, id, '$record']);
-          if (!choices[key]) conflict(collection, id, '$record', b.get(id), l.get(id), r.get(id));
+          if (!choices[key])
+            conflict(collection, id, '$record', b.get(id), l.get(id), r.get(id), true);
         }
       }
     }

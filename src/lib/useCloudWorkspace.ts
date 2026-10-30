@@ -5,13 +5,28 @@ import { cloudApi, cloudSession, CloudError, type CloudState, type CloudUser } f
 import {
   clearCloudDraft,
   claimDraftTab,
-  readCloudDraft,
+  recoverCloudDraft,
+  cloudDraftRecoveryPackage,
+  hasCloudDraftArchive,
+  retainCloudDraftSnapshot,
   writeCloudDraft,
   type CloudDraft,
 } from './cloud-drafts';
 import { mergeWorkspace, type MergeChoices, type WorkspaceConflict } from './workspace-merge';
 import type { SaveOptions } from './storage';
+import {
+  planWorkspaceSave,
+  holdsForFailure,
+  withholdResources,
+  releaseCorrectedHolds,
+  pendingSaveMessage,
+  resourceKey,
+  resourceValue,
+  reconcileWorkspaceView,
+  type SaveHold,
+} from './workspace-save-plan';
 export type SaveConflict = {
+  kind?: 'conflict' | 'validation';
   base: Data;
   local: Data;
   current: CloudState;
@@ -36,6 +51,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     [ready, setReady] = useState(false),
     [status, setStatus] = useState('正在读取'),
     [error, setError] = useState(''),
+    [draftRecoveryNotice, setDraftRecoveryNotice] = useState(''),
     [saveConflict, setSaveConflict] = useState<SaveConflict | null>(null);
   const current = useRef(data),
     baseline = useRef<CloudState | null>(null),
@@ -51,19 +67,36 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     working = useRef<Promise<void> | null>(null),
     journal = useRef<Promise<void>>(Promise.resolve()),
     review = useRef<SaveConflict | null>(null),
+    holds = useRef<SaveHold[]>([]),
+    recovering = useRef(false),
+    recoveryMessage = useRef(''),
+    retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
+    retryCount = useRef(0),
+    wake = useRef<() => Promise<void>>(() => Promise.resolve()),
+    initialized = useRef(false),
     alive = useRef(true);
-  const showReview = useCallback((s: CloudState, fields: WorkspaceConflict[], message?: string) => {
-    const value = { base: viewBase.current, local: current.current, current: s, fields };
-    review.current = value;
-    setSaveConflict(value);
-    baseline.current = s;
-    setSavedData(s.data);
-    setHistory(s.history);
-    blocked.current = true;
-    pending.current = true;
-    setStatus('保存冲突');
-    setError(message || '相同字段已被修改，未覆盖云端。草稿已自动保留，请核对冲突内容。');
-  }, []);
+  const showReview = useCallback(
+    (
+      s: CloudState,
+      fields: WorkspaceConflict[],
+      message?: string,
+      open = true,
+      kind: SaveConflict['kind'] = 'conflict',
+    ) => {
+      const value = { base: viewBase.current, local: current.current, current: s, fields, kind };
+      review.current = value;
+      setSaveConflict((previous) => (open || previous ? value : null));
+      baseline.current = s;
+      setSavedData(s.data);
+      setHistory(s.history);
+      pending.current = true;
+      setStatus(
+        kind === 'validation' ? '部分未保存' : recovering.current ? '草稿待恢复' : '保存冲突',
+      );
+      setError(message || '相同字段已被修改，未覆盖云端。草稿已自动保留，请核对冲突内容。');
+    },
+    [],
+  );
   const apply = useCallback((s: CloudState) => {
     validState(s);
     const d = prepareWorkspace(parseBackup(s.data));
@@ -91,6 +124,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
       mergeBase: viewBase.current,
       data: current.current,
       inFlight: inFlight.current,
+      ...(holds.current.length ? { holds: holds.current } : {}),
     };
     // Snapshot before queuing: a later edit must not alter the stored in-flight request.
     const copy = structuredClone(draft);
@@ -107,21 +141,43 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     return journal.current;
   }, []);
   const refresh = useCallback(async () => {
-    if (interacting() || pending.current || blocked.current) {
+    if (
+      !initialized.current ||
+      interacting() ||
+      working.current ||
+      inFlight.current ||
+      blocked.current
+    ) {
       remote.current = true;
       return;
     }
     const seq = sequence.current,
       s = validState(await cloudApi<CloudState>('/workspace'));
-    if (pending.current || blocked.current || seq !== sequence.current || interacting()) {
+    if (
+      working.current ||
+      inFlight.current ||
+      blocked.current ||
+      seq !== sequence.current ||
+      interacting()
+    ) {
       remote.current = true;
       return;
     }
     remote.current = false;
-    apply(s);
+    if (pending.current) {
+      baseline.current = s;
+      setSavedData(s.data);
+      setHistory(s.history);
+      const next = reconcileWorkspaceView(viewBase.current, current.current, s.data);
+      viewBase.current = next.base;
+      current.current = next.data;
+      setData(next.data);
+      void wake.current();
+    } else apply(s);
   }, [apply]);
   const persist = useCallback((): Promise<void> => {
     if (working.current) return working.current;
+    clearTimeout(retryTimer.current);
     const run = async () => {
       while (alive.current && pending.current && !blocked.current) {
         let created = false,
@@ -129,15 +185,51 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         try {
           if (!inFlight.current) {
             const s = baseline.current!;
-            const m = mergeWorkspace(viewBase.current, current.current, s.data);
-            if (m.conflicts.length) {
-              showReview(s, m.conflicts);
-              await stash();
+            const plan = planWorkspaceSave(
+              viewBase.current,
+              current.current,
+              s.data,
+              holds.current,
+            );
+            holds.current = plan.holds;
+            if (plan.conflicts.length) {
+              const first = !review.current;
+              showReview(s, plan.conflicts, undefined, first && !recovering.current);
+            } else if (review.current?.kind !== 'validation' && review.current) {
+              review.current = null;
+              setSaveConflict(null);
+            }
+            if (canonical(plan.data) === canonical(s.data)) {
+              pending.current = holds.current.length > 0;
+              if (pending.current) {
+                await stash();
+                setStatus(
+                  review.current && review.current.kind !== 'validation'
+                    ? recovering.current
+                      ? '草稿待恢复'
+                      : '保存冲突'
+                    : '部分未保存',
+                );
+                setError(
+                  recoveryMessage.current +
+                    pendingSaveMessage(holds.current, current.current, viewBase.current),
+                );
+              } else {
+                if (!interacting()) apply(s);
+                else remote.current = true;
+                await clearDraft();
+                retryCount.current = 0;
+                recovering.current = false;
+                recoveryMessage.current = '';
+                setStatus('已保存');
+                setError('');
+              }
               return;
             }
-            const d = prepareWorkspace(parseBackup(m.data));
+            const d = prepareWorkspace(parseBackup(plan.data));
             inFlight.current = {
-              view: current.current,
+              // Acknowledgement excludes withheld intent; it must remain in the durable draft.
+              view: plan.view,
               body: {
                 revision: s.revision,
                 base: s.data,
@@ -154,45 +246,88 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
           dispatched = true;
           const s = validState(await cloudApi<CloudState>('/workspace', 'PUT', sent.body));
           baseline.current = s;
-          viewBase.current = sent.view;
           inFlight.current = null;
           setSavedData(s.data);
           setHistory(s.history);
-          const m = mergeWorkspace(sent.view, current.current, s.data);
-          if (m.conflicts.length) {
-            showReview(s, m.conflicts);
-            await stash();
-            return;
-          }
-          // Only edits made after this request remain pending. Never resubmit a stale full snapshot.
-          pending.current = canonical(m.data) !== canonical(s.data);
+          const next = reconcileWorkspaceView(sent.view, current.current, s.data);
           if (!interacting()) {
-            current.current = prepareWorkspace(parseBackup(m.data));
-            viewBase.current = s.data;
-            setData(current.current);
-          } else remote.current = true; // Keep open forms' original baseline until they close/save.
-          if (pending.current) await stash();
-          else await clearDraft();
-          if (!pending.current) {
-            setStatus('已保存');
-            setError('');
+            current.current = next.data;
+            viewBase.current = next.base;
+            setData(next.data);
+          } else {
+            viewBase.current = sent.view;
+            remote.current = true;
           }
+          retryCount.current = 0;
+          await stash();
         } catch (e) {
           // A journal failure before a new request was dispatched is a known non-submission.
           // Retain older ambiguous requests, but do not later replay a never-sent stale edit.
           if (created && !dispatched) inFlight.current = null;
-          // A 4xx response is definitive; a transport/5xx error is ambiguous and must reuse the receipt ID.
-          if (e instanceof CloudError && e.status >= 400 && e.status < 500) inFlight.current = null;
+          // Transport failures, timeouts and temporary throttling keep the exact receipt.
+          const sent = inFlight.current;
+          const definitive =
+            e instanceof CloudError &&
+            e.status >= 400 &&
+            e.status < 500 &&
+            ![408, 425, 429].includes(e.status);
+          if (definitive) inFlight.current = null;
           if (e instanceof CloudError && e.status === 409 && e.details?.current) {
             const s = validState(e.details.current);
-            const m = mergeWorkspace(viewBase.current, current.current, s.data);
-            showReview(s, m.conflicts, e.message);
+            baseline.current = s;
+            setSavedData(s.data);
+            setHistory(s.history);
+            if (!interacting()) {
+              const next = reconcileWorkspaceView(viewBase.current, current.current, s.data);
+              viewBase.current = next.base;
+              current.current = next.data;
+              setData(next.data);
+            } else remote.current = true;
+            const plan = planWorkspaceSave(
+              viewBase.current,
+              current.current,
+              s.data,
+              holds.current,
+            );
+            holds.current = plan.holds;
+            if (plan.conflicts.length)
+              showReview(s, plan.conflicts, e.message, !review.current && !recovering.current);
+            else if (sent) {
+              const failed = holdsForFailure(sent.body.base, sent.body.data, e.message);
+              holds.current = [
+                ...new Map([...holds.current, ...failed].map((x) => [resourceKey(x), x])).values(),
+              ];
+            }
           } else {
             blocked.current =
-              e instanceof CloudError && [400, 401, 403, 409, 413].includes(e.status);
+              e instanceof CloudError &&
+              (e.status === 401 ||
+                (e.status === 403 && /登录|会话|来源|CSRF|基线|配置/.test(e.message)));
+            if (!blocked.current && sent && definitive && e instanceof CloudError) {
+              const details = e.details?.issues
+                ?.map((x) => `${x.path.join('.')}：${x.message}`)
+                .join('；');
+              const reason =
+                e.message +
+                (details
+                  ? `（${details}）`
+                  : e.status === 400
+                    ? '，请核对相关字段及前后端版本'
+                    : '');
+              const failed = holdsForFailure(
+                sent.body.base,
+                sent.body.data,
+                reason,
+                e.details?.issues,
+              );
+              holds.current = [
+                ...new Map([...holds.current, ...failed].map((x) => [resourceKey(x), x])).values(),
+              ];
+              if (!failed.length) blocked.current = true;
+            }
             setStatus(e instanceof CloudError && e.status === 409 ? '保存冲突' : '保存失败');
             setError(
-              `${e instanceof Error ? e.message : String(e)}。未丢弃草稿，请重试保存或核对云端；也可下载紧急备份。`,
+              `${recoveryMessage.current}${e instanceof Error ? e.message : String(e)}。未丢弃草稿，正在保留并核对待提交内容；也可下载紧急备份。`,
             );
           }
           try {
@@ -202,6 +337,11 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
               '浏览器无法保留草稿（存储受限或空间不足）。草稿仍在当前页面；请立即下载紧急备份，暂勿关闭页面。',
             );
           }
+          if (!blocked.current && definitive && holds.current.length) continue;
+          if (!blocked.current && alive.current) {
+            const delay = Math.min(30000, 1000 * 2 ** Math.min(retryCount.current++, 5));
+            retryTimer.current = setTimeout(() => void wake.current(), delay);
+          }
           return;
         }
       }
@@ -210,10 +350,12 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
       working.current = null;
     });
     return working.current;
-  }, [clearDraft, showReview, stash]);
+  }, [apply, clearDraft, showReview, stash]);
+  wake.current = persist;
   useEffect(() => {
     if (!enabled) return;
     alive.current = true;
+    initialized.current = false;
     let active = true,
       releaseTab = () => {},
       events: EventSource | undefined;
@@ -239,24 +381,54 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
             }
             releaseTab = lease.release;
             tab.current = lease.id;
-            return readCloudDraft(u.workspaceId, u.id, lease.id);
+            const loaded = await recoverCloudDraft(u.workspaceId, u.id, lease.id);
+            if (loaded.archived) {
+              lease.release();
+              sessionStorage.setItem('chunmo-cloud-draft-tab', crypto.randomUUID());
+              const replacement = await claimDraftTab();
+              if (!active) {
+                replacement.release();
+                return;
+              }
+              releaseTab = replacement.release;
+              tab.current = replacement.id;
+              setDraftRecoveryNotice(
+                '旧草稿结构需要核对，原始内容和恢复副本均已保留；当前云端数据仍可正常使用。',
+              );
+            }
+            return loaded.draft;
           })(),
         ]);
         if (!active) return;
         apply(s);
+        void hasCloudDraftArchive(u.workspaceId, u.id)
+          .then((exists) => {
+            if (active && exists)
+              setDraftRecoveryNotice(
+                '旧草稿结构需要核对，原始内容和恢复副本均已保留；当前云端数据仍可正常使用。',
+              );
+          })
+          .catch(() => {});
         if (draft) {
-          baseline.current = draft.base;
-          viewBase.current = draft.mergeBase;
-          current.current = draft.data;
+          baseline.current = s;
+          // An ambiguous receipt must replay against its original view. Otherwise advance
+          // untouched fields immediately, including while a genuine conflict stays pending.
+          const next = draft.inFlight
+            ? { base: draft.mergeBase, data: draft.data }
+            : reconcileWorkspaceView(draft.mergeBase, draft.data, s.data);
+          viewBase.current = next.base;
+          current.current = next.data;
           inFlight.current = draft.inFlight;
-          setData(draft.data);
+          holds.current = draft.holds ?? [];
+          setData(next.data);
           pending.current = true;
-          blocked.current = true;
+          blocked.current = false;
+          recovering.current = true;
+          recoveryMessage.current = '已恢复本账号的未提交草稿，正在自动核对和续传；';
           setStatus('草稿待恢复');
-          setError(
-            '已恢复本账号的未提交草稿，未覆盖云端。请重试保存或重新读取云端核对；其他账号无法载入此草稿。',
-          );
+          setError(recoveryMessage.current + '真正冲突的内容保留待核对，其他记录不受影响。');
         }
+        initialized.current = true;
         events = new EventSource('/api/events');
         events.addEventListener('open', () => window.dispatchEvent(new Event('chunmo-presence')));
         events.addEventListener('presence', () =>
@@ -287,6 +459,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
           window.dispatchEvent(new Event('chunmo-auth-expired'));
           events?.close();
         });
+        if (draft) void wake.current();
       })
       .catch((e) => {
         if (active) {
@@ -295,14 +468,31 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         }
       });
     const deferred = setInterval(() => {
-      if (remote.current && !pending.current && !blocked.current && !interacting())
+      if (
+        remote.current &&
+        !working.current &&
+        !inFlight.current &&
+        !blocked.current &&
+        !interacting()
+      )
         void refresh().catch((e) => setError(String(e)));
     }, 1000);
+    const resume = () => {
+      if (!initialized.current) return;
+      if (pending.current && !blocked.current) void wake.current();
+      else if (!blocked.current) void refresh().catch((e) => setError(String(e)));
+    };
+    window.addEventListener('online', resume);
+    window.addEventListener('focus', resume);
     return () => {
       active = false;
       alive.current = false;
+      initialized.current = false;
       releaseTab();
       clearInterval(deferred);
+      clearTimeout(retryTimer.current);
+      window.removeEventListener('online', resume);
+      window.removeEventListener('focus', resume);
       events?.close();
       window.removeEventListener('chunmo-profile-updated', profileUpdated);
     };
@@ -311,10 +501,12 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     (fn: (d: Data) => Data, options?: SaveOptions) => {
       if (!ready) return;
       if (exclusive.current) throw Error('请等待当前恢复或期限变更完成，再继续编辑');
-      if (blocked.current) throw Error('请先核对保存冲突或恢复草稿');
+      if (blocked.current)
+        throw Error('当前登录或保存基线不可用，请重新登录或核对云端；草稿已保留');
       if (options?.history || options?.source)
         throw Error('云空间请使用云端账号中的预览导入流程，不能覆盖整个空间');
       const d = prepareWorkspace(parseBackup(fn(current.current)));
+      holds.current = releaseCorrectedHolds(current.current, d, holds.current);
       current.current = d;
       setData(d);
       const seq = ++sequence.current;
@@ -398,6 +590,32 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
       if (m.conflicts.length) {
         showReview(s, m.conflicts);
         await stash();
+        await persist();
+        return;
+      }
+      if (holds.current.length) {
+        const fields = holds.current.map((item) => {
+          const id = item.collection === 'workspace' ? '' : item.id;
+          const field =
+            item.collection === 'workspace' ? item.id : item.id === '$order' ? 'order' : '$record';
+          return {
+            collection: item.collection,
+            id,
+            field,
+            key: JSON.stringify([item.collection, id, field]),
+            base: resourceValue(viewBase.current, item),
+            local: resourceValue(current.current, item),
+            remote: resourceValue(s.data, item),
+          };
+        });
+        showReview(
+          s,
+          fields,
+          '请修正失败记录，或明确选择采用云端内容；选择前会保留完整原草稿恢复副本。其他记录不受影响。',
+          true,
+          'validation',
+        );
+        await stash();
         return;
       }
       const d = prepareWorkspace(parseBackup(m.data));
@@ -421,15 +639,36 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     async (choices: MergeChoices) => {
       const r = review.current;
       if (!r || r.fields.some((f) => !choices[f.key])) throw Error('请为每个冲突字段选择保留内容');
-      const m = mergeWorkspace(r.base, r.local, r.current.data, choices);
+      const s = baseline.current!;
+      const u = profile.current!;
+      await stash();
+      await retainCloudDraftSnapshot(u.workspaceId, u.id, tab.current);
+      const selected =
+        r.kind === 'validation'
+          ? r.fields
+              .filter((f) => choices[f.key] === 'remote')
+              .map((f) => ({
+                collection: f.collection as SaveHold['collection'],
+                id: f.collection === 'workspace' ? f.field : f.id,
+              }))
+          : [];
+      const local = withholdResources(current.current, s.data, selected);
+      const m = mergeWorkspace(r.base, local, s.data, choices);
+      if (m.conflicts.length) {
+        showReview(s, m.conflicts);
+        await stash();
+        throw Error('云端又有相关修改，请核对新增冲突；全部草稿仍保留。');
+      }
       let d: Data;
       try {
         d = prepareWorkspace(parseBackup(m.data));
       } catch {
         throw Error('所选内容仍有日期或关联冲突，请核对对应云端记录，或先下载草稿备份。');
       }
-      baseline.current = r.current;
-      viewBase.current = r.current.data;
+      holds.current =
+        r.kind === 'validation' ? [] : holds.current.filter((x) => x.kind === 'validation');
+      baseline.current = s;
+      viewBase.current = withholdResources(s.data, viewBase.current, holds.current);
       current.current = d;
       setData(d);
       review.current = null;
@@ -440,7 +679,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
       ++sequence.current;
       await persist();
     },
-    [persist, stash],
+    [persist, showReview, stash],
   );
   useEffect(() => {
     if (!enabled) return;
@@ -461,15 +700,25 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     ready,
     status,
     error,
+    draftRecoveryNotice,
+    draftRecoveryPackage: async () => {
+      const u = profile.current;
+      if (!u) throw Error('请先登录原草稿所属账号');
+      await journal.current;
+      return cloudDraftRecoveryPackage(u.workspaceId, u.id);
+    },
     update,
     restoreVersion,
     retry: () => {
-      if (review.current) {
+      if (review.current && review.current.kind !== 'validation') {
         setSaveConflict(review.current);
         return Promise.resolve();
       }
       if (exclusive.current) return Promise.resolve();
+      review.current = null;
+      setSaveConflict(null);
       blocked.current = false;
+      holds.current = holds.current.filter((x) => x.kind === 'conflict');
       return working.current ? working.current.then(() => persist()) : persist();
     },
     hasUnsavedChanges: pending.current,

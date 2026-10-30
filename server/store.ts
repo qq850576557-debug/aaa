@@ -176,9 +176,17 @@ export async function commit(
     : undefined;
   if (opts?.restoreId && (!a.owner || !restore))
     throw new ApiError(a.owner ? 404 : 403, '无权恢复或版本不存在');
-  let d = opts?.restoreId
-    ? restoreBefore(prior.data, prior.history, opts.restoreId)
-    : prepareWorkspace(opts?.deadlineChange ? prior.data : input);
+  let d: Data;
+  if (opts?.restoreId) {
+    try {
+      d = restoreBefore(prior.data, prior.history, opts.restoreId);
+    } catch {
+      throw new ApiError(
+        409,
+        '该历史版本与现有人员、工序或任务关联不兼容；未恢复、未覆盖任何数据，请核对相关记录',
+      );
+    }
+  } else d = prepareWorkspace(opts?.deadlineChange ? prior.data : input);
   if (opts?.deadlineChange) {
     if (!a.owner) throw new ApiError(403, '采购期限变更仅限负责人');
     const x = opts.deadlineChange;
