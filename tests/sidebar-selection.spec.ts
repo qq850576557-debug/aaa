@@ -41,6 +41,7 @@ for (const width of [1440, 390])
       for (const hover of [false, true]) {
         if (hover) await selected.hover();
         else await page.mouse.move(width - 5, 10);
+        expect(await selected.evaluate((el) => el.matches(':hover'))).toBe(hover);
         await expect(selected).toHaveCSS(
           'background-color',
           hover ? 'rgb(217, 232, 222)' : 'rgb(229, 239, 232)',
@@ -57,6 +58,13 @@ for (const width of [1440, 390])
           const ink = luminance(field.color),
             contrast = (Math.max(bg, ink) + 0.05) / (Math.min(bg, ink) + 0.05);
           expect(contrast, `${field.text} must remain legible`).toBeGreaterThanOrEqual(4.5);
+        }
+        if (project.id === 'sidebar-second') {
+          const label = hover ? 'hover' : 'default';
+          await page
+            .locator('.sidebar-project-list')
+            .screenshot({ path: `/tmp/chunmo-sidebar-cards-${label}-${width}.png` });
+          await page.screenshot({ path: `/tmp/chunmo-sidebar-${label}-${width}.png` });
         }
       }
     }

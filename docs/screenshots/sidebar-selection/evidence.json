@@ -1,0 +1,109 @@
+{
+  "mode": "production build preview, isolated local test accounts",
+  "states": [
+    {
+      "width": 1440,
+      "state": "default",
+      "background": "rgb(229, 239, 232)",
+      "hover": false,
+      "fields": [
+        {
+          "text": "云杉庭 · 二号工地",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "剩余 59 天",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "待排期",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "10.30 — 12.28",
+          "color": "rgb(54, 91, 70)"
+        }
+      ],
+      "minimumContrast": 6.508102268139014,
+      "stylesheets": ["/assets/index-B1S5kbpZ.css"]
+    },
+    {
+      "width": 1440,
+      "state": "hover",
+      "background": "rgb(217, 232, 222)",
+      "hover": true,
+      "fields": [
+        {
+          "text": "云杉庭 · 二号工地",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "剩余 59 天",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "待排期",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "10.30 — 12.28",
+          "color": "rgb(54, 91, 70)"
+        }
+      ],
+      "minimumContrast": 6.035528159025458,
+      "stylesheets": ["/assets/index-B1S5kbpZ.css"]
+    },
+    {
+      "width": 390,
+      "state": "default",
+      "background": "rgb(229, 239, 232)",
+      "hover": false,
+      "fields": [
+        {
+          "text": "云杉庭 · 二号工地",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "剩余 59 天",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "待排期",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "10.30 — 12.28",
+          "color": "rgb(54, 91, 70)"
+        }
+      ],
+      "minimumContrast": 6.508102268139014,
+      "stylesheets": ["/assets/index-B1S5kbpZ.css"]
+    },
+    {
+      "width": 390,
+      "state": "hover",
+      "background": "rgb(217, 232, 222)",
+      "hover": true,
+      "fields": [
+        {
+          "text": "云杉庭 · 二号工地",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "剩余 59 天",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "待排期",
+          "color": "rgb(54, 91, 70)"
+        },
+        {
+          "text": "10.30 — 12.28",
+          "color": "rgb(54, 91, 70)"
+        }
+      ],
+      "minimumContrast": 6.035528159025458,
+      "stylesheets": ["/assets/index-B1S5kbpZ.css"]
+    }
+  ]
+}

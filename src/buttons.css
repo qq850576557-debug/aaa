@@ -25,7 +25,7 @@ summary {
   border-radius: var(--button-radius);
 }
 button.primary,
-button:is(.active, .selected, [aria-pressed='true'], [aria-selected='true']),
+button:is(.active, .selected, [aria-pressed='true'], [aria-selected='true']):not(.project-select),
 input[type='submit'] {
   background-color: #245346 !important;
   color: #fff !important;
