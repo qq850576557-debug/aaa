@@ -118,7 +118,7 @@ export function mergeWorkspace(base: Data, local: Data, remote: Data, choices: M
     }
     const ids = (xs: typeof b) => xs.map((x) => x.id).filter((id) => merged.has(id));
     let order = ids(r);
-    if (collection === 'projects') {
+    if (collection === 'projects' || collection === 'people') {
       const common = b.map((x) => x.id).filter((id) => lm.has(id) && rm.has(id));
       const ordered = (xs: typeof b) => xs.map((x) => x.id).filter((id) => common.includes(id));
       const bo = ordered(b),

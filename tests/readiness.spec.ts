@@ -33,15 +33,15 @@ test('trade assignment reuses IDs and synchronizes multiple workers and personne
   await boot(page);
   await restore(page, d);
   await closeToast(page);
-  await page.getByRole('button', { name: '安排水电改造施工人员', exact: true }).click();
+  await page.getByRole('button', { name: '编辑水电改造', exact: true }).click();
   const f = page.getByRole('dialog');
   await f.getByLabel('分配施工人员张师傅', { exact: true }).check();
   await f.getByLabel('分配施工人员李师傅', { exact: true }).check();
   await f.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).trades[1].staffIds).toEqual(['w0', 'w1']);
-  await expect(page.getByRole('button', { name: '安排水电改造施工人员' })).toContainText(
-    '张师傅、李师傅',
-  );
+  await expect(
+    page.getByRole('button', { name: '编辑水电改造' }).locator('.trade-workers'),
+  ).toContainText('张师傅、李师傅');
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   const card = page.locator('[data-person-id="w0"]');
   await card.locator('.staff-projects summary').click();

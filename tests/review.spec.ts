@@ -14,7 +14,7 @@ test('review: color and editors are nonblocking panels; confirmation remains mod
   await restore(page);
   await closeToast(page);
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
-  await page.getByRole('button', { name: '设置水电改造颜色', exact: true }).click();
+  await page.getByRole('button', { name: '编辑水电改造', exact: true }).click({ button: 'right' });
   let panel = page.getByRole('dialog');
   await expect(panel).toHaveAttribute('aria-modal', 'false');
   expect(await panel.evaluate((e) => e.matches(':modal'))).toBe(false);

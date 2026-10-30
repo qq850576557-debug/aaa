@@ -1,4 +1,4 @@
-import { projectTradeColor } from '../src/lib/project-themes';
+import { resolvedTradeColor } from '../src/lib/trade-colors';
 import { expect, type Page, type Locator } from '@playwright/test';
 import { emptyData, newProject, defaultTrades, id, type Data } from '../src/lib/model';
 export function fixture(): Data {
@@ -91,6 +91,36 @@ export function fixture(): Data {
   ];
   return d;
 }
+export function peopleTradeFixture(): Data {
+  const d = fixture();
+  d.people = Array.from({ length: 8 }, (_, i) => ({
+    id: `person-${i}`,
+    name: `师傅${i + 1}`,
+    role: '施工人员',
+    trade: '旧木工',
+    active: true,
+    notes: `人员备注${i + 1}`,
+    tradeIds: i === 0 ? ['worker-wood', 'stage-wood'] : [],
+  }));
+  for (const [i, role] of (['项目经理', '设计人员', '监理'] as const).entries())
+    d.people.push({
+      id: `role-${i}`,
+      name: role + '甲',
+      role,
+      trade: '',
+      active: true,
+      notes: '',
+      tradeIds: [],
+    });
+  d.dictionaries = [
+    { id: 'worker-wood', kind: 'trade', label: '木工', active: true, order: 0 },
+    { id: 'worker-duplicate', kind: 'trade', label: ' 木作工 ', active: true, order: 1 },
+    { id: 'stage-wood', kind: 'trade', label: '木工吊顶', active: true, order: 2 },
+  ];
+  d.trades[1].staffIds = ['person-0', 'role-0', 'role-1', 'role-2'];
+  d.trades[1].personnel = { worker: '旧施工登记', manager: '原经理', designer: '原设计' };
+  return d;
+}
 export async function state(page: Page): Promise<Data> {
   return page.evaluate(async () => {
     return await new Promise((resolve, reject) => {
@@ -136,9 +166,8 @@ export async function editTask(page: Page, target: Locator) {
 }
 
 export async function displayedTradeRGB(page: Page, raw: string) {
-  const hue = await page
-    .locator('.app-shell')
-    .evaluate((e) => Number(getComputedStyle(e).getPropertyValue('--project-hue')));
-  const hex = projectTradeColor(hue, raw);
+  const data = await state(page);
+  const trade = data.trades.find((g) => g.color === raw);
+  const hex = trade ? resolvedTradeColor(trade) : raw;
   return `rgb(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)})`;
 }

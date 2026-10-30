@@ -59,6 +59,8 @@ export function projectThemeStyle(theme: ReturnType<typeof projectTheme>): CSSPr
     '--project-border': theme.border,
     '--project-surface': theme.surface,
     '--project-tag': theme.tag,
+    '--project-selected': theme.selected,
+    '--project-selected-hover': theme.selectedHover,
   } as CSSProperties;
 }
 export function ProjectSurface({

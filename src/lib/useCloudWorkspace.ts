@@ -19,7 +19,7 @@ export type SaveConflict = {
 };
 const interacting = () =>
   !!document.querySelector(
-    'dialog[open],.task-bar.dragging,.range-preview,.trade-row.sorting,.project-card.sorting',
+    'dialog[open],.task-bar.dragging,.range-preview,.trade-row.sorting,.project-card.sorting,.person-card.sorting',
   );
 const validState = (s: CloudState) => {
   if (!/^[a-f0-9]{64}$/i.test(s.baseProof || ''))
@@ -28,11 +28,11 @@ const validState = (s: CloudState) => {
   validateHistory(s.history);
   return s;
 };
-export function useCloudWorkspace(enabled: boolean) {
+export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
   const [data, setData] = useState<Data>(emptyData),
     [savedData, setSavedData] = useState<Data>(emptyData),
     [history, setHistory] = useState(emptyHistory),
-    [user, setUser] = useState<CloudUser | null>(null),
+    [user, setUser] = useState<CloudUser | null>(initialUser ?? null),
     [ready, setReady] = useState(false),
     [status, setStatus] = useState('正在读取'),
     [error, setError] = useState(''),
@@ -222,21 +222,25 @@ export function useCloudWorkspace(enabled: boolean) {
       setUser((previous) => (previous?.id === next?.id ? next : previous));
     };
     window.addEventListener('chunmo-profile-updated', profileUpdated);
-    void cloudSession()
+    // The gate has just verified this identity against the server. Reuse it only
+    // for this mount; no workspace snapshot or cross-login session cache is kept.
+    void (initialUser ? Promise.resolve(initialUser) : cloudSession())
       .then(async (u) => {
         if (!active) return;
-        const lease = await claimDraftTab();
-        if (!active) {
-          lease.release();
-          return;
-        }
-        releaseTab = lease.release;
         profile.current = u;
-        tab.current = lease.id;
         setUser(u);
         const [s, draft] = await Promise.all([
           cloudApi<CloudState>('/workspace').then(validState),
-          readCloudDraft(u.workspaceId, u.id, tab.current),
+          (async () => {
+            const lease = await claimDraftTab();
+            if (!active) {
+              lease.release();
+              return;
+            }
+            releaseTab = lease.release;
+            tab.current = lease.id;
+            return readCloudDraft(u.workspaceId, u.id, lease.id);
+          })(),
         ]);
         if (!active) return;
         apply(s);
@@ -302,7 +306,7 @@ export function useCloudWorkspace(enabled: boolean) {
       events?.close();
       window.removeEventListener('chunmo-profile-updated', profileUpdated);
     };
-  }, [enabled, apply, refresh]);
+  }, [enabled, initialUser, apply, refresh]);
   const update = useCallback(
     (fn: (d: Data) => Data, options?: SaveOptions) => {
       if (!ready) return;

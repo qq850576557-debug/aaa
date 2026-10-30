@@ -1,6 +1,5 @@
 import { edgeScrollSpeed, timelineWheelDelta } from '../lib/gantt-scroll';
-import { useProjectTheme } from './ProjectThemes';
-import { projectTradeColor } from '../lib/project-themes';
+import { resolvedTradeColor, tradeTone } from '../lib/trade-colors';
 import { ganttGroups, resizeGanttGroup, type GanttGroup } from '../lib/gantt-groups';
 import { DateField } from './DateField';
 import { timelineRange, timelineWindow } from '../lib/timeline';
@@ -65,8 +64,7 @@ export function Gantt({
   onReorder,
   onColor,
 }: Props) {
-  const theme = useProjectTheme(project.id);
-  const tradeColor = (g: Trade) => projectTradeColor(theme.hue, g.color);
+  const tradeColor = resolvedTradeColor;
   const [touchLayout, setTouchLayout] = useState(
     () => window.matchMedia('(max-width: 700px)').matches,
   );
@@ -498,7 +496,7 @@ export function Gantt({
               data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id),
             );
             const rows = lanes(groups) as GanttGroup[][];
-            const height = Math.max(touchLayout ? 124 : 84, rows.length * laneHeight + 20);
+            const height = Math.max(touchLayout ? 96 : 84, rows.length * laneHeight + 20);
             return (
               <div
                 key={g.id}
@@ -526,16 +524,6 @@ export function Gantt({
               >
                 <div
                   className="sticky-label trade-label"
-                  draggable
-                  onDragStart={(e) => {
-                    if ((e.target as HTMLElement).closest('button:not(.drag-handle), summary')) {
-                      e.preventDefault();
-                      return;
-                    }
-                    e.dataTransfer.setData('text/plain', g.id);
-                    e.dataTransfer.effectAllowed = 'move';
-                    setDraggedTrade(g.id);
-                  }}
                   onDragEnd={() => {
                     setDraggedTrade(null);
                     setDropBefore(null);
@@ -548,7 +536,10 @@ export function Gantt({
                   >
                     <Plus size={14} />
                   </button>
-                  <div className="trade-title">
+                  <div
+                    className="trade-title trade-info-card"
+                    style={{ background: tradeTone(tradeColor(g), 0.88) }}
+                  >
                     <button
                       className="drag-handle"
                       draggable
@@ -607,32 +598,29 @@ export function Gantt({
                       <GripVertical size={17} />
                     </button>
                     <button
-                      className="trade-color"
-                      aria-label={`设置${g.name}颜色`}
-                      style={{ background: tradeColor(g) }}
-                      onClick={(e) =>
-                        onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget })
-                      }
-                    />
-                    <button
+                      className="trade-summary"
                       aria-label={`编辑${g.name}`}
+                      style={{ background: 'transparent' }}
                       onClick={() => onTrade(g)}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget });
+                      }}
                       title="编辑工种"
+                      aria-description="右键可快速配色"
                     >
                       <span>{g.name}</span>
                       <small>
                         {groups.reduce((n, t) => n + duration(t.start, t.end), 0)} 任务天
                       </small>
+                      <span
+                        className="trade-workers"
+                        title={assignedNames(data, g, '施工人员') || '未安排'}
+                      >
+                        师傅：{assignedNames(data, g, '施工人员') || '未安排'}
+                      </span>
                     </button>
                   </div>
-                  <button
-                    className="trade-workers"
-                    aria-label={`安排${g.name}施工人员`}
-                    title={assignedNames(data, g, '施工人员') || '未安排'}
-                    onClick={() => onTrade(g)}
-                  >
-                    师傅：{assignedNames(data, g, '施工人员') || '未安排'}
-                  </button>
                 </div>
                 <div
                   className="track"

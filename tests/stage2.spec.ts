@@ -200,7 +200,7 @@ test('trade drag sorting has a drop line, inserts inline, and live color persist
   await m.getByRole('button', { name: '保存', exact: true }).click();
   const names = (await state(page)).trades.sort((a, b) => a.order - b.order).map((t) => t.name);
   expect(names.indexOf('成品保护') + 1).toBe(names.indexOf('水电改造'));
-  await page.getByRole('button', { name: '设置水电改造颜色', exact: true }).click();
+  await page.getByRole('button', { name: '编辑水电改造', exact: true }).click({ button: 'right' });
   m = page.getByRole('dialog');
   await expect(m.locator('.w-color-wheel')).toBeVisible();
   await m.getByLabel('自定义颜色', { exact: true }).fill('#244e42');

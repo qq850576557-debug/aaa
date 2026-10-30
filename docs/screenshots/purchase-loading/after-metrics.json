@@ -1,0 +1,536 @@
+{
+  "phase": "after",
+  "baseline": "7bcf668a25c71942df244492790cfe6e42b85959",
+  "samplesPerNetwork": 5,
+  "data": {
+    "projects": 1,
+    "tasks": 3,
+    "purchases": 12
+  },
+  "results": [
+    {
+      "network": "loopback",
+      "readyMs": 450,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 20,
+          "durationMs": 8,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 23,
+          "durationMs": 38,
+          "bytes": 175584
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 23,
+          "durationMs": 13,
+          "bytes": 30334
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 150,
+          "durationMs": 19,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 201,
+          "durationMs": 26,
+          "bytes": 312
+        },
+        {
+          "name": "/favicon.ico",
+          "startMs": 215,
+          "durationMs": 12,
+          "bytes": 0
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 255,
+          "durationMs": 9,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 256,
+          "durationMs": 30,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 346,
+          "durationMs": 8,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "readyMs": 386,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 14,
+          "durationMs": 5,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 14,
+          "durationMs": 15,
+          "bytes": 30334
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 14,
+          "durationMs": 32,
+          "bytes": 175584
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 116,
+          "durationMs": 13,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 157,
+          "durationMs": 12,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 239,
+          "durationMs": 15,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 240,
+          "durationMs": 24,
+          "bytes": 21840
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "readyMs": 381,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 14,
+          "durationMs": 5,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 15,
+          "durationMs": 30,
+          "bytes": 175584
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 15,
+          "durationMs": 12,
+          "bytes": 30334
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 141,
+          "durationMs": 13,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 143,
+          "durationMs": 7,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 242,
+          "durationMs": 14,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 244,
+          "durationMs": 20,
+          "bytes": 21840
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "readyMs": 399,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 15,
+          "durationMs": 7,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 15,
+          "durationMs": 36,
+          "bytes": 175584
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 18,
+          "durationMs": 14,
+          "bytes": 30334
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 133,
+          "durationMs": 14,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 184,
+          "durationMs": 12,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 259,
+          "durationMs": 18,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 260,
+          "durationMs": 19,
+          "bytes": 21840
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "readyMs": 390,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 12,
+          "durationMs": 4,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 13,
+          "durationMs": 30,
+          "bytes": 175584
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 13,
+          "durationMs": 11,
+          "bytes": 30334
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 109,
+          "durationMs": 13,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 159,
+          "durationMs": 9,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 239,
+          "durationMs": 12,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 240,
+          "durationMs": 18,
+          "bytes": 21840
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2125,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 167,
+          "durationMs": 204,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 168,
+          "durationMs": 1216,
+          "bytes": 175584
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 168,
+          "durationMs": 481,
+          "bytes": 30334
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1434,
+          "durationMs": 161,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1640,
+          "durationMs": 164,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1641,
+          "durationMs": 380,
+          "bytes": 21840
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2133,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 168,
+          "durationMs": 211,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 168,
+          "durationMs": 1223,
+          "bytes": 175584
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 168,
+          "durationMs": 496,
+          "bytes": 30334
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1471,
+          "durationMs": 161,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1647,
+          "durationMs": 173,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1648,
+          "durationMs": 381,
+          "bytes": 21840
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2164,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 164,
+          "durationMs": 201,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 165,
+          "durationMs": 486,
+          "bytes": 30334
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 165,
+          "durationMs": 1213,
+          "bytes": 175584
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1440,
+          "durationMs": 163,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1663,
+          "durationMs": 165,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1664,
+          "durationMs": 382,
+          "bytes": 21840
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2239,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 175,
+          "durationMs": 215,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 176,
+          "durationMs": 1222,
+          "bytes": 175584
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 176,
+          "durationMs": 488,
+          "bytes": 30334
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1502,
+          "durationMs": 166,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1734,
+          "durationMs": 167,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1735,
+          "durationMs": 383,
+          "bytes": 21840
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2228,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 168,
+          "durationMs": 202,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-CrXGBUl7.js",
+          "startMs": 169,
+          "durationMs": 1215,
+          "bytes": 175584
+        },
+        {
+          "name": "/assets/index-DkESYbzr.css",
+          "startMs": 170,
+          "durationMs": 478,
+          "bytes": 30334
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1443,
+          "durationMs": 167,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1687,
+          "durationMs": 162,
+          "bytes": 15
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1691,
+          "durationMs": 383,
+          "bytes": 21840
+        }
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "width": 1440,
+      "card": {
+        "x": 248,
+        "y": 486.125,
+        "width": 578,
+        "height": 190.296875
+      },
+      "toolbar": {
+        "x": 248,
+        "y": 438.125,
+        "width": 1168,
+        "height": 1249.78125
+      }
+    },
+    {
+      "width": 1280,
+      "card": {
+        "x": 248,
+        "y": 486.125,
+        "width": 498,
+        "height": 190.296875
+      },
+      "toolbar": {
+        "x": 248,
+        "y": 438.125,
+        "width": 1008,
+        "height": 1249.78125
+      }
+    },
+    {
+      "width": 390,
+      "card": {
+        "x": 12,
+        "y": 807.6875,
+        "width": 366,
+        "height": 242.296875
+      },
+      "toolbar": {
+        "x": 12,
+        "y": 672.09375,
+        "width": 366,
+        "height": 3175.15625
+      }
+    },
+    {
+      "width": 320,
+      "card": {
+        "x": 12,
+        "y": 920.390625,
+        "width": 296,
+        "height": 260.296875
+      },
+      "toolbar": {
+        "x": 12,
+        "y": 784.796875,
+        "width": 296,
+        "height": 3391.15625
+      }
+    }
+  ]
+}

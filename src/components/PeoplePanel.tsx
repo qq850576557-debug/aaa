@@ -3,20 +3,30 @@ import { ConflictPanel } from './ConflictPanel';
 import { categoryName, tradeNames } from '../lib/dictionaries';
 import { staffWork } from '../lib/readiness';
 import { useCurrentDate } from '../lib/useCurrentDate';
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
-import { ChevronRight, Palette, UserRound } from 'lucide-react';
-import { ColorControls } from './ColorPopover';
+import { useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import {
-  id,
-  personSchema,
-  palette,
-  usedNames,
-  tradeNames as standardTrades,
-  type Data,
-  type Person,
-  type DictionaryItem,
-} from '../lib/model';
+  ChevronRight,
+  Palette,
+  UserRound,
+  Search,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
+} from 'lucide-react';
+import { ColorControls } from './ColorPopover';
+import { id, personSchema, usedNames, type Data, type Person } from '../lib/model';
 import { Confirm, Modal } from './Modal';
+import { WorkerTradePicker } from './WorkerTradePicker';
+import { DictionaryPanel } from './DictionaryPanel';
+import {
+  workerTradeChoices,
+  workerCatalog,
+  reorderPeople,
+  workerTradeColor,
+} from '../lib/worker-trades';
+import { usePeopleSort } from '../lib/usePeopleSort';
+import { useReorderMotion } from '../lib/useReorderMotion';
+import './people-trades.css';
 export function PeoplePanel({
   data,
   onChange,
@@ -60,21 +70,17 @@ export function PeoplePanel({
   const now = useCurrentDate();
   const people = data.people ?? [];
   const names = data.nameHistory ?? usedNames(data);
-  const tradeOptions = useMemo<DictionaryItem[]>(() => {
-    const existing = (data.dictionaries ?? []).filter((x) => x.kind === 'trade');
-    return [
-      ...existing,
-      ...[...new Set([...standardTrades, ...data.trades.map((g) => g.name)])]
-        .filter((name) => !existing.some((x) => x.label === name))
-        .map((label, i) => ({
-          id: id(),
-          kind: 'trade' as const,
-          label,
-          active: true,
-          order: existing.length + i,
-        })),
-    ];
-  }, [data.dictionaries, data.trades]);
+  const [manageTrades, setManageTrades] = useState(false);
+  const tradeOptions = workerTradeChoices(data);
+  const grid = useRef<HTMLDivElement>(null);
+  const sort = usePeopleSort(grid, (source, before) => {
+    try {
+      onChange((d) => reorderPeople(d, source, before));
+      setError('');
+    } catch (e) {
+      setError(String(e));
+    }
+  });
   const add = (name = '') => {
     setError('');
     setEditing({ id: id(), name, role: '施工人员', trade: '', notes: '', active: true });
@@ -87,7 +93,7 @@ export function PeoplePanel({
         ...d,
         dictionaries: [
           ...(d.dictionaries ?? []),
-          ...tradeOptions.filter(
+          ...workerCatalog(d).filter(
             (x) =>
               p.tradeIds?.includes(x.id) && !(d.dictionaries ?? []).some((old) => old.id === x.id),
           ),
@@ -129,12 +135,23 @@ export function PeoplePanel({
   const registered = people.filter(
     (p) => !p.deleted && `${p.name}${categoryName(data, p)}${tradeNames(data, p)}`.includes(filter),
   );
+  useReorderMotion(grid, '.person-card[data-person-id]', registered.map((p) => p.id).join('|'));
   const tradesFor = (person: Person) =>
     person.tradeIds?.length
-      ? person.tradeIds.map((key) => ({
-          key: 'id:' + key,
-          label: data.dictionaries?.find((x) => x.id === key)?.label ?? key,
-        }))
+      ? [
+          ...new Map(
+            person.tradeIds.map((key) => {
+              const group = tradeOptions.find((x) => x.ids.includes(key));
+              return [
+                group?.id || key,
+                {
+                  key: 'id:' + (group?.id || key),
+                  label: group?.label || data.dictionaries?.find((x) => x.id === key)?.label || key,
+                },
+              ];
+            }),
+          ).values(),
+        ]
       : [{ key: 'name:' + person.trade, label: person.trade || '未设置工种' }];
   const cardTrades = [
     ...new Map(
@@ -144,14 +161,7 @@ export function PeoplePanel({
         .map((x) => [x.key, x]),
     ).values(),
   ];
-  const defaultCardColor = (key: string, label: string) =>
-    data.trades.find((x) => x.name === label)?.color ??
-    palette[
-      Math.max(
-        0,
-        cardTrades.findIndex((x) => x.key === key),
-      ) % palette.length
-    ];
+  const defaultCardColor = (_key: string, label: string) => workerTradeColor(label);
   const openColor = (key = cardTrades[0]?.key) => {
     const trade = cardTrades.find((x) => x.key === key);
     if (!trade) return;
@@ -162,11 +172,18 @@ export function PeoplePanel({
   return (
     <section className="panel people-panel">
       <div className="section-heading">
-        <div>
-          <h2>人员档案</h2>
-          <p>统一维护人员，并分配至项目、工种或施工任务。</p>
-        </div>
+        <h2>人员档案</h2>
+        <label className="people-search">
+          <Search size={16} />
+          <input
+            aria-label="搜索人员"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="姓名、类别或工种"
+          />
+        </label>
         <div className="toolbar">
+          <button onClick={() => setManageTrades(true)}>工种管理</button>
           <button onClick={() => openColor()} disabled={!cardTrades.length}>
             <Palette size={15} />
             工种配色
@@ -180,28 +197,81 @@ export function PeoplePanel({
         手机号、出生日期等私密资料未开放采集。云端私密 API
         由服务端授权；本地资料不具备账号权限隔离。历史与普通备份不含这些字段。
       </p>
-      <label className="form-field">
-        搜索人员
-        <input
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="姓名、类别或工种"
-        />
-      </label>
+      {error && !editing && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
       <AssessmentPanel data={data} isCloud={isCloud} />
       <ConflictPanel data={data} />
-      <div className="people-grid">
-        {registered.map((p) => {
+      <div className="people-grid" ref={grid}>
+        {registered.map((p, index) => {
           const trades = tradesFor(p),
             first = trades[0];
           const color = cardColors[first.key] || defaultCardColor(first.key, first.label);
           return (
             <article
-              className="person-card"
+              className={`person-card ${sort.source === p.id ? 'sorting' : ''} ${sort.source && sort.marker?.target === p.id && p.id !== sort.source ? 'person-drop-' + sort.marker.edge + (sort.marker.vertical ? ' person-drop-vertical' : '') : ''}`}
               key={p.id}
               data-person-id={p.id}
               style={{ '--person-color': color } as CSSProperties}
             >
+              <div className="person-sort-toolbar" role="group" aria-label={`排序人员${p.name}`}>
+                <button
+                  className="person-sort-handle"
+                  aria-label={`拖动人员${p.name}`}
+                  title="拖动排序；也可按 Alt + 上下方向键"
+                  onPointerDown={(e) => sort.start(e, p.id)}
+                  onPointerMove={sort.move}
+                  onPointerUp={sort.end}
+                  onPointerCancel={sort.cancel}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.altKey && ['ArrowUp', 'ArrowDown'].includes(e.key)) {
+                      e.preventDefault();
+                      const i = e.key === 'ArrowUp' ? index - 1 : index + 2;
+                      if (
+                        (e.key === 'ArrowUp' && index > 0) ||
+                        (e.key === 'ArrowDown' && index < registered.length - 1)
+                      ) {
+                        try {
+                          onChange((d) => reorderPeople(d, p.id, registered[i]?.id ?? null));
+                        } catch (err) {
+                          setError(String(err));
+                        }
+                      }
+                    }
+                  }}
+                >
+                  <GripVertical size={16} />
+                </button>
+                <button
+                  aria-label={`上移人员${p.name}`}
+                  disabled={index === 0}
+                  onClick={() => {
+                    try {
+                      onChange((d) => reorderPeople(d, p.id, registered[index - 1].id));
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                >
+                  <ArrowUp size={14} />
+                </button>
+                <button
+                  aria-label={`下移人员${p.name}`}
+                  disabled={index === registered.length - 1}
+                  onClick={() => {
+                    try {
+                      onChange((d) => reorderPeople(d, p.id, registered[index + 2]?.id ?? null));
+                    } catch (e) {
+                      setError(String(e));
+                    }
+                  }}
+                >
+                  <ArrowDown size={14} />
+                </button>
+              </div>
               <button
                 className="person-card-open"
                 aria-label={`打开人员档案：${p.name}`}
@@ -416,36 +486,12 @@ export function PeoplePanel({
                   ))}
                 </select>
               </label>
-              <fieldset className="span2">
-                <legend>所属工种多选</legend>
-                {tradeOptions
-                  .filter(
-                    (x) =>
-                      x.kind === 'trade' &&
-                      !x.deleted &&
-                      (x.active || editing.tradeIds?.includes(x.id)),
-                  )
-                  .map((x) => (
-                    <label className="check" key={x.id}>
-                      <input
-                        type="checkbox"
-                        aria-label={`人员工种${x.label}`}
-                        checked={editing.tradeIds?.includes(x.id) ?? false}
-                        disabled={!x.active && !editing.tradeIds?.includes(x.id)}
-                        onChange={(e) =>
-                          setEditing({
-                            ...editing,
-                            tradeIds: e.target.checked
-                              ? [...(editing.tradeIds ?? []), x.id]
-                              : (editing.tradeIds ?? []).filter((id) => id !== x.id),
-                          })
-                        }
-                      />
-                      {x.label}
-                      {!x.active ? '（停用）' : ''}
-                    </label>
-                  ))}
-              </fieldset>
+              <WorkerTradePicker
+                data={data}
+                value={editing.tradeIds ?? []}
+                onChange={(tradeIds) => setEditing({ ...editing, tradeIds })}
+                onManage={() => setManageTrades(true)}
+              />
               <label className="check span2">
                 <input
                   type="checkbox"
@@ -560,6 +606,9 @@ export function PeoplePanel({
             setDeleting(null);
           }}
         />
+      )}
+      {manageTrades && (
+        <DictionaryPanel data={data} onChange={onChange} onClose={() => setManageTrades(false)} />
       )}
     </section>
   );

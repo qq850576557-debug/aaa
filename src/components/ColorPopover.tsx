@@ -3,6 +3,7 @@ import Wheel from '@uiw/react-color-wheel';
 import { hexToHsva, hsvaToHex } from '@uiw/color-convert';
 import { Modal, type Anchor } from './Modal';
 import { palette, type Trade } from '../lib/model';
+import { defaultTradeColor, resolvedTradeColor } from '../lib/trade-colors';
 export function ColorControls({
   color,
   defaultColor,
@@ -112,16 +113,17 @@ export function ColorPopover({
   trade: Trade;
   recent: string[];
   anchor: Anchor;
-  onChange: (color: string) => void;
+  onChange: (color: string, final?: boolean) => void;
   onClose: () => void;
 }) {
   const initial = useRef(trade.color);
-  const [draft, setDraft] = useState(trade.color);
+  const [draft, setDraft] = useState(resolvedTradeColor(trade));
+  const edited = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   const flush = () => {
     clearTimeout(timer.current);
-    if (/^#[0-9a-fA-F]{6}$/.test(draft) && draft !== trade.color) onChange(draft);
+    if (edited.current && /^#[0-9a-fA-F]{6}$/.test(draft)) onChange(draft, true);
   };
   const close = () => {
     flush();
@@ -131,7 +133,7 @@ export function ColorPopover({
     <Modal
       title={`${trade.name} · 工种颜色`}
       className="color-panel"
-      subtitle="项目统一色相 · 即时保存工种深浅"
+      subtitle="独立工种配色 · 完成后同步工作空间内同名工序"
       anchor={anchor}
       onClose={close}
     >
@@ -139,9 +141,10 @@ export function ColorPopover({
         <ColorControls
           compact
           color={draft}
-          defaultColor={trade.defaultColor}
+          defaultColor={defaultTradeColor(trade.name) || trade.defaultColor}
           recent={recent}
           onChange={(color) => {
+            edited.current = true;
             setDraft(color);
             clearTimeout(timer.current);
             if (/^#[0-9a-fA-F]{6}$/.test(color))
@@ -153,7 +156,7 @@ export function ColorPopover({
         <button
           onClick={() => {
             clearTimeout(timer.current);
-            onChange(initial.current);
+            if (edited.current && trade.color !== initial.current) onChange(initial.current);
             onClose();
           }}
         >

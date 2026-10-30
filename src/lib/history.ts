@@ -101,6 +101,7 @@ const fields: Record<string, string> = {
   staffIds: '人员关联',
   categoryId: '人员类别',
   tradeIds: '人员工种',
+  usage: '工种用途',
   label: '选项名称',
   kind: '类型',
   due: '采购截止日期',
@@ -148,6 +149,17 @@ export function differences(a: Snapshot, b: Snapshot): Change[] {
             after: printable(b.data[key]),
           });
       }
+    const beforeIds = (a.data.people ?? []).map((p) => p.id),
+      afterIds = (b.data.people ?? []).map((p) => p.id);
+    const commonBefore = beforeIds.filter((key) => afterIds.includes(key)),
+      commonAfter = afterIds.filter((key) => beforeIds.includes(key));
+    if (canonical(commonBefore) !== canonical(commonAfter))
+      result.push({
+        module: '人员档案',
+        label: '人员显示顺序',
+        before: printable(commonBefore),
+        after: printable(commonAfter),
+      });
   } else if (a.kind === 'project' && b.kind === 'project') {
     for (const [key, module] of [
       ['projects', '项目资料'],

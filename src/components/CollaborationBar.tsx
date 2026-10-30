@@ -44,7 +44,7 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
   return (
     <div className="collaboration-bar">
       {card && user && <PersonalCard user={user} onClose={() => setCard(false)} />}
-      <div className="current-account">
+      <div className="current-account" role="group" aria-label="当前登录账号">
         {user && (
           <button
             className="personal-avatar-button"

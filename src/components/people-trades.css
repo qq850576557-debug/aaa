@@ -1,0 +1,286 @@
+/* Personnel views use the same control tokens and soft surfaces as procurement. */
+.app-shell .people-panel > .section-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.people-panel > .section-heading > h2 {
+  margin: 0;
+  white-space: nowrap;
+}
+.people-panel > .section-heading > .toolbar {
+  margin-left: auto;
+}
+.people-search,
+.worker-trade-picker .worker-picker-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--ui-border, #dbe5dc);
+  background: #fafcfb;
+  border-radius: var(--button-radius);
+  padding: 0 11px;
+  min-height: 36px;
+  min-width: 0;
+}
+.people-search {
+  flex: 0 1 230px;
+  width: 230px;
+  margin: 0;
+}
+.people-search > svg,
+.worker-picker-search > svg {
+  flex-shrink: 0;
+}
+.people-search input,
+.worker-picker-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 7px 0;
+  background: transparent;
+  box-shadow: none;
+}
+.people-search:focus-within,
+.worker-picker-search:focus-within {
+  border-color: #739f84;
+  box-shadow: 0 0 0 2px #739f841f;
+}
+.worker-trade-picker {
+  border: 1px solid #dce6de;
+  border-radius: 12px;
+  padding: 12px;
+  min-width: 0;
+}
+.worker-trade-picker legend {
+  font-size: 14px;
+  padding-inline: 5px;
+}
+.worker-picker-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.worker-picker-tools > input,
+.worker-picker-search {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.worker-picker-tools button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 13px;
+  padding: 7px 10px;
+  min-height: 36px;
+}
+.worker-trade-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 7px;
+  max-height: 208px;
+  overflow: auto;
+  padding: 3px;
+  overscroll-behavior: contain;
+}
+.worker-trade-options label.check {
+  margin: 0;
+  border: 1px solid #e2e9e3;
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: #f7faf7;
+  align-items: center;
+  justify-content: flex-start;
+  color: #34523e;
+  min-height: 38px;
+  font-size: 13px;
+}
+.worker-trade-options label.chosen {
+  background: #e0eee3;
+  border-color: #9ab9a3;
+}
+.worker-trade-options input {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  margin: 0;
+}
+.worker-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.worker-selected button,
+.worker-legacy-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+.worker-legacy-tag {
+  background: #f1f2ee;
+  color: #687468;
+}
+.worker-trade-picker > small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #65766c;
+  margin-block: 6px;
+}
+.worker-trade-manager {
+  max-width: 660px;
+}
+.worker-trade-manager .modal-body > p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #62756a;
+}
+.worker-manager-list {
+  max-height: 440px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.worker-manager-list .dictionary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 4px;
+  border-bottom: 1px solid #e4ebe6;
+}
+.worker-manager-list small {
+  display: block;
+  margin-top: 3px;
+  color: #6c7b70;
+  font-size: 12px;
+}
+.worker-manager-list .toolbar {
+  gap: 5px;
+}
+.worker-manager-list button {
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+.people-grid {
+  position: relative;
+}
+.app-shell .people-panel .person-card {
+  position: relative;
+  gap: 7px;
+  padding: 14px;
+}
+.person-sort-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+.person-sort-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-height: 30px;
+  padding: 5px;
+  border-radius: 8px;
+}
+.person-sort-toolbar .person-sort-handle {
+  margin-right: auto;
+  cursor: grab;
+  touch-action: none;
+}
+.person-sort-toolbar .person-sort-handle:active {
+  cursor: grabbing;
+  scale: 1;
+}
+.person-card.sorting {
+  opacity: 0.32;
+  outline: 1px dashed #7d9f87;
+}
+.person-card.person-drop-before,
+.person-card.person-drop-after {
+  background: #f1f7f2;
+}
+.person-card.person-drop-before::before,
+.person-card.person-drop-after::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 4px;
+  border-radius: 3px;
+  background: #245346;
+  z-index: 3;
+  pointer-events: none;
+}
+.person-card.person-drop-before::before {
+  left: -9px;
+}
+.person-card.person-drop-after::after {
+  right: -9px;
+}
+.app-shell .people-panel .person-sort-ghost {
+  opacity: 0.94;
+  box-shadow: 0 16px 36px #21463130;
+  border-color: #4c7e5d;
+  margin: 0;
+  transition: none !important;
+}
+@media (max-width: 700px) {
+  .worker-trade-options label.check,
+  .trade-editor .worker-multiple label.check {
+    min-height: 40px;
+  }
+  .people-search {
+    flex: 1 1 155px;
+    width: auto;
+  }
+  .people-panel > .section-heading > .toolbar {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+  .worker-picker-tools button,
+  .worker-manager-list button {
+    min-height: 40px;
+  }
+  .person-sort-toolbar button {
+    width: 38px;
+    min-height: 38px;
+  }
+  .worker-manager-list {
+    max-height: 48vh;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .people-search,
+  .worker-picker-search {
+    transition: none;
+  }
+}
+.person-card.person-drop-vertical.person-drop-before::before {
+  left: 0;
+  right: 0;
+  top: -9px;
+  bottom: auto;
+  width: auto;
+  height: 4px;
+}
+.person-card.person-drop-vertical.person-drop-after::after {
+  left: 0;
+  right: 0;
+  bottom: -9px;
+  top: auto;
+  width: auto;
+  height: 4px;
+}

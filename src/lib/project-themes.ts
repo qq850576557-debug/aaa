@@ -1,4 +1,4 @@
-import { hexToHsva, hsvaToHex } from '@uiw/color-convert';
+import { hsvaToHex } from '@uiw/color-convert';
 export const projectHues = [145, 212, 31, 272, 180, 335, 72, 240, 8];
 export type ProjectHues = Record<string, number>;
 export function allocateProjectHues(
@@ -32,17 +32,9 @@ export function projectTheme(hue = projectHues[0]) {
     border: hex(18, 79),
     surface: hex(7, 97),
     tag: hex(17, 91),
+    selected: hex(22, 92),
+    selectedHover: hex(24, 89),
   };
-}
-export function projectTradeColor(hue: number, raw: string) {
-  const color = hexToHsva(raw);
-  return hsvaToHex({
-    ...color,
-    h: hue,
-    s: Math.max(24, Math.min(58, color.s)),
-    v: Math.max(42, Math.min(78, color.v)),
-    a: 1,
-  });
 }
 export function readProjectHues(raw: string | null): ProjectHues {
   try {

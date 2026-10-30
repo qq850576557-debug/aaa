@@ -131,7 +131,7 @@ test('conflicts: task dates and personnel allocation synchronize both directions
     );
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await expect(
-    page.getByRole('button', { name: '安排水电改造施工人员', exact: true }),
+    page.getByRole('button', { name: '编辑水电改造', exact: true }).locator('.trade-workers'),
   ).toContainText('未安排');
   await closeToast(page);
   await page.getByRole('button', { name: '版本历史 · 15天', exact: true }).click();
@@ -147,7 +147,7 @@ test('conflicts: task dates and personnel allocation synchronize both directions
   await history.getByRole('button', { name: '关闭', exact: true }).click();
   await expect(page.locator('.conflict-panel')).toContainText('张师傅');
   await expect(
-    page.getByRole('button', { name: '安排水电改造施工人员', exact: true }),
+    page.getByRole('button', { name: '编辑水电改造', exact: true }).locator('.trade-workers'),
   ).toContainText('张师傅');
   expect((await state(page)).tasks.find((t) => t.id === 't2')).toEqual(
     d.tasks.find((t) => t.id === 't2'),
@@ -183,12 +183,12 @@ test('V4 new personnel can select standard trades without a dictionary managemen
   await page.getByRole('button', { name: '新增人员', exact: true }).click();
   const f = page.getByRole('dialog', { name: '新增人员档案' });
   await f.getByLabel('姓名', { exact: true }).fill('新水电师傅');
-  await f.getByLabel('人员工种水电改造', { exact: true }).check();
+  await f.getByLabel('人员工种水电工', { exact: true }).check();
   await f.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).people!.length).toBe(2);
   const d = await state(page),
     p = d.people!.find((p) => p.name === '新水电师傅')!;
-  expect(d.dictionaries?.find((t) => t.id === p.tradeIds![0])?.label).toBe('水电改造');
+  expect(d.dictionaries?.find((t) => t.id === p.tradeIds![0])?.label).toBe('水电工');
   expect(d.people![0].trade).toBe('旧水电');
-  await expect(page.locator(`[data-person-id="${p.id}"]`)).toContainText('水电改造');
+  await expect(page.locator(`[data-person-id="${p.id}"]`)).toContainText('水电工');
 });

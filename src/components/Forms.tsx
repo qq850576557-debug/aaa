@@ -1,9 +1,10 @@
-import { useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
 import { Confirm, Modal, type Anchor } from './Modal';
 import { DateField } from './DateField';
 import { StaffPicker } from './StaffPicker';
 import { ColorControls } from './ColorPopover';
+import { defaultTradeColor, resolvedTradeColor } from '../lib/trade-colors';
 import {
   dateOK,
   duration,
@@ -46,7 +47,7 @@ export function Editor({
   edit: Edit;
   data: Data;
   onClose: () => void;
-  onSave: (kind: Edit['kind'], v: Entity) => void;
+  onSave: (kind: Edit['kind'], v: Entity, intent?: { colorChanged?: boolean }) => void;
   onDelete?: () => void;
   onCopy?: () => void;
   onContinue?: (t: Task) => void;
@@ -58,9 +59,16 @@ export function Editor({
     ...edit.value,
     ...(edit.kind === 'project' ? { status: projectStatus(edit.value.status) } : {}),
     ...(edit.kind === 'purchase' ? { due: purchaseDue(edit.value, data) } : {}),
+    ...(edit.kind === 'trade'
+      ? {
+          color: resolvedTradeColor(edit.value),
+          defaultColor: edit.value.defaultColor,
+        }
+      : {}),
   };
   const [v, set] = useState<Record<string, unknown>>(initial);
   const [error, setError] = useState('');
+  const colorChanged = useRef(false);
   const uid = useId();
   const [discard, setDiscard] = useState(false);
   const dirty = JSON.stringify(v) !== JSON.stringify(initial);
@@ -159,6 +167,7 @@ export function Editor({
   const peopleFields = ['task', 'trade'].includes(edit.kind) && (
     <StaffPicker
       data={data}
+      workersOnly={edit.kind === 'trade'}
       value={(v.staffIds as string[] | undefined) ?? []}
       onChange={(ids) => change('staffIds', ids)}
     />
@@ -191,7 +200,7 @@ export function Editor({
       }
       if (kind === 'note' && !payload.taskId) delete payload.taskId;
       const value = schemas[kind].parse(payload);
-      onSave(kind, value);
+      onSave(kind, value, { colorChanged: kind === 'trade' && colorChanged.current });
       if (again && kind === 'task' && onContinue) {
         onContinue(value as Task);
       } else onClose();
@@ -295,11 +304,15 @@ export function Editor({
           <summary>
             工种颜色 <i style={{ background: String(v.color) }} /> <span>{String(v.color)}</span>
           </summary>
+          <small>手动更色并保存后，同步当前工作空间内同名工序；不调整日期或人员。</small>
           <ColorControls
             color={String(v.color)}
-            defaultColor={String(v.defaultColor)}
+            defaultColor={defaultTradeColor(String(v.name)) || String(v.defaultColor)}
             recent={data.recentColors}
-            onChange={(color) => change('color', color)}
+            onChange={(color) => {
+              colorChanged.current = true;
+              change('color', color);
+            }}
           />
         </details>
       </>

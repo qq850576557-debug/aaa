@@ -3251,3 +3251,88 @@ test('avatar: high-detail photo fits unchanged DB bound, duplicate concurrency i
     stored.rows[0].version,
   );
 });
+
+test('trade colors and personnel order: real concurrent saves preserve fields, shared reads, audit history, dictionary references and competing order protection', async () => {
+  testClientIp = '203.0.113.219';
+  const { a, b, f } = await setup();
+  const d = data();
+  const first = d.people![0];
+  d.people = [first, ...['乙', '丙', '丁'].map((name) => ({ ...first, id: randomUUID(), name }))];
+  d.dictionaries = [
+    { id: 'worker-old', kind: 'trade', label: '木工', active: true, order: 0 },
+    { id: 'stage-old', kind: 'trade', label: '木工吊顶', active: true, order: 1 },
+  ];
+  d.people[0].tradeIds = ['worker-old', 'stage-old'];
+  assert.equal((await request('/workspace', 'PUT', { revision: 0, data: d }, a)).status, 200);
+  const [sa, sb] = await Promise.all([workspaceBase(a), workspaceBase(b)]);
+  const results = await Promise.all([
+    request(
+      '/workspace',
+      'PUT',
+      submission(sa, (x) => {
+        x.trades[0].color = '#d65d42';
+      }),
+      a,
+    ),
+    request(
+      '/workspace',
+      'PUT',
+      submission(sb, (x) => {
+        x.people = [x.people![3], ...x.people!.slice(0, 3)];
+      }),
+      b,
+    ),
+  ]);
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [200, 200],
+  );
+  const shared = await workspaceBase(b);
+  assert.equal(shared.data.trades[0].color, '#d65d42');
+  assert.deepEqual(
+    shared.data.people!.map((p: { id: string }) => p.id),
+    [d.people[3].id, ...d.people.slice(0, 3).map((p) => p.id)],
+  );
+  assert.deepEqual(shared.data.tasks, d.tasks);
+  for (const p of shared.data.people!)
+    assert.deepEqual(
+      p,
+      d.people.find((x) => x.id === p.id),
+    );
+  assert.deepEqual(shared.data.trades[0].staffIds, d.trades[0].staffIds);
+  assert(
+    shared.history.records.some((r: any) => r.changes.some((c: any) => c.label === '人员显示顺序')),
+  );
+  const freshLogin = await login(f.employee, f.password);
+  assert.deepEqual((await workspaceBase(freshLogin)).data, shared.data);
+  const [s1, s2] = await Promise.all([workspaceBase(a), workspaceBase(freshLogin)]);
+  const competing = await Promise.all([
+    request(
+      '/workspace',
+      'PUT',
+      submission(s1, (x) => {
+        const p = x.people!.pop()!;
+        x.people!.unshift(p);
+      }),
+      a,
+    ),
+    request(
+      '/workspace',
+      'PUT',
+      submission(s2, (x) => {
+        const p = x.people!.splice(1, 1)[0];
+        x.people!.unshift(p);
+      }),
+      freshLogin,
+    ),
+  ]);
+  assert.deepEqual(competing.map((r) => r.status).sort(), [200, 409]);
+  const failed = await competing.find((r) => r.status === 409)!.json();
+  assert(failed.conflicts.some((c: any) => c.collection === 'people' && c.field === 'order'));
+  const beforeBad = await workspaceBase(a);
+  const invalid = submission(beforeBad, (x) => {
+    x.dictionaries = [];
+  });
+  assert.equal((await request('/workspace', 'PUT', invalid, a)).status, 400);
+  assert.deepEqual((await workspaceBase(a)).data, beforeBad.data);
+});

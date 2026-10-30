@@ -86,7 +86,7 @@ for (const width of [320, 375, 390, 430]) {
         }),
       );
       for (const row of geometry) {
-        expect(row.row.height).toBeGreaterThanOrEqual(124);
+        expect(row.row.height).toBeGreaterThanOrEqual(96);
         expect(row.label.width).toBeGreaterThanOrEqual(162);
         expect(row.label.width).toBeLessThanOrEqual(190);
         expect(row.nameOverflows).toBe(false);
@@ -133,7 +133,7 @@ test('V1.1 desktop keeps compact rows while mobile reorder and task details rema
   await closeToast(page);
   await expect(page.locator('.trade-row').first()).toHaveCSS('height', '84px');
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '124px');
+  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '96px');
   const before = await state(page),
     first = before.trades[0];
   await page

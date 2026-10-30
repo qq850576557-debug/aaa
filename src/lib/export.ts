@@ -1,5 +1,5 @@
 import { ganttGroups } from './gantt-groups';
-import { projectTradeColor } from './project-themes';
+import { resolvedTradeColor } from './trade-colors';
 import {
   days,
   distance,
@@ -92,8 +92,7 @@ export async function schedulePNG(
       .sort((a, b) => a.order - b.order)
       .map((g) => ({
         ...g,
-        color:
-          options.themeHue === undefined ? g.color : projectTradeColor(options.themeHue, g.color),
+        color: resolvedTradeColor(g),
       })),
     tasks = data.tasks.filter((t) => t.projectId === project.id);
   const groups = trades.map((g) => ({

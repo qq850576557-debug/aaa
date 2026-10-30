@@ -136,7 +136,7 @@ export function CloudGate() {
     <>
       {mounted && (
         <div hidden={!user} inert={!user}>
-          <App />
+          <App initialUser={prior.current!} />
         </div>
       )}
       {!user && (

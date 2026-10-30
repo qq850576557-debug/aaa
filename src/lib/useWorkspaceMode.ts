@@ -1,10 +1,10 @@
 import { useLocalWorkspace } from './useWorkspace';
 import { useCloudWorkspace } from './useCloudWorkspace';
-import { inCloud } from './cloud';
-export function useWorkspace() {
+import { inCloud, type CloudUser } from './cloud';
+export function useWorkspace(initialUser?: CloudUser) {
   const cloud = inCloud(),
     local = useLocalWorkspace(!cloud),
-    remote = useCloudWorkspace(cloud);
+    remote = useCloudWorkspace(cloud, initialUser);
   return cloud
     ? remote
     : {

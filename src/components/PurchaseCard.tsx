@@ -1,8 +1,5 @@
 import { projectThemeStyle, useProjectTheme } from './ProjectThemes';
-import { useState } from 'react';
-import { Modal } from './Modal';
-import { cloudApi } from '../lib/cloud';
-import { Check, Pencil, Trash2, History } from 'lucide-react';
+import { Check, Pencil, Trash2 } from 'lucide-react';
 import {
   purchaseDue,
   purchaseComplete,
@@ -18,8 +15,6 @@ export function PurchaseCard({
   onStatus,
   onDelete,
   canReopen = true,
-  isCloud = false,
-  tracking,
   showProject = true,
 }: {
   purchase: Purchase;
@@ -29,29 +24,8 @@ export function PurchaseCard({
   onStatus: (status: Purchase['status']) => void;
   onDelete?: () => void;
   canReopen?: boolean;
-  isCloud?: boolean;
   showProject?: boolean;
-  tracking?: {
-    createdName?: string;
-    createdAt?: string;
-    updatedName?: string;
-    updatedAt?: string;
-    completedName?: string;
-    completedAt?: string;
-  };
 }) {
-  const [history, setHistory] = useState<{
-      events: {
-        actorName: string;
-        at: string;
-        operation: string;
-        before?: Purchase;
-        after?: Purchase;
-      }[];
-    } | null>(null),
-    [error, setError] = useState('');
-  const time = (v?: string) =>
-    v ? new Date(v).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '历史信息未知';
   const due = purchaseDue(p, data),
     done = purchaseComplete(p);
   return (
@@ -63,19 +37,13 @@ export function PurchaseCard({
       <div className="purchase-main">
         <div className="purchase-card-title">
           <strong>{p.name}</strong>
-          <span className="purchase-status-tag">{p.status}</span>
         </div>
-        <small>
-          {showProject && (
-            <span className="purchase-project-tag">
-              {data.projects.find((x) => x.id === p.projectId)?.name}
-            </span>
-          )}
-          {due} 前采购
-        </small>
-        <span className={`deadline-countdown ${!done && due < now ? 'red' : ''}`}>
-          {done ? '采购已完成' : remainingTime(due, now)}
-        </span>
+        <div className="purchase-meta">
+          <small>{due} 前采购</small>
+          <span className={`deadline-countdown ${!done && due < now ? 'red' : ''}`}>
+            {done ? '采购已完成' : remainingTime(due, now)}
+          </span>
+        </div>
         {p.owner && <small className="purchase-responsible">负责人：{p.owner}</small>}
         {(p.quantity || p.specification) && (
           <small>
@@ -101,6 +69,17 @@ export function PurchaseCard({
           <option>已完成</option>
           {p.status === '已到货' && <option>已到货</option>}
         </select>
+        {onDelete && (
+          <button className="purchase-delete" aria-label={`删除采购${p.name}`} onClick={onDelete}>
+            <Trash2 size={14} />
+            删除
+          </button>
+        )}
+        {showProject && (
+          <span className="purchase-project-tag">
+            {data.projects.find((x) => x.id === p.projectId)?.name}
+          </span>
+        )}
         <button className="purchase-edit" onClick={onEdit} aria-label={`编辑采购${p.name}`}>
           <Pencil size={14} />
           编辑
@@ -115,69 +94,7 @@ export function PurchaseCard({
             完成
           </button>
         )}
-        {onDelete && (
-          <button className="purchase-delete" aria-label={`删除采购${p.name}`} onClick={onDelete}>
-            <Trash2 size={14} />
-            删除
-          </button>
-        )}
-        {isCloud && (
-          <button
-            className="purchase-history"
-            onClick={() => {
-              setError('');
-              void cloudApi<NonNullable<typeof history>>(
-                '/purchase-records/' + encodeURIComponent(p.id) + '/history',
-              )
-                .then(setHistory)
-                .catch((e) => setError(String(e)));
-            }}
-          >
-            <History size={14} />
-            采购历史
-          </button>
-        )}
       </div>
-      {isCloud && (
-        <details className="purchase-trace" open>
-          <summary>责任与时间</summary>
-          <p>
-            创建：{tracking?.createdName || '历史记录未知'} · {time(tracking?.createdAt)}
-          </p>
-          <p>
-            最后修改：{tracking?.updatedName || '历史记录未知'} · {time(tracking?.updatedAt)}
-          </p>
-          {tracking?.completedAt && (
-            <p>
-              最近完成：{tracking.completedName} · {time(tracking.completedAt)}
-            </p>
-          )}
-        </details>
-      )}
-      {error && <p role="alert">{error}</p>}
-      {history && (
-        <Modal title={`采购历史 · ${p.name}`} onClose={() => setHistory(null)}>
-          <div className="modal-body">
-            {history.events.length ? (
-              history.events.map((e, i) => (
-                <article key={i}>
-                  <strong>
-                    {e.operation} · {e.actorName}
-                  </strong>
-                  <p>
-                    {time(e.at)} · {e.before?.status || '无'} → {e.after?.status || '已删除'}
-                  </p>
-                </article>
-              ))
-            ) : (
-              <p>该历史采购尚无可信操作记录。</p>
-            )}
-          </div>
-          <footer className="modal-foot">
-            <button onClick={() => setHistory(null)}>关闭</button>
-          </footer>
-        </Modal>
-      )}
     </article>
   );
 }

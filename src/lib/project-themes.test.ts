@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { hexToHsva } from '@uiw/color-convert';
-import {
-  allocateProjectHues,
-  projectTheme,
-  projectTradeColor,
-  readProjectHues,
-} from './project-themes';
+import { allocateProjectHues, projectTheme, readProjectHues } from './project-themes';
 describe('presentation-only project palettes', () => {
   it('allocates distinct initial themes and keeps IDs stable on reorder/add/remove/history reads', () => {
     const projects = Array.from({ length: 6 }, (_, i) => ({ id: 'site-' + i }));
@@ -19,18 +14,13 @@ describe('presentation-only project palettes', () => {
     expect(readProjectHues(JSON.stringify(reduced))).toEqual(reduced);
     expect(projects).toEqual(original);
   });
-  it('uses one project hue for surfaces and task tones while preserving raw trade colors', () => {
+  it('uses a project hue only for project surfaces; trade colors remain independent', () => {
     const raw = ['#244e42', '#8d779f', '#b6a074'],
       copy = [...raw];
     for (const hue of [145, 212, 31, 272]) {
       const theme = projectTheme(hue);
       const rgbHue = (hex: string) => hexToHsva(hex).h;
-      for (const c of [
-        theme.base,
-        theme.ink,
-        theme.tag,
-        ...raw.map((c) => projectTradeColor(hue, c)),
-      ])
+      for (const c of [theme.base, theme.ink, theme.tag])
         expect(Math.abs(rgbHue(c) - hue)).toBeLessThan(3);
     }
     expect(raw).toEqual(copy);

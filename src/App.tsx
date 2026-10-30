@@ -1,18 +1,23 @@
 import { ThemedWorkspace } from './components/ProjectThemes';
 import { WorkspaceSaveConflict } from './components/WorkspaceSaveConflict';
+import { DeferredPanel } from './components/ModuleBoundary';
 import { mergeWorkspace } from './lib/workspace-merge';
 import { BriefPanel } from './components/BriefPanel';
 import { ProjectContext } from './components/ProjectContext';
 import { projectAgenda } from './lib/agenda';
-import { RecordBoard } from './components/RecordBoard';
-import { cloudApi } from './lib/cloud';
-import { MaterialsPanel, MaterialAlertSummary } from './components/MaterialsPanel';
-import { nextTradeColor } from './lib/trade-colors';
+import type { CloudUser } from './lib/cloud';
+import {
+  nextTradeColor,
+  saveSharedTradeColor,
+  newProjectTrades,
+  initialStageColor,
+  defaultTradeColor,
+} from './lib/trade-colors';
 import { CloudControl } from './components/CloudControl';
 import { ConflictPanel } from './components/ConflictPanel';
 import { scheduleForecast } from './lib/readiness';
 import { CollaborationBar } from './components/CollaborationBar';
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
   Archive,
@@ -42,7 +47,6 @@ import { PurchaseCard } from './components/PurchaseCard';
 import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
 import { HistoryPanel } from './components/HistoryPanel';
 import { GLOBAL_SCOPE, workspaceContent, parseArchive, type History } from './lib/history';
-import { PeoplePanel } from './components/PeoplePanel';
 import { useCurrentDate } from './lib/useCurrentDate';
 import { savePurchase, confirmPurchaseDeadline } from './lib/procurement';
 import { Gantt } from './components/Gantt';
@@ -68,7 +72,6 @@ import {
   reorderProjects,
   rememberNames,
   usedNames,
-  defaultTrades,
   id,
   isHistorical,
   newProject,
@@ -109,7 +112,19 @@ const navigation: [View, string, ReactNode][] = [
   ['completed', '已完工项目', <Archive size={19} />],
   ['people', '人员管理', <Users size={19} />],
 ];
-export default function App() {
+const RecordBoard = lazy(() =>
+  import('./components/RecordBoard').then((m) => ({ default: m.RecordBoard })),
+);
+const MaterialsPanel = lazy(() =>
+  import('./components/MaterialsPanel').then((m) => ({ default: m.MaterialsPanel })),
+);
+const MaterialAlertSummary = lazy(() =>
+  import('./components/MaterialsPanel').then((m) => ({ default: m.MaterialAlertSummary })),
+);
+const PeoplePanel = lazy(() =>
+  import('./components/PeoplePanel').then((m) => ({ default: m.PeoplePanel })),
+);
+export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const {
     data,
     savedData,
@@ -129,7 +144,7 @@ export default function App() {
     saveConflict,
     resolveSaveConflict,
     dismissSaveConflict,
-  } = useWorkspace();
+  } = useWorkspace(initialUser);
   const [historyOpen, setHistoryOpen] = useState<{ scope: string; anchor?: Anchor } | null>(null);
   const [navExpanded, setNavExpanded] = useState(() => {
     try {
@@ -180,19 +195,6 @@ export default function App() {
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [purchaseFilter, setPurchaseFilter] = useState('全部');
-  const [purchaseTracking, setPurchaseTracking] = useState<Record<string, any>>({});
-  useEffect(() => {
-    if (!isCloud) return;
-    let active = true;
-    void cloudApi<{ records: any[] }>('/purchase-records')
-      .then((r) => {
-        if (active) setPurchaseTracking(Object.fromEntries(r.records.map((x) => [x.id, x])));
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [isCloud, data.purchases, status]);
   const { notices, notify, dismiss } = useNotices();
   const [exporting, setExporting] = useState(false);
   const [backup, setBackup] = useState(false);
@@ -261,7 +263,7 @@ export default function App() {
         : '工期已保存，可撤销。',
     );
   }
-  function save(kind: Edit['kind'], value: Entity) {
+  function save(kind: Edit['kind'], value: Entity, intent?: { colorChanged?: boolean }) {
     if (kind === 'purchase') {
       const purchase = value as Purchase;
       mutate((d) => savePurchase(d, purchase), purchase.projectId);
@@ -294,16 +296,27 @@ export default function App() {
         return {
           ...d,
           projects: exists ? d.projects.map((p) => (p.id === v.id ? v : p)) : [...d.projects, v],
-          trades: exists ? d.trades : [...d.trades, ...defaultTrades(v.id)],
+          trades: exists ? d.trades : [...d.trades, ...newProjectTrades(d, v.id)],
         };
       }
       if (kind === 'trade' && !d.trades.some((t) => t.id === value.id)) {
-        const next = insertTrade(d, value as Trade);
+        const g = value as Trade;
+        const inserted = intent?.colorChanged
+          ? g
+          : {
+              ...g,
+              color: initialStageColor(d, g.name, g.color),
+              defaultColor: defaultTradeColor(g.name) || g.defaultColor,
+            };
+        const next = insertTrade(d, inserted);
+        const colored = intent?.colorChanged
+          ? saveSharedTradeColor(next, value.id, inserted.color)
+          : next;
         return {
-          ...next,
+          ...colored,
           recentColors: [
-            (value as Trade).color,
-            ...next.recentColors.filter((c) => c !== (value as Trade).color),
+            inserted.color,
+            ...next.recentColors.filter((c) => c !== inserted.color),
           ].slice(0, 12),
         };
       }
@@ -321,7 +334,9 @@ export default function App() {
           (value as Trade).color,
           ...d.recentColors.filter((c) => c !== (value as Trade).color),
         ].slice(0, 12);
-      return next;
+      return kind === 'trade' && intent?.colorChanged
+        ? saveSharedTradeColor(next, value.id, (value as Trade).color)
+        : next;
     }, pid);
     if (kind === 'project') {
       setSelected(pid);
@@ -600,9 +615,7 @@ export default function App() {
         now={now}
         onEdit={() => purchaseEditor(x)}
         onDelete={() => deleteEntity({ kind: 'purchase', value: x })}
-        isCloud={isCloud}
         canReopen={!isCloud || !!cloudUser?.owner}
-        tracking={purchaseTracking[x.id]}
         showProject={view === 'reminders' || view === 'purchases'}
         onStatus={(status) => save('purchase', { ...x, due: purchaseDue(x, data), status })}
       />
@@ -1033,7 +1046,9 @@ export default function App() {
             </div>
           ) : view === 'records' ? (
             <>
-              <RecordBoard projects={data.projects} isCloud={isCloud} />
+              <DeferredPanel>
+                <RecordBoard projects={data.projects} isCloud={isCloud} />
+              </DeferredPanel>
               <details
                 id="daily-records"
                 className="daily-records panel"
@@ -1130,18 +1145,24 @@ export default function App() {
             <>
               {reminderItems()}
               {isCloud && (
-                <MaterialAlertSummary
-                  onOpen={() => {
-                    setMaterialTab(5);
-                    go('materials');
-                  }}
-                />
+                <DeferredPanel>
+                  <MaterialAlertSummary
+                    onOpen={() => {
+                      setMaterialTab(5);
+                      go('materials');
+                    }}
+                  />
+                </DeferredPanel>
               )}
             </>
           ) : view === 'materials' ? (
-            <MaterialsPanel data={data} isCloud={isCloud} initialTab={materialTab} />
+            <DeferredPanel key="materials">
+              <MaterialsPanel data={data} isCloud={isCloud} initialTab={materialTab} />
+            </DeferredPanel>
           ) : view === 'people' ? (
-            <PeoplePanel isCloud={isCloud} data={data} onChange={(fn) => mutate(fn)} />
+            <DeferredPanel key="people">
+              <PeoplePanel isCloud={isCloud} data={data} onChange={(fn) => mutate(fn)} />
+            </DeferredPanel>
           ) : (
             <>
               {projectStatusFilter && (
@@ -1191,12 +1212,6 @@ export default function App() {
                 />
               ) : (
                 <>
-                  <nav className="workspace-anchors" aria-label="当前项目分区">
-                    <a href="#project-today">今日事项</a>
-                    <a href="#project-tomorrow">明日提醒</a>
-                    <a href="#project-memo">项目备忘</a>
-                    <a href="#project-timeline">施工时间轴</a>
-                  </nav>
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <div
                       className="workspace-brief agenda-brief ui-module-group"
@@ -1356,26 +1371,21 @@ export default function App() {
                   )}
                   {view === 'purchases' && (
                     <section className="records-section">
-                      <div className="section-heading">
+                      <div className="purchase-toolbar" role="toolbar" aria-label="采购清单工具栏">
                         <h2>
                           采购清单 <span className="count">{projectPurchases.length} 条记录</span>
                         </h2>
-                        <button className="primary" onClick={() => purchaseEditor()}>
-                          <Plus size={15} />
-                          新增采购
-                        </button>
-                      </div>
-                      <div className="filter-row">
                         <div className="search-field">
                           <Search size={16} />
                           <input
                             placeholder="搜索材料、规格或负责人…"
+                            aria-label="搜索采购记录"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                           />
                         </div>
-                        <label>
-                          采购状态
+                        <label className="purchase-filter">
+                          <span className="sr-only">采购状态</span>
                           <select
                             aria-label="采购记录筛选"
                             value={purchaseFilter}
@@ -1389,14 +1399,18 @@ export default function App() {
                             <option>已完成</option>
                           </select>
                         </label>
-                        <label className="check">
-                          <input
-                            type="checkbox"
-                            checked={onlyOpen}
-                            onChange={(e) => setOnlyOpen(e.target.checked)}
-                          />
+                        <button
+                          className="purchase-open-toggle"
+                          aria-pressed={onlyOpen}
+                          onClick={() => setOnlyOpen((v) => !v)}
+                        >
+                          <Check size={14} aria-hidden="true" />
                           只看未完成
-                        </label>
+                        </button>
+                        <button className="primary purchase-add" onClick={() => purchaseEditor()}>
+                          <Plus size={15} />
+                          新增采购
+                        </button>
                       </div>
                       <div className="purchase-list">
                         {projectPurchases.map(purchaseCard)}
@@ -1673,8 +1687,12 @@ export default function App() {
           trade={data.trades.find((g) => g.id === colorEdit.id)!}
           recent={data.recentColors}
           anchor={colorEdit.anchor}
-          onChange={(color) =>
-            save('trade', { ...data.trades.find((g) => g.id === colorEdit.id)!, color })
+          onChange={(color, final) =>
+            save(
+              'trade',
+              { ...data.trades.find((g) => g.id === colorEdit.id)!, color },
+              { colorChanged: final },
+            )
           }
           onClose={() => setColorEdit(null)}
         />

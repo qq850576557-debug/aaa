@@ -1,0 +1,710 @@
+{
+  "phase": "before",
+  "baseline": "7bcf668a25c71942df244492790cfe6e42b85959",
+  "samplesPerNetwork": 5,
+  "data": {
+    "projects": 1,
+    "tasks": 3,
+    "purchases": 12
+  },
+  "results": [
+    {
+      "network": "loopback",
+      "readyMs": 486,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 23,
+          "durationMs": 13,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 24,
+          "durationMs": 60,
+          "bytes": 206425
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 25,
+          "durationMs": 34,
+          "bytes": 32582
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 172,
+          "durationMs": 12,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 234,
+          "durationMs": 20,
+          "bytes": 312
+        },
+        {
+          "name": "/favicon.ico",
+          "startMs": 234,
+          "durationMs": 14,
+          "bytes": 0
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 274,
+          "durationMs": 17,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 275,
+          "durationMs": 39,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 275,
+          "durationMs": 35,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 355,
+          "durationMs": 23,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 361,
+          "durationMs": 15,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "readyMs": 458,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 16,
+          "durationMs": 12,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 17,
+          "durationMs": 46,
+          "bytes": 206425
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 17,
+          "durationMs": 21,
+          "bytes": 32582
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 150,
+          "durationMs": 16,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 153,
+          "durationMs": 12,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 288,
+          "durationMs": 15,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 289,
+          "durationMs": 13,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 290,
+          "durationMs": 23,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 315,
+          "durationMs": 18,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 330,
+          "durationMs": 10,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "readyMs": 425,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 14,
+          "durationMs": 11,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 15,
+          "durationMs": 17,
+          "bytes": 32582
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 15,
+          "durationMs": 40,
+          "bytes": 206425
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 151,
+          "durationMs": 10,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 162,
+          "durationMs": 8,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 265,
+          "durationMs": 14,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 265,
+          "durationMs": 12,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 266,
+          "durationMs": 16,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 283,
+          "durationMs": 31,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 292,
+          "durationMs": 24,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "readyMs": 422,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 14,
+          "durationMs": 12,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 17,
+          "durationMs": 42,
+          "bytes": 206425
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 17,
+          "durationMs": 17,
+          "bytes": 32582
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 145,
+          "durationMs": 15,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 184,
+          "durationMs": 11,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 256,
+          "durationMs": 14,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 256,
+          "durationMs": 14,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 257,
+          "durationMs": 18,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 280,
+          "durationMs": 25,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 290,
+          "durationMs": 17,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "readyMs": 456,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 16,
+          "durationMs": 3,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 17,
+          "durationMs": 37,
+          "bytes": 206425
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 17,
+          "durationMs": 15,
+          "bytes": 32582
+        },
+        {
+          "name": "/brand/chunmo-plant.png",
+          "startMs": 144,
+          "durationMs": 14,
+          "bytes": 1168803
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 146,
+          "durationMs": 16,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 270,
+          "durationMs": 14,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 271,
+          "durationMs": 14,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 271,
+          "durationMs": 15,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 292,
+          "durationMs": 25,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 315,
+          "durationMs": 12,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2513,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 166,
+          "durationMs": 201,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 166,
+          "durationMs": 1371,
+          "bytes": 206425
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 166,
+          "durationMs": 494,
+          "bytes": 32582
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1633,
+          "durationMs": 159,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1851,
+          "durationMs": 159,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1854,
+          "durationMs": 171,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 1854,
+          "durationMs": 208,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 2028,
+          "durationMs": 379,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 2033,
+          "durationMs": 171,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2466,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 163,
+          "durationMs": 201,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 163,
+          "durationMs": 493,
+          "bytes": 32582
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 163,
+          "durationMs": 1371,
+          "bytes": 206425
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1589,
+          "durationMs": 164,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1809,
+          "durationMs": 176,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1810,
+          "durationMs": 168,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 1810,
+          "durationMs": 212,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1981,
+          "durationMs": 378,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1987,
+          "durationMs": 170,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2439,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 164,
+          "durationMs": 202,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 165,
+          "durationMs": 1370,
+          "bytes": 206425
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 165,
+          "durationMs": 493,
+          "bytes": 32582
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1601,
+          "durationMs": 168,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1782,
+          "durationMs": 158,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1783,
+          "durationMs": 173,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 1783,
+          "durationMs": 210,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1960,
+          "durationMs": 378,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1967,
+          "durationMs": 169,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2449,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 163,
+          "durationMs": 202,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 163,
+          "durationMs": 1372,
+          "bytes": 206425
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 163,
+          "durationMs": 502,
+          "bytes": 32582
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1613,
+          "durationMs": 162,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1789,
+          "durationMs": 158,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1790,
+          "durationMs": 173,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 1790,
+          "durationMs": 210,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1966,
+          "durationMs": 380,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1978,
+          "durationMs": 173,
+          "bytes": 15
+        }
+      ]
+    },
+    {
+      "network": "controlled-150ms-1.6Mbps",
+      "readyMs": 2496,
+      "resources": [
+        {
+          "name": "/fonts/chunmo-brand.woff",
+          "startMs": 166,
+          "durationMs": 206,
+          "bytes": 3260
+        },
+        {
+          "name": "/assets/index-DswSdYXA.js",
+          "startMs": 166,
+          "durationMs": 1376,
+          "bytes": 206425
+        },
+        {
+          "name": "/assets/index-B1S5kbpZ.css",
+          "startMs": 166,
+          "durationMs": 499,
+          "bytes": 32582
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1601,
+          "durationMs": 160,
+          "bytes": 312
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 1818,
+          "durationMs": 167,
+          "bytes": 15
+        },
+        {
+          "name": "/api/auth/session",
+          "startMs": 1819,
+          "durationMs": 174,
+          "bytes": 312
+        },
+        {
+          "name": "/api/purchase-records",
+          "startMs": 1820,
+          "durationMs": 210,
+          "bytes": 2925
+        },
+        {
+          "name": "/api/workspace",
+          "startMs": 1996,
+          "durationMs": 379,
+          "bytes": 21840
+        },
+        {
+          "name": "/api/presence",
+          "startMs": 2004,
+          "durationMs": 168,
+          "bytes": 15
+        }
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "width": 1440,
+      "card": {
+        "x": 248,
+        "y": 576.90625,
+        "width": 380,
+        "height": 505.734375
+      },
+      "toolbar": {
+        "x": 248,
+        "y": 438.125,
+        "width": 1168,
+        "height": 2152.125
+      }
+    },
+    {
+      "width": 1280,
+      "card": {
+        "x": 248,
+        "y": 576.90625,
+        "width": 497,
+        "height": 434.34375
+      },
+      "toolbar": {
+        "x": 248,
+        "y": 438.125,
+        "width": 1008,
+        "height": 2731.453125
+      }
+    },
+    {
+      "width": 390,
+      "card": {
+        "x": 12,
+        "y": 891.96875,
+        "width": 366,
+        "height": 507.515625
+      },
+      "toolbar": {
+        "x": 12,
+        "y": 672.09375,
+        "width": 366,
+        "height": 6030.375
+      }
+    },
+    {
+      "width": 320,
+      "card": {
+        "x": 12,
+        "y": 1004.671875,
+        "width": 296,
+        "height": 526.703125
+      },
+      "toolbar": {
+        "x": 12,
+        "y": 784.796875,
+        "width": 296,
+        "height": 6260.625
+      }
+    }
+  ]
+}

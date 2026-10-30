@@ -1,0 +1,12 @@
+{
+  "source": "isolated loopback test database only",
+  "planningMs": 0.145,
+  "executionMs": 0.077,
+  "stateReadAndValidationMs": [
+    74.63,
+    14.93,
+    6.54,
+    8.27,
+    8.23
+  ]
+}

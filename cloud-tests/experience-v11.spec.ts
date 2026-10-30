@@ -54,14 +54,23 @@ for (const width of [1440, 390]) {
       await p.getByLabel('采购记录筛选', { exact: true }).selectOption('已完成');
       const row = p.locator('.purchase-list .purchase-row');
       await expect(row).toContainText('V11测试采购');
-      await row.getByText('责任与时间', { exact: true }).click();
-      await expect(row).toContainText('最近完成');
-      await row.getByRole('button', { name: '采购历史', exact: true }).click();
-      await expect(p.getByRole('dialog', { name: '采购历史 · V11测试采购' })).toContainText('完成');
-      await p
-        .getByRole('dialog', { name: '采购历史 · V11测试采购' })
-        .getByRole('button', { name: '关闭', exact: true })
-        .click();
+      // The compact card intentionally omits provenance controls. Verify the
+      // same trustworthy server history remains, rather than dropping coverage.
+      const completed = (await (await api(c, '/workspace')).json()).data.purchases[0];
+      await expect
+        .poll(async () => {
+          const records = (await (await api(c, '/purchase-records')).json()).records;
+          return records.find((r: any) => r.id === completed.id)?.completedAt;
+        })
+        .toBeTruthy();
+      const completedHistory = await (
+        await api(c, '/purchase-records/' + completed.id + '/history')
+      ).json();
+      expect(completedHistory.events.at(-1)).toMatchObject({ operation: '完成', actorId: f.id });
+      expect(completedHistory.events.at(-1).actorName).toBeTruthy();
+      expect(completedHistory.events.at(-1).at).toBeTruthy();
+      await expect(row.locator('.purchase-trace')).toHaveCount(0);
+      await expect(row.getByRole('button', { name: '采购历史', exact: true })).toHaveCount(0);
       await row.getByLabel('采购状态V11测试采购', { exact: true }).selectOption('待采购');
       await p.getByLabel('采购记录筛选', { exact: true }).selectOption('待采购');
       await expect(row).toContainText('V11测试采购');

@@ -151,6 +151,7 @@ export const dictionarySchema = z
   .object({
     id: uid,
     kind: z.enum(['category', 'trade']),
+    usage: z.enum(['worker', 'stage']).optional(),
     label: name,
     active: z.boolean(),
     deleted: z.boolean().optional(),
@@ -288,14 +289,14 @@ export const emptyData = (): Data => ({
   recentColors: [],
 });
 export const palette = [
-  '#8c9a86',
-  '#648b9c',
-  '#bda474',
-  '#8b88a6',
-  '#6e9989',
-  '#c18e80',
-  '#8c9cb5',
-  '#72836b',
+  '#7c8c49',
+  '#4378ab',
+  '#c38c32',
+  '#8b65b5',
+  '#3e987f',
+  '#bf6978',
+  '#6175b5',
+  '#98684a',
 ];
 export const tradeNames = [
   '现场拆改',

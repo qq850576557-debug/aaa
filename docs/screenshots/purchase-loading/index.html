@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>春茉采购管理与加载性能 · 实测对比</title
+  ><style>
+    body {
+      font:
+        15px/1.6 system-ui,
+        sans-serif;
+      background: #f3f6f3;
+      color: #284536;
+      max-width: 1440px;
+      margin: auto;
+      padding: 20px;
+    }
+    .pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    figure {
+      margin: 0;
+      background: white;
+      padding: 12px;
+      border-radius: 12px;
+    }
+    img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    a {
+      color: #245346;
+    }
+    @media (max-width: 700px) {
+      .pair {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+  <h1>采购管理 · 实测前后对比</h1>
+  <p>
+    下方为采购区域可视窗口截图，点击可查看全页原始对比。图片来自 Chromium
+    打开的真实生产构建与本机隔离 API，使用相同的虚构测试工地及 12
+    条采购记录。账号均为隔离测试账号。未连接生产网站。
+  </p>
+  <p>
+    同样数据、每组五次禁用缓存冷启动：本机中位数 456 → 390ms；150ms 延迟、1.6Mbps 下载限速下 2466 →
+    2164ms。以“云端读取及草稿检查完成、保存状态为已保存、任务条已渲染”为终点。不是线上耗时承诺。
+  </p>
+  <p>
+    <a href="before-metrics.json">修改前原始样本与请求瀑布</a> ·
+    <a href="after-metrics.json">修改后原始样本与请求瀑布</a> ·
+    <a href="database-timing.json">隔离数据库读性能</a>
+  </p>
+  <section>
+    <h2>1440px</h2>
+    <div class="pair">
+      <figure>
+        <figcaption>修改前 · 7bcf668</figcaption>
+        <a href="before-1440.png"
+          ><img src="before-viewport-1440.png" alt="修改前采购管理 1440px"
+        /></a>
+      </figure>
+      <figure>
+        <figcaption>修改后 · 本轮工作区</figcaption>
+        <a href="after-1440.png"
+          ><img src="after-viewport-1440.png" alt="修改后采购管理 1440px"
+        /></a>
+      </figure>
+    </div>
+  </section>
+  <section>
+    <h2>1280px</h2>
+    <div class="pair">
+      <figure>
+        <figcaption>修改前 · 7bcf668</figcaption>
+        <a href="before-1280.png"
+          ><img src="before-viewport-1280.png" alt="修改前采购管理 1280px"
+        /></a>
+      </figure>
+      <figure>
+        <figcaption>修改后 · 本轮工作区</figcaption>
+        <a href="after-1280.png"
+          ><img src="after-viewport-1280.png" alt="修改后采购管理 1280px"
+        /></a>
+      </figure>
+    </div>
+  </section>
+  <section>
+    <h2>390px</h2>
+    <div class="pair">
+      <figure>
+        <figcaption>修改前 · 7bcf668</figcaption>
+        <a href="before-390.png"
+          ><img src="before-viewport-390.png" alt="修改前采购管理 390px"
+        /></a>
+      </figure>
+      <figure>
+        <figcaption>修改后 · 本轮工作区</figcaption>
+        <a href="after-390.png"><img src="after-viewport-390.png" alt="修改后采购管理 390px" /></a>
+      </figure>
+    </div>
+  </section>
+  <section>
+    <h2>320px</h2>
+    <div class="pair">
+      <figure>
+        <figcaption>修改前 · 7bcf668</figcaption>
+        <a href="before-320.png"
+          ><img src="before-viewport-320.png" alt="修改前采购管理 320px"
+        /></a>
+      </figure>
+      <figure>
+        <figcaption>修改后 · 本轮工作区</figcaption>
+        <a href="after-320.png"><img src="after-viewport-320.png" alt="修改后采购管理 320px" /></a>
+      </figure>
+    </div>
+  </section>
+</html>

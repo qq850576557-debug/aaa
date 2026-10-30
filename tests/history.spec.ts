@@ -301,7 +301,7 @@ test('history: legacy reads invent no versions; rapid live color input records o
   let h = await openHistory(page);
   await expect(h).toContainText('暂无修改历史');
   await h.getByRole('button', { name: '关闭', exact: true }).click();
-  await page.getByRole('button', { name: '设置水电改造颜色', exact: true }).click();
+  await page.getByRole('button', { name: '编辑水电改造', exact: true }).click({ button: 'right' });
   const f = page.getByRole('dialog');
   await f.getByLabel('自定义颜色', { exact: true }).fill('#244e41');
   await f.getByLabel('自定义颜色', { exact: true }).fill('#244e43');

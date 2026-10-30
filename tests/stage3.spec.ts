@@ -215,7 +215,9 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
       .toBe(true);
-    await page.getByRole('button', { name: '设置水电改造颜色', exact: true }).click();
+    await page
+      .getByRole('button', { name: '编辑水电改造', exact: true })
+      .click({ button: 'right' });
     const panel = page.getByRole('dialog');
     const r = (await panel.boundingBox())!;
     expect(r.width).toBeLessThanOrEqual(310);
@@ -245,7 +247,7 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
   await mkdir('/workspace/chunmo-stage3', { recursive: true });
   await page.screenshot({ path: '/workspace/chunmo-stage3/workspace.png', fullPage: true });
   await timeline(page);
-  await page.getByRole('button', { name: '设置水电改造颜色', exact: true }).click();
+  await page.getByRole('button', { name: '编辑水电改造', exact: true }).click({ button: 'right' });
   await expect(page.getByRole('dialog')).toHaveCSS('opacity', '1');
   await page.screenshot({
     path: '/workspace/chunmo-stage3/compact-color.png',

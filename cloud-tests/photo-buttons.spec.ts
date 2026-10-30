@@ -159,11 +159,25 @@ for (const width of [1440, 390])
       const controls = await page.locator('button:visible').evaluateAll((es) =>
         es
           .filter((e) => e.getBoundingClientRect().width > 0)
-          .map((e) => ({
-            text: e.getAttribute('aria-label') || e.textContent?.trim(),
-            background: getComputedStyle(e).backgroundColor,
-            transition: getComputedStyle(e).transitionDuration,
-          })),
+          .map((e) => {
+            const own = getComputedStyle(e).backgroundColor;
+            // Identity entries and the unified trade edit/drag targets share a surface.
+            // Accept its surface only when it actually contains the whole button;
+            // every other control must still supply its own visible background.
+            const group = e.closest('.current-account[aria-label="当前登录账号"],.trade-info-card');
+            const b = e.getBoundingClientRect(),
+              g = group?.getBoundingClientRect();
+            const shared =
+              group && g && b.x >= g.x && b.y >= g.y && b.right <= g.right && b.bottom <= g.bottom;
+            return {
+              text: e.getAttribute('aria-label') || e.textContent?.trim(),
+              background:
+                own === 'rgba(0, 0, 0, 0)' && shared
+                  ? getComputedStyle(group).backgroundColor
+                  : own,
+              transition: getComputedStyle(e).transitionDuration,
+            };
+          }),
       );
       const transparent = controls.filter((c) => c.background === 'rgba(0, 0, 0, 0)');
       expect(transparent, JSON.stringify(transparent)).toHaveLength(0);

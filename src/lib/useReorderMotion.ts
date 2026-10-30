@@ -10,7 +10,7 @@ export function useReorderMotion(
   useLayoutEffect(() => {
     const next = new Map<string, { x: number; y: number }>();
     root.current?.querySelectorAll<HTMLElement>(selector).forEach((element) => {
-      const key = element.dataset.projectId ?? element.dataset.tradeId!;
+      const key = element.dataset.projectId ?? element.dataset.tradeId ?? element.dataset.personId!;
       const point = { x: element.offsetLeft, y: element.offsetTop };
       const previous = positions.current.get(key);
       next.set(key, point);

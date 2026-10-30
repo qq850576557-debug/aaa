@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { projectTheme } from '../src/lib/project-themes';
 import { boot, fixture, restore, state, closeToast } from './helpers';
 function luminance(css: string) {
   const rgb = css
@@ -6,7 +7,7 @@ function luminance(css: string) {
     .slice(0, 3)
     .map(Number)
     .map((x) => {
-      const n = x / 255;
+      const n = css.startsWith('color(srgb ') ? x : x / 255;
       return n <= 0.04045 ? n / 12.92 : ((n + 0.055) / 1.055) ** 2.4;
     });
   return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
@@ -42,9 +43,14 @@ for (const width of [1440, 390])
         if (hover) await selected.hover();
         else await page.mouse.move(width - 5, 10);
         expect(await selected.evaluate((el) => el.matches(':hover'))).toBe(hover);
+        const hue = await selected.evaluate((el) =>
+          Number(getComputedStyle(el).getPropertyValue('--project-hue')),
+        );
+        const theme = projectTheme(hue);
+        const hex = hover ? theme.selectedHover : theme.selected;
         await expect(selected).toHaveCSS(
           'background-color',
-          hover ? 'rgb(217, 232, 222)' : 'rgb(229, 239, 232)',
+          `rgb(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)})`,
         );
         const colors = await selected.evaluate((el) => ({
           background: getComputedStyle(el).backgroundColor,
@@ -53,7 +59,12 @@ for (const width of [1440, 390])
           ),
         }));
         const bg = luminance(colors.background);
-        expect(bg).toBeGreaterThan(0.7);
+        expect(bg).toBeGreaterThan(0.4);
+        const idle = await page
+          .locator('.sidebar-project-list .project-select[aria-pressed="false"]')
+          .first()
+          .evaluate((el) => getComputedStyle(el).backgroundColor);
+        expect(bg).toBeLessThan(luminance(idle) - 0.05);
         for (const field of colors.fields) {
           const ink = luminance(field.color),
             contrast = (Math.max(bg, ink) + 0.05) / (Math.min(bg, ink) + 0.05);
