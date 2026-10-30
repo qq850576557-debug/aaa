@@ -30,6 +30,17 @@ input[type='submit'] {
   background-color: #245346 !important;
   color: #fff !important;
 }
+/* Project cards contain their own text hierarchy; keep selection light and readable. */
+.project-card .project-select[aria-pressed='true'] {
+  background-color: #e5efe8 !important;
+  color: #294f3d !important;
+}
+.sidebar-project-list
+  .project-card.chosen
+  .project-select
+  :is(.project-card-name, small, .project-card-dates) {
+  color: #365b46;
+}
 button:is(.danger, .destructive),
 button[aria-label^='删除'] {
   background-color: #faeeeb !important;
@@ -62,6 +73,10 @@ summary {
   button.active:not(:disabled):hover {
     background-color: #326657 !important;
     color: #fff !important;
+  }
+  .project-card .project-select[aria-pressed='true']:hover {
+    background-color: #d9e8de !important;
+    color: #294f3d !important;
   }
   button:is(.danger, .destructive):not(:disabled):hover {
     background-color: #f1ddd7 !important;
