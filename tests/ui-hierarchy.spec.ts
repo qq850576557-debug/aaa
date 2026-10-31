@@ -66,7 +66,7 @@ for (const width of [1440, 1280, 390, 320])
         h: e.getBoundingClientRect().height,
       })),
     );
-    expect(cards).toHaveLength(3);
+    expect(cards).toHaveLength(2);
     expect(new Set(cards.map((x) => x.h)).size).toBe(1);
     expect(Math.max(...cards.map((x) => x.w)) - Math.min(...cards.map((x) => x.w))).toBeLessThan(1);
     await mkdir(screenshots, { recursive: true });
@@ -156,43 +156,42 @@ for (const width of [1440, 1280, 390, 320])
     );
   });
 
-test('legacy notes remain editable and project isolated inside the board, no automatic conversion', async ({
+test('legacy daily notes remain editable in date views, project isolated and unconverted after duplicate sections are removed', async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date('2026-10-29T04:00:00+08:00'));
   await boot(page);
   const d = fixture();
   d.projects.push({ ...d.projects[0], id: 'other-site', name: '第二工地' });
   d.notes.push({
     ...d.notes[0],
     id: 'future-note',
-    title: '明年现场复核',
-    date: '2027-02-01',
+    title: '现场复核',
+    date: '2026-10-29',
     reminder: '',
     pinned: false,
   });
   await restore(page, d);
   const original = await state(page);
-  await page
-    .getByTestId('memo-panel')
-    .getByRole('button', { name: '查看日常记录', exact: true })
-    .click();
-  await expect(page.locator('.daily-records')).toHaveAttribute('open', '');
-  await expect(page.locator('.notes-grid .note-card')).toHaveCount(3);
+  await expect(page.getByTestId('memo-panel')).toHaveCount(0);
   await page.locator('[data-note-id="future-note"] .note-main').click();
-  await page.getByLabel('事项标题', { exact: true }).fill('明年现场复核完成尺寸');
+  await page.getByLabel('事项标题', { exact: true }).fill('现场复核完成尺寸');
   await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
   await expect
     .poll(async () => (await state(page)).notes.find((n) => n.id === 'future-note')?.title)
-    .toBe('明年现场复核完成尺寸');
-  await page.getByLabel('日常记录工地', { exact: true }).selectOption('other-site');
-  await expect(page.locator('.notes-grid .note-card')).toHaveCount(0);
-  await page.getByLabel('日常记录工地', { exact: true }).selectOption(d.projects[0].id);
-  await expect(page.locator('.notes-grid .note-card')).toHaveCount(3);
-  expect((await state(page)).notes.find((n) => n.id === 'future-note')?.date).toBe('2027-02-01');
+    .toBe('现场复核完成尺寸');
+  await page.getByRole('button', { name: '切换项目第二工地', exact: true }).click();
+  await expect(page.getByTestId('today-panel')).not.toContainText('现场复核完成尺寸');
+  await page.getByRole('button', { name: '切换项目' + d.projects[0].name, exact: true }).click();
+  await expect(page.getByTestId('today-panel')).toContainText('现场复核完成尺寸');
+  await page.getByRole('button', { name: '事项管理', exact: true }).click();
+  await expect(page.locator('.daily-records')).toHaveCount(0);
+  expect((await state(page)).notes.find((n) => n.id === 'future-note')?.date).toBe('2026-10-29');
+  expect((await state(page)).notes.filter((n) => n.kind === '项目备忘')).toEqual(
+    original.notes.filter((n) => n.kind === '项目备忘'),
+  );
   expect((await state(page)).purchases).toEqual(original.purchases);
   expect((await state(page)).tasks).toEqual(original.tasks);
   await page.reload();
-  await page.getByRole('button', { name: '事项管理', exact: true }).click();
-  await page.locator('.daily-records > summary').click();
-  await expect(page.locator('.notes-grid')).toContainText('明年现场复核完成尺寸');
+  await expect(page.getByTestId('today-panel')).toContainText('现场复核完成尺寸');
 });

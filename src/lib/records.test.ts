@@ -63,3 +63,13 @@ describe('project follow-up records', () => {
     expect(rows.map((r) => r.id)).toEqual(['a', 'b', 'c', 'd']);
   });
 });
+
+it('optional owner preserves the exact legacy request shape and rejects invalid or excessive owner values', () => {
+  const requestId = '6cd10b31-e89e-4975-8f94-9f65419cb22b';
+  expect(recordCreate.parse({ requestId, value }).value).not.toHaveProperty('owner');
+  expect(
+    recordCreate.parse({ requestId, value: { ...value, owner: '现场负责人' } }).value.owner,
+  ).toBe('现场负责人');
+  for (const owner of ['x'.repeat(101), 'bad\0'])
+    expect(recordCreate.safeParse({ requestId, value: { ...value, owner } }).success).toBe(false);
+});

@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { emptyData } from '../src/lib/model';
 
-import { state, boot, restore, closeToast } from './helpers';
+import { state, boot, restore, closeToast, fixture } from './helpers';
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-23T04:00:00Z'));
 });
@@ -23,7 +23,7 @@ test('create projects and tasks through validated modals; persistence and indepe
   await modal.getByLabel('计划完工日期', { exact: true }).fill('2027-01-20');
   await modal.getByRole('button', { name: '保存', exact: true }).click();
   await expect(page.locator('.current-project-name')).toHaveText('跨年新居');
-  await expect(page.locator('.trade-row')).toHaveCount(8);
+  await expect(page.locator('.trade-row')).toHaveCount(7);
   await page.getByRole('button', { name: '施工任务', exact: true }).click();
   modal = page.getByRole('dialog');
   await modal.getByLabel('任务名称', { exact: true }).fill('跨年拆改');
@@ -154,24 +154,24 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
   page,
 }) => {
   await boot(page);
-  await restore(page);
-  await page.getByRole('button', { name: '事项管理', exact: true }).click();
-  await page.locator('.daily-records > summary').click();
-  await page.getByRole('button', { name: '项目备忘', exact: true }).click();
-  let modal = page.getByRole('dialog');
-  await modal.getByLabel('备忘标题', { exact: true }).fill('核对门洞尺寸');
-  await modal.getByLabel('详细备注（可选）', { exact: true }).fill('小陈负责现场复核');
-  await modal.getByRole('button', { name: '保存', exact: true }).click();
+  const legacy = fixture();
+  legacy.notes.push({
+    ...legacy.notes[0],
+    id: 'legacy-confirm',
+    title: '核对门洞尺寸',
+    date: '2026-10-20',
+    pinned: false,
+    content: '小陈负责现场复核',
+  });
+  await restore(page, legacy);
   await page.getByRole('button', { name: '置顶核对门洞尺寸', exact: true }).click();
   await page.getByRole('button', { name: '完成核对门洞尺寸', exact: true }).click();
-  await page.getByLabel('只看未完成').check();
-  await expect(
-    page.getByRole('button', { name: '标记未完成核对门洞尺寸', exact: true }),
-  ).toHaveCount(0);
-  await page.getByLabel('只看未完成').uncheck();
-  await page.getByPlaceholder('搜索标题、内容或负责人…').fill('小陈');
-  await expect(page.locator('.notes-grid .note-card')).toHaveCount(1);
-  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
+  expect((await state(page)).notes.find((n) => n.id === 'legacy-confirm')).toMatchObject({
+    done: true,
+    pinned: true,
+    content: '小陈负责现场复核',
+  });
+  await expect(page.getByTestId('memo-panel')).toHaveCount(0);
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
   await expect.poll(async () => (await state(page)).projects.length).toBe(2);

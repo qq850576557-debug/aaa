@@ -4,11 +4,15 @@ import { DeferredPanel } from './components/ModuleBoundary';
 import { mergeWorkspace } from './lib/workspace-merge';
 import { BriefPanel } from './components/BriefPanel';
 import { ProjectContext } from './components/ProjectContext';
-import { projectAgenda } from './lib/agenda';
+import { categorizedAgenda, type AgendaItem as AgendaEntry } from './lib/agenda';
+import { AgendaItem } from './components/AgendaItem';
+import { useWorkRecords } from './lib/useWorkRecords';
+import type { WorkRecord } from './lib/records';
+import type { AgendaEntryRequest } from './components/AgendaEntryDialog';
 import type { CloudUser } from './lib/cloud';
 import {
   nextTradeColor,
-  saveSharedTradeColor,
+  saveTradeColor,
   newProjectTrades,
   initialStageColor,
   defaultTradeColor,
@@ -124,6 +128,12 @@ const MaterialAlertSummary = lazy(() =>
 const PeoplePanel = lazy(() =>
   import('./components/PeoplePanel').then((m) => ({ default: m.PeoplePanel })),
 );
+const AgendaEntryDialog = lazy(() =>
+  import('./components/AgendaEntryDialog').then((m) => ({ default: m.AgendaEntryDialog })),
+);
+const RecordDrawer = lazy(() =>
+  import('./components/RecordDrawer').then((m) => ({ default: m.RecordDrawer })),
+);
 export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const {
     data,
@@ -191,7 +201,14 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [day, setDay] = useState<string | null>(null);
   const [archived, setArchived] = useState(false);
   const [search, setSearch] = useState('');
-  const [dailyRecordsOpen, setDailyRecordsOpen] = useState(false);
+  const [agendaEntry, setAgendaEntry] = useState<AgendaEntryRequest | null>(null);
+  const [focusedRecord, setFocusedRecord] = useState<WorkRecord | null>(null);
+  const recordDirty = useRef(false);
+  const recordSource = useWorkRecords(
+    isCloud &&
+      ready &&
+      ['overview', 'schedule', 'completed', 'records', 'reminders'].includes(view),
+  );
   const [metricFilter, setMetricFilter] = useState('');
   const [projectStatusFilter, setProjectStatusFilter] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
@@ -210,9 +227,22 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       (!projectStatusFilter || projectStatus(p.status) === '施工中'),
   );
   const p = projects.find((p) => p.id === selected) ?? projects[0];
-  const count = stats(data, now);
+  const baseCount = stats(data, now);
+  const count = {
+    ...baseCount,
+    todos:
+      baseCount.todos +
+      recordSource.records.filter(
+        (r) =>
+          !r.deleted &&
+          r.nodeDate &&
+          r.nodeDate <= now &&
+          !['已完成', '已取消'].includes(r.status) &&
+          data.projects.some((project) => project.id === r.projectId && !isHistorical(project)),
+      ).length,
+  };
   const procurement = procurementView(data, p?.id, now);
-  const agenda = projectAgenda(data, p?.id, now);
+  const agenda = categorizedAgenda(data, recordSource.records, p?.id, now);
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
   }, [view]);
@@ -307,12 +337,12 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           ? g
           : {
               ...g,
-              color: initialStageColor(d, g.name, g.color),
+              color: initialStageColor(d, g.name, g.color, g.projectId),
               defaultColor: defaultTradeColor(g.name) || g.defaultColor,
             };
         const next = insertTrade(d, inserted);
         const colored = intent?.colorChanged
-          ? saveSharedTradeColor(next, value.id, inserted.color)
+          ? saveTradeColor(next, value.id, inserted.color)
           : next;
         return {
           ...colored,
@@ -337,7 +367,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           ...d.recentColors.filter((c) => c !== (value as Trade).color),
         ].slice(0, 12);
       return kind === 'trade' && intent?.colorChanged
-        ? saveSharedTradeColor(next, value.id, (value as Trade).color)
+        ? saveTradeColor(next, value.id, (value as Trade).color)
         : next;
     }, pid);
     if (kind === 'project') {
@@ -386,6 +416,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   }
   function noteEditor(n?: Note, date = day ?? now, memo = false) {
     if (!p) return;
+    if (!n && !memo) {
+      setDay(null);
+      setAgendaEntry({ projectId: p.id, date, id: id() });
+      return;
+    }
     setDay(null);
     setEdit({
       kind: 'note',
@@ -583,19 +618,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       note: data.notes,
       purchase: data.purchases,
     }[edit.kind].some((x) => x.id === edit.value.id);
-  const matchingNotes = data.notes
-    .filter(
-      (n) =>
-        n.projectId === p?.id &&
-        (!onlyOpen || !n.done) &&
-        `${n.title} ${n.content} ${n.owner}`.toLowerCase().includes(search.toLowerCase()),
-    )
-    .sort(
-      (a, b) =>
-        Number(b.pinned) - Number(a.pinned) ||
-        Number(a.done) - Number(b.done) ||
-        a.date.localeCompare(b.date),
-    );
   const projectPurchases = procurement.all
     .filter(
       (x) =>
@@ -646,11 +668,52 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     setShowAllProjects(false);
     setProjectStatusFilter(false);
   }
-  function openDailyRecords() {
-    go('records');
-    setDailyRecordsOpen(true);
-    requestAnimationFrame(() =>
-      document.getElementById('daily-records')?.scrollIntoView({ block: 'start' }),
+  function agendaItem(item: AgendaEntry) {
+    if (item.kind === 'legacy')
+      return (
+        <NoteCard
+          key={'legacy:' + item.id}
+          note={item.value}
+          projectName={data.projects.find((project) => project.id === item.projectId)?.name}
+          now={now}
+          onEdit={() => noteEditor(item.value)}
+          onToggle={() => save('note', { ...item.value, done: !item.done })}
+          onPin={() => save('note', { ...item.value, pinned: !item.value.pinned })}
+          onDelete={() => deleteEntity({ kind: 'note', value: item.value })}
+        />
+      );
+    return (
+      <AgendaItem
+        key={item.kind + ':' + item.id}
+        item={item}
+        projectName={
+          data.projects.find((project) => project.id === item.projectId)?.name || '历史项目'
+        }
+        busy={recordSource.busyIds.includes(item.id)}
+        canToggle={
+          item.status !== '已取消' &&
+          !(item.kind === 'purchase' && item.done && isCloud && !cloudUser?.owner)
+        }
+        onOpen={() => {
+          if (item.kind === 'purchase') {
+            go('purchases');
+            purchaseEditor(item.value);
+          } else if (item.kind === 'record') {
+            go('records');
+            recordDirty.current = false;
+            setFocusedRecord(item.value);
+          }
+        }}
+        onToggle={() => {
+          if (item.kind === 'purchase')
+            save('purchase', {
+              ...item.value,
+              due: purchaseDue(item.value, data),
+              status: item.done ? '待采购' : '已完成',
+            });
+          else if (item.kind === 'record') void recordSource.toggle(item.value);
+        }}
+      />
     );
   }
   function reminderItems() {
@@ -717,6 +780,36 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 </span>
                 <em>
                   {noteDue(n)} · {remainingTime(noteDue(n), now)}
+                </em>
+              </button>
+            ))}
+          {recordSource.records
+            .filter(
+              (r) =>
+                !r.deleted &&
+                r.nodeDate &&
+                r.nodeDate <= now &&
+                !['已完成', '已取消'].includes(r.status) &&
+                active.has(r.projectId),
+            )
+            .map((r) => (
+              <button
+                className="reminder-item"
+                key={'record:' + r.id}
+                onClick={() => {
+                  go('records');
+                  recordDirty.current = false;
+                  setFocusedRecord(r);
+                }}
+              >
+                <span>
+                  <strong>{r.title}</strong>
+                  <small>
+                    {data.projects.find((project) => project.id === r.projectId)?.name} · 事项
+                  </small>
+                </span>
+                <em>
+                  {r.nodeDate} · {r.status}
                 </em>
               </button>
             ))}
@@ -1068,99 +1161,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           ) : view === 'records' ? (
             <>
               <DeferredPanel>
-                <RecordBoard projects={data.projects} isCloud={isCloud} />
+                <RecordBoard projects={data.projects} isCloud={isCloud} source={recordSource} />
               </DeferredPanel>
-              <details
-                id="daily-records"
-                className="daily-records panel"
-                open={dailyRecordsOpen}
-                onToggle={(e) => setDailyRecordsOpen(e.currentTarget.open)}
-              >
-                <summary>
-                  日常记录 <span className="count">{data.notes.length}</span>
-                </summary>
-                <p className="daily-records-hint">
-                  今日、明日及项目备忘的原有记录，可在这里按工地查看和处理。
-                </p>
-                {p ? (
-                  <>
-                    <div className="daily-records-toolbar">
-                      <ProjectContext project={p} />
-                      <label>
-                        <span className="sr-only">日常记录工地</span>
-                        <select
-                          aria-label="日常记录工地"
-                          value={p.id}
-                          onChange={(e) => {
-                            const project = data.projects.find((x) => x.id === e.target.value);
-                            if (project) {
-                              setSelected(project.id);
-                              setArchived(isHistorical(project));
-                            }
-                          }}
-                        >
-                          {data.projects.map((project) => (
-                            <option key={project.id} value={project.id}>
-                              {project.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button onClick={() => noteEditor(undefined, '', true)}>
-                        <Plus size={15} />
-                        项目备忘
-                      </button>
-                      <button className="primary" onClick={() => noteEditor()}>
-                        <Plus size={15} />
-                        新增事项
-                      </button>
-                    </div>
-                    <div className="filter-row">
-                      <label className="search-field">
-                        <Search size={16} />
-                        <span className="sr-only">搜索日常记录</span>
-                        <input
-                          aria-label="搜索日常记录"
-                          placeholder="搜索标题、内容或负责人…"
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                        />
-                      </label>
-                      <label className="check">
-                        <input
-                          type="checkbox"
-                          checked={onlyOpen}
-                          onChange={(e) => setOnlyOpen(e.target.checked)}
-                        />
-                        只看未完成
-                      </label>
-                      <span className="count">{matchingNotes.length} 条记录</span>
-                    </div>
-                    <div className="notes-grid">
-                      {matchingNotes.map((n) => (
-                        <NoteCard
-                          key={n.id}
-                          note={n}
-                          now={now}
-                          onEdit={() => noteEditor(n)}
-                          onToggle={() => save('note', { ...n, done: !n.done })}
-                          onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                          onDelete={() => deleteEntity({ kind: 'note', value: n })}
-                        />
-                      ))}
-                      {!matchingNotes.length && (
-                        <Empty
-                          small
-                          title="暂无匹配事项"
-                          text="添加一条事项或项目备忘，把重要细节记录下来。"
-                        />
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <p>请先创建项目，再添加日常记录。</p>
-                )}
-              </details>
             </>
           ) : view === 'reminders' ? (
             <>
@@ -1233,6 +1235,12 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 />
               ) : (
                 <>
+                  {recordSource.error && (
+                    <div className="error-banner" role="alert">
+                      <span>事项读取或保存失败：{recordSource.error}</span>
+                      <button onClick={() => void recordSource.load()}>重新读取事项</button>
+                    </div>
+                  )}
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <div
                       className="workspace-brief agenda-brief ui-module-group"
@@ -1244,26 +1252,22 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                         testId="today-panel"
                         id="project-today"
                         className="today-panel"
-                        emptyText="今日暂无待办事项"
+                        emptyText={
+                          recordSource.loading
+                            ? '正在读取事项…'
+                            : recordSource.error
+                              ? '事项读取失败，请重试'
+                              : '今日暂无待办事项'
+                        }
                         date={agenda.date}
-                        items={agenda.today.map((n) => (
-                          <NoteCard
-                            key={n.id}
-                            note={n}
-                            now={now}
-                            onEdit={() => noteEditor(n)}
-                            onToggle={() => save('note', { ...n, done: !n.done })}
-                            onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                            onDelete={() => deleteEntity({ kind: 'note', value: n })}
-                          />
-                        ))}
+                        items={agenda.today.map(agendaItem)}
                         actions={
                           <>
                             <button className="text-btn" onClick={() => noteEditor()}>
                               <Plus size={14} />
                               添加今日事项
                             </button>
-                            <button className="text-btn" onClick={openDailyRecords}>
+                            <button className="text-btn" onClick={() => go('records')}>
                               全部事项
                               <ArrowRight size={14} />
                             </button>
@@ -1276,19 +1280,15 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                         testId="tomorrow-panel"
                         id="project-tomorrow"
                         className="tomorrow-panel"
-                        emptyText="明日暂无安排"
+                        emptyText={
+                          recordSource.loading
+                            ? '正在读取事项…'
+                            : recordSource.error
+                              ? '事项读取失败，请重试'
+                              : '明日暂无安排'
+                        }
                         date={agenda.tomorrowDate}
-                        items={agenda.tomorrow.map((n) => (
-                          <NoteCard
-                            key={n.id}
-                            note={n}
-                            now={now}
-                            onEdit={() => noteEditor(n)}
-                            onToggle={() => save('note', { ...n, done: !n.done })}
-                            onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                            onDelete={() => deleteEntity({ kind: 'note', value: n })}
-                          />
-                        ))}
+                        items={agenda.tomorrow.map(agendaItem)}
                         actions={
                           <button
                             className="text-btn"
@@ -1297,41 +1297,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                             <Plus size={14} />
                             添加明日事项
                           </button>
-                        }
-                      />
-                      <BriefPanel
-                        key={'memo' + p.id}
-                        title="项目备忘"
-                        testId="memo-panel"
-                        id="project-memo"
-                        className="memo-panel"
-                        emptyText="暂无项目备忘"
-                        caption="长期记录"
-                        items={agenda.memos.map((n) => (
-                          <NoteCard
-                            key={n.id}
-                            note={n}
-                            now={now}
-                            onEdit={() => noteEditor(n)}
-                            onToggle={() => save('note', { ...n, done: !n.done })}
-                            onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                            onDelete={() => deleteEntity({ kind: 'note', value: n })}
-                          />
-                        ))}
-                        actions={
-                          <>
-                            <button
-                              className="text-btn"
-                              onClick={() => noteEditor(undefined, '', true)}
-                            >
-                              <Plus size={14} />
-                              添加备忘
-                            </button>
-                            <button className="text-btn" onClick={openDailyRecords}>
-                              查看日常记录
-                              <ArrowRight size={14} />
-                            </button>
-                          </>
                         }
                       />
                     </div>
@@ -1464,6 +1429,57 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           onResolve={resolveSaveConflict}
           onClose={dismissSaveConflict}
         />
+      )}
+      {agendaEntry && (
+        <DeferredPanel>
+          <AgendaEntryDialog
+            key={agendaEntry.id}
+            request={agendaEntry}
+            data={data}
+            isCloud={isCloud}
+            onClose={() => setAgendaEntry(null)}
+            onPurchase={(kind, value) => {
+              save(kind, value);
+              setAgendaEntry(null);
+              go('purchases');
+            }}
+            onRecord={(record) => {
+              recordSource.accept(record);
+              setAgendaEntry(null);
+              go('records');
+            }}
+          />
+        </DeferredPanel>
+      )}
+      {focusedRecord && (
+        <DeferredPanel>
+          <RecordDrawer
+            key={focusedRecord.id}
+            record={focusedRecord}
+            initialProject={focusedRecord.projectId}
+            projects={data.projects}
+            latest={recordSource.records.find((r) => r.id === focusedRecord.id)}
+            onDirty={(v) => {
+              recordDirty.current = v;
+            }}
+            onSaved={(record) => {
+              recordSource.accept(record);
+              setFocusedRecord(null);
+            }}
+            onClose={() => {
+              if (!recordDirty.current) setFocusedRecord(null);
+              else
+                setConfirmation({
+                  title: '放弃未保存的事项修改？',
+                  message: '已保存记录和历史不受影响。',
+                  run: () => {
+                    setFocusedRecord(null);
+                    setConfirmation(null);
+                  },
+                });
+            }}
+          />
+        </DeferredPanel>
       )}
       {edit && (
         <Editor
@@ -1799,7 +1815,9 @@ function NoteCard({
   onPin,
   onDelete,
   now,
+  projectName,
 }: {
+  projectName?: string;
   note: Note;
   onEdit: () => void;
   onToggle: () => void;
@@ -1818,6 +1836,12 @@ function NoteCard({
       </button>
       <button className="note-main" onClick={onEdit}>
         <span className="note-kind">
+          {projectName && (
+            <>
+              <span className="agenda-category">事项</span> {projectName} ·{' '}
+              {n.done ? '已完成' : '待执行'} ·{' '}
+            </>
+          )}
           {n.kind} {n.kind !== '项目备忘' && n.date && `· ${n.date}`}{' '}
           {n.kind !== '项目备忘' && noteDue(n) && !n.done && `· ${remainingTime(noteDue(n), now)}`}
         </span>

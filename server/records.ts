@@ -12,7 +12,7 @@ import {
   type WorkRecord,
 } from '../src/lib/records';
 
-const columns = `id,project_id AS "projectId",project_name AS "projectName",title,node_date AS "nodeDate",status,notes,follow_up AS "followUp",version,deleted,created_by AS "createdBy",created_name AS "createdName",created_at AS "createdAt",updated_by AS "updatedBy",updated_name AS "updatedName",updated_at AS "updatedAt"`;
+const columns = `id,project_id AS "projectId",project_name AS "projectName",title,owner,node_date AS "nodeDate",status,notes,follow_up AS "followUp",version,deleted,created_by AS "createdBy",created_name AS "createdName",created_at AS "createdAt",updated_by AS "updatedBy",updated_name AS "updatedName",updated_at AS "updatedAt"`;
 const snapshot = (r: WorkRecord | null) =>
   r ? { projectId: r.projectId, status: r.status, nodeDate: r.nodeDate } : null;
 export function recordRoutes(app: Express) {
@@ -107,9 +107,9 @@ export function recordRoutes(app: Express) {
               id = old?.id ?? randomUUID();
             const next = (
               await c.query(
-                `INSERT INTO work_record(workspace_id,id,project_id,project_name,title,node_date,status,notes,follow_up,version,deleted,created_by,created_name,updated_by,updated_name)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,1,false,$10,$11,$10,$11)
-            ON CONFLICT(workspace_id,id) DO UPDATE SET project_name=$4,title=$5,node_date=$6,status=$7,notes=$8,follow_up=$9,version=work_record.version+1,deleted=$12,updated_by=$10,updated_name=$11,updated_at=now() RETURNING ${columns}`,
+                `INSERT INTO work_record(workspace_id,id,project_id,project_name,title,node_date,status,notes,follow_up,version,deleted,created_by,created_name,updated_by,updated_name,owner)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,1,false,$10,$11,$10,$11,$13)
+            ON CONFLICT(workspace_id,id) DO UPDATE SET project_name=$4,title=$5,node_date=$6,status=$7,notes=$8,follow_up=$9,version=work_record.version+1,deleted=$12,updated_by=$10,updated_name=$11,updated_at=now(),owner=$13 RETURNING ${columns}`,
                 [
                   a.workspaceId,
                   id,
@@ -123,6 +123,7 @@ export function recordRoutes(app: Express) {
                   a.id,
                   name,
                   method === 'delete',
+                  value.owner ?? old?.owner ?? '',
                 ],
               )
             ).rows[0] as WorkRecord;

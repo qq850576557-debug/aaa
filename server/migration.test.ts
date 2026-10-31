@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { randomUUID, createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { migrate } from './migrate';
 
 test('V1.1 additive upgrade retains old identities, password hash, business rows and old-code audit inserts', async () => {
@@ -172,6 +172,56 @@ test('004 canonical collisions stop migration atomically without rewriting legac
     console.log('Retained isolated canonical-collision database: ' + name);
   } finally {
     await db?.end();
+    await admin.end();
+  }
+});
+
+test('011 owner is an additive upgrade that preserves pre-existing board content, metadata and receipts', async () => {
+  const raw = process.env.MIGRATION_DATABASE_URL!;
+  const url = new URL(raw);
+  assert(['127.0.0.1', 'localhost'].includes(url.hostname) && url.pathname === '/chunmo_test');
+  const admin = new pg.Client({ connectionString: raw });
+  await admin.connect();
+  const name = 'chunmo_record_owner_' + randomUUID().replaceAll('-', '').slice(0, 12) + '_test';
+  const target = new URL(raw);
+  target.pathname = '/' + name;
+  let db: pg.Client | undefined;
+  try {
+    await admin.query(`CREATE DATABASE "${name}"`);
+    db = new pg.Client({ connectionString: target.toString() });
+    await db.connect();
+    await db.query(
+      'CREATE TABLE schema_migration(name text PRIMARY KEY,checksum text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now())',
+    );
+    for (const file of (await readdir('server/migrations'))
+      .filter((n) => n.endsWith('.sql') && n < '011_')
+      .sort()) {
+      const sql = await readFile('server/migrations/' + file, 'utf8');
+      await db.query(sql);
+      await db.query('INSERT INTO schema_migration(name,checksum) VALUES($1,$2)', [
+        file,
+        createHash('sha256').update(sql).digest('hex'),
+      ]);
+    }
+    await db.query('BEGIN');
+    await db.query("INSERT INTO cloud_workspace VALUES('legacy-studio','旧工作室','legacy-owner')");
+    await db.query(
+      "INSERT INTO account(id,workspace_id,login,password_hash,role) VALUES('legacy-owner','legacy-studio','legacy_owner','untouched-test-hash','owner')",
+    );
+    await db.query(
+      "INSERT INTO work_record(workspace_id,id,project_id,project_name,title,node_date,status,notes,follow_up,version,created_by,created_name,updated_by,updated_name) VALUES('legacy-studio','legacy-record','legacy-project','旧项目','保留旧事项','2026-10-30','待执行','原始内容','原始跟进',3,'legacy-owner','旧姓名','legacy-owner','旧姓名')",
+    );
+    await db.query('COMMIT');
+    const before = (await db.query("SELECT * FROM work_record WHERE id='legacy-record'")).rows[0];
+    await migrate(target.toString());
+    await migrate(target.toString());
+    const after = (await db.query("SELECT * FROM work_record WHERE id='legacy-record'")).rows[0];
+    assert.equal(after.owner, '');
+    delete after.owner;
+    assert.deepEqual(after, before);
+  } finally {
+    await db?.end();
+    await admin.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
     await admin.end();
   }
 });

@@ -84,8 +84,18 @@ for (const width of [1440, 1280, 390])
       .getByTestId('tomorrow-panel')
       .getByRole('button', { name: '添加明日事项', exact: true })
       .click();
-    const dialog = page.getByRole('dialog', { name: '新建每日事项', exact: true });
-    await expect(dialog.getByLabel('计划日期', { exact: true })).toBeVisible();
+    await page
+      .getByRole('dialog', { name: '新增记录', exact: true })
+      .getByRole('radio', { name: '事项管理', exact: true })
+      .click();
+    const dialog = page.locator('.record-drawer');
+    await expect(dialog.getByLabel('记录节点日期', { exact: true })).toBeVisible();
+    await expect
+      .poll(async () => {
+        const box = await dialog.boundingBox();
+        return box!.x + box!.width;
+      })
+      .toBeLessThanOrEqual(width);
     const box = (await dialog.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(width);
@@ -113,24 +123,34 @@ test('cloud agenda: employee note changes persist across accounts and re-login, 
     await login(staff, f.employee, f.password);
     const tomorrow = staff.getByTestId('tomorrow-panel');
     await tomorrow.getByRole('button', { name: '添加明日事项', exact: true }).click();
-    const form = staff.getByRole('dialog', { name: '新建每日事项', exact: true });
-    await form.getByLabel('事项标题', { exact: true }).fill('员工安排明日复核');
-    const planned = await form.getByLabel('计划日期', { exact: true }).inputValue();
-    await form.getByRole('button', { name: '保存', exact: true }).click();
+    await staff
+      .getByRole('dialog', { name: '新增记录', exact: true })
+      .getByRole('radio', { name: '事项管理', exact: true })
+      .click();
+    const form = staff.locator('.record-drawer');
+    await form.getByLabel('任务事项', { exact: true }).fill('员工安排明日复核');
+    const planned = await form.getByLabel('记录节点日期', { exact: true }).inputValue();
+    await form.getByRole('button', { name: '保存记录', exact: true }).click();
     await expect(staff.locator('.save-state')).toContainText('已保存');
     await owner.reload();
     await expect(owner.getByTestId('tomorrow-panel')).toContainText('员工安排明日复核');
     const after = await (await api(a, '/workspace')).json();
-    expect(after.data.notes).toHaveLength(1);
-    expect(after.data.notes[0]).toMatchObject({ projectId: d.projects[0].id, date: planned });
+    expect(after.data.notes).toHaveLength(0);
+    const records = await (await api(a, '/records')).json();
+    expect(records.records).toHaveLength(1);
+    expect(records.records[0]).toMatchObject({ projectId: d.projects[0].id, nodeDate: planned });
     expect(after.data.purchases).toEqual(before.data.purchases);
     expect(after.data.tasks).toEqual(before.data.tasks);
+    await staff.getByRole('button', { name: '项目工作空间', exact: true }).click();
     await staff.getByRole('button', { name: '完成员工安排明日复核', exact: true }).click();
+    await expect
+      .poll(async () => (await (await api(b, '/records')).json()).records[0].status)
+      .toBe('已完成');
     await expect(staff.locator('.save-state')).toContainText('已保存');
     await staff.getByRole('button', { name: '账号管理', exact: true }).click();
     await staff.getByRole('button', { name: '退出登录', exact: true }).click();
     await login(staff, f.employee, f.password);
-    await expect(staff.getByTestId('tomorrow-panel').locator('.note-card')).toHaveClass(/done/);
+    await expect(staff.getByTestId('tomorrow-panel').locator('.agenda-item')).toHaveClass(/done/);
     if (await staff.locator('.mobile-project-toggle').isVisible())
       await staff.locator('.mobile-project-toggle').click();
     await staff.locator('.sidebar-project-list [data-project-id="other"]').click();

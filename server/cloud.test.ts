@@ -3615,3 +3615,85 @@ test('SYS-COLLAB-004 personnel lifecycle: creation, assignment, order, assessmen
   assert.match((await unsafe.json()).error, /关联/);
   assert.deepEqual(await workspaceBase(a), beforeUnsafe);
 });
+
+test('classified agenda: board owner persists independently, old clients retain it, receipts/history and concurrent procurement remain isolated', async () => {
+  testClientIp = '203.0.113.242';
+  const { a, b } = await seededWorkspace();
+  const before = await workspaceBase(a);
+  const value = {
+    projectId: before.data.projects[0].id,
+    title: '分类后的现场复核',
+    nodeDate: today(),
+    status: '待执行',
+    notes: '具体内容',
+    followUp: '跟进信息',
+    owner: '负责复核的师傅',
+  };
+  const body = { requestId: randomUUID(), value };
+  const created = await request('/records', 'POST', body, b);
+  assert.equal(created.status, 200, await created.clone().text());
+  const record = await created.json();
+  assert.equal(record.owner, value.owner);
+  assert.deepEqual(await workspaceBase(a), before);
+  assert.deepEqual(await (await request('/records', 'POST', body, b)).json(), record);
+  const { owner: _owner, ...legacyValue } = value;
+  const results = await Promise.all([
+    request(
+      '/records/' + record.id,
+      'PUT',
+      {
+        requestId: randomUUID(),
+        version: record.version,
+        value: { ...legacyValue, title: '旧客户端保留负责人' },
+      },
+      b,
+    ),
+    request(
+      '/workspace',
+      'PUT',
+      submission(before, (d) => {
+        d.purchases[0].status = '已完成';
+      }),
+      a,
+    ),
+  ]);
+  assert.deepEqual(
+    results.map((r) => r.status),
+    [200, 200],
+  );
+  const updated = await results[0].json();
+  assert.equal(updated.owner, value.owner);
+  const bad = await request(
+    '/records/' + record.id,
+    'PUT',
+    {
+      requestId: randomUUID(),
+      version: updated.version,
+      value: { ...value, owner: 'x'.repeat(101) },
+    },
+    b,
+  );
+  assert.equal(bad.status, 400);
+  const history = await (
+    await request('/records/' + record.id + '/history', 'GET', undefined, a)
+  ).json();
+  assert.equal(history.record.owner, value.owner);
+  assert.equal(history.events.length, 2);
+  assert(history.events.some((x: any) => x.changedFields.includes('owner')));
+  assert.equal(JSON.stringify(history.events).includes(value.owner), false);
+  const read = await (await request('/records', 'GET', undefined, a)).json();
+  assert.equal(read.records.length, 1);
+  assert.equal(read.records[0].owner, value.owner);
+  const final = await workspaceBase(a);
+  assert.equal(final.data.purchases[0].status, '已完成');
+  assert.deepEqual(final.data.notes, before.data.notes);
+  const deleted = await request(
+    '/records/' + record.id,
+    'DELETE',
+    { requestId: randomUUID(), version: updated.version },
+    b,
+  );
+  assert.equal(deleted.status, 200);
+  assert.equal((await (await request('/records', 'GET', undefined, a)).json()).records.length, 0);
+  assert.equal((await workspaceBase(a)).data.purchases[0].status, '已完成');
+});

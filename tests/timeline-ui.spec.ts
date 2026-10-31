@@ -205,8 +205,8 @@ for (const width of [1440, 390])
       animations: 'disabled',
     });
     await page.getByRole('button', { name: '事项管理', exact: true }).click();
-    await page.locator('.daily-records > summary').click();
-    await expect(page.locator('.notes-grid')).toContainText(d.notes[0].title);
+    await expect(page.locator('.daily-records')).toHaveCount(0);
+    expect((await state(page)).notes).toEqual(original.notes);
     await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
     await page.screenshot({
       path: `${output}/home-${width}.png`,

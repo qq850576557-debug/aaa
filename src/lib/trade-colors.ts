@@ -1,5 +1,14 @@
-import { palette, tradeNames, parseBackup, defaultTrades, type Data, type Trade } from './model';
+import { palette, tradeNames, parseBackup, id, type Data, type Trade } from './model';
 import { hexToHsva } from '@uiw/color-convert';
+export const projectStageTemplate = [
+  ['拆除阶段', '#98684a'],
+  ['砌墙阶段', '#4378ab'],
+  ['水电阶段', '#7c8c49'],
+  ['瓦工阶段', '#ba7059'],
+  ['木工阶段', '#3e987f'],
+  ['油漆阶段', '#8b65b5'],
+  ['安装阶段', '#c38c32'],
+] as const;
 const stageAliases: Record<string, string> = {
   拆除阶段: '现场拆改',
   水电阶段: '水电改造',
@@ -9,6 +18,8 @@ const stageAliases: Record<string, string> = {
   墙面油漆施工: '墙面油漆',
 };
 export function defaultTradeColor(name: string) {
+  const template = projectStageTemplate.find(([stage]) => stage === name.trim());
+  if (template) return template[1];
   const index = tradeNames.indexOf(
     Object.hasOwn(stageAliases, name.trim()) ? stageAliases[name.trim()] : name.trim(),
   );
@@ -18,28 +29,32 @@ export function stageColorKey(name: string) {
   const value = name.normalize('NFKC').trim();
   return Object.hasOwn(stageAliases, value) ? stageAliases[value] : value;
 }
-/** An explicit shared-color save changes colors only, never dates or staff IDs. */
-export function saveSharedTradeColor(data: Data, tradeId: string, color: string): Data {
+/** A stage color edit belongs to this project and record, never to other projects. */
+export function saveTradeColor(data: Data, tradeId: string, color: string): Data {
   const source = data.trades.find((g) => g.id === tradeId);
   if (!source) throw Error('工种已不存在，请重新读取后调整颜色');
   return parseBackup({
     ...data,
-    trades: data.trades.map((g) =>
-      stageColorKey(g.name) === stageColorKey(source.name) ? { ...g, color } : g,
-    ),
+    trades: data.trades.map((g) => (g.id === source.id ? { ...g, color } : g)),
   });
 }
-export function initialStageColor(data: Data, name: string, fallback: string) {
-  const same = data.trades.filter((g) => stageColorKey(g.name) === stageColorKey(name));
+export function initialStageColor(data: Data, name: string, fallback: string, projectId: string) {
+  const same = data.trades.filter(
+    (g) => g.projectId === projectId && stageColorKey(g.name) === stageColorKey(name),
+  );
   const custom = same.find((g) => g.color.toLowerCase() !== g.defaultColor.toLowerCase());
   return (
     custom?.color || (same[0] && resolvedTradeColor(same[0])) || defaultTradeColor(name) || fallback
   );
 }
-export function newProjectTrades(data: Data, projectId: string) {
-  return defaultTrades(projectId).map((g) => ({
-    ...g,
-    color: initialStageColor(data, g.name, g.color),
+export function newProjectTrades(_data: Data, projectId: string): Trade[] {
+  return projectStageTemplate.map(([name, color], order) => ({
+    id: id(),
+    projectId,
+    name,
+    color,
+    defaultColor: color,
+    order,
   }));
 }
 /** Stored color is authoritative. Never remap a saved hue by project or stage name. */

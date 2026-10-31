@@ -10,8 +10,11 @@ for (const width of [1440, 1280, 390])
     await page.clock.setFixedTime(new Date('2026-10-29T10:00:00Z'));
     await boot(page);
     const d = fixture(),
-      originalPurchases = structuredClone(d.purchases),
+      originalPurchases = structuredClone(
+        d.purchases.map((p) => ({ ...p, taskId: '', due: '2026-11-02' })),
+      ),
       memo = d.notes.find((n) => n.kind === '项目备忘')!;
+    d.purchases = structuredClone(originalPurchases);
     const boxes: unknown[] = [];
     let purchaseSnapshot = originalPurchases;
     for (const count of [0, 1, 8]) {
@@ -40,7 +43,7 @@ for (const width of [1440, 1280, 390])
       await closeToast(page);
       if (!count) purchaseSnapshot = (await state(page)).purchases;
       const cards = page.locator('.agenda-brief .brief-panel');
-      await expect(cards).toHaveCount(3);
+      await expect(cards).toHaveCount(2);
       const geometry = await cards.evaluateAll((es) =>
         es.map((e) => {
           const r = e.getBoundingClientRect(),
@@ -68,10 +71,10 @@ for (const width of [1440, 1280, 390])
       } else {
         await expect(today).toContainText('今日现场核验0');
         await expect(tomorrow).toContainText('明日现场安排0');
-        await expect(memos).toContainText('长期项目备忘0');
+        await expect(memos).toHaveCount(0);
       }
       await expect(page.locator('.agenda-brief')).not.toContainText(originalPurchases[0].name);
-      await expect(page.locator('.agenda-brief')).not.toContainText(d.projects[0].name);
+      if (count) await expect(page.locator('.agenda-brief')).toContainText(d.projects[0].name);
       expect((await state(page)).purchases).toEqual(purchaseSnapshot);
       if (count === 8) {
         await today.getByRole('button', { name: '展开今日事项', exact: true }).click();
@@ -108,25 +111,30 @@ test('tomorrow CRUD, confirmation, completion and year-end rollover retain one r
   await page.clock.install({ time: new Date('2026-12-31T15:59:00Z') });
   await boot(page);
   const d = fixture();
-  d.notes = [];
+  d.notes = [
+    {
+      ...fixture().notes[0],
+      id: 'legacy-rollover',
+      title: '元旦现场复核',
+      date: '2027-01-01',
+      reminder: '',
+      pinned: false,
+      done: false,
+      content: '现场确认工艺',
+    },
+  ];
   d.projects.push({ ...d.projects[0], id: 'other', name: '另一个工地' });
   await restore(page, d);
   await closeToast(page);
   const originalPurchases = (await state(page)).purchases;
   const tomorrow = page.getByTestId('tomorrow-panel'),
     today = page.getByTestId('today-panel');
-  await tomorrow.getByRole('button', { name: '添加明日事项', exact: true }).click();
-  let dialog = page.getByRole('dialog', { name: '新建每日事项', exact: true });
-  await expect(dialog.getByLabel('计划日期', { exact: true })).toHaveValue('2027-01-01');
-  await dialog.getByLabel('事项标题', { exact: true }).fill('元旦现场复核');
-  await dialog.getByLabel('详细备注（可选）', { exact: true }).fill('现场确认工艺');
-  await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await expect(tomorrow).toContainText('元旦现场复核');
   const saved = (await state(page)).notes[0];
   expect(saved.projectId).toBe(d.projects[0].id);
   expect((await state(page)).purchases).toEqual(originalPurchases);
   await tomorrow.locator('.note-main').click();
-  dialog = page.getByRole('dialog', { name: '编辑每日事项', exact: true });
+  const dialog = page.getByRole('dialog', { name: '编辑每日事项', exact: true });
   await dialog.getByLabel('事项标题', { exact: true }).fill('元旦施工复核');
   await dialog.getByRole('button', { name: '保存', exact: true }).click();
   await tomorrow.getByRole('button', { name: '完成元旦施工复核', exact: true }).click();
@@ -162,6 +170,6 @@ test('tomorrow CRUD, confirmation, completion and year-end rollover retain one r
   expect((await state(page)).notes).toHaveLength(1);
   await page.getByRole('button', { name: '删除事项元旦施工复核', exact: true }).click();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
-  await expect(today).toContainText('今日暂无待办事项');
+  await expect(today).not.toContainText('元旦施工复核');
   expect((await state(page)).notes).toHaveLength(0);
 });

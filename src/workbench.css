@@ -805,7 +805,7 @@ textarea::placeholder {
 }
 .app-shell .workspace-brief.agenda-brief {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
   gap: 12px;
 }
@@ -2307,5 +2307,114 @@ textarea::placeholder {
   .app-shell #project-timeline .trade-info-card {
     transition: none;
     scale: 1 !important;
+  }
+}
+
+/* A single classified record row, shared by the two date projections. */
+.agenda-category-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid #dce7df;
+  border-radius: 12px;
+  background: #f4f8f3;
+}
+.agenda-category-picker legend {
+  padding: 0 6px;
+  font-size: 13px;
+  color: #426451;
+}
+.agenda-category-picker label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 1px solid #d4e1d6;
+  border-radius: 10px;
+  background: white;
+  cursor: pointer;
+}
+.agenda-category-picker label.selected {
+  background: #dfecde;
+  border-color: #81a687;
+  color: #234f3d;
+}
+.agenda-category-picker small {
+  flex-basis: 100%;
+}
+.record-drawer > .agenda-category-picker {
+  margin: 12px 20px 0;
+  flex-shrink: 0;
+}
+.agenda-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--project-border, #dce6de);
+  border-radius: 10px;
+  background: #ffffff;
+}
+.agenda-item + .agenda-item {
+  margin-top: 8px;
+}
+.app-shell .agenda-item-main {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+  height: auto;
+  padding: 5px;
+  text-align: left;
+  background: #f8faf7;
+  border: 0;
+  box-shadow: none;
+}
+.agenda-item-main strong {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.agenda-item-meta {
+  display: flex;
+  gap: 5px 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: 12px;
+  color: #5e7166;
+}
+.agenda-category {
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: #e8efe6;
+  color: #345e48;
+}
+.agenda-category.category-purchase {
+  background: #f5eddc;
+  color: #765d2e;
+}
+.agenda-item.done .agenda-item-main strong {
+  color: #718075;
+}
+.app-shell .agenda-complete {
+  flex-shrink: 0;
+  padding: 6px 9px;
+  font-size: 12px;
+  background: #e5f0e3;
+  border-color: #cbdec8;
+  color: #376447;
+}
+@media (max-width: 700px) {
+  .agenda-category-picker label {
+    flex: 1;
+    justify-content: center;
+    min-height: 44px;
+  }
+  .app-shell .agenda-complete {
+    min-height: 40px;
   }
 }

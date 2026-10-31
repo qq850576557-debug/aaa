@@ -261,7 +261,7 @@ test('monthly 2x export produces independent titled PNGs and top success feedbac
   await expect(page.locator('.toast-stack .toast')).toHaveCount(0, { timeout: 5000 });
 });
 
-test('today, tomorrow and memo panels precede timeline, completion and project switching remain isolated', async ({
+test('today and tomorrow panels precede timeline; legacy memos stay saved, completion and project switching remain isolated', async ({
   page,
 }) => {
   const d = fixture();
@@ -273,13 +273,14 @@ test('today, tomorrow and memo panels precede timeline, completion and project s
   const cards = await page.locator('.workspace-brief').boundingBox(),
     gantt = await page.locator('.schedule-section').boundingBox();
   expect(cards!.y).toBeLessThan(gantt!.y);
-  await page.getByRole('button', { name: '完成材料与施工注意事项', exact: true }).click();
+  await expect(page.getByTestId('memo-panel')).toHaveCount(0);
+  await page.getByRole('button', { name: '完成确认厨房插座定位', exact: true }).click();
   await expect
-    .poll(async () => (await state(page)).notes.find((n) => n.kind === '项目备忘')?.done)
+    .poll(async () => (await state(page)).notes.find((n) => n.title === '确认厨房插座定位')?.done)
     .toBe(true);
   await page.locator(`[data-project-id="${p2.id}"]`).click();
   await expect(
-    page.getByRole('button', { name: '标记未完成材料与施工注意事项', exact: true }),
+    page.getByRole('button', { name: '标记未完成确认厨房插座定位', exact: true }),
   ).toHaveCount(0);
   await expect(page.locator('.agenda-brief')).not.toContainText('电线及线管');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(

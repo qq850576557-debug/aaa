@@ -36,7 +36,8 @@ for (const width of [1440, 390])
     ]).flat();
     await restore(page, d);
     await closeToast(page);
-    for (const title of ['今日事项', '明日提醒', '项目备忘']) {
+    await expect(page.getByTestId('memo-panel')).toHaveCount(0);
+    for (const title of ['今日事项', '明日提醒']) {
       const panel = page
         .locator('.brief-panel')
         .filter({ has: page.getByRole('heading', { name: new RegExp('^' + title) }) });
@@ -45,7 +46,9 @@ for (const width of [1440, 390])
       ).toHaveAttribute('aria-expanded', 'false');
       expect(await panel.locator('.brief-content').evaluate((e) => e.children.length)).toBe(3);
       await panel.getByRole('button', { name: '展开' + title, exact: true }).click();
-      expect(await panel.locator('.brief-content').evaluate((e) => e.children.length)).toBe(4);
+      expect(await panel.locator('.brief-content').evaluate((e) => e.children.length)).toBe(
+        title === '今日事项' ? 12 : 4,
+      );
       await panel.getByRole('button', { name: '收起' + title, exact: true }).click();
     }
     await page.getByRole('button', { name: '采购管理', exact: true }).click();

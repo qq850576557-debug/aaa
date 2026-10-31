@@ -15,7 +15,8 @@ for (const width of [1440, 1280, 390, 320]) {
     await restore(page, before);
     await closeToast(page);
     await expect(page.locator('.workspace-anchors')).toHaveCount(0);
-    for (const title of ['今日事项', '明日提醒', '项目备忘'])
+    await expect(page.getByTestId('memo-panel')).toHaveCount(0);
+    for (const title of ['今日事项', '明日提醒'])
       await expect(
         page.getByRole('heading', { name: new RegExp('^' + title) }).first(),
       ).toBeVisible();
@@ -96,7 +97,8 @@ for (const width of [1440, 1280, 390, 320]) {
     await expect(editor.getByLabel('人员工种木工', { exact: true })).toHaveCount(1);
     for (const stage of ['木工吊顶', '水电改造', '墙地砖铺贴', '油漆阶段'])
       await expect(editor.getByLabel('人员工种' + stage, { exact: true })).toHaveCount(0);
-    await expect(editor.locator('.worker-legacy-tag')).toContainText('木工吊顶');
+    await expect(editor.getByText(/已保留.*历史关联/)).toBeVisible();
+    await expect(editor.getByLabel('已选人员工种')).toHaveCount(0);
     await page.screenshot({
       path: `${screenshots}/worker-picker-${width}.png`,
       animations: 'disabled',
@@ -104,8 +106,13 @@ for (const width of [1440, 1280, 390, 320]) {
     await editor.getByLabel('搜索人员工种', { exact: true }).fill('水电');
     await expect(editor.locator('.worker-trade-options input')).toHaveCount(1);
     await editor.getByLabel('人员工种水电工', { exact: true }).check();
-    await expect(editor.getByLabel('已选人员工种')).toContainText('水电工');
-    await editor.getByLabel('移除工种水电工', { exact: true }).click();
+    await expect(editor.getByLabel('人员工种水电工', { exact: true })).toBeChecked();
+    await expect(editor.locator('.worker-selected')).toHaveCount(0);
+    await page.screenshot({
+      path: `${screenshots}/worker-picker-selected-${width}.png`,
+      animations: 'disabled',
+    });
+    await editor.getByLabel('人员工种水电工', { exact: true }).uncheck();
     await editor.getByRole('button', { name: '工种管理', exact: true }).click();
     const manager = page.getByRole('dialog', { name: '人员工种管理', exact: true });
     await manager.getByRole('button', { name: '新增工种', exact: true }).click();
@@ -240,7 +247,7 @@ test('person cards: cross-row drag, same-row insertion, pointer cancellation, mo
   expect(saved.tasks).toEqual(before.tasks);
   expect(saved.trades).toEqual(before.trades);
 });
-test('shared stage color explicitly synchronizes projects; preview cancellation and non-color edits preserve existing custom values', async ({
+test('project-specific stage color preserves other projects; preview cancellation and non-color edits preserve existing custom values', async ({
   page,
 }) => {
   await boot(page);
@@ -275,7 +282,7 @@ test('shared stage color explicitly synchronizes projects; preview cancellation 
     .poll(async () =>
       (await state(page)).trades.filter((g) => g.name === '水电改造').map((g) => g.color),
     )
-    .toEqual(['#d65d42', '#d65d42']);
+    .toEqual(['#d65d42', '#814ac2']);
   expect((await state(page)).tasks).toEqual(d.tasks);
 });
 

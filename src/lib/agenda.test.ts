@@ -73,3 +73,108 @@ describe('date-based project agenda', () => {
     expect(projectAgenda(d, undefined, '2026-10-29').tomorrow).toHaveLength(0);
   });
 });
+
+import { categorizedAgenda } from './agenda';
+import type { WorkRecord } from './records';
+it('projects procurement and board records by type/date without copies, conversions or cross-project leakage', () => {
+  const data = emptyData();
+  data.purchases = [
+    {
+      id: 'same-id',
+      projectId: 'a',
+      name: '采购电线',
+      due: '2026-12-31',
+      taskId: '',
+      leadDays: 0,
+      status: '待采购',
+      owner: '甲',
+      notes: '',
+    },
+  ];
+  data.notes = [n('memo', '', { kind: '项目备忘' }), n('old-daily', '2027-01-01')];
+  const records = [
+    {
+      id: 'same-id',
+      projectId: 'a',
+      title: '复核尺寸',
+      nodeDate: '2027-01-01',
+      status: '待执行',
+      deleted: false,
+    },
+    {
+      id: 'other',
+      projectId: 'b',
+      title: '其他工地',
+      nodeDate: '2027-01-01',
+      status: '紧急',
+      deleted: false,
+    },
+    {
+      id: 'deleted',
+      projectId: 'a',
+      title: '已删除',
+      nodeDate: '2027-01-01',
+      status: '待执行',
+      deleted: true,
+    },
+  ] as WorkRecord[];
+  const before = structuredClone({ data, records });
+  const first = categorizedAgenda(data, records, 'a', '2026-12-31');
+  expect(first.today.map((x) => [x.kind, x.id])).toEqual([['purchase', 'same-id']]);
+  expect(first.tomorrow.map((x) => x.kind).sort()).toEqual(['legacy', 'record']);
+  expect(first.tomorrow.find((x) => x.kind === 'record')!.value).toBe(records[0]);
+  const next = categorizedAgenda(data, records, 'a', '2027-01-01');
+  expect(next.today).toHaveLength(3);
+  expect(next.tomorrow).toHaveLength(0);
+  records[0].nodeDate = '2027-01-03';
+  expect(
+    categorizedAgenda(data, records, 'a', '2027-01-01').today.some((x) => x.kind === 'record'),
+  ).toBe(false);
+  records[0].nodeDate = '2027-01-01';
+  expect({ data, records }).toEqual(before);
+  expect(categorizedAgenda(data, records, undefined, '2027-01-01').today).toEqual([]);
+});
+it('completion, cancellation and deletion remain in their original stores and never become new records', () => {
+  const data = emptyData();
+  data.purchases = [
+    {
+      id: 'p',
+      projectId: 'a',
+      name: '采购',
+      due: '2026-10-29',
+      taskId: '',
+      leadDays: 0,
+      status: '已完成',
+      owner: '',
+      notes: '',
+    },
+  ];
+  const records = [
+    {
+      id: 'r',
+      projectId: 'a',
+      title: '事项',
+      nodeDate: '2026-10-29',
+      status: '已完成',
+      deleted: false,
+    },
+  ] as WorkRecord[];
+  expect(categorizedAgenda(data, records, 'a', '2026-10-29').today.every((x) => x.done)).toBe(true);
+  expect(categorizedAgenda(data, records, 'a', '2026-10-30').today).toHaveLength(0);
+  records[0].deleted = true;
+  expect(categorizedAgenda(data, records, 'a', '2026-10-29').today.map((x) => x.kind)).toEqual([
+    'purchase',
+  ]);
+  expect(records).toHaveLength(1);
+  expect(data.purchases).toHaveLength(1);
+});
+
+it('retains pinned legacy daily-note priority without changing the saved records', () => {
+  const data = emptyData();
+  data.notes = [n('older', '2026-10-28'), n('pinned', '2026-10-29', { pinned: true })];
+  expect(categorizedAgenda(data, [], 'a', '2026-10-30').today.map((x) => x.id)).toEqual([
+    'pinned',
+    'older',
+  ]);
+  expect(data.notes.map((x) => x.id)).toEqual(['older', 'pinned']);
+});

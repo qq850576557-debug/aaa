@@ -28,6 +28,7 @@ export const recordValue = z
     status: z.enum(recordStatuses),
     notes: text(4000),
     followUp: text(4000),
+    owner: text(100).optional(),
   })
   .strict();
 export const recordCreate = z.object({ requestId: z.uuid(), value: recordValue }).strict();
@@ -65,6 +66,7 @@ export const recordFields: Record<string, string> = {
   status: '状态',
   notes: '备注',
   followUp: '跟进',
+  owner: '负责人',
   deleted: '删除状态',
 };
 export function visibleRecords(
@@ -79,7 +81,7 @@ export function visibleRecords(
         (!filters.project || r.projectId === filters.project) &&
         (!filters.status || r.status === filters.status) &&
         (!needle ||
-          [r.title, r.projectName, r.notes, r.followUp].some((s) =>
+          [r.title, r.projectName, r.notes, r.followUp, r.owner || ''].some((s) =>
             s.toLocaleLowerCase('zh-CN').includes(needle),
           )),
     )
@@ -94,3 +96,13 @@ export function visibleRecords(
       );
     });
 }
+
+export const recordData = (r: WorkRecord): RecordValue => ({
+  projectId: r.projectId,
+  title: r.title,
+  nodeDate: r.nodeDate,
+  status: r.status,
+  notes: r.notes,
+  followUp: r.followUp,
+  owner: r.owner ?? '',
+});

@@ -3,7 +3,7 @@ import {
   nextTradeColor,
   resolvedTradeColor,
   defaultTradeColor,
-  saveSharedTradeColor,
+  saveTradeColor,
   newProjectTrades,
 } from './trade-colors';
 import { hexToHsva } from '@uiw/color-convert';
@@ -40,7 +40,7 @@ it('distinguishes nearly equal hues, not just matching hex strings, and keeps al
   }
   expect(legacy.color).toBe('#648b9c');
 });
-it('explicit shared colors and future projects agree, while dates, people and other stage colors remain unchanged', () => {
+it('project stage colors remain isolated from other and future projects, without changing dates or people', () => {
   const d = emptyData();
   d.projects = [
     { ...newProject(), id: 'a', name: '甲' },
@@ -49,23 +49,51 @@ it('explicit shared colors and future projects agree, while dates, people and ot
   d.trades = [...defaultTrades('a'), ...defaultTrades('b')];
   d.trades[9].color = '#814ac2';
   const before = structuredClone(d),
-    next = saveSharedTradeColor(d, d.trades[1].id, '#d65d42');
+    next = saveTradeColor(d, d.trades[1].id, '#d65d42');
   expect(next.trades.filter((g) => g.name === '水电改造').map((g) => g.color)).toEqual([
     '#d65d42',
-    '#d65d42',
+    '#814ac2',
   ]);
-  expect(newProjectTrades(next, 'new-site')[1].color).toBe('#d65d42');
+  expect(newProjectTrades(next, 'new-site').find((g) => g.name === '水电阶段')!.color).toBe(
+    palette[0],
+  );
   expect(next.projects).toEqual(before.projects);
   expect(next.tasks).toEqual(before.tasks);
   for (const g of next.trades.filter((g) => g.name !== '水电改造'))
     expect(g).toEqual(before.trades.find((x) => x.id === g.id));
   expect(d).toEqual(before);
 });
-it('never treats masonry as demolition when sharing a stage color', () => {
+it('never changes another stage while adjusting a demolition color', () => {
   const d = emptyData();
   d.projects = [{ ...newProject(), id: 'site', name: '测试工地' }];
   d.trades = defaultTrades('site');
   d.trades.push({ ...d.trades[0], id: 'masonry', name: '砌墙阶段' });
-  const next = saveSharedTradeColor(d, d.trades[0].id, '#d65d42');
+  const next = saveTradeColor(d, d.trades[0].id, '#d65d42');
   expect(next.trades.find((g) => g.id === 'masonry')).toEqual(d.trades.at(-1));
+});
+
+it('initializes exactly seven empty, ordered stages with stable distinct hues and unique project-local IDs; old projects remain untouched', () => {
+  const data = emptyData();
+  data.trades = defaultTrades('old');
+  const before = structuredClone(data);
+  const one = newProjectTrades(data, 'one'),
+    two = newProjectTrades(data, 'two');
+  expect(one.map((g) => g.name)).toEqual([
+    '拆除阶段',
+    '砌墙阶段',
+    '水电阶段',
+    '瓦工阶段',
+    '木工阶段',
+    '油漆阶段',
+    '安装阶段',
+  ]);
+  expect(one.map((g) => g.order)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+  expect(two.map((g) => g.color)).toEqual(one.map((g) => g.color));
+  expect(new Set([...one, ...two].map((g) => g.id)).size).toBe(14);
+  for (let i = 1; i < one.length; i++) {
+    const delta = Math.abs(hexToHsva(one[i].color).h - hexToHsva(one[i - 1].color).h);
+    expect(Math.min(delta, 360 - delta)).toBeGreaterThan(50);
+  }
+  expect(one.every((g) => !g.staffIds?.length && !('start' in g) && !('end' in g))).toBe(true);
+  expect(data).toEqual(before);
 });

@@ -1,3 +1,4 @@
+import { projectStageTemplate } from './trade-colors';
 import {
   id,
   palette,
@@ -49,6 +50,7 @@ export function workerTradeColor(label: string) {
 }
 const phaseNames = new Set([
   ...stages,
+  ...projectStageTemplate.map(([name]) => name),
   '砌墙阶段',
   '木工阶段',
   '油漆阶段',

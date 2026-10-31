@@ -45,11 +45,11 @@ for (const width of widths)
     const topRow = geometry.filter((g) => g.y === geometry[0].y);
     expect(topRow).toHaveLength(width >= 1280 ? 5 : width === 1024 ? 3 : 2);
     const cards = page.locator('.workspace-brief .panel');
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(2);
     const boxes = await cards.evaluateAll((es) => es.map((e) => e.getBoundingClientRect().height));
     expect(new Set(boxes).size).toBe(1);
     expect(Math.max(...boxes)).toBeLessThan(270);
-    await expect(page.locator('.brief-empty')).toHaveCount(3);
+    await expect(page.locator('.brief-empty')).toHaveCount(2);
     await expect(page.locator('.workspace-status-group,.local-notice')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '备份数据', exact: true })).toBeVisible();
     await expect(page.locator('.save-state')).toContainText('已保存');
@@ -128,7 +128,10 @@ for (const width of [1280, 390])
     const original = await start(page),
       today = page.getByTestId('today-panel');
     await expect(today).toContainText('确认厨房插座定位');
-    await expect(today).not.toContainText('电线及线管');
+    await expect(today).toContainText('电线及线管');
+    await expect(
+      today.getByRole('button', { name: '打开采购：电线及线管', exact: true }),
+    ).toHaveCount(1);
     await today.locator('.note-main').first().click();
     await expect(page.getByRole('dialog', { name: '编辑每日事项', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '关闭浮窗', exact: true }).click();

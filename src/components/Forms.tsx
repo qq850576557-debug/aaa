@@ -43,7 +43,9 @@ export function Editor({
   onContinue,
   onSegment,
   onDeadlineChange,
+  intro,
 }: {
+  intro?: ReactNode;
   edit: Edit;
   data: Data;
   onClose: () => void;
@@ -304,7 +306,7 @@ export function Editor({
           <summary>
             工种颜色 <i style={{ background: String(v.color) }} /> <span>{String(v.color)}</span>
           </summary>
-          <small>手动更色并保存后，同步当前工作空间内同名工序；不调整日期或人员。</small>
+          <small>颜色仅用于当前项目的此施工阶段；不更改其他项目、日期或人员。</small>
           <ColorControls
             color={String(v.color)}
             defaultColor={defaultTradeColor(String(v.name)) || String(v.defaultColor)}
@@ -337,7 +339,10 @@ export function Editor({
         <p className="form-info span2">
           所属项目：{data.projects.find((p) => p.id === v.projectId)?.name}
         </p>
+        {input('specification', '规格型号')}
+        {input('owner', '采购负责人')}
         {input('due', '采购截止日期', 'date', true)}
+        {select('status', '采购状态', ['待采购', '已下单', '已到货', '已完成'])}
         {area('notes', '详细备注（可选）')}
         {!isNew && (
           <div className="form-info span2">
@@ -374,6 +379,7 @@ export function Editor({
       >
         <form onSubmit={submit}>
           <div className="modal-body">
+            {intro}
             <div className="form-grid">
               {kind === 'trade' && peopleFields}
               {fields}

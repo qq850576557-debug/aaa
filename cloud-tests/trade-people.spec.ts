@@ -76,7 +76,7 @@ test('two authenticated editors concurrently save trade color and personnel orde
     expect(saved.trades[1].color).toBe('#d65d42');
     expect(saved.trades.filter((g) => g.name === '水电改造').map((g) => g.color)).toEqual([
       '#d65d42',
-      '#d65d42',
+      d.trades.filter((g) => g.name === '水电改造')[1].color,
     ]);
     expect(saved.people!.map((p) => p.id)).toEqual([
       'person-1',
