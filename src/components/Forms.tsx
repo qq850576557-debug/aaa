@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useId, useRef, useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
 import { Confirm, Modal, type Anchor } from './Modal';
 import { DateField } from './DateField';
@@ -44,8 +44,12 @@ export function Editor({
   onSegment,
   onDeadlineChange,
   intro,
+  embedded = false,
+  onDirtyChange,
 }: {
   intro?: ReactNode;
+  embedded?: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
   edit: Edit;
   data: Data;
   onClose: () => void;
@@ -74,6 +78,7 @@ export function Editor({
   const uid = useId();
   const [discard, setDiscard] = useState(false);
   const dirty = JSON.stringify(v) !== JSON.stringify(initial);
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const close = () => (dirty ? setDiscard(true) : onClose());
   const [again, setAgain] = useState(false);
   const change = (key: string, value: unknown) => set((old) => ({ ...old, [key]: value }));
@@ -370,6 +375,7 @@ export function Editor({
     <>
       {' '}
       <Modal
+        inline={embedded}
         title={`${isNew ? '新建' : '编辑'}${labels[kind]}`}
         subtitle={kind === 'trade' ? undefined : '每一处细节，都让项目更有序。'}
         onClose={close}

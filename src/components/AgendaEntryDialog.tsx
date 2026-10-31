@@ -50,7 +50,7 @@ export function AgendaEntryDialog({
   const intro = (
     <fieldset className="agenda-category-picker">
       <legend>记录类别（必选）</legend>
-      <label className={category === 'purchase' ? 'selected' : ''}>
+      <label className={`category-purchase ${category === 'purchase' ? 'selected' : ''}`}>
         <input
           type="radio"
           name="agenda-category"
@@ -61,7 +61,7 @@ export function AgendaEntryDialog({
         />
         采购清单
       </label>
-      <label className={category === 'record' ? 'selected' : ''}>
+      <label className={`category-record ${category === 'record' ? 'selected' : ''}`}>
         <input
           type="radio"
           name="agenda-category"
@@ -77,49 +77,60 @@ export function AgendaEntryDialog({
   );
   return (
     <>
-      {!category ? (
-        <Modal
-          title="新增记录"
-          subtitle={`${data.projects.find((p) => p.id === request.projectId)?.name} · ${request.date}`}
-          onClose={onClose}
-        >
-          <div className="modal-body">
-            {intro}
-            <p className="muted">请先选择类别，再填写对应记录。</p>
-          </div>
-          <footer className="modal-foot">
-            <button onClick={onClose}>取消</button>
-            <button className="primary" disabled>
-              保存
-            </button>
-          </footer>
-        </Modal>
-      ) : category === 'purchase' ? (
-        <Editor
-          edit={purchase}
-          data={data}
-          intro={intro}
-          onForgetName={() => {}}
-          onClose={onClose}
-          onSave={onPurchase}
-        />
-      ) : (
-        <RecordDrawer
-          projects={data.projects}
-          initialProject={request.projectId}
-          initialDate={request.date}
-          intro={intro}
-          onBusyChange={setSaving}
-          onDirty={(v) => {
-            dirty.current = v;
-          }}
-          onClose={() => {
-            if (dirty.current) setConfirmation(() => onClose);
-            else onClose();
-          }}
-          onSaved={onRecord}
-        />
-      )}
+      <Modal
+        title={category === 'purchase' ? '新建采购事项' : '新增记录'}
+        subtitle={`${data.projects.find((p) => p.id === request.projectId)?.name} · ${request.date}`}
+        className="agenda-entry-dialog"
+        topAligned
+        onClose={() => {
+          if (saving) return;
+          if (dirty.current) setConfirmation(() => onClose);
+          else onClose();
+        }}
+      >
+        <div className="agenda-entry-selector">{intro}</div>
+        <div className="agenda-entry-content" key={category || 'unselected'}>
+          {!category ? (
+            <>
+              <p className="muted agenda-entry-hint">请先选择类别，再填写对应记录。</p>
+              <footer className="modal-foot">
+                <button onClick={onClose}>取消</button>
+                <button className="primary" disabled>
+                  保存
+                </button>
+              </footer>
+            </>
+          ) : category === 'purchase' ? (
+            <Editor
+              embedded
+              edit={purchase}
+              data={data}
+              onDirtyChange={(v) => {
+                dirty.current = v;
+              }}
+              onForgetName={() => {}}
+              onClose={onClose}
+              onSave={onPurchase}
+            />
+          ) : (
+            <RecordDrawer
+              embedded
+              projects={data.projects}
+              initialProject={request.projectId}
+              initialDate={request.date}
+              onBusyChange={setSaving}
+              onDirty={(v) => {
+                dirty.current = v;
+              }}
+              onClose={() => {
+                if (dirty.current) setConfirmation(() => onClose);
+                else onClose();
+              }}
+              onSaved={onRecord}
+            />
+          )}
+        </div>
+      </Modal>
       {confirmation && (
         <Confirm
           title="放弃当前未保存的内容？"

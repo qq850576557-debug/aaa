@@ -1,9 +1,11 @@
+import type { LegacyLink } from './legacy-records';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cloudApi } from './cloud';
 import { recordData, type WorkRecord } from './records';
 
 /** One nonblocking source shared by the date views and project board. */
 export function useWorkRecords(enabled: boolean) {
+  const [legacyLinks, setLegacyLinks] = useState<LegacyLink[]>([]);
   const [records, setRecords] = useState<WorkRecord[]>([]);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState('');
@@ -15,9 +17,12 @@ export function useWorkRecords(enabled: boolean) {
     if (!active.current) return;
     const token = ++sequence.current;
     try {
-      const result = await cloudApi<{ records: WorkRecord[] }>('/records');
+      const result = await cloudApi<{ records: WorkRecord[]; legacyLinks?: LegacyLink[] }>(
+        '/records',
+      );
       if (active.current && token === sequence.current) {
         setRecords(result.records);
+        setLegacyLinks(result.legacyLinks ?? []);
         setError('');
       }
     } catch (e) {
@@ -81,6 +86,6 @@ export function useWorkRecords(enabled: boolean) {
       setBusyIds((old) => old.filter((x) => x !== record.id));
     }
   };
-  return { records, loading, error, load, accept, toggle, busyIds };
+  return { records, legacyLinks, loading, error, load, accept, toggle, busyIds };
 }
 export type RecordSource = ReturnType<typeof useWorkRecords>;

@@ -1,3 +1,4 @@
+import { legacyRoutes } from './legacy-records';
 import {
   saveWorkspaceSubmission,
   workspaceStateWithProof,
@@ -139,6 +140,7 @@ export function createApp() {
   });
   purchaseRoutes(app);
   recordRoutes(app);
+  legacyRoutes(app);
   assessmentRoutes(app);
   materialRoutes(app);
   transferRoutes(app);
@@ -1012,7 +1014,7 @@ export function createApp() {
           const recordRevision = String(
             (
               await pool.query(
-                'SELECT coalesce(max(id),0)::text revision FROM record_history WHERE workspace_id=$1',
+                "SELECT coalesce(max(id),0)::text || ':' || (SELECT coalesce(max(id),0)::text FROM legacy_record_link WHERE workspace_id=$1) AS revision FROM record_history WHERE workspace_id=$1",
                 [actor.workspaceId],
               )
             ).rows[0].revision,

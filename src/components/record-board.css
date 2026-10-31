@@ -616,3 +616,42 @@
     min-height: 44px;
   }
 }
+
+/* Quiet segmented tabs, shared by the board drawer and inline record form. */
+.record-tabs {
+  gap: 6px;
+  margin: 10px 20px 0;
+  padding: 5px;
+  border: 1px solid #dce9df;
+  border-radius: 11px;
+  background: #eff6f0;
+}
+.app-shell .record-tabs button {
+  padding: 7px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: #f5faf6 !important;
+  color: #5b7566;
+  font-size: 13px;
+}
+.app-shell .record-tabs button[aria-selected='true'] {
+  background-color: #d5e9d8 !important;
+  border-color: #a6c8ae;
+  color: #28573c !important;
+  box-shadow: 0 1px 3px #224b3310;
+}
+.app-shell .record-tabs button:hover:not(:disabled):not([aria-selected='true']) {
+  background-color: #e0eee2 !important;
+}
+.record-tabs button:disabled {
+  opacity: 0.5;
+}
+@media (max-width: 639px) {
+  .record-tabs {
+    margin: 8px 14px 0;
+  }
+  .record-tabs button {
+    min-height: 40px;
+    padding: 7px 14px;
+  }
+}

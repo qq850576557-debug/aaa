@@ -3697,3 +3697,427 @@ test('classified agenda: board owner persists independently, old clients retain 
   assert.equal((await (await request('/records', 'GET', undefined, a)).json()).records.length, 0);
   assert.equal((await workspaceBase(a)).data.purchases[0].status, '已完成');
 });
+
+test('legacy classification preview, transactional migration, complete provenance, permission, deduplication and exact concurrent retries', async () => {
+  testClientIp = '203.0.113.245';
+  const { a, b } = await seededWorkspace();
+  let state = await workspaceBase(a);
+  const pid = state.data.projects[0].id;
+  const n = (id: string, title: string, kind = '项目备忘', date = today(), done = false) => ({
+    id,
+    projectId: pid,
+    title,
+    kind,
+    date,
+    reminder: '',
+    owner: '',
+    content: '',
+    done,
+    pinned: false,
+  });
+  const sources = [
+    n('legacy-buy', '购买灯具', '材料采购'),
+    n('legacy-inspect', '检查灯具安装位置', '施工安排', today(), true),
+    n('legacy-reference', '长期说明：材料保养说明书', '项目备忘', ''),
+    n('legacy-unknown', '再看看', '项目备忘', ''),
+    n('legacy-mixed', '购买瓷砖并检查施工质量'),
+    n('legacy-arrival', '跟进五金到货', '到货验收'),
+    n('legacy-existing-record', '已在看板存在', '施工安排'),
+    n(
+      'legacy-existing-purchase',
+      state.data.purchases[0].name,
+      '材料采购',
+      state.data.purchases[0].due,
+    ),
+  ];
+  const edited = await request(
+    '/workspace',
+    'PUT',
+    submission(state, (d) => {
+      d.notes = sources as any;
+      d.projects[0].notes = '参考资料：长期施工说明';
+    }),
+    a,
+  );
+  assert.equal(edited.status, 200);
+  state = await workspaceBase(a);
+  const record = await request(
+    '/records',
+    'POST',
+    {
+      requestId: randomUUID(),
+      value: {
+        projectId: pid,
+        title: '已在看板存在',
+        nodeDate: today(),
+        status: '待执行',
+        notes: '',
+        followUp: '',
+        owner: '',
+      },
+    },
+    b,
+  );
+  assert.equal(record.status, 200);
+  const existing = await record.json();
+  const before = await workspaceBase(a);
+  // An older real snapshot may still be stored although the normal UI hides it by retention.
+  // Migration backups must capture it before commit runs the existing retention mechanism.
+  const rawHistory = (
+    await pool.query('SELECT history FROM workspace_state WHERE workspace_id=$1', [
+      a.user.workspaceId,
+    ])
+  ).rows[0].history;
+  const archived = {
+    ...rawHistory.records.find((r: any) => r.scope === pid),
+    id: randomUUID(),
+    at: '2000-01-01T00:00:00.000Z',
+  };
+  assert(archived.before && archived.after);
+  rawHistory.records.unshift(archived);
+  await pool.query('UPDATE workspace_state SET history=$2 WHERE workspace_id=$1', [
+    a.user.workspaceId,
+    JSON.stringify(rawHistory),
+  ]);
+  const getPreview = async () => {
+    const r = await request('/legacy-migration/preview', 'GET', undefined, a);
+    assert.equal(r.status, 200, await r.clone().text());
+    return r.json();
+  };
+  const p = await getPreview();
+  assert.equal(p.rows.length, 9);
+  assert.equal(p.rows.filter((x: any) => x.kind === 'pending').length, 2);
+  assert.deepEqual(await workspaceBase(a), before);
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int n FROM legacy_record_link WHERE workspace_id=$1', [
+        a.user.workspaceId,
+      ])
+    ).rows[0].n,
+    0,
+  );
+  const selected = p.rows
+    .filter((r: any) => r.kind !== 'pending')
+    .map((r: any) => ({ key: r.key, hash: r.hash, kind: r.kind }));
+  const body = {
+    requestId: randomUUID(),
+    token: p.token,
+    expires: p.expires,
+    confirmed: true,
+    backupConfirmed: true,
+    selections: selected,
+  };
+  assert.equal((await request('/legacy-migration/commit', 'POST', body, b)).status, 403);
+  const bad = {
+    ...body,
+    requestId: randomUUID(),
+    selections: [
+      selected.find((x: any) => x.kind === 'record'),
+      {
+        key: p.rows.find((x: any) => x.sourceId === 'legacy-unknown').key,
+        hash: p.rows.find((x: any) => x.sourceId === 'legacy-unknown').hash,
+        kind: 'purchase',
+      },
+    ],
+  };
+  assert.equal((await request('/legacy-migration/commit', 'POST', bad, a)).status, 400);
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int n FROM legacy_record_link WHERE workspace_id=$1', [
+        a.user.workspaceId,
+      ])
+    ).rows[0].n,
+    0,
+  );
+  assert.deepEqual(await workspaceBase(a), before);
+  const responses = await Promise.all([
+    request('/legacy-migration/commit', 'POST', body, a),
+    request('/legacy-migration/commit', 'POST', body, a),
+  ]);
+  assert.deepEqual(
+    responses.map((r) => r.status),
+    [200, 200],
+  );
+  const result = await responses[0].json();
+  assert.deepEqual(await responses[1].json(), result);
+  assert.equal(result.results.length, 7);
+  const after = await workspaceBase(a);
+  assert.deepEqual(after.data.notes, before.data.notes);
+  assert.deepEqual(after.data.tasks, before.data.tasks);
+  assert.equal(after.data.purchases.length, before.data.purchases.length + 2);
+  const records = await (await request('/records', 'GET', undefined, a)).json();
+  assert.equal(records.records.length, 2);
+  assert.equal(records.legacyLinks.length, 7);
+  const migrated = result.results.find((x: any) => x.key.includes('legacy-inspect'));
+  const saved = records.records.find((x: any) => x.id === migrated.id);
+  assert.equal(saved.status, '已完成');
+  assert(records.records.some((x: any) => x.id === existing.id));
+  const origin = await (
+    await request('/legacy-migration/source/record/' + saved.id, 'GET', undefined, b)
+  ).json();
+  assert.deepEqual(origin.sources[0].source, sources[1]);
+  assert(origin.sources[0].history.revisions.length > 0);
+  const archive = await (
+    await request('/legacy-migration/backup/' + body.requestId, 'GET', undefined, a)
+  ).json();
+  assert.deepEqual(archive.data, before.data);
+  assert.equal(archive.records.length, 1);
+  assert.deepEqual(archive.history, rawHistory);
+  assert(archive.history.records.some((r: any) => r.id === archived.id));
+  assert.equal(
+    (await request('/legacy-migration/backup/' + body.requestId, 'GET', undefined, b)).status,
+    403,
+  );
+  const fresh = await getPreview();
+  const repeat = {
+    ...body,
+    requestId: randomUUID(),
+    token: fresh.token,
+    expires: fresh.expires,
+    selections: fresh.rows
+      .filter((r: any) => r.link)
+      .map((r: any) => ({ key: r.key, hash: r.hash, kind: r.link.targetKind })),
+  };
+  assert.equal((await request('/legacy-migration/commit', 'POST', repeat, a)).status, 200);
+  assert.equal((await workspaceBase(a)).data.purchases.length, after.data.purchases.length);
+  assert.equal((await (await request('/records', 'GET', undefined, a)).json()).records.length, 2);
+  const pending = await getPreview();
+  const confirmed = {
+    ...body,
+    requestId: randomUUID(),
+    token: pending.token,
+    expires: pending.expires,
+    selections: pending.rows
+      .filter((r: any) => !r.link)
+      .map((r: any) => ({ key: r.key, hash: r.hash, kind: 'record' })),
+  };
+  assert.equal((await request('/legacy-migration/commit', 'POST', confirmed, a)).status, 200);
+  assert.equal((await (await request('/records', 'GET', undefined, a)).json()).records.length, 4);
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int n FROM legacy_record_link WHERE workspace_id=$1', [
+        a.user.workspaceId,
+      ])
+    ).rows[0].n,
+    9,
+  );
+  const update = await request(
+    '/records/' + saved.id,
+    'PUT',
+    {
+      requestId: randomUUID(),
+      version: saved.version,
+      value: {
+        projectId: pid,
+        title: '迁移后正常编辑',
+        nodeDate: today(),
+        status: '进行中',
+        notes: '完整新内容',
+        followUp: '继续跟进',
+        owner: '',
+      },
+    },
+    b,
+  );
+  assert.equal(update.status, 200);
+  assert.equal((await request('/legacy-migration/commit', 'POST', body, a)).status, 200);
+  assert.equal((await (await request('/records', 'GET', undefined, a)).json()).records.length, 4);
+  const foreign = await setup();
+  assert.equal(
+    (
+      await (
+        await request('/legacy-migration/source/record/' + saved.id, 'GET', undefined, foreign.a)
+      ).json()
+    ).sources.length,
+    0,
+  );
+});
+
+test('legacy migration: stale previews, duplicate historical sources, source edits and deleted targets never overwrite or resurrect data', async () => {
+  testClientIp = '203.0.113.246';
+  const { a, b } = await seededWorkspace();
+  let s = await workspaceBase(a);
+  const [one, two] = s.data.projects;
+  const note = (id: string, pid: string) => ({
+    id,
+    projectId: pid,
+    title: '检查灯具安装位置',
+    kind: '施工安排' as const,
+    date: today(),
+    reminder: '',
+    owner: '',
+    content: '原始现场要求',
+    done: false,
+    pinned: false,
+  });
+  const originals = [
+    note('duplicate-one', one.id),
+    note('duplicate-two', one.id),
+    note('other-project', two.id),
+  ];
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(s, (d) => {
+          d.notes = originals;
+        }),
+        a,
+      )
+    ).status,
+    200,
+  );
+  const preview = async () =>
+    await (await request('/legacy-migration/preview', 'GET', undefined, a)).json();
+  let p = await preview();
+  assert(
+    p.rows
+      .filter((r: any) => r.projectId === one.id && r.sourceType === 'note')
+      .every((r: any) => r.kind === 'pending'),
+  );
+  assert.equal(p.rows.find((r: any) => r.sourceId === 'other-project').kind, 'record');
+  const body = (p: any, rows: any[]) => ({
+    requestId: randomUUID(),
+    token: p.token,
+    expires: p.expires,
+    confirmed: true,
+    backupConfirmed: true,
+    selections: rows.map((r) => ({ key: r.key, hash: r.hash, kind: 'record' })),
+  });
+  const old = body(p, [p.rows.find((r: any) => r.sourceId === 'other-project')]);
+  s = await workspaceBase(b);
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(s, (d) => {
+          d.people!.push({ ...d.people![0], id: randomUUID(), name: '并发新增人员' });
+        }),
+        b,
+      )
+    ).status,
+    200,
+  );
+  assert.equal((await request('/legacy-migration/commit', 'POST', old, a)).status, 409);
+  p = await preview();
+  assert.equal(
+    (
+      await request(
+        '/legacy-migration/commit',
+        'POST',
+        body(
+          p,
+          p.rows.filter((r: any) => r.sourceId.startsWith('duplicate-')),
+        ),
+        a,
+      )
+    ).status,
+    409,
+  );
+  const imported = await request(
+    '/legacy-migration/commit',
+    'POST',
+    body(p, [p.rows.find((r: any) => r.sourceId === 'other-project')]),
+    a,
+  );
+  assert.equal(imported.status, 200);
+  const target = (await imported.json()).results[0].id;
+  s = await workspaceBase(b);
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(s, (d) => {
+          d.notes.find((n) => n.id === 'other-project')!.content = '迁移后旧来源的修改';
+        }),
+        b,
+      )
+    ).status,
+    200,
+  );
+  p = await preview();
+  const changed = p.rows.find((r: any) => r.sourceId === 'other-project');
+  assert.equal(changed.sourceChanged, true);
+  assert.equal(
+    (await request('/legacy-migration/commit', 'POST', body(p, [changed]), a)).status,
+    409,
+  );
+  const live = await (await request('/records', 'GET', undefined, a)).json();
+  assert.equal(live.records.find((r: any) => r.id === target).notes, '原始现场要求');
+  assert.equal(
+    live.legacyLinks.find((l: any) => l.sourceId === 'other-project').matchesCurrent,
+    false,
+  );
+  await assert.rejects(
+    pool.query('UPDATE legacy_record_link SET target_id=$1 WHERE workspace_id=$2', [
+      'forged',
+      a.user.workspaceId,
+    ]),
+  );
+  const record = live.records[0];
+  assert.equal(
+    (
+      await request(
+        '/records/' + record.id,
+        'DELETE',
+        { requestId: randomUUID(), version: record.version },
+        a,
+      )
+    ).status,
+    200,
+  );
+  // Put the source back verbatim. The durable mapping still prevents resurrection of the deleted target.
+  s = await workspaceBase(a);
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(s, (d) => {
+          d.notes.find((n) => n.id === 'other-project')!.content = '原始现场要求';
+        }),
+        a,
+      )
+    ).status,
+    200,
+  );
+  p = await preview();
+  assert.equal(
+    (
+      await request(
+        '/legacy-migration/commit',
+        'POST',
+        body(p, [p.rows.find((r: any) => r.sourceId === 'other-project')]),
+        a,
+      )
+    ).status,
+    200,
+  );
+  assert.equal((await (await request('/records', 'GET', undefined, a)).json()).records.length, 0);
+  // A different, not-yet-mapped source must not be linked to an invisible deleted target either.
+  s = await workspaceBase(a);
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(s, (d) => {
+          d.notes.push(note('unmapped-after-delete', two.id));
+        }),
+        a,
+      )
+    ).status,
+    200,
+  );
+  p = await preview();
+  const unseen = p.rows.find((r: any) => r.sourceId === 'unmapped-after-delete');
+  assert.equal(unseen.kind, 'pending');
+  assert(unseen.matches.some((m: any) => m.id === target && m.deleted));
+  const reuseDeleted = body(p, [unseen]);
+  Object.assign(reuseDeleted.selections[0], { existingId: target });
+  assert.equal((await request('/legacy-migration/commit', 'POST', reuseDeleted, a)).status, 409);
+  assert.equal((await (await request('/records', 'GET', undefined, a)).json()).records.length, 0);
+});

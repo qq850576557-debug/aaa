@@ -1,3 +1,5 @@
+import { visibleLegacyNotes } from './lib/legacy-records';
+import { LegacySource } from './components/LegacySource';
 import { ThemedWorkspace } from './components/ProjectThemes';
 import { WorkspaceSaveConflict } from './components/WorkspaceSaveConflict';
 import { DeferredPanel } from './components/ModuleBoundary';
@@ -21,7 +23,7 @@ import { CloudControl } from './components/CloudControl';
 import { ConflictPanel } from './components/ConflictPanel';
 import { scheduleForecast } from './lib/readiness';
 import { CollaborationBar } from './components/CollaborationBar';
-import { lazy, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   ArrowDownToLine,
   Archive,
@@ -128,6 +130,9 @@ const MaterialAlertSummary = lazy(() =>
 const PeoplePanel = lazy(() =>
   import('./components/PeoplePanel').then((m) => ({ default: m.PeoplePanel })),
 );
+const LegacyMigrationPanel = lazy(() =>
+  import('./components/LegacyMigrationPanel').then((m) => ({ default: m.LegacyMigrationPanel })),
+);
 const AgendaEntryDialog = lazy(() =>
   import('./components/AgendaEntryDialog').then((m) => ({ default: m.AgendaEntryDialog })),
 );
@@ -202,6 +207,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [archived, setArchived] = useState(false);
   const [search, setSearch] = useState('');
   const [agendaEntry, setAgendaEntry] = useState<AgendaEntryRequest | null>(null);
+  const [legacyOpen, setLegacyOpen] = useState(false);
   const [focusedRecord, setFocusedRecord] = useState<WorkRecord | null>(null);
   const recordDirty = useRef(false);
   const recordSource = useWorkRecords(
@@ -227,7 +233,15 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       (!projectStatusFilter || projectStatus(p.status) === '施工中'),
   );
   const p = projects.find((p) => p.id === selected) ?? projects[0];
-  const baseCount = stats(data, now);
+  const noteSignature = JSON.stringify(savedData.notes);
+  useEffect(() => {
+    if (isCloud) window.dispatchEvent(new Event('chunmo-records-changed'));
+  }, [isCloud, noteSignature]);
+  const agendaData = {
+    ...data,
+    notes: visibleLegacyNotes(data.notes, savedData.notes, recordSource.legacyLinks),
+  };
+  const baseCount = stats(agendaData, now);
   const count = {
     ...baseCount,
     todos:
@@ -242,7 +256,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       ).length,
   };
   const procurement = procurementView(data, p?.id, now);
-  const agenda = categorizedAgenda(data, recordSource.records, p?.id, now);
+  const agenda = categorizedAgenda(agendaData, recordSource.records, p?.id, now);
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
   }, [view]);
@@ -761,7 +775,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             <ClipboardList size={18} />
             事项提醒 · 今日及逾期
           </h3>
-          {todayNotes(data, undefined, now)
+          {todayNotes(agendaData, undefined, now)
             .filter((n) => active.has(n.projectId) && !n.done)
             .sort((a, b) => a.date.localeCompare(b.date))
             .map((n) => (
@@ -1161,6 +1175,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           ) : view === 'records' ? (
             <>
               <DeferredPanel>
+                {isCloud && <button onClick={() => setLegacyOpen(true)}>历史数据分类与兼容</button>}
                 <RecordBoard projects={data.projects} isCloud={isCloud} source={recordSource} />
               </DeferredPanel>
             </>
@@ -1430,6 +1445,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           onClose={dismissSaveConflict}
         />
       )}
+      {legacyOpen && (
+        <DeferredPanel>
+          <LegacyMigrationPanel owner={!!cloudUser?.owner} onClose={() => setLegacyOpen(false)} />
+        </DeferredPanel>
+      )}
       {agendaEntry && (
         <DeferredPanel>
           <AgendaEntryDialog
@@ -1485,6 +1505,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         <Editor
           key={`${edit.kind}-${edit.value.id}`}
           edit={edit}
+          intro={
+            isCloud && edit.kind === 'purchase' && isExisting ? (
+              <LegacySource kind="purchase" id={edit.value.id} />
+            ) : undefined
+          }
           onForgetName={(name) => {
             const projectsUsing = data.projects.filter(
               (project) =>

@@ -272,13 +272,22 @@ test('classification cannot switch during submission; failed saves preserve fiel
   });
   await drawer.getByRole('button', { name: '保存记录', exact: true }).click();
   await expect.poll(() => bodies.length).toBe(1);
-  await expect(drawer.getByRole('radio', { name: '采购清单', exact: true })).toBeDisabled();
-  await expect(drawer.getByRole('radio', { name: '事项管理', exact: true })).toBeChecked();
+  await expect(
+    page.locator('.agenda-entry-dialog').getByRole('radio', { name: '采购清单', exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.locator('.agenda-entry-dialog').getByRole('radio', { name: '事项管理', exact: true }),
+  ).toBeChecked();
   release();
   await expect(drawer.getByRole('alert')).toContainText('临时失败');
   await expect(drawer.getByLabel('记录备注', { exact: true })).toHaveValue('不能丢弃的具体内容');
-  await expect(drawer.getByRole('radio', { name: '采购清单', exact: true })).toBeEnabled();
-  await drawer.getByRole('radio', { name: '采购清单', exact: true }).click();
+  await expect(
+    page.locator('.agenda-entry-dialog').getByRole('radio', { name: '采购清单', exact: true }),
+  ).toBeEnabled();
+  await page
+    .locator('.agenda-entry-dialog')
+    .getByRole('radio', { name: '采购清单', exact: true })
+    .click();
   const confirm = page.getByRole('dialog', { name: '放弃当前未保存的内容？', exact: true });
   await expect(confirm).toBeVisible();
   await confirm.getByRole('button', { name: '取消', exact: true }).click();
@@ -293,3 +302,210 @@ test('classification cannot switch during submission; failed saves preserve fiel
   expect((await api(page)).value.data.purchases).toEqual(originals.purchases);
   expect((await api(page)).value.data.notes).toEqual(originals.notes);
 });
+
+for (const width of [1440, 1280, 390, 320])
+  test(`inline entry UI ${width}: stable shared dialog, compact distinct categories and below-selector forms`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const f = await fixtureAccounts();
+    await login(page, f.login, f.password);
+    const data = fixture();
+    data.notes = [];
+    data.purchases = [];
+    expect((await api(page, '/workspace', 'PUT', { revision: 0, data })).status).toBe(200);
+    await page.reload();
+    await expect(page.locator('.save-state')).toContainText('已保存');
+    await page
+      .getByTestId('today-panel')
+      .getByRole('button', { name: '添加今日事项', exact: true })
+      .click();
+    const dialog = page.locator('.agenda-entry-dialog');
+    await expect(dialog).toBeVisible();
+    const original = await dialog.elementHandle();
+    const selector = dialog.locator('.agenda-category-picker');
+    const before = (await selector.boundingBox())!;
+    const outer = (await dialog.boundingBox())!;
+    const options = await selector.locator('label').evaluateAll((nodes) =>
+      nodes.map((e) => ({
+        height: e.getBoundingClientRect().height,
+        width: e.getBoundingClientRect().width,
+        bg: getComputedStyle(e).backgroundColor,
+      })),
+    );
+    for (const option of options) {
+      expect(option.height).toBeLessThanOrEqual(44);
+      expect(option.width).toBeLessThan(155);
+    }
+    expect(options[0].bg).not.toBe(options[1].bg);
+    await selector.getByRole('radio', { name: '采购清单', exact: true }).click();
+    await expect(dialog.getByLabel('采购内容 / 事项标题', { exact: true })).toBeVisible();
+    expect(
+      await page.evaluate((el) => el === document.querySelector('.agenda-entry-dialog'), original),
+    ).toBe(true);
+    let rect = (await selector.boundingBox())!;
+    expect(Math.abs(rect.y - before.y)).toBeLessThan(1);
+    expect(Math.abs(rect.x - before.x)).toBeLessThan(1);
+    expect(
+      (await dialog.getByLabel('采购内容 / 事项标题', { exact: true }).boundingBox())!.y,
+    ).toBeGreaterThan(rect.y + rect.height);
+    await expect(dialog.locator('dialog')).toHaveCount(0);
+    await expect(page.locator('dialog[open]')).toHaveCount(1);
+    await selector.getByRole('radio', { name: '事项管理', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: '放弃当前未保存的内容？', exact: true })
+      .getByRole('button', { name: '确认操作', exact: true })
+      .click();
+    await expect(dialog.getByLabel('任务事项', { exact: true })).toBeVisible();
+    await expect(dialog.getByRole('tab', { name: '详情', exact: true })).toHaveCSS(
+      'background-color',
+      'rgb(213, 233, 216)',
+    );
+    await expect(dialog.getByRole('tab', { name: '详情', exact: true })).toHaveCSS(
+      'color',
+      'rgb(40, 87, 60)',
+    );
+    expect(
+      await page.evaluate((el) => el === document.querySelector('.agenda-entry-dialog'), original),
+    ).toBe(true);
+    rect = (await selector.boundingBox())!;
+    expect(Math.abs(rect.y - before.y)).toBeLessThan(1);
+    expect(Math.abs((await dialog.boundingBox())!.y - outer.y)).toBeLessThan(1);
+    expect((await dialog.getByLabel('任务事项', { exact: true }).boundingBox())!.y).toBeGreaterThan(
+      rect.y + rect.height,
+    );
+    const bounds = (await dialog.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(1000);
+    await expect(page.locator('.modal.drawer')).toHaveCount(0);
+    await expect(dialog.getByRole('tab', { name: '详情', exact: true })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await mkdir('/tmp/chunmo-entry-ui-screenshots', { recursive: true });
+    await page.screenshot({
+      path: `/tmp/chunmo-entry-ui-screenshots/record-${width}.png`,
+      animations: 'disabled',
+    });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    expect(
+      await dialog
+        .locator('.agenda-entry-content')
+        .evaluate((e) => getComputedStyle(e).animationName),
+    ).toBe('none');
+    expect((await api(page, '/records')).value.records).toHaveLength(0);
+    expect((await api(page)).value.data.purchases).toHaveLength(0);
+  });
+
+for (const width of [1440, 390])
+  test(`legacy compatibility ${width}: read-only preview, backup, batch pending confirmation and editable single date projections`, async ({
+    page,
+  }) => {
+    test.setTimeout(90000);
+    await page.setViewportSize({ width, height: 1000 });
+    const f = await fixtureAccounts();
+    await login(page, f.login, f.password);
+    const d = fixture();
+    d.purchases = [];
+    d.projects[0].notes = '';
+    const pid = d.projects[0].id;
+    const note = (id: string, title: string, kind = '项目备忘', date = today(), done = false) => ({
+      id,
+      projectId: pid,
+      title,
+      kind,
+      date,
+      reminder: '',
+      owner: '',
+      content: '完整原始内容',
+      done,
+      pinned: false,
+    });
+    d.notes = [
+      note('old-buy', '购买灯具', '材料采购'),
+      note('old-done', '复核现场尺寸', '现场复核', today(), true),
+      note('old-reference', '长期说明：材料保养说明书', '项目备忘', ''),
+      note('old-pending', '再看看', '项目备忘', ''),
+      note('old-inspect', '检查灯具安装位置'),
+    ] as any;
+    expect((await api(page, '/workspace', 'PUT', { revision: 0, data: d })).status).toBe(200);
+    await page.reload();
+    await expect(page.locator('.save-state')).toContainText('已保存');
+    const before = (await api(page)).value.data;
+    await page.getByRole('button', { name: '事项管理', exact: true }).click();
+    await page.getByRole('button', { name: '历史数据分类与兼容', exact: true }).click();
+    const panel = page.getByRole('dialog', { name: '历史数据分类与兼容', exact: true });
+    await expect(panel.locator('.legacy-source')).toHaveCount(5);
+    expect((await api(page, '/records')).value.records).toHaveLength(0);
+    expect((await api(page)).value.data).toEqual(before);
+    const download = page.waitForEvent('download');
+    await panel.getByRole('button', { name: '下载迁移前原始备份', exact: true }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toContain('备份');
+    for (const title of [
+      '购买灯具',
+      '复核现场尺寸',
+      '长期说明：材料保养说明书',
+      '检查灯具安装位置',
+    ])
+      await panel.getByRole('checkbox', { name: '选择历史记录' + title, exact: true }).check();
+    await panel.getByRole('button', { name: '确认迁移选中记录', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: '确认已核对备份与分类？', exact: true })
+      .getByRole('button', { name: '确认操作', exact: true })
+      .click();
+    await expect(panel.getByRole('status')).toContainText('已核对 4 条来源');
+    expect((await api(page, '/records')).value.records).toHaveLength(2);
+    expect((await api(page)).value.data.purchases).toHaveLength(1);
+    expect((await api(page)).value.data.notes).toEqual(before.notes);
+    await panel.getByLabel('历史分类状态', { exact: true }).selectOption('reference');
+    await expect(panel.locator('.legacy-source')).toHaveCount(1);
+    await panel.getByLabel('历史分类状态', { exact: true }).selectOption('pending');
+    await expect(panel.locator('.legacy-source')).toHaveCount(1);
+    await expect(panel.locator('.legacy-source')).toContainText('再看看');
+    await panel.getByRole('button', { name: '选择当前项目未处理记录', exact: true }).click();
+    await panel.getByLabel('批量确认归属', { exact: true }).selectOption('record');
+    await panel.getByRole('button', { name: '应用到选中记录', exact: true }).click();
+    const secondDownload = page.waitForEvent('download');
+    await panel.getByRole('button', { name: '下载迁移前原始备份', exact: true }).click();
+    await secondDownload;
+    await panel.getByRole('button', { name: '确认迁移选中记录', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: '确认已核对备份与分类？', exact: true })
+      .getByRole('button', { name: '确认操作', exact: true })
+      .click();
+    await expect(panel.getByRole('status')).toContainText('已核对 1 条来源');
+    await panel.getByLabel('历史分类状态', { exact: true }).selectOption('handled');
+    await expect(panel.locator('.legacy-source')).toHaveCount(5);
+    await mkdir('/tmp/chunmo-entry-ui-screenshots', { recursive: true });
+    await page.screenshot({
+      path: `/tmp/chunmo-entry-ui-screenshots/legacy-${width}.png`,
+      animations: 'disabled',
+    });
+    await panel.getByRole('button', { name: '关闭', exact: true }).click();
+    await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
+    await expect
+      .poll(async () => page.getByTestId('today-panel').locator('.note-card').count())
+      .toBe(0);
+    await expect(page.getByTestId('today-panel').locator('.agenda-item')).toHaveCount(3);
+    await page
+      .getByTestId('today-panel')
+      .getByRole('button', { name: '打开事项：检查灯具安装位置', exact: true })
+      .click();
+    const record = page.locator('.record-drawer');
+    await record.getByRole('tab', { name: '历史', exact: true }).click();
+    await expect(record.getByText('历史来源与原始创建记录', { exact: true })).toBeVisible();
+    await record.getByRole('tab', { name: '详情', exact: true }).click();
+    await record.getByLabel('记录备注', { exact: true }).fill('迁移后继续编辑');
+    await record.getByRole('button', { name: '保存记录', exact: true }).click();
+    expect(
+      (await api(page, '/records')).value.records.find((r: any) => r.title === '检查灯具安装位置')
+        .notes,
+    ).toBe('迁移后继续编辑');
+    expect((await api(page)).value.data.notes).toEqual(before.notes);
+    await page.reload();
+    await expect(page.locator('.save-state')).toContainText('已保存');
+    expect((await api(page, '/records')).value.records).toHaveLength(3);
+    expect((await api(page)).value.data.purchases).toHaveLength(1);
+  });

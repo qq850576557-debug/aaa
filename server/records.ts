@@ -20,16 +20,22 @@ export function recordRoutes(app: Express) {
   // Reuse workspace-wide business collaboration access; never grant account/material privileges.
   app.get('/api/records', async (req: AuthRequest, res, next) => {
     try {
-      res.json({
-        records: (
-          await transaction((c) =>
-            c.query(
+      res.json(
+        await transaction(async (c) => ({
+          records: (
+            await c.query(
               `SELECT ${columns} FROM work_record WHERE workspace_id=$1 AND NOT deleted ORDER BY updated_at DESC,id`,
               [req.actor!.workspaceId],
-            ),
-          )
-        ).rows,
-      });
+            )
+          ).rows,
+          legacyLinks: (
+            await c.query(
+              `SELECT source_key AS "sourceKey",source_id AS "sourceId",project_id AS "projectId",source_hash AS "sourceHash",target_kind AS "targetKind",target_id AS "targetId",EXISTS(SELECT 1 FROM workspace_state ws,jsonb_array_elements(ws.data->'notes') n WHERE ws.workspace_id=$1 AND n->>'id'=source_id AND n=source) AS "matchesCurrent" FROM legacy_record_link WHERE workspace_id=$1`,
+              [req.actor!.workspaceId],
+            )
+          ).rows,
+        })),
+      );
     } catch (e) {
       next(e);
     }

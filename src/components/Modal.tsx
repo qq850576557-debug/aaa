@@ -12,7 +12,11 @@ export function Modal({
   className = '',
   placement = 'center',
   animateClose = false,
+  inline = false,
+  topAligned = false,
 }: {
+  inline?: boolean;
+  topAligned?: boolean;
   title: string;
   subtitle?: string;
   children: ReactNode;
@@ -39,6 +43,7 @@ export function Modal({
     closeTimer.current = setTimeout(() => latestClose.current(), 150);
   };
   useEffect(() => {
+    if (inline) return;
     const d = ref.current!,
       previous = document.activeElement as HTMLElement | null,
       oldOverflow = document.body.style.overflow;
@@ -61,7 +66,9 @@ export function Modal({
       const y = anchor ? anchor.y + (source && initial ? source.top - initial.top : 0) : h / 2;
       const useAnchor = !!anchor && w >= 640;
       d.style.left = `${Math.max(12, Math.min(useAnchor ? x + 12 : (w - rect.width) / 2, w - rect.width - 12))}px`;
-      d.style.top = `${Math.max(12, Math.min(useAnchor ? y + 12 : (h - rect.height) / 2, h - rect.height - 12))}px`;
+      d.style.top = topAligned
+        ? `${w < 640 ? 12 : 24}px`
+        : `${Math.max(12, Math.min(useAnchor ? y + 12 : (h - rect.height) / 2, h - rect.height - 12))}px`;
     };
     position();
     const observer = new ResizeObserver(position);
@@ -123,6 +130,7 @@ export function Modal({
       if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, []);
+  if (inline) return <section className={`inline-form ${className}`}>{children}</section>;
   return (
     <dialog
       ref={ref}

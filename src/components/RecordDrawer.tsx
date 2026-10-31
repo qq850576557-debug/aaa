@@ -1,3 +1,4 @@
+import { LegacySource } from './LegacySource';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
 import { cloudApi, CloudError } from '../lib/cloud';
@@ -32,6 +33,7 @@ export function RecordDrawer({
   latest,
   initialDate = '',
   intro,
+  embedded = false,
   onDirty,
   onBusyChange,
   onClose,
@@ -43,6 +45,7 @@ export function RecordDrawer({
   latest?: WorkRecord;
   initialDate?: string;
   intro?: ReactNode;
+  embedded?: boolean;
   onDirty: (v: boolean) => void;
   onBusyChange?: (busy: boolean) => void;
   onClose: () => void;
@@ -126,6 +129,7 @@ export function RecordDrawer({
   return (
     <>
       <Modal
+        inline={embedded}
         title={base ? base.title : '新增记录'}
         subtitle={base ? '项目跟进记录' : '把需要跟进的事项留在项目中'}
         onClose={() => {
@@ -281,6 +285,7 @@ export function RecordDrawer({
               aria-labelledby="record-history-tab"
               className="record-history"
             >
+              {base && <LegacySource kind="record" id={base.id} />}
               {base && (
                 <dl className="record-provenance">
                   <div>

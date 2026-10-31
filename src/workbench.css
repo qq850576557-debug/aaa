@@ -2418,3 +2418,203 @@ textarea::placeholder {
     min-height: 40px;
   }
 }
+
+/* One fixed-position entry surface; category forms expand below the same selector. */
+.app-shell .agenda-entry-dialog {
+  width: min(640px, calc(100vw - 24px));
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+  animation: none;
+}
+.agenda-entry-dialog > .modal-head {
+  flex-shrink: 0;
+  padding: 16px 20px;
+}
+.agenda-entry-selector {
+  flex-shrink: 0;
+  padding: 12px 20px 8px;
+}
+.agenda-entry-dialog .agenda-category-picker {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  gap: 8px;
+}
+.agenda-entry-dialog .agenda-category-picker legend {
+  margin-bottom: 8px;
+  padding: 0;
+  font-size: 12px;
+}
+.agenda-entry-dialog .agenda-category-picker label {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 12px;
+  gap: 7px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  transition:
+    background-color 180ms,
+    border-color 180ms,
+    box-shadow 180ms,
+    transform 180ms;
+}
+.agenda-entry-dialog .category-purchase {
+  --category-ink: #79501f;
+  --category-border: #bd9251;
+  --category-bg: #efe0c5;
+  color: var(--category-ink);
+  background: #faf4e9;
+  border-color: #d9bd91;
+}
+.agenda-entry-dialog .category-record {
+  --category-ink: #315d52;
+  --category-border: #6b9f8d;
+  --category-bg: #cee5d9;
+  color: var(--category-ink);
+  background: #edf6f0;
+  border-color: #a6c7b7;
+}
+.agenda-entry-dialog .agenda-category-picker label.selected {
+  background: var(--category-bg);
+  border-color: var(--category-border);
+  box-shadow: inset 0 0 0 1px var(--category-border);
+  color: var(--category-ink);
+}
+.agenda-entry-dialog .agenda-category-picker input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--category-ink);
+}
+.agenda-entry-dialog .agenda-category-picker label:hover:not(:has(input:disabled)) {
+  background: var(--category-bg);
+  transform: translateY(-1px);
+}
+.agenda-entry-dialog .agenda-category-picker label:active:not(:has(input:disabled)) {
+  transform: scale(0.98);
+}
+.agenda-entry-dialog .agenda-category-picker label:focus-within {
+  outline: 2px solid var(--category-border);
+  outline-offset: 2px;
+}
+.agenda-entry-dialog .agenda-category-picker label:has(input:disabled) {
+  cursor: default;
+  opacity: 0.6;
+}
+.agenda-entry-content {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  animation: agenda-form-expand 180ms ease-out;
+}
+.agenda-entry-hint {
+  margin: 8px 20px 20px;
+  font-size: 13px;
+}
+.agenda-entry-dialog .inline-form {
+  min-width: 0;
+}
+.agenda-entry-dialog .record-drawer-body {
+  padding: 16px 20px;
+  overflow: visible;
+}
+.agenda-entry-dialog .record-fields {
+  gap: 14px;
+}
+.agenda-entry-dialog .record-drawer-foot {
+  margin: 0;
+}
+@keyframes agenda-form-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 639px) {
+  .app-shell .agenda-entry-dialog {
+    max-height: calc(100dvh - 24px);
+  }
+  .agenda-entry-selector {
+    padding: 10px 14px 8px;
+  }
+  .agenda-entry-dialog > .modal-head {
+    padding: 14px;
+  }
+  .agenda-entry-dialog .agenda-category-picker label {
+    min-height: 42px;
+    padding: 8px 10px;
+  }
+  .agenda-entry-dialog .record-drawer-body {
+    padding: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agenda-entry-content {
+    animation: none;
+  }
+  .agenda-entry-dialog .agenda-category-picker label {
+    transition: none;
+  }
+  .agenda-entry-dialog .agenda-category-picker label:hover,
+  .agenda-entry-dialog .agenda-category-picker label:active {
+    transform: none;
+  }
+}
+
+.legacy-project-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px;
+}
+.legacy-project-summary > div,
+.legacy-source {
+  padding: 12px;
+  border: 1px solid #d6e4d8;
+  border-radius: 10px;
+  background: #f6faf5;
+}
+.legacy-project-summary small,
+.legacy-source > small {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.6;
+}
+.legacy-source-list {
+  display: grid;
+  gap: 10px;
+  max-height: 50dvh;
+  overflow: auto;
+}
+.legacy-source header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.legacy-source pre,
+.legacy-provenance pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 280px;
+  overflow: auto;
+  font-size: 12px;
+}
+.legacy-row-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.legacy-row-controls > * {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 160px;
+}
