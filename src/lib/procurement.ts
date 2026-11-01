@@ -14,10 +14,10 @@ export function savePurchase(data: Data, value: Purchase): Data {
   const base = prepareWorkspace(data),
     old = base.purchases.find((p) => p.id === value.id);
   if (!base.projects.some((p) => p.id === value.projectId)) throw new Error('请选择有效的所属项目');
-  if (old && old.projectId !== value.projectId) throw new Error('已有采购不能通过普通编辑迁移项目');
   const deadline = value.due;
   let next: Purchase;
   if (old) {
+    const movedProject = old.projectId !== value.projectId;
     const ceiling = purchaseCeiling(old, base);
     // If an unchanged linked record is saved, preserve automatic early-date calculation.
     const changedDate = deadline !== purchaseDue(old, base);
@@ -29,10 +29,10 @@ export function savePurchase(data: Data, value: Purchase): Data {
       originalDue: old.originalDue,
       approvedDue: old.approvedDue,
       deadlineHistory: old.deadlineHistory,
-      deadlineMode: changedDate ? 'fixed' : old.deadlineMode,
-      due: changedDate || old.deadlineMode === 'fixed' ? deadline : old.due,
-      taskId: old.taskId,
-      leadDays: old.leadDays,
+      deadlineMode: changedDate || movedProject ? 'fixed' : old.deadlineMode,
+      due: changedDate || movedProject || old.deadlineMode === 'fixed' ? deadline : old.due,
+      taskId: movedProject ? '' : old.taskId,
+      leadDays: movedProject ? 0 : old.leadDays,
     };
   } else {
     next = { ...value, taskId: '', leadDays: 0, originalDue: deadline, deadlineMode: 'fixed' };

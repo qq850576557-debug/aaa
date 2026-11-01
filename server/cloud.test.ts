@@ -4121,3 +4121,99 @@ test('legacy migration: stale previews, duplicate historical sources, source edi
   assert.equal((await request('/legacy-migration/commit', 'POST', reuseDeleted, a)).status, 409);
   assert.equal((await (await request('/records', 'GET', undefined, a)).json()).records.length, 0);
 });
+
+test('timeline record reassignment retains identity, audit and CAS and rejects foreign project IDs', async () => {
+  testClientIp = '203.0.113.249';
+  const { a, b } = await seededWorkspace();
+  const state = await workspaceBase(a);
+  const value = {
+    projectId: state.data.projects[0].id,
+    title: '联动迁移',
+    nodeDate: today(),
+    status: '待执行',
+    notes: '保持内容',
+    followUp: '保持跟进',
+    owner: '',
+  };
+  const created = await request('/records', 'POST', { requestId: randomUUID(), value }, b);
+  assert.equal(created.status, 200);
+  const r = await created.json();
+  const changed = { ...value, projectId: state.data.projects[1].id, nodeDate: '2026-11-02' };
+  const moved = await request(
+    '/records/' + r.id,
+    'PUT',
+    { requestId: randomUUID(), version: r.version, value: changed },
+    b,
+  );
+  assert.equal(moved.status, 200);
+  const saved = await moved.json();
+  assert.equal(saved.id, r.id);
+  assert.equal(saved.projectId, changed.projectId);
+  assert.equal(saved.createdBy, r.createdBy);
+  assert.equal(saved.notes, value.notes);
+  assert.equal(saved.version, r.version + 1);
+  assert.equal(
+    (
+      await request(
+        '/records/' + r.id,
+        'PUT',
+        { requestId: randomUUID(), version: r.version, value },
+        a,
+      )
+    ).status,
+    409,
+  );
+  const foreign = await seededWorkspace();
+  const foreignState = await workspaceBase(foreign.a);
+  assert.equal(
+    (
+      await request(
+        '/records/' + r.id,
+        'PUT',
+        {
+          requestId: randomUUID(),
+          version: saved.version,
+          value: { ...changed, projectId: foreignState.data.projects[0].id },
+        },
+        b,
+      )
+    ).status,
+    400,
+  );
+  const history = await (
+    await request('/records/' + r.id + '/history', 'GET', undefined, a)
+  ).json();
+  assert(history.events.some((e: any) => e.changedFields.includes('projectId')));
+  const purchaseBase = await workspaceBase(b);
+  const movedPurchase = await request(
+    '/workspace',
+    'PUT',
+    submission(purchaseBase, (d) => {
+      d.purchases[0].projectId = d.projects[1].id;
+      d.purchases[0].taskId = '';
+      d.purchases[0].deadlineMode = 'fixed';
+    }),
+    b,
+  );
+  assert.equal(movedPurchase.status, 200);
+  const purchaseSaved = await workspaceBase(b);
+  assert.equal(purchaseSaved.data.purchases[0].id, purchaseBase.data.purchases[0].id);
+  assert.equal(
+    purchaseSaved.data.purchases[0].originalDue,
+    purchaseBase.data.purchases[0].originalDue,
+  );
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(purchaseSaved, (d) => {
+          d.purchases[0].projectId = foreignState.data.projects[0].id;
+        }),
+        b,
+      )
+    ).status,
+    400,
+  );
+  assert.deepEqual((await workspaceBase(b)).data, purchaseSaved.data);
+});

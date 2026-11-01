@@ -200,12 +200,11 @@ export async function commit(
       const old = prior.data.purchases.find((x) => x.id === p.id);
       if (old) {
         if (
-          old.projectId !== p.projectId ||
           old.originalDue !== p.originalDue ||
           old.approvedDue !== p.approvedDue ||
           canonical(old.deadlineHistory ?? []) !== canonical(p.deadlineHistory ?? [])
         )
-          throw new ApiError(403, '普通保存不得修改采购原定期限、审批历史或所属项目');
+          throw new ApiError(403, '普通保存不得修改采购原定期限或审批历史');
         if (p.due !== old.due && p.due > purchaseCeiling(old, prior.data))
           throw new ApiError(403, '采购延期必须由负责人明确确认');
       } else {

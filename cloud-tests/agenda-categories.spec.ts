@@ -58,8 +58,13 @@ for (const width of [1440, 1280, 390, 320])
     await purchase.getByLabel('采购负责人', { exact: true }).fill('采购负责人');
     const tomorrow = await purchase.getByLabel('采购截止日期', { exact: true }).inputValue();
     expect(tomorrow).toBe(plus(today(), 1));
+    const originURL = page.url();
     await purchase.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page.locator('.purchase-list')).toContainText('分类采购电线');
+    await expect(purchase).toHaveCount(0);
+    await expect(page.getByTestId('tomorrow-panel')).toContainText('分类采购电线');
+    await expect(page.locator('.current-project-name')).toHaveText(data.projects[0].name);
+    await expect(page.locator('.purchase-list,.record-board')).toHaveCount(0);
+    expect(page.url()).toBe(originURL);
     await expect(page.locator('.save-state')).toContainText('已保存');
     let saved = (await api(page)).value.data;
     expect(saved.purchases).toHaveLength(1);
@@ -87,9 +92,8 @@ for (const width of [1440, 1280, 390, 320])
     await record.getByLabel('记录备注', { exact: true }).fill('复核厨房尺寸');
     await record.getByLabel('记录跟进', { exact: true }).fill('等待业主确认');
     await record.getByRole('button', { name: '保存记录', exact: true }).click();
-    await expect(
-      page.getByRole('button', { name: '打开记录：分类事项复核尺寸', exact: true }),
-    ).toBeVisible();
+    await expect(page.getByTestId('today-panel')).toContainText('分类事项复核尺寸');
+    await expect(page.locator('.record-board')).toHaveCount(0);
     await expect(page.locator('#daily-records,.daily-records')).toHaveCount(0);
     let records = (await api(page, '/records')).value.records;
     expect(records).toHaveLength(1);
@@ -293,9 +297,8 @@ test('classification cannot switch during submission; failed saves preserve fiel
   await confirm.getByRole('button', { name: '取消', exact: true }).click();
   await expect(drawer.getByLabel('任务事项', { exact: true })).toHaveValue('失败后保留的事项');
   await drawer.getByRole('button', { name: '保存记录', exact: true }).click();
-  await expect(
-    page.getByRole('button', { name: '打开记录：失败后保留的事项', exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTestId('today-panel')).toContainText('失败后保留的事项');
+  await expect(page.locator('.record-board')).toHaveCount(0);
   expect(bodies).toHaveLength(2);
   expect(bodies[1]).toEqual(bodies[0]);
   expect((await api(page, '/records')).value.records).toHaveLength(1);

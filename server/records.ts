@@ -105,17 +105,16 @@ export function recordRoutes(app: Express) {
             if (old && 'version' in body && old.version !== body.version)
               throw new ApiError(409, '记录已被其他人更新；草稿已保留，请重新读取后再保存');
             const value = 'value' in body ? body.value : old!;
-            if (old && value.projectId !== old.projectId)
-              throw new ApiError(400, '初版不支持跨项目移动记录');
             const project = state.data.projects.find((p) => p.id === value.projectId);
-            if (!old && !project) throw new ApiError(400, '请选择当前工作空间的有效项目');
+            if ((!old || value.projectId !== old.projectId) && !project)
+              throw new ApiError(400, '请选择当前工作空间的有效项目');
             const name = safeActorDisplayName(a.displayName ?? a.login),
               id = old?.id ?? randomUUID();
             const next = (
               await c.query(
                 `INSERT INTO work_record(workspace_id,id,project_id,project_name,title,node_date,status,notes,follow_up,version,deleted,created_by,created_name,updated_by,updated_name,owner)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,1,false,$10,$11,$10,$11,$13)
-            ON CONFLICT(workspace_id,id) DO UPDATE SET project_name=$4,title=$5,node_date=$6,status=$7,notes=$8,follow_up=$9,version=work_record.version+1,deleted=$12,updated_by=$10,updated_name=$11,updated_at=now(),owner=$13 RETURNING ${columns}`,
+            ON CONFLICT(workspace_id,id) DO UPDATE SET project_id=$3,project_name=$4,title=$5,node_date=$6,status=$7,notes=$8,follow_up=$9,version=work_record.version+1,deleted=$12,updated_by=$10,updated_name=$11,updated_at=now(),owner=$13 RETURNING ${columns}`,
                 [
                   a.workspaceId,
                   id,

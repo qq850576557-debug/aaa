@@ -13,8 +13,6 @@ import {
   duration,
   lanes,
   plus,
-  purchaseDue,
-  purchaseComplete,
   shortDate,
   today,
   weekday,
@@ -26,10 +24,14 @@ import {
 import { TaskContextMenu } from './TaskContextMenu';
 import type { Anchor } from './Modal';
 import { useReorderMotion } from '../lib/useReorderMotion';
+import { categorizedAgenda } from '../lib/agenda';
+import type { WorkRecord } from '../lib/records';
+import { createPortal } from 'react-dom';
 export const CELL = 56;
 const LANE = 40;
 interface Props {
   data: Data;
+  records?: WorkRecord[];
   project: Project;
   onTask: (task?: Task, trade?: Trade, start?: string, end?: string, anchor?: Anchor) => void;
   onDay: (date: string) => void;
@@ -52,6 +54,7 @@ type Drag = {
 };
 export function Gantt({
   data,
+  records = [],
   project,
   onTask,
   onQuickCreate,
@@ -64,6 +67,33 @@ export function Gantt({
   onReorder,
   onColor,
 }: Props) {
+  const entries = categorizedAgenda(data, records, project.id, today()).items;
+  const [hover, setHover] = useState<{ date: string; x: number; y: number; open: boolean } | null>(
+    null,
+  );
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => setHover(null), [project.id]);
+  const hideHover = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setHover((v) => v && { ...v, open: false }), 120);
+  };
+  useEffect(
+    () => () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    },
+    [],
+  );
+  const showHover = (date: string, element: HTMLElement) => {
+    if (!entries.some((x) => x.date === date)) return;
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    const box = element.getBoundingClientRect();
+    setHover({
+      date,
+      x: Math.max(8, Math.min(box.left, innerWidth - Math.min(320, innerWidth - 16) - 8)),
+      y: Math.max(8, Math.min(box.bottom + 6, innerHeight - 320)),
+      open: true,
+    });
+  };
   const tradeColor = resolvedTradeColor;
   const [touchLayout, setTouchLayout] = useState(
     () => window.matchMedia('(max-width: 700px)').matches,
@@ -438,7 +468,10 @@ export function Gantt({
       <div
         className="gantt-scroll"
         ref={scroller}
-        onScroll={updateWindow}
+        onScroll={() => {
+          updateWindow();
+          setHover(null);
+        }}
         data-testid="gantt-scroll"
         data-range-start={start}
         data-range-end={end}
@@ -463,28 +496,36 @@ export function Gantt({
             <div className="date-cells">
               <div className="timeline-spacer" style={{ width: first * CELL }} />
               {dates.map((date) => {
-                const n = data.notes.filter(
-                  (n) => n.projectId === project.id && n.date === date && !n.done,
-                ).length;
-                const p = data.purchases.filter(
-                  (p) =>
-                    p.projectId === project.id &&
-                    !purchaseComplete(p) &&
-                    purchaseDue(p, data) === date,
-                );
+                const daily = entries.filter((item) => item.date === date);
+                const p = daily.filter((item) => item.kind === 'purchase');
                 return (
                   <button
                     key={date}
                     aria-label={`查看 ${date} 事项`}
                     className={`date-cell ${['六', '日'].includes(weekday(date)) ? 'weekend' : ''} ${date === today() ? 'today' : ''}`}
-                    onClick={() => onDay(date)}
+                    onClick={() => {
+                      setHover(null);
+                      onDay(date);
+                    }}
+                    onMouseEnter={(e) => showHover(date, e.currentTarget)}
+                    onMouseLeave={hideHover}
+                    onFocus={(e) => showHover(date, e.currentTarget)}
+                    onBlur={hideHover}
+                    aria-description={
+                      daily.length
+                        ? `事项 ${daily.length - p.length} 条，采购 ${p.length} 条`
+                        : undefined
+                    }
                   >
                     <strong>{Number(date.slice(8))}</strong>
                     <span>周{weekday(date)}</span>
-                    {n + p.length > 0 && (
-                      <i title={`${n + p.length} 条待办（采购 ${p.length} 条）`} />
+                    {daily.length > 0 && (
+                      <i
+                        className="agenda-dot"
+                        title={`事项 ${daily.length - p.length} 条，采购 ${p.length} 条`}
+                      />
                     )}
-                    {p.length > 0 && <span className="sr-only">{p.length} 条采购到期</span>}
+                    {p.length > 0 && <span className="sr-only">{p.length} 条采购记录</span>}
                   </button>
                 );
               })}
@@ -496,7 +537,7 @@ export function Gantt({
               data.tasks.filter((t) => t.projectId === project.id && t.tradeId === g.id),
             );
             const rows = lanes(groups) as GanttGroup[][];
-            const height = Math.max(touchLayout ? 96 : 84, rows.length * laneHeight + 20);
+            const height = Math.max(touchLayout ? 104 : 96, rows.length * laneHeight + 20);
             return (
               <div
                 key={g.id}
@@ -611,7 +652,7 @@ export function Gantt({
                     >
                       <span>{g.name}</span>
                       <small>
-                        {groups.reduce((n, t) => n + duration(t.start, t.end), 0)} 任务天
+                        施工{groups.reduce((n, t) => n + duration(t.start, t.end), 0)}天
                       </small>
                       <span
                         className="trade-workers"
@@ -812,6 +853,45 @@ export function Gantt({
           onDelete={() => onDeleteTask(data.tasks.find((t) => t.id === menu.id)!)}
         />
       )}
+      {hover &&
+        createPortal(
+          <aside
+            role="tooltip"
+            className={`timeline-agenda-hover ${hover.open ? 'visible' : ''}`}
+            style={{ left: hover.x, top: hover.y }}
+            data-wheel-native
+            onMouseEnter={() => {
+              if (hideTimer.current) clearTimeout(hideTimer.current);
+            }}
+            onMouseLeave={hideHover}
+          >
+            <strong>
+              {hover.date} · {project.name}
+            </strong>
+            {(['record', 'purchase'] as const).map((kind) => {
+              const list = entries.filter(
+                (x) =>
+                  x.date === hover.date &&
+                  (kind === 'purchase' ? x.kind === 'purchase' : x.kind !== 'purchase'),
+              );
+              return list.length ? (
+                <div key={kind}>
+                  <h4>
+                    {kind === 'purchase' ? '今日采购' : '今日事项'} · {list.length}
+                  </h4>
+                  {list.slice(0, 4).map((x) => (
+                    <p key={x.kind + x.id}>
+                      <span>{x.title}</span>
+                      <small>{x.status}</small>
+                    </p>
+                  ))}
+                  {list.length > 4 && <small>另有 {list.length - 4} 条，点击日期查看全部</small>}
+                </div>
+              ) : null;
+            })}
+          </aside>,
+          document.body,
+        )}
     </section>
   );
 }

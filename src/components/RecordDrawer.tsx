@@ -190,7 +190,7 @@ export function RecordDrawer({
                 <select
                   aria-label="记录所属项目"
                   required
-                  disabled={!!base || busy}
+                  disabled={busy}
                   value={value.projectId}
                   onChange={(e) => change('projectId', e.target.value)}
                 >

@@ -140,7 +140,14 @@ export function Editor({
         onChange={(e) =>
           key === 'dependency'
             ? change('dependsOn', e.target.value ? [e.target.value] : [])
-            : change(key, e.target.value)
+            : key === 'projectId' && kind === 'purchase'
+              ? set((old) => ({
+                  ...old,
+                  projectId: e.target.value,
+                  taskId: '',
+                  deadlineMode: 'fixed',
+                }))
+              : change(key, e.target.value)
         }
       >
         {options.map((o) => {
@@ -341,9 +348,11 @@ export function Editor({
     fields = (
       <>
         {input('name', '采购内容 / 事项标题', 'text', true)}
-        <p className="form-info span2">
-          所属项目：{data.projects.find((p) => p.id === v.projectId)?.name}
-        </p>
+        {select(
+          'projectId',
+          '所属项目',
+          data.projects.map((p) => [p.id, p.name]),
+        )}
         {input('specification', '规格型号')}
         {input('owner', '采购负责人')}
         {input('due', '采购截止日期', 'date', true)}

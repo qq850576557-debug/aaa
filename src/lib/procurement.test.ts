@@ -202,9 +202,18 @@ describe('phase 4 procurement deadlines and shared projections', () => {
     });
     expect(purchaseDue(next.purchases[0], next)).toBe('2026-12-30');
   });
-  it('rejects forged or incomplete deadline history in backups and cross-project ordinary edits', () => {
+  it('retains deadline protection while allowing valid same-workspace project reassignment', () => {
     const d = savePurchase(setup(), purchase());
-    expect(() => savePurchase(d, { ...d.purchases[0], projectId: 'two' })).toThrow('迁移');
+    const moved = savePurchase(d, { ...d.purchases[0], projectId: 'two' });
+    expect(moved.purchases[0]).toMatchObject({
+      id: d.purchases[0].id,
+      projectId: 'two',
+      taskId: '',
+      deadlineMode: 'fixed',
+      originalDue: d.purchases[0].originalDue,
+    });
+    expect(d.purchases[0].projectId).toBe('one');
+    expect(() => savePurchase(d, { ...d.purchases[0], projectId: 'unknown' })).toThrow('有效');
     expect(() =>
       parseBackup({ ...d, purchases: [{ ...d.purchases[0], approvedDue: '2027-01-05' }] }),
     ).toThrow('确认记录');

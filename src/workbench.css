@@ -2618,3 +2618,97 @@ textarea::placeholder {
   max-width: 100%;
   flex: 1 1 160px;
 }
+
+/* Shared calendar projection; markers never store another copy of a business record. */
+.app-shell .date-cell {
+  min-height: 90px;
+  padding-bottom: 18px;
+}
+.app-shell .date-cell .agenda-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #bb6258;
+  left: calc(50% - 3.5px);
+  bottom: 8px;
+}
+.timeline-agenda-hover {
+  position: fixed;
+  z-index: 95;
+  width: min(320px, calc(100vw - 16px));
+  max-height: 304px;
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #c7dbcd;
+  border-radius: 12px;
+  background: #f8fcf8;
+  color: #294b3c;
+  box-shadow: 0 8px 28px #203c2926;
+  opacity: 0;
+  transform: translateY(3px);
+  pointer-events: none;
+  transition:
+    opacity 180ms,
+    transform 180ms;
+}
+.timeline-agenda-hover.visible {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.timeline-agenda-hover h4 {
+  font-size: 13px;
+  margin: 12px 0 6px;
+}
+.timeline-agenda-hover p {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  margin: 6px 0;
+  font-size: 13px;
+}
+.timeline-agenda-hover p span {
+  flex: 1;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+.timeline-agenda-hover small {
+  color: #687e70;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  .app-shell .date-cell {
+    min-height: 94px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .timeline-agenda-hover {
+    transition: none;
+    transform: none;
+  }
+}
+.timeline-agenda-hover.visible {
+  animation: timeline-summary-in 180ms ease-out;
+}
+@keyframes timeline-summary-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .timeline-agenda-hover.visible {
+    animation: none;
+  }
+}
+.timeline-agenda-hover {
+  max-height: min(304px, calc(100dvh - 16px));
+}

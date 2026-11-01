@@ -71,7 +71,7 @@ export function categorizedAgenda(
         value: r,
       })),
     ...data.notes
-      .filter((n) => n.projectId === projectId && n.kind !== '项目备忘')
+      .filter((n) => n.projectId === projectId && (n.kind !== '项目备忘' || !!noteDue(n)))
       .map((n): AgendaItem => ({
         id: n.id,
         kind: 'legacy',
@@ -91,6 +91,7 @@ export function categorizedAgenda(
     a.id.localeCompare(b.id);
   const tomorrowDate = plus(date, 1);
   return {
+    items: items.sort(order),
     date,
     tomorrowDate,
     today: items.filter((x) => x.date && (x.done ? x.date === date : x.date <= date)).sort(order),

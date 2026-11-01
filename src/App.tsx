@@ -710,10 +710,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         }
         onOpen={() => {
           if (item.kind === 'purchase') {
-            go('purchases');
             purchaseEditor(item.value);
           } else if (item.kind === 'record') {
-            go('records');
             recordDirty.current = false;
             setFocusedRecord(item.value);
           }
@@ -1324,7 +1322,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                   <ConflictPanel data={data} projectId={p.id} />
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <Gantt
-                      data={data}
+                      data={agendaData}
+                      records={recordSource.records}
                       project={p}
                       onTask={taskEditor}
                       onDeleteTask={(t) => deleteEntity({ kind: 'task', value: t })}
@@ -1461,12 +1460,12 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             onPurchase={(kind, value) => {
               save(kind, value);
               setAgendaEntry(null);
-              go('purchases');
+              notify('采购事项已添加，正在自动保存。');
             }}
             onRecord={(record) => {
               recordSource.accept(record);
               setAgendaEntry(null);
-              go('records');
+              notify('事项已保存。');
             }}
           />
         </DeferredPanel>
@@ -1620,23 +1619,13 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
               <p className="muted">当天暂无施工任务。</p>
             )}
             <h3>当日事项与提醒</h3>
-            {data.notes
-              .filter((n) => n.projectId === p.id && (n.date === day || n.reminder === day))
-              .map((n) => (
-                <NoteCard
-                  key={n.id}
-                  note={n}
-                  onEdit={() => noteEditor(n)}
-                  onToggle={() => save('note', { ...n, done: !n.done })}
-                  onPin={() => save('note', { ...n, pinned: !n.pinned })}
-                />
-              ))}
+            {agenda.items
+              .filter((item) => item.date === day && item.kind !== 'purchase')
+              .map(agendaItem)}
             <h3>采购截止</h3>
-            {data.purchases
-              .filter(
-                (x) => x.projectId === p.id && !purchaseComplete(x) && purchaseDue(x, data) === day,
-              )
-              .map(purchaseCard)}
+            {agenda.items
+              .filter((item) => item.date === day && item.kind === 'purchase')
+              .map(agendaItem)}
           </div>
           <footer className="modal-foot">
             <button onClick={() => setDay(null)}>关闭</button>
