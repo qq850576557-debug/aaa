@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { randomUUID, createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
+import { emptyData, newProject } from '../src/lib/model';
 import { migrate } from './migrate';
 import { assertDatabaseReady } from './database-readiness';
 
@@ -46,13 +47,40 @@ test('010-only deployment reproduces missing record fields/tables and refuses ne
       assertDatabaseReady(db),
       /011_record_owner.sql.*012_legacy_classification.sql.*013_cloud_versions.sql/,
     );
+    const inventoryData = emptyData();
+    inventoryData.projects = [{ ...newProject(), id: 'inventory-site', name: '旧库只读核对' }];
+    await db.query('BEGIN');
+    await db.query(
+      "INSERT INTO cloud_workspace VALUES('inventory-studio','只读核对','inventory-owner')",
+    );
+    await db.query(
+      "INSERT INTO account(id,workspace_id,login,password_hash,role) VALUES('inventory-owner','inventory-studio','inventory_owner','test-only-hash','owner')",
+    );
+    await db.query('INSERT INTO workspace_state VALUES($1,0,$2,$3)', [
+      'inventory-studio',
+      JSON.stringify(inventoryData),
+      JSON.stringify({ version: 1, records: [], snapshots: {} }),
+    ]);
+    await db.query('COMMIT');
+    const beforeInventory = (await db.query('SELECT * FROM workspace_state')).rows;
+    // Execute the exact psql script with pg, emulating only psql's \gexec metacommand.
+    const inventorySql = await readFile('deploy/native/upgrade-inventory.sql', 'utf8');
+    for (const chunk of inventorySql.split(/^\s*\\gexec\s*$/m)) {
+      const sql = chunk.replace(/^\s*\\[^\n]*$/gm, '').trim();
+      if (!sql) continue;
+      const result = await db.query(sql),
+        last = Array.isArray(result) ? result.at(-1)! : result;
+      for (const row of last.rows ?? []) if (typeof row.sql === 'string') await db.query(row.sql);
+    }
+    assert.deepEqual((await db.query('SELECT * FROM workspace_state')).rows, beforeInventory);
+    assert.equal((await db.query('SELECT count(*)::int n FROM schema_migration')).rows[0].n, 10);
     await migrate(target.toString());
     await migrate(target.toString());
     await assertDatabaseReady(db);
     const role = new URL(process.env.DATABASE_URL!).username;
     assert.match(role, /^[a-z_][a-z0-9_]*$/);
     await db.query(
-      `GRANT SELECT ON schema_migration,work_record,legacy_record_link,workspace_history_revision,record_version,cloud_restore_backup TO "${role}"`,
+      `GRANT SELECT ON schema_migration,work_record,legacy_record_link,workspace_history_revision,record_version,cloud_restore_backup,mention_notification TO "${role}"`,
     );
     await db.query(`SET ROLE "${role}"`);
     try {
@@ -65,6 +93,9 @@ test('010-only deployment reproduces missing record fields/tables and refuses ne
     );
     await db.query(`GRANT DELETE ON record_version TO "${role}"`);
     await db.query(`GRANT USAGE ON SEQUENCE legacy_record_link_id_seq TO "${role}"`);
+    await db.query(`GRANT INSERT ON mention_notification TO "${role}"`);
+    await db.query(`GRANT UPDATE(read_at) ON mention_notification TO "${role}"`);
+    await db.query(`GRANT USAGE ON SEQUENCE mention_notification_id_seq TO "${role}"`);
     await db.query(`SET ROLE "${role}"`);
     try {
       await assertDatabaseReady(db);
@@ -295,6 +326,7 @@ test('011 owner is an additive upgrade that preserves pre-existing board content
     await migrate(target.toString());
     const after = (await db.query("SELECT * FROM work_record WHERE id='legacy-record'")).rows[0];
     assert.equal(after.owner, '');
+    assert.deepEqual(after.mention_ids, []);
     const baseline = (
       await db.query("SELECT * FROM record_version WHERE record_id='legacy-record'")
     ).rows;
@@ -304,6 +336,7 @@ test('011 owner is an additive upgrade that preserves pre-existing board content
     assert.equal(baseline[0].snapshot.notes, '原始内容');
     assert.equal(baseline[0].snapshot.created_name, '旧姓名');
     delete after.owner;
+    delete after.mention_ids;
     assert.deepEqual(after, before);
   } finally {
     await db?.end();

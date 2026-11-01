@@ -169,7 +169,8 @@ test('home and subpages share layout rules without altering saved records', asyn
       }),
     );
   const home = await sample();
-  for (const name of ['事项管理', '人员管理', '材料资产管理']) {
+  await expect(page.getByRole('button', { name: '材料资产管理', exact: true })).toHaveCount(0);
+  for (const name of ['事项管理', '人员管理']) {
     await page.getByRole('button', { name, exact: true }).click();
     expect(await sample()).toEqual(home);
   }

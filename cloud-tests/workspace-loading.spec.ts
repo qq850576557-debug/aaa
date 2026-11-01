@@ -117,6 +117,10 @@ for (const width of [1440, 1280, 390, 320])
     await expect(page.locator('.save-state')).toContainText('已保存');
     const group = page.getByRole('group', { name: '当前登录账号' });
     await expect(group).toContainText('林知夏');
+    const identityBox = await group.boundingBox(),
+      messageBox = await page.locator('.mention-inbox-button').boundingBox();
+    expect(messageBox!.x - identityBox!.x - identityBox!.width).toBeGreaterThanOrEqual(5);
+    expect(messageBox!.x - identityBox!.x - identityBox!.width).toBeLessThan(25);
     const layout = await group.evaluate((e) => {
       const r = e.getBoundingClientRect(),
         avatar = e.querySelector('.account-avatar')!.getBoundingClientRect(),

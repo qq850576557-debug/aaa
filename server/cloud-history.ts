@@ -238,12 +238,18 @@ export function cloudHistoryRoutes(app: Express) {
               'follow_up',
               'owner',
               'deleted',
+              'mention_ids',
             ];
+            target.mention_ids ??= current.mention_ids;
             target.project_name = s.data.projects.find((p) => p.id === target.project_id)!.name;
-            if (fields.filter((f) => f !== 'project_name').every((f) => current[f] === target[f]))
+            if (
+              fields
+                .filter((f) => f !== 'project_name')
+                .every((f) => JSON.stringify(current[f]) === JSON.stringify(target[f]))
+            )
               throw new ApiError(409, '所选版本与当前内容相同，无需恢复');
             await c.query(
-              `UPDATE work_record SET ${fields.map((f, i) => f + '=$' + (i + 3)).join(',')},version=version+1,updated_by=$12,updated_name=$13,updated_at=now() WHERE workspace_id=$1 AND id=$2`,
+              `UPDATE work_record SET ${fields.map((f, i) => f + '=$' + (i + 3)).join(',')},version=version+1,updated_by=$${fields.length + 3},updated_name=$${fields.length + 4},updated_at=now() WHERE workspace_id=$1 AND id=$2`,
               [
                 a.workspaceId,
                 id,

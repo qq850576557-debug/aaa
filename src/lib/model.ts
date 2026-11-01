@@ -118,6 +118,11 @@ export const noteSchema = z
   });
 export const purchaseSchema = z
   .object({
+    mentionIds: z
+      .array(uid)
+      .max(50)
+      .refine((x) => new Set(x).size === x.length, '请勿重复选择账号')
+      .optional(),
     id: uid,
     projectId: uid,
     name,

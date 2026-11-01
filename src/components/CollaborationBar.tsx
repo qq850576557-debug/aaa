@@ -1,5 +1,6 @@
 import { PersonalCard } from './PersonalCard';
 import { Avatar } from './Avatar';
+import { MentionInbox } from './MentionInbox';
 import { useEffect, useState } from 'react';
 import { cloudApi, type CloudUser } from '../lib/cloud';
 export type OnlineAccount = {
@@ -67,6 +68,7 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
           <strong>本地工作空间</strong>
         )}
       </div>
+      {isCloud && user && <MentionInbox key={user.id} />}
       <div className="online-accounts" aria-label="在线协作人员">
         {online.slice(0, limit).map((a) => (
           <span className="online-member" key={a.id} title={`${a.displayName} · 在线`}>

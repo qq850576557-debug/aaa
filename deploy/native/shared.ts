@@ -167,6 +167,10 @@ http {
   default_type application/octet-stream;
   access_log off;
   server_tokens off;
+  gzip on;
+  gzip_vary on;
+  gzip_min_length 1024;
+  gzip_types text/css application/javascript image/svg+xml;
   client_max_body_size 16m;
   client_body_temp_path ${state}/body;
   proxy_temp_path ${state}/proxy;

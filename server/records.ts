@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import type { AuthRequest } from './auth';
 import { randomUUID } from 'node:crypto';
 import { transaction } from './db';
+import { syncMentions } from './mention-delivery';
 import { ApiError, audit, getState, hash } from './store';
 import { safeActorDisplayName } from './audit';
 import {
@@ -12,7 +13,7 @@ import {
   type WorkRecord,
 } from '../src/lib/records';
 
-const columns = `id,project_id AS "projectId",project_name AS "projectName",title,owner,node_date AS "nodeDate",status,notes,follow_up AS "followUp",version,deleted,created_by AS "createdBy",created_name AS "createdName",created_at AS "createdAt",updated_by AS "updatedBy",updated_name AS "updatedName",updated_at AS "updatedAt"`;
+const columns = `id,project_id AS "projectId",project_name AS "projectName",title,owner,mention_ids AS "mentionIds",node_date AS "nodeDate",status,notes,follow_up AS "followUp",version,deleted,created_by AS "createdBy",created_name AS "createdName",created_at AS "createdAt",updated_by AS "updatedBy",updated_name AS "updatedName",updated_at AS "updatedAt"`;
 const snapshot = (r: WorkRecord | null) =>
   r ? { projectId: r.projectId, status: r.status, nodeDate: r.nodeDate } : null;
 export function recordRoutes(app: Express) {
@@ -105,6 +106,8 @@ export function recordRoutes(app: Express) {
             if (old && 'version' in body && old.version !== body.version)
               throw new ApiError(409, '记录已被其他人更新；草稿已保留，请重新读取后再保存');
             const value = 'value' in body ? body.value : old!;
+            if (method !== 'delete' && !value.nodeDate && (!old || !!old.nodeDate))
+              throw new ApiError(400, '请选择有效的事项处理日期');
             const project = state.data.projects.find((p) => p.id === value.projectId);
             if ((!old || value.projectId !== old.projectId) && !project)
               throw new ApiError(400, '请选择当前工作空间的有效项目');
@@ -115,8 +118,14 @@ export function recordRoutes(app: Express) {
                 .filter((k) => k !== 'deleted')
                 .every(
                   (k) =>
-                    ((value as any)[k] ?? (k === 'owner' ? (old.owner ?? '') : undefined)) ===
-                    (old as any)[k],
+                    JSON.stringify(
+                      (value as any)[k] ??
+                        (k === 'owner'
+                          ? (old.owner ?? '')
+                          : k === 'mentionIds'
+                            ? (old.mentionIds ?? [])
+                            : undefined),
+                    ) === JSON.stringify((old as any)[k]),
                 )
             ) {
               await c.query('INSERT INTO record_submission VALUES($1,$2,$3,$4,$5)', [
@@ -132,9 +141,9 @@ export function recordRoutes(app: Express) {
               id = old?.id ?? randomUUID();
             const next = (
               await c.query(
-                `INSERT INTO work_record(workspace_id,id,project_id,project_name,title,node_date,status,notes,follow_up,version,deleted,created_by,created_name,updated_by,updated_name,owner)
-            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,1,false,$10,$11,$10,$11,$13)
-            ON CONFLICT(workspace_id,id) DO UPDATE SET project_id=$3,project_name=$4,title=$5,node_date=$6,status=$7,notes=$8,follow_up=$9,version=work_record.version+1,deleted=$12,updated_by=$10,updated_name=$11,updated_at=now(),owner=$13 RETURNING ${columns}`,
+                `INSERT INTO work_record(workspace_id,id,project_id,project_name,title,node_date,status,notes,follow_up,version,deleted,created_by,created_name,updated_by,updated_name,owner,mention_ids)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,1,false,$10,$11,$10,$11,$13,$14)
+            ON CONFLICT(workspace_id,id) DO UPDATE SET project_id=$3,project_name=$4,title=$5,node_date=$6,status=$7,notes=$8,follow_up=$9,version=work_record.version+1,deleted=$12,updated_by=$10,updated_name=$11,updated_at=now(),owner=$13,mention_ids=$14 RETURNING ${columns}`,
                 [
                   a.workspaceId,
                   id,
@@ -149,11 +158,25 @@ export function recordRoutes(app: Express) {
                   name,
                   method === 'delete',
                   value.owner ?? old?.owner ?? '',
+                  value.mentionIds ?? old?.mentionIds ?? [],
                 ],
               )
             ).rows[0] as WorkRecord;
+            if (method !== 'delete')
+              await syncMentions(
+                c,
+                a,
+                'record',
+                id,
+                old?.mentionIds ?? [],
+                next.mentionIds ?? [],
+                project ?? { id: old!.projectId, name: old!.projectName },
+                next.nodeDate,
+                next.title,
+                next.notes,
+              );
             const changedFields = Object.keys(recordFields).filter(
-              (k) => (old as any)?.[k] !== (next as any)[k],
+              (k) => JSON.stringify((old as any)?.[k]) !== JSON.stringify((next as any)[k]),
             );
             const operation =
               method === 'post' ? 'create' : method === 'delete' ? 'delete' : 'update';

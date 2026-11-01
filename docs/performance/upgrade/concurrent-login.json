@@ -1,0 +1,41 @@
+{
+  "environment": "local isolated test API; four different registered accounts; no shared login cookie",
+  "first": [
+    {
+      "status": 200,
+      "ms": 191
+    },
+    {
+      "status": 200,
+      "ms": 190
+    },
+    {
+      "status": 429,
+      "ms": 20
+    },
+    {
+      "status": 429,
+      "ms": 21
+    }
+  ],
+  "final": [
+    {
+      "status": 200,
+      "attempts": 1
+    },
+    {
+      "status": 200,
+      "attempts": 1
+    },
+    {
+      "status": 200,
+      "attempts": 2
+    },
+    {
+      "status": 200,
+      "attempts": 2
+    }
+  ],
+  "totalIncludingTestRetriesMs": 569,
+  "note": "Existing hashing parallelism limit of two is unchanged; retries here are performed by the measurement script, not a new frontend behavior."
+}

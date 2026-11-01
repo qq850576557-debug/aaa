@@ -16,6 +16,7 @@ import type { Project } from '../lib/model';
 import { Modal, Confirm } from './Modal';
 import { DateField } from './DateField';
 import './record-board.css';
+import { MentionPicker } from './MentionPicker';
 const timestamp = (s: string) =>
   new Date(s).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
 const blank = (projectId = '', date = ''): RecordValue => ({
@@ -39,6 +40,8 @@ export function RecordDrawer({
   onBusyChange,
   onClose,
   onSaved,
+  initialValue,
+  onDraftChange,
 }: {
   record?: WorkRecord;
   initialProject: string;
@@ -51,10 +54,12 @@ export function RecordDrawer({
   onBusyChange?: (busy: boolean) => void;
   onClose: () => void;
   onSaved: (r: WorkRecord) => void;
+  initialValue?: RecordValue;
+  onDraftChange?: (value: RecordValue) => void;
 }) {
   const [base, setBase] = useState(record),
     [value, setValue] = useState<RecordValue>(() =>
-      record ? recordData(record) : blank(initialProject, initialDate),
+      record ? recordData(record) : (initialValue ?? blank(initialProject, initialDate)),
     ),
     [tab, setTab] = useState('details'),
     [history, setHistory] = useState<RecordHistory[]>([]),
@@ -65,6 +70,7 @@ export function RecordDrawer({
     [deleting, setDeleting] = useState(false),
     [reloadConfirm, setReloadConfirm] = useState(false);
   const request = useRef<{ key: string; id: string } | null>(null);
+  useEffect(() => onDraftChange?.(value), [value, onDraftChange]);
   const original = base ? recordData(base) : blank(initialProject, initialDate);
   const changed = JSON.stringify(value) !== JSON.stringify(original);
   useEffect(() => onDirty(changed), [changed, onDirty]);
@@ -226,7 +232,7 @@ export function RecordDrawer({
                 <span>节点日期</span>
                 <DateField
                   label="记录节点日期"
-                  required={!!initialDate}
+                  required
                   hideLabel
                   value={value.nodeDate}
                   onChange={(v) => {
@@ -257,6 +263,11 @@ export function RecordDrawer({
                   onChange={(e) => change('owner', e.target.value)}
                 />
               </label>
+              <MentionPicker
+                value={value.mentionIds ?? []}
+                disabled={busy}
+                onChange={(ids) => setValue((old) => ({ ...old, mentionIds: ids }))}
+              />
               <label>
                 <span>具体内容 / 备注</span>
                 <textarea

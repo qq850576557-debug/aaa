@@ -1,0 +1,49 @@
+{
+  "environment": "localhost, production builds, 150ms latency / 1.6Mbps, identical fixture and session",
+  "fixture": {
+    "projects": 20,
+    "tasks": 60,
+    "purchases": 20,
+    "historyNodes": 401
+  },
+  "decodedBytes": 1926471,
+  "verifiedIdenticalState": true,
+  "samples": [
+    {
+      "phase": "before",
+      "elapsedMs": 9858,
+      "encoding": null,
+      "wireBytes": 1926471
+    },
+    {
+      "phase": "before",
+      "elapsedMs": 9876,
+      "encoding": null,
+      "wireBytes": 1926471
+    },
+    {
+      "phase": "before",
+      "elapsedMs": 9892,
+      "encoding": null,
+      "wireBytes": 1926471
+    },
+    {
+      "phase": "after",
+      "elapsedMs": 1133,
+      "encoding": "gzip",
+      "wireBytes": 188004
+    },
+    {
+      "phase": "after",
+      "elapsedMs": 1112,
+      "encoding": "gzip",
+      "wireBytes": 188004
+    },
+    {
+      "phase": "after",
+      "elapsedMs": 1110,
+      "encoding": "gzip",
+      "wireBytes": 188004
+    }
+  ]
+}

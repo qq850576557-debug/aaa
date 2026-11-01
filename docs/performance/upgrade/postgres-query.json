@@ -1,0 +1,8 @@
+{
+  "environment": "local isolated PostgreSQL; synthetic 20-project / 401-history workspace; warm reads",
+  "readAndDriverDecodeMs": [28.06, 27.199, 30.823, 34.769, 26.649],
+  "postgresExecutionMs": 0.078,
+  "postgresPlanningMs": 0.084,
+  "plan": "Index Scan",
+  "productionServerMeasured": false
+}

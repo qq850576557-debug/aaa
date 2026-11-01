@@ -1,5 +1,8 @@
 import { cloudHistoryRoutes, captureRestoreBackup, persistRestoreBackup } from './cloud-history';
 import { databaseFailure, logDatabaseFailure } from './database-readiness';
+import { mentionRoutes } from './mentions';
+import { upgradePreviewRoutes } from './upgrade-preview';
+import { sendWorkspaceState } from './workspace-response';
 import { legacyRoutes } from './legacy-records';
 import {
   saveWorkspaceSubmission,
@@ -142,6 +145,8 @@ export function createApp() {
   });
   purchaseRoutes(app);
   recordRoutes(app);
+  mentionRoutes(app);
+  upgradePreviewRoutes(app);
   legacyRoutes(app);
   cloudHistoryRoutes(app);
   assessmentRoutes(app);
@@ -703,7 +708,9 @@ export function createApp() {
   );
   app.get('/api/workspace', async (req: AuthRequest, res, next) => {
     try {
-      res.json(
+      await sendWorkspaceState(
+        req,
+        res,
         workspaceStateWithProof(
           await transaction((c) => getState(c, req.actor!.workspaceId)),
           req.actor!,
@@ -986,6 +993,7 @@ export function createApp() {
         closed = false,
         last = -1,
         lastRecord = '',
+        lastMention = '',
         ticks = 0;
       const finish = (expired = false) => {
         if (closed) return;
@@ -1039,6 +1047,19 @@ export function createApp() {
             res.write(`event: records\ndata: ${JSON.stringify({ revision: recordRevision })}\n\n`);
           }
           if (++ticks % 5 === 0) res.write('event: presence\ndata: {}\n\n');
+          const mentions = String(
+            (
+              await pool.query(
+                `SELECT (SELECT coalesce(max(id),0)::text FROM mention_notification WHERE workspace_id=$1 AND recipient_id=$2) || ':' || (SELECT count(*)::text FROM mention_notification WHERE workspace_id=$1 AND recipient_id=$2 AND read_at IS NULL) AS revision`,
+                [actor.workspaceId, actor.id],
+              )
+            ).rows[0].revision,
+          );
+          if (closed) return;
+          if (mentions !== lastMention) {
+            lastMention = mentions;
+            res.write(`event: mentions\ndata: {}\n\n`);
+          }
         } catch (e) {
           logDatabaseFailure(e, 'sse.poll');
           // Query/network failures are not proof of session revocation. Let EventSource
@@ -1063,7 +1084,13 @@ export function createApp() {
         res.end();
         return;
       }
-      if (error instanceof WorkspaceValidationError) {
+      const validationIssues =
+        error instanceof WorkspaceValidationError
+          ? error.issues
+          : error instanceof ApiError
+            ? error.validationIssues
+            : undefined;
+      if (validationIssues) {
         const actor = (req as AuthRequest).actor;
         console.warn(
           JSON.stringify({
@@ -1075,13 +1102,13 @@ export function createApp() {
                 ? req.body.requestId
                 : undefined,
             revision: req.body?.revision,
-            issues: error.issues.map(({ path, code }) => ({ path, code })),
+            issues: validationIssues.map(({ path, code }) => ({ path, code })),
           }),
         );
         res.status(400).json({
-          error: error.message,
+          error: (error as Error).message,
           code: 'WORKSPACE_VALIDATION_FAILED',
-          issues: error.issues,
+          issues: validationIssues,
         });
         return;
       }

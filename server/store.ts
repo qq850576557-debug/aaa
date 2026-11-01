@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { trackPurchases } from './purchase-tracking';
+import { syncMentions, validateMentionAccounts } from './mention-delivery';
 import { businessAuditChanges, safeActorDisplayName, type AuditDevice } from './audit';
 type Db = Pick<PoolClient, 'query'>;
 import { randomUUID, createHash } from 'node:crypto';
@@ -8,6 +9,7 @@ import {
   parseBackup,
   prepareWorkspace,
   purchaseCeiling,
+  purchaseDue,
   rawPurchaseDue,
   type Data,
 } from '../src/lib/model';
@@ -23,6 +25,7 @@ import {
 } from '../src/lib/history';
 import { confirmPurchaseDeadline } from '../src/lib/procurement';
 export class ApiError extends Error {
+  validationIssues?: import('../src/lib/workspace-save-plan').ValidationIssue[];
   constructor(
     public status: number,
     message: string,
@@ -40,6 +43,14 @@ export type Actor = {
   cardAvatarVersion?: string | null;
   auditDevice?: AuditDevice;
 };
+// Reuse validation work only after reading and hashing the actual current DB row.
+// Never cache authority or skip the live read/CAS. Clone on return so callers cannot
+// mutate a shared baseline. Keep at most 8 MiB of serialized business snapshots.
+const validatedReads = new Map<
+  string,
+  { fingerprint: string; data: Data; history: History; bytes: number }
+>();
+let validatedBytes = 0;
 export async function getState(c: Db, workspaceId: string, lock = 'SHARE') {
   const q = await c.query(
     `SELECT revision,data,history FROM workspace_state WHERE workspace_id=$1 FOR ${lock}`,
@@ -47,10 +58,31 @@ export async function getState(c: Db, workspaceId: string, lock = 'SHARE') {
   );
   if (!q.rowCount) throw new ApiError(404, '工作空间不存在');
   const row = q.rows[0];
+  const serialized = JSON.stringify([row.data, row.history]);
+  const fingerprint = hash(serialized);
+  let cached = validatedReads.get(workspaceId);
+  if (!cached || cached.fingerprint !== fingerprint) {
+    const data = prepareWorkspace(parseBackup(row.data)),
+      history = validateHistory(row.history);
+    if (cached) {
+      validatedBytes -= cached.bytes;
+      validatedReads.delete(workspaceId);
+    }
+    cached = { fingerprint, data, history, bytes: Buffer.byteLength(serialized) };
+    if (cached.bytes <= 8 * 1024 * 1024) {
+      while (validatedBytes + cached.bytes > 8 * 1024 * 1024 || validatedReads.size >= 4) {
+        const key = validatedReads.keys().next().value!;
+        validatedBytes -= validatedReads.get(key)!.bytes;
+        validatedReads.delete(key);
+      }
+      validatedReads.set(workspaceId, cached);
+      validatedBytes += cached.bytes;
+    }
+  }
   return {
     revision: Number(row.revision),
-    data: prepareWorkspace(parseBackup(row.data)),
-    history: retainHistory(validateHistory(row.history)),
+    data: structuredClone(cached.data),
+    history: retainHistory(structuredClone(cached.history)),
   };
 }
 export async function graph(c: Db, w: string, d: Data) {
@@ -226,6 +258,25 @@ export async function commit(
     }
   }
   const h = opts?.importHistory ? mergeHistory(prior.history, opts.importHistory) : prior.history;
+  if (opts?.importing || opts?.restoreId)
+    for (const p of d.purchases) {
+      const before = prior.data.purchases.find((x) => x.id === p.id)?.mentionIds ?? [];
+      await validateMentionAccounts(
+        c,
+        a,
+        (p.mentionIds ?? []).filter((id) => !before.includes(id)),
+        false,
+      );
+    }
+  d = {
+    ...d,
+    purchases: d.purchases.map((p) => {
+      const old = prior.data.purchases.find((x) => x.id === p.id);
+      return p.mentionIds === undefined && old?.mentionIds
+        ? { ...p, mentionIds: old.mentionIds }
+        : p;
+    }),
+  };
   const result = recordChanges(
     prior.data,
     d,
@@ -250,6 +301,36 @@ export async function commit(
       [a.workspaceId, r.id, revision],
     );
   await trackPurchases(c, a, prior.data, result.data, !!(opts?.importing || opts?.restoreId));
+  if (!opts?.importing && !opts?.restoreId)
+    for (const [index, p] of result.data.purchases.entries()) {
+      const old = prior.data.purchases.find((x) => x.id === p.id);
+      const project = result.data.projects.find((x) => x.id === p.projectId)!;
+      try {
+        await syncMentions(
+          c,
+          a,
+          'purchase',
+          p.id,
+          old?.mentionIds ?? [],
+          p.mentionIds ?? [],
+          project,
+          purchaseDue(p, result.data),
+          p.name,
+          p.notes,
+        );
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 400)
+          e.validationIssues = [
+            {
+              path: ['data', 'purchases', index, 'mentionIds'],
+              resource: { collection: 'purchases', id: p.id },
+              code: 'custom',
+              message: e.message,
+            },
+          ];
+        throw e;
+      }
+    }
   await graph(c, a.workspaceId, result.data);
   await c.query('UPDATE workspace_state SET revision=$2,data=$3,history=$4 WHERE workspace_id=$1', [
     a.workspaceId,

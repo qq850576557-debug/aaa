@@ -21,7 +21,6 @@ import {
   initialStageColor,
   defaultTradeColor,
 } from './lib/trade-colors';
-import { CloudControl } from './components/CloudControl';
 import { ConflictPanel } from './components/ConflictPanel';
 import { scheduleForecast } from './lib/readiness';
 import { CollaborationBar } from './components/CollaborationBar';
@@ -103,14 +102,7 @@ import {
 } from './lib/model';
 
 type View =
-  | 'overview'
-  | 'schedule'
-  | 'purchases'
-  | 'reminders'
-  | 'completed'
-  | 'people'
-  | 'materials'
-  | 'records';
+  'overview' | 'schedule' | 'purchases' | 'reminders' | 'completed' | 'people' | 'records';
 type Confirmation = { title: string; message: string; run: () => void; danger?: boolean };
 const navigation: [View, string, ReactNode][] = [
   ['overview', '项目工作空间', <LayoutDashboard size={19} />],
@@ -123,11 +115,8 @@ const navigation: [View, string, ReactNode][] = [
 const RecordBoard = lazy(() =>
   import('./components/RecordBoard').then((m) => ({ default: m.RecordBoard })),
 );
-const MaterialsPanel = lazy(() =>
-  import('./components/MaterialsPanel').then((m) => ({ default: m.MaterialsPanel })),
-);
-const MaterialAlertSummary = lazy(() =>
-  import('./components/MaterialsPanel').then((m) => ({ default: m.MaterialAlertSummary })),
+const CloudControl = lazy(() =>
+  import('./components/CloudControl').then((m) => ({ default: m.CloudControl })),
 );
 const PeoplePanel = lazy(() =>
   import('./components/PeoplePanel').then((m) => ({ default: m.PeoplePanel })),
@@ -204,7 +193,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       pendingScroll.current = null;
     }
   }, [selected]);
-  const [materialTab, setMaterialTab] = useState(0);
   const [view, setView] = useState<View>('overview');
   const [edit, setEdit] = useState<Edit | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -226,6 +214,46 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [purchaseFilter, setPurchaseFilter] = useState('全部');
   const { notices, notify, dismiss } = useNotices();
+  useEffect(() => {
+    const open = (event: Event) => {
+      if (
+        edit ||
+        agendaEntry ||
+        focusedRecord ||
+        document.querySelector('dialog[open]:not(.mention-inbox)')
+      ) {
+        event.preventDefault();
+        notify('请先保存或关闭当前编辑窗口，再打开消息');
+        return;
+      }
+      if (
+        !window.dispatchEvent(
+          new CustomEvent('chunmo-before-navigation', {
+            cancelable: true,
+            detail: { resume: () => notify('请重新点击消息打开记录') },
+          }),
+        )
+      ) {
+        event.preventDefault();
+        return;
+      }
+      const target = (
+        event as CustomEvent<{ kind: 'purchase' | 'record'; value: Purchase | WorkRecord }>
+      ).detail;
+      setSelected(target.value.projectId);
+      if (target.kind === 'purchase') {
+        setView('purchases');
+        setEdit({ kind: 'purchase', value: target.value as Purchase });
+      } else {
+        setView('records');
+        recordSource.accept(target.value as WorkRecord);
+        recordDirty.current = false;
+        setFocusedRecord(target.value as WorkRecord);
+      }
+    };
+    window.addEventListener('chunmo-open-mention', open);
+    return () => window.removeEventListener('chunmo-open-mention', open);
+  }, [edit, agendaEntry, focusedRecord, recordSource.accept, notify]);
   const [exporting, setExporting] = useState(false);
   const [backup, setBackup] = useState(false);
   const [restore, setRestore] = useState<Data | null>(null);
@@ -882,7 +910,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           >
             <div>
               {navigation
-                .filter(([key]) => key !== 'overview' && key !== 'people' && key !== 'materials')
+                .filter(([key]) => key !== 'overview' && key !== 'people')
                 .map(([key, label, icon]) => (
                   <button
                     key={key}
@@ -902,10 +930,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           <button className={view === 'people' ? 'active' : ''} onClick={() => go('people')}>
             <Users size={19} />
             <span>人员管理</span>
-          </button>
-          <button className={view === 'materials' ? 'active' : ''} onClick={() => go('materials')}>
-            <Package size={19} />
-            <span>材料资产管理</span>
           </button>
         </nav>
         <section
@@ -968,7 +992,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       </aside>
       <div className="main-shell">
         <header className="topbar">
-          <CloudControl isCloud={isCloud} dirty={hasUnsavedChanges} />
+          <DeferredPanel>
+            <CloudControl isCloud={isCloud} dirty={hasUnsavedChanges} initialUser={cloudUser} />
+          </DeferredPanel>
           <button
             className="mobile-history"
             aria-label="版本历史 · 15天"
@@ -1073,11 +1099,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                         ? '材料采购管理'
                         : view === 'completed'
                           ? '已完工项目'
-                          : view === 'materials'
-                            ? '材料资产管理'
-                            : view === 'people'
-                              ? '人员管理'
-                              : '项目提醒中心'}
+                          : view === 'people'
+                            ? '人员管理'
+                            : '项目提醒中心'}
               </h1>
               <p>
                 {view === 'records'
@@ -1121,7 +1145,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           </div>
           <div
             className="stats-grid ui-module-group"
-            hidden={view === 'people' || view === 'materials' || view === 'records'}
+            hidden={view === 'people' || view === 'records'}
           >
             {(
               [
@@ -1195,25 +1219,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
               </DeferredPanel>
             </>
           ) : view === 'reminders' ? (
-            <>
-              {reminderItems()}
-              {isCloud && (
-                <section className="reminder-other" aria-label="其他业务提醒">
-                  <DeferredPanel>
-                    <MaterialAlertSummary
-                      onOpen={() => {
-                        setMaterialTab(5);
-                        go('materials');
-                      }}
-                    />
-                  </DeferredPanel>
-                </section>
-              )}
-            </>
-          ) : view === 'materials' ? (
-            <DeferredPanel key="materials">
-              <MaterialsPanel data={data} isCloud={isCloud} initialTab={materialTab} />
-            </DeferredPanel>
+            <>{reminderItems()}</>
           ) : view === 'people' ? (
             <DeferredPanel key="people">
               <PeoplePanel isCloud={isCloud} data={data} onChange={(fn) => mutate(fn)} />

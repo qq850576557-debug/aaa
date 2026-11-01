@@ -1,0 +1,153 @@
+.mention-picker {
+  position: relative;
+  min-width: 0;
+}
+.mention-selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mention-selected:empty {
+  display: none;
+}
+.mention-selected button {
+  padding: 5px 9px;
+  border: 1px solid #bad8ca;
+  background: #e5f2ea;
+  color: #245645;
+  border-radius: 12px;
+}
+.mention-options {
+  max-height: 200px;
+  overflow: auto;
+  padding: 6px;
+  background: #f6faf7;
+  border: 1px solid #c8ddd1;
+  border-radius: 10px;
+}
+.mention-options button {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+}
+.mention-options small {
+  color: #63796d;
+}
+.mention-inbox-button {
+  position: relative;
+  flex: none;
+  background: #e9f3ed;
+  border: 1px solid #cfdfd5;
+  border-radius: 12px;
+  padding: 9px;
+}
+.mention-inbox-button b {
+  position: absolute;
+  right: -6px;
+  top: -7px;
+  background: #bb4747;
+  color: white;
+  border-radius: 10px;
+  font-size: 11px;
+  line-height: 18px;
+  min-width: 18px;
+  padding: 0 3px;
+}
+.mention-inbox {
+  max-width: 520px !important;
+}
+.mention-inbox .modal-body {
+  max-height: 70vh;
+  overflow: auto;
+}
+.mention-inbox-tools {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.mention-notice {
+  padding: 10px;
+  margin-bottom: 8px;
+  border: 1px solid #dce6df;
+  border-radius: 12px;
+  background: #fafcfb;
+}
+.mention-notice.unread {
+  background: #eaf5ee;
+  border-color: #b2d2bd;
+}
+.mention-notice > button:first-child {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  padding: 0;
+}
+.mention-notice p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.mention-notice strong,
+.mention-notice span {
+  overflow-wrap: anywhere;
+}
+.mention-notice small {
+  color: #61776b;
+}
+.mention-notice > button + button {
+  margin-top: 8px;
+  background: #dcecdf;
+  padding: 5px 9px;
+  border-radius: 9px;
+}
+/* Preserve the identity capsule spacing when the message button is added. */
+@media (max-width: 420px) {
+  .app-shell .topbar .collaboration-bar {
+    gap: 6px;
+  }
+  .collaboration-bar .current-account {
+    flex-shrink: 0;
+  }
+  .current-account .personal-name-button {
+    max-width: 70px;
+  }
+}
+@media (max-width: 340px) {
+  .current-account .personal-name-button {
+    max-width: 60px;
+  }
+  .app-shell .topbar .online-accounts {
+    min-width: 0;
+    max-width: 28px;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .app-shell .topbar .online-accounts > :not(:first-child),
+  .app-shell .topbar .online-accounts > small {
+    display: none;
+  }
+}
+.app-shell .topbar .collaboration-bar {
+  justify-content: flex-start;
+}
+.app-shell .topbar .collaboration-bar > .online-accounts {
+  margin-left: auto;
+}
+.mention-selected button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.mention-options strong,
+.mention-options small,
+.mention-notice small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

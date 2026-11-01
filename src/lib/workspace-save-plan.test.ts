@@ -181,3 +181,26 @@ it('a remote assignment that conflicts with local person deletion does not withh
   expect(plan.conflicts.map((x) => x.collection)).toEqual(['people']);
   expect(() => parseBackup(plan.data)).not.toThrow();
 });
+
+it('a merged server index shifted by a peer insertion still isolates the invalid mention by stable purchase ID', () => {
+  const base = fixture(),
+    local = structuredClone(base),
+    remote = structuredClone(base);
+  local.purchases[0].mentionIds = ['disabled-account'];
+  local.projects[0].notes = '本项目仍需独立保存';
+  remote.purchases.unshift({ ...base.purchases[0], id: 'peer-purchase', name: '另一人新增的材料' });
+  const holds = holdsForFailure(base, local, '账号已停用', [
+    {
+      path: ['data', 'purchases', 1, 'mentionIds'],
+      code: 'custom',
+      message: '账号已停用',
+      resource: { collection: 'purchases', id: 'purchase' },
+    },
+  ]);
+  expect(holds.map((x) => [x.collection, x.id])).toEqual([['purchases', 'purchase']]);
+  const plan = planWorkspaceSave(base, local, remote, holds);
+  expect(plan.data.projects[0].notes).toBe('本项目仍需独立保存');
+  expect(plan.data.purchases.find((p) => p.id === 'purchase')?.mentionIds).toBeUndefined();
+  expect(plan.data.purchases.some((p) => p.id === 'peer-purchase')).toBe(true);
+  expect(local.purchases[0].mentionIds).toEqual(['disabled-account']);
+});

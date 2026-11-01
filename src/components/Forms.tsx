@@ -4,6 +4,7 @@ import { Confirm, Modal, type Anchor } from './Modal';
 import { DateField } from './DateField';
 import { StaffPicker } from './StaffPicker';
 import { ColorControls } from './ColorPopover';
+import { MentionPicker } from './MentionPicker';
 import { defaultTradeColor, resolvedTradeColor } from '../lib/trade-colors';
 import {
   dateOK,
@@ -46,10 +47,12 @@ export function Editor({
   intro,
   embedded = false,
   onDirtyChange,
+  onDraftChange,
 }: {
   intro?: ReactNode;
   embedded?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
+  onDraftChange?: (value: Entity) => void;
   edit: Edit;
   data: Data;
   onClose: () => void;
@@ -73,6 +76,7 @@ export function Editor({
       : {}),
   };
   const [v, set] = useState<Record<string, unknown>>(initial);
+  useEffect(() => onDraftChange?.(v as Entity), [v, onDraftChange]);
   const [error, setError] = useState('');
   const colorChanged = useRef(false);
   const uid = useId();
@@ -132,6 +136,7 @@ export function Editor({
       <label htmlFor={`${uid}-${key}`}>{label}</label>
       <select
         id={`${uid}-${key}`}
+        required={key === 'projectId'}
         value={
           key === 'dependency'
             ? String((v.dependsOn as string[] | undefined)?.[0] ?? '')
@@ -355,6 +360,10 @@ export function Editor({
         )}
         {input('specification', '规格型号')}
         {input('owner', '采购负责人')}
+        <MentionPicker
+          value={(v.mentionIds as string[] | undefined) ?? []}
+          onChange={(ids) => change('mentionIds', ids)}
+        />
         {input('due', '采购截止日期', 'date', true)}
         {select('status', '采购状态', ['待采购', '已下单', '已到货', '已完成'])}
         {area('notes', '详细备注（可选）')}

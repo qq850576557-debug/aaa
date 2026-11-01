@@ -142,6 +142,9 @@ export async function grants(c: Deployment) {
     );
     await db.query(`GRANT SELECT,INSERT,UPDATE ON person_private TO ${priv}`);
     await db.query(`GRANT SELECT,INSERT,DELETE ON record_version TO ${app}`);
+    await db.query(`GRANT SELECT,INSERT ON mention_notification TO ${app}`);
+    await db.query(`GRANT UPDATE(read_at) ON mention_notification TO ${app}`);
+    await db.query(`GRANT USAGE,SELECT ON SEQUENCE mention_notification_id_seq TO ${app}`);
     await db.query(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${backup}`);
     await db.query(`GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${backup}`);
     await db.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${backup}`);

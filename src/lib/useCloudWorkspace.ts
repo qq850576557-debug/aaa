@@ -439,6 +439,9 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         events.addEventListener('records', () =>
           window.dispatchEvent(new Event('chunmo-records-changed')),
         );
+        events.addEventListener('mentions', () =>
+          window.dispatchEvent(new Event('chunmo-mentions-changed')),
+        );
         window.dispatchEvent(new Event('chunmo-presence'));
         events.addEventListener('revision', (event) => {
           const value = JSON.parse((event as MessageEvent).data);

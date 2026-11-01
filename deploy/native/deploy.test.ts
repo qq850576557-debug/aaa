@@ -81,6 +81,8 @@ test('private HTTPS config keeps API same-origin, SSE streaming and no public li
   assert.match(conf, /proxy_buffering off/);
   assert.match(conf, /proxy_set_header Host \$http_host/);
   assert.match(conf, /access_log off/);
+  assert.match(conf, /gzip on;/);
+  assert.match(conf, /gzip_types text\/css application\/javascript image\/svg\+xml;/);
   assert.throws(() => nginx('/tmp/unsafe;', '/tls', '/state'));
   assert.throws(() => nginx('/root', '/tls', '/state', 80));
 });

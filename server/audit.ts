@@ -99,6 +99,7 @@ const referenceDomains: Record<string, string> = {
   groupId: 'task-group',
   categoryId: 'dictionary',
   staffIds: 'person',
+  mentionIds: 'account',
   tradeIds: 'dictionary',
   dependsOn: 'task',
 };
@@ -175,7 +176,7 @@ const scalarFields = new Set([
   'deleted',
   'deadlineMode',
 ]);
-const arrayFields = new Set(['staffIds', 'tradeIds', 'dependsOn']);
+const arrayFields = new Set(['staffIds', 'tradeIds', 'dependsOn', 'mentionIds']);
 const enumFields: Record<string, readonly string[]> = {
   status: [
     '施工中',

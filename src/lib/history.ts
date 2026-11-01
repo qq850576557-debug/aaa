@@ -77,6 +77,7 @@ const fields: Record<string, string> = {
   title: '标题',
   address: '地址',
   owner: '负责人/业主',
+  mentionIds: '@负责人账号',
   manager: '项目经理',
   status: '状态',
   start: '开始日期',

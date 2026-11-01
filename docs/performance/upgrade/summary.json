@@ -1,0 +1,52 @@
+{
+  "method": "Production builds; identical fixture size; 5 cold samples per network; all values milliseconds; local Chromium; not Aliyun",
+  "metrics": [
+    {
+      "network": "loopback",
+      "before": {
+        "firstReadyMs": 456,
+        "refreshMs": 233,
+        "accountMs": 96,
+        "projectSwitchMs": 92,
+        "purchaseMs": 83,
+        "recordMs": 86
+      },
+      "after": {
+        "firstReadyMs": 480,
+        "refreshMs": 236,
+        "accountMs": 81,
+        "projectSwitchMs": 91,
+        "purchaseMs": 80,
+        "recordMs": 85
+      }
+    },
+    {
+      "network": "150ms-1.6Mbps",
+      "before": {
+        "firstReadyMs": 2411,
+        "refreshMs": 2177,
+        "accountMs": 259,
+        "projectSwitchMs": 81,
+        "purchaseMs": 76,
+        "recordMs": 842
+      },
+      "after": {
+        "firstReadyMs": 2368,
+        "refreshMs": 1976,
+        "accountMs": 78,
+        "projectSwitchMs": 74,
+        "purchaseMs": 70,
+        "recordMs": 842
+      }
+    }
+  ],
+  "fourSessionsSingleRunMs": {
+    "before": 2334,
+    "after": 1867
+  },
+  "largeWorkspaceReadMedianMs": {
+    "before": 9876,
+    "after": 1112
+  },
+  "largeWorkspaceIdenticalStateVerified": true
+}

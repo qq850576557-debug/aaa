@@ -138,6 +138,7 @@ for (const width of [1440, 390])
     );
     await card.getByRole('button', { name: '关闭浮窗', exact: true }).click();
     const results = [];
+    await expect(page.getByRole('button', { name: '材料资产管理', exact: true })).toHaveCount(0);
     for (const name of [
       '项目工作空间',
       '事项管理',
@@ -145,7 +146,6 @@ for (const width of [1440, 390])
       '提醒中心',
       '已完工项目',
       '人员管理',
-      '材料资产管理',
     ]) {
       const nav = page
         .getByRole('navigation')

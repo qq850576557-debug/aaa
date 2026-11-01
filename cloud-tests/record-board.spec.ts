@@ -204,6 +204,7 @@ test.describe('record board touch device', () => {
       .tap();
     await page.getByLabel('记录所属项目', { exact: true }).selectOption('p-home');
     await page.getByLabel('任务事项', { exact: true }).fill('手机现场跟进');
+    await page.getByLabel('记录节点日期', { exact: true }).fill('2026-11-02');
     await page.getByLabel('记录状态', { exact: true }).selectOption('紧急');
     await page.getByRole('button', { name: '保存记录', exact: true }).tap();
     await expect(

@@ -6,6 +6,7 @@ export const requiredMigrations = [
   '011_record_owner.sql',
   '012_legacy_classification.sql',
   '013_cloud_versions.sql',
+  '014_mentions.sql',
 ];
 
 export async function assertDatabaseReady(db: pg.Pool | pg.Client) {
@@ -17,12 +18,13 @@ export async function assertDatabaseReady(db: pg.Pool | pg.Client) {
         missing.join(', '),
     );
   // Read-only checks run as the actual application role, not the migration owner.
-  await db.query('SELECT owner FROM work_record LIMIT 0');
+  await db.query('SELECT owner,mention_ids FROM work_record LIMIT 0');
   for (const table of [
     'legacy_record_link',
     'workspace_history_revision',
     'record_version',
     'cloud_restore_backup',
+    'mention_notification',
   ])
     await db.query(`SELECT * FROM ${table} LIMIT 0`);
   const permissions = await db.query(`SELECT
@@ -31,6 +33,9 @@ export async function assertDatabaseReady(db: pg.Pool | pg.Client) {
     has_table_privilege(current_user,'workspace_history_revision','INSERT') AND
     has_table_privilege(current_user,'cloud_restore_backup','INSERT') AND
     has_table_privilege(current_user,'legacy_record_link','INSERT') AND
+    has_table_privilege(current_user,'mention_notification','INSERT') AND
+    has_column_privilege(current_user,'mention_notification','read_at','UPDATE') AND
+    has_sequence_privilege(current_user,'mention_notification_id_seq','USAGE') AND
     has_sequence_privilege(current_user,'legacy_record_link_id_seq','USAGE') AS ready`);
   if (!permissions.rows[0]?.ready)
     throw Error(

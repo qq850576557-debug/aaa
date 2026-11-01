@@ -1,5 +1,5 @@
 import { MemberCards } from './MemberCards';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Modal, Confirm } from './Modal';
 import { PASSWORD_MIN, PASSWORD_MAX, passwordSchema } from '../lib/password';
 import { cloudApi, cloudSession, selectSpace, CloudError, type CloudUser } from '../lib/cloud';
@@ -19,7 +19,15 @@ export type DirectoryAccount = {
   note: string;
   avatarVersion?: string | null;
 };
-export function CloudControl({ isCloud, dirty }: { isCloud: boolean; dirty: boolean }) {
+export function CloudControl({
+  isCloud,
+  dirty,
+  initialUser,
+}: {
+  isCloud: boolean;
+  dirty: boolean;
+  initialUser?: CloudUser | null;
+}) {
   const [open, setOpen] = useState(false);
   useEffect(() => {
     const openSettings = () => setOpen(true);
@@ -31,7 +39,14 @@ export function CloudControl({ isCloud, dirty }: { isCloud: boolean; dirty: bool
       <button className="cloud-control" onClick={() => setOpen(true)}>
         账号管理
       </button>
-      {open && <CloudPanel isCloud={isCloud} dirty={dirty} onClose={() => setOpen(false)} />}
+      {open && (
+        <CloudPanel
+          isCloud={isCloud}
+          dirty={dirty}
+          initialUser={initialUser}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -39,19 +54,23 @@ function CloudPanel({
   isCloud,
   dirty,
   onClose,
+  initialUser,
 }: {
   isCloud: boolean;
   dirty: boolean;
   onClose: () => void;
+  initialUser?: CloudUser | null;
 }) {
-  const [user, setUser] = useState<CloudUser | null>(null),
-    [loading, setLoading] = useState(true),
+  const profileTouched = useRef(false),
+    sessionCheck = useRef<Promise<void>>(Promise.resolve());
+  const [user, setUser] = useState<CloudUser | null>(initialUser ?? null),
+    [loading, setLoading] = useState(!initialUser),
     [accounts, setAccounts] = useState<DirectoryAccount[]>([]),
     [tab, setTab] = useState('profile'),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false),
-    [displayName, setDisplayName] = useState(''),
+    [displayName, setDisplayName] = useState(initialUser?.displayName || initialUser?.login || ''),
     [target, setTarget] = useState(''),
     [employeeName, setEmployeeName] = useState(''),
     [note, setNote] = useState(''),
@@ -87,13 +106,16 @@ function CloudPanel({
   }
   useEffect(() => {
     let active = true;
-    void cloudSession()
-      .then((u) => {
-        if (active) {
-          setUser(u);
-          setDisplayName(u.displayName || u.login);
-        }
-      })
+    const checking = cloudSession().then((u) => {
+      if (initialUser && u.id !== initialUser.id)
+        throw new CloudError(401, '登录账号已变化，请重新登录；原账号草稿已保留');
+      if (active) {
+        setUser(u);
+        if (!profileTouched.current) setDisplayName(u.displayName || u.login);
+      }
+    });
+    sessionCheck.current = checking;
+    void checking
       .catch((e) => {
         if (active) report(e);
       })
@@ -113,6 +135,7 @@ function CloudPanel({
     setError('');
     setNotice('');
     try {
+      await sessionCheck.current;
       await run();
     } catch (e) {
       report(e);
@@ -188,10 +211,15 @@ function CloudPanel({
                     aria-label="修改我的展示名称"
                     onSubmit={(e) => {
                       e.preventDefault();
+                      if (!profileTouched.current) {
+                        setNotice('没有需要保存的名称修改。');
+                        return;
+                      }
                       void action(async () => {
                         await cloudApi('/auth/profile', 'PATCH', { displayName });
                         const updated = await cloudSession();
                         setUser(updated);
+                        profileTouched.current = false;
                         window.dispatchEvent(
                           new CustomEvent('chunmo-profile-updated', { detail: updated }),
                         );
@@ -207,7 +235,11 @@ function CloudPanel({
                         required
                         maxLength={80}
                         value={displayName}
-                        onChange={(e) => setDisplayName(e.target.value)}
+                        disabled={busy}
+                        onChange={(e) => {
+                          profileTouched.current = true;
+                          setDisplayName(e.target.value);
+                        }}
                       />
                     </label>
                     <button disabled={busy}>保存展示名称</button>

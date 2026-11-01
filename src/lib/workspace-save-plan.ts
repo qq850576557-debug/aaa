@@ -18,7 +18,12 @@ export type SaveHold = {
   kind: 'validation' | 'conflict' | 'dependency';
   reason: string;
 };
-export type ValidationIssue = { path: (string | number)[]; code: string; message: string };
+export type ValidationIssue = {
+  path: (string | number)[];
+  code: string;
+  message: string;
+  resource?: Pick<SaveHold, 'collection' | 'id'>;
+};
 export const resourceKey = (item: { collection: string; id: string }) =>
   JSON.stringify([item.collection, item.id]);
 const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
@@ -136,6 +141,10 @@ export function holdsForFailure(
   const changes = changedResources(base, data),
     keys = new Set<string>();
   for (const issue of issues) {
+    if (issue.resource && workspaceCollections.includes(issue.resource.collection as Collection)) {
+      keys.add(resourceKey(issue.resource));
+      continue;
+    }
     const [root, collection, index] = issue.path;
     if (root !== 'data') continue;
     if (workspaceCollections.includes(collection as Collection) && typeof index === 'number') {

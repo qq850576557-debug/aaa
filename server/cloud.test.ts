@@ -7,6 +7,7 @@ import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { createApp } from './app';
 import { pool, privatePool, transaction } from './db';
+import { getState } from './store';
 import { saveWorkspaceSubmission } from './workspace-save';
 import { fixtureAccounts } from './test-fixtures';
 import { config } from './config';
@@ -336,7 +337,7 @@ test('record board: concurrent edits, duplicate submissions, deleted projects an
   const value = {
     projectId: d.projects[0].id,
     title: '现场收口核验',
-    nodeDate: '',
+    nodeDate: today(),
     status: '进行中',
     notes: '',
     followUp: '',
@@ -4746,4 +4747,404 @@ test('cloud recovery rolls back workspace, record snapshots and audit when the a
     await admin.end();
   }
   assert.equal((await request('/history/versions/restore', 'POST', body, a)).status, 200);
+});
+
+test('mentions: atomic multi-recipient delivery, independent reads, idempotency, active-account checks and tenant isolation', async () => {
+  testClientIp = '203.0.113.199';
+  const { a, b, f } = await setup(),
+    d = data();
+  d.projects.push({ ...newProject(), name: '消息改归属工地' });
+  assert.equal((await request('/workspace', 'PUT', { revision: 0, data: d }, a)).status, 200);
+  const thirdLogin = 'mention_' + randomUUID().replaceAll('-', '');
+  const made = await request('/accounts', 'POST', { login: thirdLogin, password: f.password }, a);
+  assert.equal(made.status, 201);
+  const c = await login(thirdLogin, f.password);
+  const ids = [a.user.id, b.user.id];
+  const value = {
+    projectId: d.projects[0].id,
+    title: '共同复核现场',
+    nodeDate: today(),
+    status: '待执行',
+    notes: '需要两位一起确认',
+    followUp: '',
+    mentionIds: ids,
+  };
+  assert.equal(
+    (
+      await request(
+        '/records',
+        'POST',
+        { requestId: randomUUID(), value: { ...value, nodeDate: '' } },
+        a,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        '/records',
+        'POST',
+        { requestId: randomUUID(), value: { ...value, mentionIds: [ids[0], ids[0]] } },
+        a,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        '/records',
+        'POST',
+        { requestId: randomUUID(), value: { ...value, mentionIds: [randomUUID()] } },
+        a,
+      )
+    ).status,
+    400,
+  );
+  const body = { requestId: randomUUID(), value };
+  const r = await (await request('/records', 'POST', body, a)).json();
+  assert.equal(r.version, 1);
+  assert.deepEqual(r.mentionIds, ids);
+  assert.deepEqual(await (await request('/records', 'POST', body, a)).json(), r);
+  const inbox = async (client: Client) =>
+    await (await request('/notifications', 'GET', undefined, client)).json();
+  let ia = await inbox(a),
+    ib = await inbox(b);
+  assert.equal(ia.unread, 1);
+  assert.equal(ib.unread, 1);
+  assert.equal((await inbox(c)).unread, 0);
+  assert.equal(ib.notifications[0].actorName, a.user.displayName || a.user.login);
+  assert.equal(
+    (await request('/notifications/read', 'POST', { ids: [ib.notifications[0].id] }, a)).status,
+    200,
+  );
+  assert.equal((await inbox(b)).unread, 1);
+  assert.equal(
+    (await request(`/notifications/${ib.notifications[0].id}/target`, 'GET', undefined, a)).status,
+    404,
+  );
+  assert.equal(
+    (await request('/notifications/read', 'POST', { all: true, recipientId: b.user.id }, a)).status,
+    400,
+  );
+  await request('/notifications/read', 'POST', { all: true }, b);
+  assert.equal((await inbox(b)).unread, 0);
+  assert.equal((await inbox(a)).unread, 1);
+  const unchanged = await (
+    await request('/records/' + r.id, 'PUT', { requestId: randomUUID(), version: 1, value }, a)
+  ).json();
+  assert.equal(unchanged.version, 1);
+  let updated = await (
+    await request(
+      '/records/' + r.id,
+      'PUT',
+      { requestId: randomUUID(), version: 1, value: { ...value, mentionIds: [...ids, c.user.id] } },
+      a,
+    )
+  ).json();
+  assert.equal(updated.version, 2);
+  assert.equal((await inbox(c)).unread, 1);
+  assert.equal((await inbox(a)).notifications.length, 1);
+  updated = await (
+    await request(
+      '/records/' + r.id,
+      'PUT',
+      {
+        requestId: randomUUID(),
+        version: 2,
+        value: { ...value, mentionIds: [a.user.id, c.user.id] },
+      },
+      a,
+    )
+  ).json();
+  updated = await (
+    await request(
+      '/records/' + r.id,
+      'PUT',
+      {
+        requestId: randomUUID(),
+        version: updated.version,
+        value: {
+          ...value,
+          mentionIds: [...ids, c.user.id],
+          projectId: d.projects[1].id,
+          nodeDate: plus(today(), 1),
+        },
+      },
+      a,
+    )
+  ).json();
+  assert.equal((await inbox(b)).notifications.length, 1);
+  assert.equal((await inbox(b)).unread, 0);
+  const target = await (
+    await request(`/notifications/${ib.notifications[0].id}/target`, 'GET', undefined, b)
+  ).json();
+  assert.equal(target.value.projectId, d.projects[1].id);
+  assert.equal(target.value.nodeDate, plus(today(), 1));
+  // Old callers that omit new relationship fields preserve stored stable IDs.
+  const legacyUpdate = await (
+    await request(
+      '/records/' + r.id,
+      'PUT',
+      {
+        requestId: randomUUID(),
+        version: updated.version,
+        value: { ...value, mentionIds: undefined },
+      },
+      a,
+    )
+  ).json();
+  assert.deepEqual(legacyUpdate.mentionIds, [...ids, c.user.id]);
+  assert.ok(
+    !(
+      await (await request('/records/' + r.id + '/history', 'GET', undefined, a)).json()
+    ).events[0].changedFields.includes('mentionIds'),
+  );
+  assert.equal(
+    (await request('/accounts/' + c.user.id, 'PATCH', { active: false }, a)).status,
+    200,
+  );
+  assert.ok(
+    !(await (await request('/mention-accounts', 'GET', undefined, a)).json()).accounts.some(
+      (x: any) => x.id === c.user.id,
+    ),
+  );
+  assert.equal(
+    (
+      await request(
+        '/records',
+        'POST',
+        { requestId: randomUUID(), value: { ...value, mentionIds: [c.user.id] } },
+        a,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        'SELECT count(*)::int n FROM mention_notification WHERE workspace_id=$1 AND recipient_id=$2',
+        [f.workspaceId, c.user.id],
+      )
+    ).rows[0].n,
+    1,
+  );
+  const other = await fixtureAccounts();
+  const foreign = await login(other.login, other.password);
+  assert.equal(
+    (await request(`/notifications/${ia.notifications[0].id}/target`, 'GET', undefined, foreign))
+      .status,
+    404,
+  );
+  assert.equal((await inbox(foreign)).unread, 0);
+  const before = await (await request('/workspace', 'GET', undefined, a)).json();
+  const invalid = structuredClone(before.data);
+  invalid.purchases[0].mentionIds = [foreign.user.id];
+  const rejected = await request(
+    '/workspace',
+    'PUT',
+    { revision: before.revision, data: invalid },
+    a,
+  );
+  assert.equal(rejected.status, 400);
+  assert.deepEqual((await rejected.json()).issues[0].path, ['data', 'purchases', 0, 'mentionIds']);
+  assert.deepEqual(await (await request('/workspace', 'GET', undefined, a)).json(), before);
+  const incoming = structuredClone(before.data);
+  incoming.purchases.push({
+    ...incoming.purchases[0],
+    id: randomUUID(),
+    mentionIds: [foreign.user.id],
+  });
+  const previewResponse = await request('/import/preview', 'POST', { archive: incoming }, a);
+  assert.equal(previewResponse.status, 200);
+  const importPreview = await previewResponse.json();
+  assert.equal(
+    (
+      await request(
+        '/import/commit',
+        'POST',
+        { id: importPreview.id, revision: before.revision, confirm: true },
+        a,
+      )
+    ).status,
+    400,
+  );
+  assert.deepEqual(await (await request('/workspace', 'GET', undefined, a)).json(), before);
+  const purchase = structuredClone(before.data);
+  purchase.purchases[0].mentionIds = ids;
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: before.revision, data: purchase }, a)).status,
+    200,
+  );
+  ia = await inbox(a);
+  ib = await inbox(b);
+  assert.equal(ia.unread, 2);
+  assert.equal(ib.unread, 1);
+  const state = await (await request('/workspace', 'GET', undefined, a)).json();
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: state.revision, data: state.data }, a)).status,
+    200,
+  );
+  assert.equal((await inbox(a)).notifications.length, 2);
+  await assert.rejects(
+    pool.query("UPDATE mention_notification SET title='forged' WHERE workspace_id=$1", [
+      f.workspaceId,
+    ]),
+    (e: any) => e.code === '42501',
+  );
+  await assert.rejects(
+    pool.query('DELETE FROM mention_notification WHERE workspace_id=$1', [f.workspaceId]),
+    (e: any) => e.code === '42501',
+  );
+  assert.equal(
+    (
+      await request(
+        '/records/' + r.id,
+        'DELETE',
+        { requestId: randomUUID(), version: legacyUpdate.version },
+        a,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        `/notifications/${ib.notifications.find((x: any) => x.kind === 'record').id}/target`,
+        'GET',
+        undefined,
+        b,
+      )
+    ).status,
+    404,
+  );
+  assert.equal((await inbox(b)).notifications.length, 2);
+});
+
+test('workspace validated-read reuse checks the live row and never exposes mutable shared snapshots', async () => {
+  testClientIp = '203.0.113.198';
+  const { a } = await setup(),
+    d = data();
+  await request('/workspace', 'PUT', { revision: 0, data: d }, a);
+  const one = await transaction((c) => getState(c, a.user.workspaceId));
+  one.data.projects[0].name = 'not persisted';
+  one.history.records.length = 0;
+  const two = await transaction((c) => getState(c, a.user.workspaceId));
+  assert.equal(two.data.projects[0].name, d.projects[0].name);
+  assert.ok(two.history.records.length);
+  const next = structuredClone(two.data);
+  next.projects[0].name = 'fresh peer write';
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: two.revision, data: next }, a)).status,
+    200,
+  );
+  const three = await transaction((c) => getState(c, a.user.workspaceId));
+  assert.equal(three.data.projects[0].name, 'fresh peer write');
+});
+
+test('upgrade inventory is owner-only, read-only and retains real material/project/history associations', async () => {
+  testClientIp = '203.0.113.197';
+  const { a, b, f } = await materialFixture();
+  const raw = async () =>
+    await transaction(async (c) => ({
+      workspace: (
+        await c.query('SELECT * FROM workspace_state WHERE workspace_id=$1', [f.workspaceId])
+      ).rows,
+      materials: (
+        await c.query('SELECT * FROM material_item WHERE workspace_id=$1', [f.workspaceId])
+      ).rows,
+      contexts: (
+        await c.query('SELECT * FROM material_context WHERE workspace_id=$1', [f.workspaceId])
+      ).rows,
+      events: (await c.query('SELECT * FROM material_event WHERE workspace_id=$1', [f.workspaceId]))
+        .rows,
+    }));
+  const before = await raw();
+  assert.equal((await request('/upgrade-data-preview', 'GET', undefined, b)).status, 403);
+  const preview = await request('/upgrade-data-preview', 'GET', undefined, a);
+  assert.equal(preview.status, 200);
+  const inventory = await preview.json();
+  assert.equal(inventory.readOnly, true);
+  assert.equal(inventory.productionMigrationExecuted, false);
+  assert.equal(inventory.totals.projects, before.workspace[0].data.projects.length);
+  assert.equal(inventory.totals.tasks, before.workspace[0].data.tasks.length);
+  assert.equal(inventory.retained.material_item, before.materials.length);
+  assert.equal(inventory.retained.material_event, before.events.length);
+  assert.deepEqual(await raw(), before);
+  assert.equal((await request('/materials', 'GET', undefined, a)).status, 200);
+});
+
+test('compressed workspace reads preserve exact state/proof and identity encoding remains compatible', async () => {
+  testClientIp = '203.0.113.196';
+  const { a } = await setup(),
+    d = data();
+  await request('/workspace', 'PUT', { revision: 0, data: d }, a);
+  const plain = await request('/workspace', 'GET', undefined, a, { 'Accept-Encoding': 'identity' }),
+    encoded = await request('/workspace', 'GET', undefined, a, { 'Accept-Encoding': 'gzip' });
+  assert.equal(plain.status, 200);
+  assert.equal(encoded.status, 200);
+  assert.equal(encoded.headers.get('content-encoding'), 'gzip');
+  assert.match(encoded.headers.get('vary') ?? '', /Accept-Encoding/);
+  assert.equal(encoded.headers.get('cache-control'), 'no-store');
+  assert.equal(plain.headers.get('content-encoding'), null);
+  assert.deepEqual(await encoded.json(), await plain.json());
+  assert.ok(
+    Number(encoded.headers.get('content-length')) < Number(plain.headers.get('content-length')),
+  );
+});
+
+test('raw upgrade inventory reports unknown old structures without normalizing, dropping or rewriting them', async () => {
+  testClientIp = '203.0.113.195';
+  const { a, f } = await setup();
+  const original = (
+    await pool.query('SELECT data,history FROM workspace_state WHERE workspace_id=$1', [
+      f.workspaceId,
+    ])
+  ).rows[0];
+  const malformed = {
+    ...original.data,
+    projects: { legacy: 'unrecognized' },
+    tasks: { legacy: 'unknown tasks' },
+    notes: [null, { id: 'legacy-note', projectId: 'retained-project', content: '不能丢弃的原文' }],
+    old_board: { title: '保留旧版字段' },
+  };
+  try {
+    await pool.query('UPDATE workspace_state SET data=$2,history=$3 WHERE workspace_id=$1', [
+      f.workspaceId,
+      JSON.stringify(malformed),
+      JSON.stringify({ records: { legacy: 'unrecognized history' } }),
+    ]);
+    const response = await request('/upgrade-data-preview', 'GET', undefined, a);
+    assert.equal(response.status, 200);
+    const report = await response.json();
+    assert.equal(report.totals.projects, null);
+    assert.equal(report.historyNodes, null);
+    assert.ok(report.unrecognizedSources.some((x: any) => x.source === 'history.records'));
+    assert.equal(report.totals.notes, 2);
+    assert.ok(report.unrecognizedSources.some((x: any) => x.source === 'projects'));
+    assert.ok(report.unrecognizedSources.some((x: any) => x.source === 'notes' && x.index === 0));
+    assert.ok(report.unknownRootFields.includes('old_board'));
+    assert.equal(report.legacySources[0].id, 'legacy-note');
+    assert.deepEqual(
+      (await pool.query('SELECT data FROM workspace_state WHERE workspace_id=$1', [f.workspaceId]))
+        .rows[0].data,
+      malformed,
+    );
+    // A valid project must not turn an unrecognized child collection into a false zero.
+    malformed.projects = [{ id: 'retained-project', name: '保留工地' }] as any;
+    await pool.query('UPDATE workspace_state SET data=$2 WHERE workspace_id=$1', [
+      f.workspaceId,
+      JSON.stringify(malformed),
+    ]);
+    const withProject = await (await request('/upgrade-data-preview', 'GET', undefined, a)).json();
+    assert.equal(withProject.projects[0].counts.tasks, null);
+    assert.equal(withProject.projects[0].counts.notes, 1);
+  } finally {
+    await pool.query('UPDATE workspace_state SET data=$2,history=$3 WHERE workspace_id=$1', [
+      f.workspaceId,
+      JSON.stringify(original.data),
+      JSON.stringify(original.history),
+    ]);
+  }
 });

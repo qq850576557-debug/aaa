@@ -119,6 +119,20 @@ export function LegacyMigrationPanel({ owner, onClose }: { owner: boolean; onClo
         }}
       >
         <div className="modal-body legacy-panel">
+          {owner && (
+            <button
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                void cloudApi('/upgrade-data-preview')
+                  .then((v) => download(v, '春茉-升级前只读数据清单.json'))
+                  .catch((e) => setError(String(e)))
+                  .finally(() => setBusy(false));
+              }}
+            >
+              下载升级前数据清单（只读）
+            </button>
+          )}
           <div className="toolbar">
             <button disabled={busy} onClick={() => void load()}>
               重新预览

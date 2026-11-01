@@ -96,21 +96,16 @@ test('SYS-COLLAB-004 baseline: actual personnel creation, multiple worker types 
   await page.getByRole('button', { name: `在${d.projects[0].name}新增记录`, exact: true }).click();
   const drawer = page.locator('.record-drawer');
   await drawer.getByLabel('任务事项', { exact: true }).fill('新增人员后的现场跟进');
+  await drawer.getByLabel('记录节点日期', { exact: true }).fill('2026-11-02');
   await drawer.getByRole('button', { name: '保存记录', exact: true }).click();
   await expect(
     page.getByRole('button', { name: '打开记录：新增人员后的现场跟进', exact: true }),
   ).toBeVisible();
-  for (const name of [
-    '项目工作空间',
-    '采购管理',
-    '提醒中心',
-    '已完工项目',
-    '人员管理',
-    '材料资产管理',
-  ]) {
+  for (const name of ['项目工作空间', '采购管理', '提醒中心', '已完工项目', '人员管理']) {
     await page.getByRole('button', { name, exact: true }).click();
     await expect(page.locator('.error-banner')).toHaveCount(0);
   }
+  await expect(page.getByRole('button', { name: '材料资产管理', exact: true })).toHaveCount(0);
   data = (await api(page)).value.data;
   expect(data.trades[1].staffIds).toContain(personId);
   expect(data.people![1].id).toBe(personId);

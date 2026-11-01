@@ -128,7 +128,12 @@ for (const width of [1440, 390]) {
       expect(rects[1].left - rects[0].right).toBeGreaterThanOrEqual(7);
       expect(rects[1].height).toBe(rects[0].height);
       expect(rects[1].top).toBe(rects[0].top);
-      await p.getByRole('button', { name: '材料资产管理', exact: true }).click();
+      await expect(p.getByRole('button', { name: '材料资产管理', exact: true })).toHaveCount(0);
+      await p.evaluate(async (data) => {
+        const path = '/cloud-tests/materials-harness.tsx';
+        const { mountMaterialsForTest } = await import(path);
+        mountMaterialsForTest(data);
+      }, d);
       const material = p.getByRole('region', { name: '材料资产管理', exact: true });
       await expect(material).toContainText('请先选择工地');
       await expect(
@@ -210,6 +215,11 @@ for (const width of [1440, 390]) {
         '40.000',
       );
       await p.screenshot({ path: `/tmp/chunmo-v11-transfer-${width}.png`, animations: 'disabled' });
+      await p.evaluate(async () => {
+        const path = '/cloud-tests/materials-harness.tsx';
+        const { unmountMaterialsForTest } = await import(path);
+        unmountMaterialsForTest();
+      });
       const png = (n: number) => {
         const image = new PNG({ width: 1080, height: 1080 });
         image.data.fill(n);

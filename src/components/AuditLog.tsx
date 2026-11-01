@@ -71,6 +71,7 @@ const fields: Record<string, string> = {
   deleted: '已删除',
   deadlineMode: '期限规则',
   staffIds: '分配人员编号',
+  mentionIds: '@负责人关联',
   tradeIds: '关联工种编号',
   dependsOn: '前序任务编号',
   displayName: '正式展示名称',

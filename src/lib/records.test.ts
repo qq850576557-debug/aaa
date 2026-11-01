@@ -26,7 +26,7 @@ describe('project follow-up records', () => {
     expect(recordCreate.safeParse({ requestId, value, actorId: 'admin' }).success).toBe(false);
     expect(recordUpdate.safeParse({ requestId, value, version: 0 }).success).toBe(false);
     expect(recordCreate.safeParse({ requestId, value: { ...value, nodeDate: '' } }).success).toBe(
-      true,
+      false,
     );
   });
   it('filters project/status/full Chinese text without mutating records; sorts undated records last', () => {

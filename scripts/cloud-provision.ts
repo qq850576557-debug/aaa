@@ -66,6 +66,7 @@ try {
     'material_transfer',
     'transfer_submission',
     'work_record',
+    'mention_notification',
     'record_history',
     'record_submission',
     'workspace_history_revision',
@@ -90,6 +91,8 @@ try {
   await c.query('GRANT SELECT ON schema_migration TO chunmo_app');
   await c.query('GRANT USAGE ON SCHEMA public TO chunmo_app,chunmo_private');
   await c.query('GRANT SELECT,INSERT,UPDATE,DELETE ON ' + tables.join(',') + ' TO chunmo_app');
+  await c.query('REVOKE UPDATE,DELETE ON mention_notification FROM chunmo_app');
+  await c.query('GRANT UPDATE(read_at) ON mention_notification TO chunmo_app');
   await c.query(
     'REVOKE UPDATE,DELETE ON audit_event,assessment_history,assessment_submission,material_event,material_history,purchase_action,transfer_submission,record_history,record_submission,legacy_migration_batch,legacy_record_link,workspace_history_revision,cloud_restore_backup FROM chunmo_app,chunmo_private',
   );
@@ -98,7 +101,7 @@ try {
     'REVOKE DELETE ON daily_assessment,material_item,material_project_meta,material_context,material_alert,member_card,purchase_record,material_transfer,work_record FROM chunmo_app',
   );
   await c.query(
-    'GRANT USAGE,SELECT ON SEQUENCE record_history_id_seq,legacy_record_link_id_seq TO chunmo_app',
+    'GRANT USAGE,SELECT ON SEQUENCE record_history_id_seq,legacy_record_link_id_seq,mention_notification_id_seq TO chunmo_app',
   );
   await c.query('GRANT INSERT ON audit_event TO chunmo_private');
   await c.query('REVOKE UPDATE ON record_version FROM chunmo_app,chunmo_private');

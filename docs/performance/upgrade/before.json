@@ -1,0 +1,663 @@
+{
+  "phase": "before",
+  "baseCommit": "e7062e72fe114c9dd70aafb8011c786efe4b6672",
+  "samplesPerNetwork": 5,
+  "fixture": {
+    "projects": 2,
+    "tasks": 6,
+    "purchases": 2
+  },
+  "samples": [
+    {
+      "network": "loopback",
+      "firstReadyMs": 471,
+      "accountMs": 131,
+      "projectSwitchMs": 95,
+      "purchaseMs": 83,
+      "recordMs": 85,
+      "refreshMs": 247,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 24,
+          "durationMs": 5,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 24,
+          "durationMs": 27,
+          "bytes": 186381
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 24,
+          "durationMs": 12,
+          "bytes": 32733
+        },
+        {
+          "path": "/brand/chunmo-plant.png",
+          "startMs": 65,
+          "durationMs": 22,
+          "bytes": 1168803
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 67,
+          "durationMs": 17,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 115,
+          "durationMs": 12,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 116,
+          "durationMs": 20,
+          "bytes": 25251
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 154,
+          "durationMs": 12,
+          "bytes": 153
+        },
+        {
+          "path": "/api/records",
+          "startMs": 185,
+          "durationMs": 14,
+          "bytes": 31
+        },
+        {
+          "path": "/api/records",
+          "startMs": 185,
+          "durationMs": 14,
+          "bytes": 31
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 196,
+          "durationMs": 17,
+          "bytes": 153
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 196,
+          "durationMs": 19,
+          "bytes": 153
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "firstReadyMs": 456,
+      "accountMs": 75,
+      "projectSwitchMs": 95,
+      "purchaseMs": 101,
+      "recordMs": 67,
+      "refreshMs": 246,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 17,
+          "durationMs": 4,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 17,
+          "durationMs": 13,
+          "bytes": 32733
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 17,
+          "durationMs": 30,
+          "bytes": 186381
+        },
+        {
+          "path": "/brand/chunmo-plant.png",
+          "startMs": 62,
+          "durationMs": 13,
+          "bytes": 1168803
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 63,
+          "durationMs": 10,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 100,
+          "durationMs": 18,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 100,
+          "durationMs": 31,
+          "bytes": 25251
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 151,
+          "durationMs": 20,
+          "bytes": 15
+        },
+        {
+          "path": "/api/records",
+          "startMs": 185,
+          "durationMs": 25,
+          "bytes": 31
+        },
+        {
+          "path": "/api/records",
+          "startMs": 185,
+          "durationMs": 19,
+          "bytes": 31
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 204,
+          "durationMs": 15,
+          "bytes": 153
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 205,
+          "durationMs": 16,
+          "bytes": 153
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "firstReadyMs": 454,
+      "accountMs": 96,
+      "projectSwitchMs": 73,
+      "purchaseMs": 85,
+      "recordMs": 88,
+      "refreshMs": 223,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 23,
+          "durationMs": 3,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 24,
+          "durationMs": 25,
+          "bytes": 186381
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 24,
+          "durationMs": 8,
+          "bytes": 32733
+        },
+        {
+          "path": "/brand/chunmo-plant.png",
+          "startMs": 67,
+          "durationMs": 11,
+          "bytes": 1168803
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 68,
+          "durationMs": 8,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 102,
+          "durationMs": 10,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 102,
+          "durationMs": 16,
+          "bytes": 25251
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 134,
+          "durationMs": 10,
+          "bytes": 15
+        },
+        {
+          "path": "/api/records",
+          "startMs": 163,
+          "durationMs": 24,
+          "bytes": 31
+        },
+        {
+          "path": "/api/records",
+          "startMs": 164,
+          "durationMs": 24,
+          "bytes": 31
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 184,
+          "durationMs": 17,
+          "bytes": 153
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 184,
+          "durationMs": 19,
+          "bytes": 153
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "firstReadyMs": 458,
+      "accountMs": 108,
+      "projectSwitchMs": 70,
+      "purchaseMs": 72,
+      "recordMs": 86,
+      "refreshMs": 218,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 23,
+          "durationMs": 3,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 23,
+          "durationMs": 12,
+          "bytes": 32733
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 23,
+          "durationMs": 28,
+          "bytes": 186381
+        },
+        {
+          "path": "/brand/chunmo-plant.png",
+          "startMs": 70,
+          "durationMs": 18,
+          "bytes": 1168803
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 71,
+          "durationMs": 9,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 101,
+          "durationMs": 9,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 102,
+          "durationMs": 18,
+          "bytes": 25251
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 135,
+          "durationMs": 7,
+          "bytes": 15
+        },
+        {
+          "path": "/api/records",
+          "startMs": 162,
+          "durationMs": 14,
+          "bytes": 31
+        },
+        {
+          "path": "/api/records",
+          "startMs": 162,
+          "durationMs": 16,
+          "bytes": 31
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 181,
+          "durationMs": 17,
+          "bytes": 153
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 182,
+          "durationMs": 16,
+          "bytes": 153
+        }
+      ]
+    },
+    {
+      "network": "loopback",
+      "firstReadyMs": 424,
+      "accountMs": 86,
+      "projectSwitchMs": 92,
+      "purchaseMs": 65,
+      "recordMs": 87,
+      "refreshMs": 233,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 17,
+          "durationMs": 3,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 17,
+          "durationMs": 9,
+          "bytes": 32733
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 17,
+          "durationMs": 27,
+          "bytes": 186381
+        },
+        {
+          "path": "/brand/chunmo-plant.png",
+          "startMs": 64,
+          "durationMs": 10,
+          "bytes": 1168803
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 66,
+          "durationMs": 8,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 103,
+          "durationMs": 12,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 103,
+          "durationMs": 23,
+          "bytes": 25251
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 139,
+          "durationMs": 10,
+          "bytes": 15
+        },
+        {
+          "path": "/api/records",
+          "startMs": 168,
+          "durationMs": 18,
+          "bytes": 31
+        },
+        {
+          "path": "/api/records",
+          "startMs": 168,
+          "durationMs": 18,
+          "bytes": 31
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 179,
+          "durationMs": 18,
+          "bytes": 153
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 180,
+          "durationMs": 17,
+          "bytes": 153
+        }
+      ]
+    },
+    {
+      "network": "150ms-1.6Mbps",
+      "firstReadyMs": 2366,
+      "accountMs": 259,
+      "projectSwitchMs": 73,
+      "purchaseMs": 76,
+      "recordMs": 838,
+      "refreshMs": 2172,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 182,
+          "durationMs": 202,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 182,
+          "durationMs": 1282,
+          "bytes": 186381
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 182,
+          "durationMs": 517,
+          "bytes": 32733
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 1488,
+          "durationMs": 165,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 1659,
+          "durationMs": 165,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 1659,
+          "durationMs": 428,
+          "bytes": 25251
+        }
+      ]
+    },
+    {
+      "network": "150ms-1.6Mbps",
+      "firstReadyMs": 2397,
+      "accountMs": 259,
+      "projectSwitchMs": 81,
+      "purchaseMs": 73,
+      "recordMs": 839,
+      "refreshMs": 2165,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 183,
+          "durationMs": 206,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 183,
+          "durationMs": 1286,
+          "bytes": 186381
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 183,
+          "durationMs": 521,
+          "bytes": 32733
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 1488,
+          "durationMs": 162,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 1659,
+          "durationMs": 162,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 1660,
+          "durationMs": 423,
+          "bytes": 25251
+        }
+      ]
+    },
+    {
+      "network": "150ms-1.6Mbps",
+      "firstReadyMs": 2428,
+      "accountMs": 249,
+      "projectSwitchMs": 73,
+      "purchaseMs": 81,
+      "recordMs": 842,
+      "refreshMs": 2177,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 179,
+          "durationMs": 200,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 179,
+          "durationMs": 507,
+          "bytes": 32733
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 179,
+          "durationMs": 1280,
+          "bytes": 186381
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 1478,
+          "durationMs": 162,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 1657,
+          "durationMs": 163,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 1658,
+          "durationMs": 424,
+          "bytes": 25251
+        }
+      ]
+    },
+    {
+      "network": "150ms-1.6Mbps",
+      "firstReadyMs": 2411,
+      "accountMs": 271,
+      "projectSwitchMs": 83,
+      "purchaseMs": 74,
+      "recordMs": 849,
+      "refreshMs": 2276,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 188,
+          "durationMs": 205,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 189,
+          "durationMs": 1285,
+          "bytes": 186381
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 189,
+          "durationMs": 520,
+          "bytes": 32733
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 1515,
+          "durationMs": 161,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 1688,
+          "durationMs": 161,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 1688,
+          "durationMs": 423,
+          "bytes": 25251
+        }
+      ]
+    },
+    {
+      "network": "150ms-1.6Mbps",
+      "firstReadyMs": 2485,
+      "accountMs": 294,
+      "projectSwitchMs": 102,
+      "purchaseMs": 85,
+      "recordMs": 863,
+      "refreshMs": 2209,
+      "resources": [
+        {
+          "path": "/fonts/chunmo-brand.woff",
+          "startMs": 178,
+          "durationMs": 183,
+          "bytes": 3260
+        },
+        {
+          "path": "/assets/index-w7Fk-z2J.css",
+          "startMs": 178,
+          "durationMs": 505,
+          "bytes": 32733
+        },
+        {
+          "path": "/assets/index-DK1fXe53.js",
+          "startMs": 178,
+          "durationMs": 1278,
+          "bytes": 186381
+        },
+        {
+          "path": "/api/auth/session",
+          "startMs": 1490,
+          "durationMs": 162,
+          "bytes": 312
+        },
+        {
+          "path": "/api/presence",
+          "startMs": 1663,
+          "durationMs": 162,
+          "bytes": 15
+        },
+        {
+          "path": "/api/workspace",
+          "startMs": 1663,
+          "durationMs": 423,
+          "bytes": 25251
+        }
+      ]
+    }
+  ],
+  "fourSessionsReadyMs": 2334
+}

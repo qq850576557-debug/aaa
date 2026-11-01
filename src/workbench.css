@@ -2945,3 +2945,23 @@ textarea::placeholder {
 .reminder-other .panel {
   background: #fcfdfb;
 }
+/* Keep long descriptions readable when header actions share a narrow viewport. */
+@media (max-width: 700px) {
+  .app-shell .workspace-content > .page-heading.workbench-page-heading {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .app-shell .page-heading.workbench-page-heading > div:first-child {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    width: 100%;
+  }
+  .app-shell .workspace-content > .page-heading.workbench-page-heading .heading-actions {
+    align-self: flex-start;
+    margin-top: 0;
+    flex-wrap: wrap;
+  }
+  .app-shell .page-heading .heading-actions:empty {
+    display: none;
+  }
+}

@@ -2,8 +2,8 @@ import { useRef, useState } from 'react';
 import { Modal, Confirm } from './Modal';
 import { Editor, type Edit, type Entity } from './Forms';
 import { RecordDrawer } from './RecordDrawer';
-import { id, type Data } from '../lib/model';
-import type { WorkRecord } from '../lib/records';
+import { id, type Data, type Purchase } from '../lib/model';
+import type { WorkRecord, RecordValue } from '../lib/records';
 export type AgendaEntryRequest = { projectId: string; date: string; id: string };
 export function AgendaEntryDialog({
   request,
@@ -24,6 +24,8 @@ export function AgendaEntryDialog({
   const [category, setCategory] = useState<'' | 'purchase' | 'record'>('');
   const [confirmation, setConfirmation] = useState<null | (() => void)>(null);
   const dirty = useRef(false);
+  const drafts = useRef<{ purchase?: Purchase; record?: RecordValue }>({});
+  const transferred = useRef(false);
   const [purchase] = useState<Edit>(() => ({
     kind: 'purchase',
     value: {
@@ -40,12 +42,43 @@ export function AgendaEntryDialog({
   }));
   const choose = (next: 'purchase' | 'record') => {
     if (saving || next === category) return;
-    if (category)
-      setConfirmation(() => () => {
-        dirty.current = false;
-        setCategory(next);
-      });
-    else setCategory(next);
+    const switchCategory = () => {
+      if (dirty.current) {
+        transferred.current = true;
+        if (next === 'record' && drafts.current.purchase) {
+          const p = drafts.current.purchase;
+          drafts.current.record = {
+            ...drafts.current.record,
+            projectId: p.projectId,
+            title: p.name,
+            nodeDate: p.due,
+            notes: p.notes,
+            owner: p.owner,
+            mentionIds: p.mentionIds,
+            followUp: drafts.current.record?.followUp ?? '',
+            status: drafts.current.record?.status ?? '待执行',
+          };
+        }
+        if (next === 'purchase' && drafts.current.record) {
+          const r = drafts.current.record;
+          drafts.current.purchase = {
+            ...(drafts.current.purchase ?? (purchase.value as Purchase)),
+            projectId: r.projectId,
+            name: r.title,
+            due: r.nodeDate,
+            notes: r.notes,
+            owner: r.owner ?? '',
+            mentionIds: r.mentionIds,
+          };
+        }
+      }
+      dirty.current = transferred.current;
+      setCategory(next);
+    };
+    if (category && dirty.current) setConfirmation(() => switchCategory);
+    else {
+      switchCategory();
+    }
   };
   const intro = (
     <fieldset className="agenda-category-picker">
@@ -103,10 +136,13 @@ export function AgendaEntryDialog({
           ) : category === 'purchase' ? (
             <Editor
               embedded
-              edit={purchase}
+              edit={{ ...purchase, value: drafts.current.purchase ?? purchase.value } as Edit}
               data={data}
               onDirtyChange={(v) => {
-                dirty.current = v;
+                dirty.current = v || transferred.current;
+              }}
+              onDraftChange={(value) => {
+                drafts.current.purchase = value as Purchase;
               }}
               onForgetName={() => {}}
               onClose={onClose}
@@ -118,9 +154,13 @@ export function AgendaEntryDialog({
               projects={data.projects}
               initialProject={request.projectId}
               initialDate={request.date}
+              initialValue={drafts.current.record}
+              onDraftChange={(value) => {
+                drafts.current.record = value;
+              }}
               onBusyChange={setSaving}
               onDirty={(v) => {
-                dirty.current = v;
+                dirty.current = v || transferred.current;
               }}
               onClose={() => {
                 if (dirty.current) setConfirmation(() => onClose);
@@ -134,7 +174,7 @@ export function AgendaEntryDialog({
       {confirmation && (
         <Confirm
           title="放弃当前未保存的内容？"
-          message="更换类别或关闭后，当前表单草稿不会提交；已保存记录不受影响。"
+          message="切换类别会保留工地、日期、标题、负责人和备注，专属字段保留在各自草稿中；关闭将放弃本次输入，已保存记录不受影响。"
           onCancel={() => setConfirmation(null)}
           onConfirm={() => {
             confirmation();

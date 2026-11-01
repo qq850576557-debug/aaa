@@ -355,10 +355,9 @@ for (const width of [1440, 1280, 390, 320])
     await expect(dialog.locator('dialog')).toHaveCount(0);
     await expect(page.locator('dialog[open]')).toHaveCount(1);
     await selector.getByRole('radio', { name: '事项管理', exact: true }).click();
-    await page
-      .getByRole('dialog', { name: '放弃当前未保存的内容？', exact: true })
-      .getByRole('button', { name: '确认操作', exact: true })
-      .click();
+    await expect(
+      page.getByRole('dialog', { name: '放弃当前未保存的内容？', exact: true }),
+    ).toHaveCount(0);
     await expect(dialog.getByLabel('任务事项', { exact: true })).toBeVisible();
     await expect(dialog.getByRole('tab', { name: '详情', exact: true })).toHaveCSS(
       'background-color',

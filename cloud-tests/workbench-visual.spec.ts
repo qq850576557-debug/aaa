@@ -56,15 +56,13 @@ for (const width of [1440, 1280, 390]) {
     await capture('home');
     await page.locator('#project-timeline').scrollIntoViewIfNeeded();
     await capture('gantt');
+    await expect(page.getByRole('button', { name: '材料资产管理', exact: true })).toHaveCount(0);
     for (const [name, menu] of [
       ['purchase', '采购管理'],
       ['people', '人员管理'],
-      ['materials', '材料资产管理'],
     ] as const) {
       await page.getByRole('button', { name: menu, exact: true }).click();
       await page.evaluate(() => scrollTo(0, 0));
-      if (name === 'materials')
-        await page.getByLabel('材料项目', { exact: true }).selectOption(d.projects[0].id);
       await capture(name);
     }
     await page.getByRole('button', { name: '账号管理', exact: true }).click();

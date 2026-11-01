@@ -17,6 +17,11 @@ const text = (max: number) =>
     .refine((s) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(s), '请勿输入控制字符');
 export const recordValue = z
   .object({
+    mentionIds: z
+      .array(z.string().min(1).max(100))
+      .max(50)
+      .refine((x) => new Set(x).size === x.length, '请勿重复选择账号')
+      .optional(),
     projectId: z.string().min(1).max(100),
     title: text(240).trim().min(1, '请填写任务事项'),
     nodeDate: z
@@ -31,8 +36,23 @@ export const recordValue = z
     owner: text(100).optional(),
   })
   .strict();
-export const recordCreate = z.object({ requestId: z.uuid(), value: recordValue }).strict();
-export const recordUpdate = recordCreate.extend({ version: z.number().int().min(1) }).strict();
+export const recordCreate = z
+  .object({
+    requestId: z.uuid(),
+    value: recordValue.extend({
+      nodeDate: z
+        .string()
+        .refine(
+          (v) => dateOK(v) && v >= '1900-01-01' && v <= '2200-12-31',
+          '请选择有效的事项处理日期',
+        ),
+    }),
+  })
+  .strict();
+// Historical undated records remain readable/recoverable; do not rewrite them on upgrade.
+export const recordUpdate = z
+  .object({ requestId: z.uuid(), value: recordValue, version: z.number().int().min(1) })
+  .strict();
 export const recordDelete = z
   .object({ requestId: z.uuid(), version: z.number().int().min(1) })
   .strict();
@@ -67,6 +87,7 @@ export const recordFields: Record<string, string> = {
   notes: '备注',
   followUp: '跟进',
   owner: '负责人',
+  mentionIds: '@负责人',
   deleted: '删除状态',
 };
 export function visibleRecords(
@@ -98,6 +119,7 @@ export function visibleRecords(
 }
 
 export const recordData = (r: WorkRecord): RecordValue => ({
+  ...(r.mentionIds ? { mentionIds: r.mentionIds } : {}),
   projectId: r.projectId,
   title: r.title,
   nodeDate: r.nodeDate,

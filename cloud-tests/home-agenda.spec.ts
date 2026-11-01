@@ -46,13 +46,13 @@ for (const width of [1440, 1280, 390])
         }),
       );
     const baseline = await geometry();
+    await expect(page.getByRole('button', { name: '材料资产管理', exact: true })).toHaveCount(0);
     for (const [name, menu] of [
       ['purchases', '采购管理'],
       ['records', '事项管理'],
       ['reminders', '提醒中心'],
       ['completed', '已完工项目'],
       ['people', '人员管理'],
-      ['materials', '材料资产管理'],
       ['home', '项目工作空间'],
     ] as const) {
       await page.getByRole('button', { name: menu, exact: true }).click();
@@ -60,8 +60,6 @@ for (const width of [1440, 1280, 390])
       await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
       const actual = await geometry();
       expect(actual).toEqual(baseline);
-      if (name === 'materials')
-        await page.getByLabel('材料项目', { exact: true }).selectOption(d.projects[0].id);
       if (name === 'purchases') {
         await expect(page.locator('.purchase-list')).toContainText(d.projects[0].name);
         await expect(page.locator('.project-context')).toContainText(d.projects[0].name);

@@ -22,6 +22,15 @@ async function enter(p: Page, login: string, password: string) {
   await p.getByRole('button', { name: '登录', exact: true }).click();
   await expect(p.locator('.save-state')).toContainText('已保存');
 }
+async function retainedPanel(p: Page, data: ReturnType<typeof fixture>) {
+  await expect(p.locator('.save-state')).toContainText('已保存');
+  await expect(p.getByRole('button', { name: '材料资产管理', exact: true })).toHaveCount(0);
+  await p.evaluate(async (data) => {
+    const modulePath = '/cloud-tests/materials-harness.tsx';
+    const { mountMaterialsForTest } = await import(modulePath);
+    mountMaterialsForTest(data);
+  }, data);
+}
 async function confirm(p: Page) {
   await p.getByRole('button', { name: '核对并保存', exact: true }).click();
   await p
@@ -44,7 +53,7 @@ for (const width of [1440, 390])
       const write = await api(c, '/workspace', 'PUT', { revision: 0, data: d });
       expect(write.ok()).toBe(true);
       await p.reload();
-      await p.getByRole('button', { name: '材料资产管理', exact: true }).click();
+      await retainedPanel(p, d);
       const panel = p.getByRole('region', { name: '材料资产管理', exact: true });
       await expect(panel).toContainText('请先选择工地');
       await panel.getByLabel('材料项目', { exact: true }).selectOption(d.projects[0].id);
@@ -168,7 +177,7 @@ for (const width of [1440, 390])
         new Date().toISOString().slice(0, 7) + '-01',
       );
       await p.reload();
-      await p.getByRole('button', { name: '材料资产管理', exact: true }).click();
+      await retainedPanel(p, d);
       await panel.getByRole('button', { name: '工地材料台账', exact: true }).click();
       state = await (await api(c, '/materials')).json();
       expect(state.events.length).toBe(5);
