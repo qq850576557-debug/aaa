@@ -168,22 +168,31 @@ export function Confirm({
   onCancel,
   onConfirm,
   danger = true,
+  busy = false,
 }: {
   title: string;
   message: string;
   onCancel: () => void;
   onConfirm: () => void;
   danger?: boolean;
+  busy?: boolean;
 }) {
   return (
-    <Modal title={title} onClose={onCancel} blocking>
+    <Modal title={title} onClose={() => !busy && onCancel()} blocking>
       <div className="modal-body">
         <p className="confirm-message">{message}</p>
       </div>
       <footer className="modal-foot">
-        <button onClick={onCancel}>取消</button>
-        <button className={danger ? 'danger' : 'primary'} onClick={onConfirm}>
-          确认{danger ? '操作' : ''}
+        <button disabled={busy} onClick={onCancel}>
+          取消
+        </button>
+        <button
+          disabled={busy}
+          aria-busy={busy}
+          className={danger ? 'danger' : 'primary'}
+          onClick={onConfirm}
+        >
+          {busy ? '正在处理…' : `确认${danger ? '操作' : ''}`}
         </button>
       </footer>
     </Modal>

@@ -108,6 +108,26 @@ export function recordRoutes(app: Express) {
             const project = state.data.projects.find((p) => p.id === value.projectId);
             if ((!old || value.projectId !== old.projectId) && !project)
               throw new ApiError(400, '请选择当前工作空间的有效项目');
+            if (
+              method === 'put' &&
+              old &&
+              Object.keys(recordFields)
+                .filter((k) => k !== 'deleted')
+                .every(
+                  (k) =>
+                    ((value as any)[k] ?? (k === 'owner' ? (old.owner ?? '') : undefined)) ===
+                    (old as any)[k],
+                )
+            ) {
+              await c.query('INSERT INTO record_submission VALUES($1,$2,$3,$4,$5)', [
+                a.workspaceId,
+                body.requestId,
+                a.id,
+                digest,
+                JSON.stringify(old),
+              ]);
+              return old;
+            }
             const name = safeActorDisplayName(a.displayName ?? a.login),
               id = old?.id ?? randomUUID();
             const next = (

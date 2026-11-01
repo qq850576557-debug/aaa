@@ -70,7 +70,7 @@ test('stage 4: compact procurement updates statistics and calendar independently
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await expect(page.locator('.agenda-brief')).not.toContainText('厨房五金');
   const day = page.getByRole('button', { name: '查看 2026-10-26 事项', exact: true });
-  await expect(day.locator('i')).toHaveAttribute('title', '1 条待办（采购 1 条）');
+  await expect(day.locator('i')).toHaveAttribute('title', '事项 0 条，采购 1 条');
   await day.click();
   await expect(page.getByRole('dialog')).toContainText('厨房五金');
   await page.getByRole('button', { name: '关闭浮窗', exact: true }).click();
@@ -387,8 +387,12 @@ test('stage 4: global reminders edit the purchase owner project after visiting a
   await page.getByRole('button', { name: '编辑采购电线及线管', exact: true }).click();
   const panel = page.getByRole('dialog', { name: '编辑采购事项', exact: true });
   await expect(panel).toBeVisible();
-  await expect(panel.getByLabel('所属项目', { exact: true })).toHaveCount(0);
-  await expect(panel).toContainText('所属项目：栖桐里');
+  await expect(panel.getByLabel('所属项目', { exact: true })).toHaveValue(
+    (await state(page)).purchases[0].projectId,
+  );
+  await expect(
+    panel.getByLabel('所属项目', { exact: true }).locator('option:checked'),
+  ).toContainText('栖桐里');
   await panel.getByLabel('详细备注（可选）', { exact: true }).fill('从全局提醒更新采购备注');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
   await expect

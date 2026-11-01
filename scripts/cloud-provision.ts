@@ -68,6 +68,9 @@ try {
     'work_record',
     'record_history',
     'record_submission',
+    'workspace_history_revision',
+    'record_version',
+    'cloud_restore_backup',
     'legacy_migration_batch',
     'legacy_record_link',
     'material_operator',
@@ -88,7 +91,7 @@ try {
   await c.query('GRANT USAGE ON SCHEMA public TO chunmo_app,chunmo_private');
   await c.query('GRANT SELECT,INSERT,UPDATE,DELETE ON ' + tables.join(',') + ' TO chunmo_app');
   await c.query(
-    'REVOKE UPDATE,DELETE ON audit_event,assessment_history,assessment_submission,material_event,material_history,purchase_action,transfer_submission,record_history,record_submission,legacy_migration_batch,legacy_record_link FROM chunmo_app,chunmo_private',
+    'REVOKE UPDATE,DELETE ON audit_event,assessment_history,assessment_submission,material_event,material_history,purchase_action,transfer_submission,record_history,record_submission,legacy_migration_batch,legacy_record_link,workspace_history_revision,cloud_restore_backup FROM chunmo_app,chunmo_private',
   );
   await c.query('GRANT SELECT,INSERT,UPDATE,DELETE ON person_private TO chunmo_private');
   await c.query(
@@ -98,6 +101,7 @@ try {
     'GRANT USAGE,SELECT ON SEQUENCE record_history_id_seq,legacy_record_link_id_seq TO chunmo_app',
   );
   await c.query('GRANT INSERT ON audit_event TO chunmo_private');
+  await c.query('REVOKE UPDATE ON record_version FROM chunmo_app,chunmo_private');
   console.log(`Local ${mode} migrations and least-privilege runtime roles ready.`);
 } finally {
   await c.end();

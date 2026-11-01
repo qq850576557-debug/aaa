@@ -161,6 +161,7 @@ export async function commit(
   input: Data,
   opts?: {
     restoreId?: string;
+    restoreAfter?: boolean;
     importHistory?: History;
     importing?: boolean;
     deadlineChange?: { id: string; date: string; reason: string };
@@ -179,7 +180,18 @@ export async function commit(
   let d: Data;
   if (opts?.restoreId) {
     try {
-      d = restoreBefore(prior.data, prior.history, opts.restoreId);
+      d = restoreBefore(
+        prior.data,
+        opts.restoreAfter
+          ? {
+              ...prior.history,
+              records: prior.history.records.map((r) =>
+                r.id === opts.restoreId ? { ...r, before: r.after } : r,
+              ),
+            }
+          : prior.history,
+        opts.restoreId,
+      );
     } catch {
       throw new ApiError(
         409,
@@ -228,6 +240,15 @@ export async function commit(
       : r,
   );
   const revision = prior.revision + 1;
+  for (const r of result.history.records.filter(
+    (r) =>
+      !previousIds.has(r.id) &&
+      !opts?.importHistory?.records.some((imported) => imported.id === r.id),
+  ))
+    await c.query(
+      'INSERT INTO workspace_history_revision VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
+      [a.workspaceId, r.id, revision],
+    );
   await trackPurchases(c, a, prior.data, result.data, !!(opts?.importing || opts?.restoreId));
   await graph(c, a.workspaceId, result.data);
   await c.query('UPDATE workspace_state SET revision=$2,data=$3,history=$4 WHERE workspace_id=$1', [

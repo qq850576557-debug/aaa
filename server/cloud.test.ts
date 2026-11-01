@@ -640,6 +640,14 @@ test('imported fake actor/diff text is not trusted, and retention never rewrites
   assert.ok(
     result.history.records.some((r: any) => r.actor === '导入记录（身份未核验）' && !r.actorId),
   );
+  const cloudVersions = await (await request('/history/versions', 'GET', undefined, a)).json();
+  for (const imported of result.history.records.filter(
+    (r: any) => r.actor === '导入记录（身份未核验）',
+  ))
+    assert.equal(
+      cloudVersions.nodes.find((n: any) => n.kind === 'workspace' && n.id === imported.id)?.version,
+      null,
+    );
   const before = JSON.stringify(result.data);
   await maintain();
   const after = await (await request('/workspace', 'GET', undefined, a)).json();
@@ -4216,4 +4224,447 @@ test('timeline record reassignment retains identity, audit and CAS and rejects f
     400,
   );
   assert.deepEqual((await workspaceBase(b)).data, purchaseSaved.data);
+});
+
+test('cloud versions: per-save nodes, no-op suppression, original record contents, automatic backup and exact concurrent restore receipts', async () => {
+  testClientIp = '203.0.113.250';
+  const { a, b } = await seededWorkspace();
+  let s = await workspaceBase(b);
+  const pid = s.data.projects[0].id;
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(s, (d) => {
+          d.projects[0].name = '历史甲';
+        }),
+        b,
+      )
+    ).status,
+    200,
+  );
+  let list = await (await request('/history/versions', 'GET', undefined, a)).json();
+  const target = list.nodes.find((n: any) => n.kind === 'workspace' && n.scope === pid);
+  assert.equal(Number(target.version), (await workspaceBase(b)).revision);
+  assert.equal(target.actor, b.user.displayName ?? b.user.login);
+  s = await workspaceBase(b);
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(s, (d) => {
+          d.projects[0].name = '历史乙';
+        }),
+        b,
+      )
+    ).status,
+    200,
+  );
+  s = await workspaceBase(b);
+  const count = (await (await request('/history/versions', 'GET', undefined, a)).json()).nodes
+    .length;
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        submission(s, () => {}),
+        b,
+      )
+    ).status,
+    200,
+  );
+  assert.equal(
+    (await (await request('/history/versions', 'GET', undefined, a)).json()).nodes.length,
+    count,
+  );
+  const value = {
+    projectId: pid,
+    title: '保留真实事项快照',
+    nodeDate: today(),
+    status: '待执行',
+    notes: '第一版完整备注',
+    followUp: '第一版跟进',
+    owner: '',
+  };
+  const r = await (await request('/records', 'POST', { requestId: randomUUID(), value }, b)).json();
+  assert.equal(
+    (await (await request('/history/versions', 'GET', undefined, a)).json()).nodes.find(
+      (n: any) => n.kind === 'record' && n.id === r.id + ':1',
+    ).status,
+    '新增事项',
+  );
+  const v2 = await (
+    await request(
+      '/records/' + r.id,
+      'PUT',
+      { requestId: randomUUID(), version: r.version, value: { ...value, notes: '第二版完整备注' } },
+      b,
+    )
+  ).json();
+  const noop = await request(
+    '/records/' + r.id,
+    'PUT',
+    { requestId: randomUUID(), version: v2.version, value: { ...value, notes: '第二版完整备注' } },
+    b,
+  );
+  assert.equal(noop.status, 200);
+  assert.equal((await noop.json()).version, v2.version);
+  const detail = await (
+    await request('/history/versions/record/' + r.id + ':1', 'GET', undefined, a)
+  ).json();
+  assert.equal(detail.content.notes, value.notes);
+  const body = {
+    requestId: randomUUID(),
+    kind: 'record',
+    id: r.id + ':1',
+    revision: s.revision,
+    currentVersion: v2.version,
+  };
+  assert.equal((await request('/history/versions/restore', 'POST', body, b)).status, 403);
+  const both = await Promise.all([
+    request('/history/versions/restore', 'POST', body, a),
+    request('/history/versions/restore', 'POST', body, a),
+  ]);
+  assert.deepEqual(
+    both.map((x) => x.status),
+    [200, 200],
+  );
+  const result = await both[0].json();
+  assert.deepEqual(result.source, { kind: 'record', id: r.id + ':1' });
+  assert.deepEqual(await both[1].json(), result);
+  const now = (await (await request('/records', 'GET', undefined, a)).json()).records.find(
+    (x: any) => x.id === r.id,
+  );
+  assert.equal(now.notes, value.notes);
+  assert.equal(now.followUp, value.followUp);
+  assert.equal(now.version, 3);
+  const backup = await (
+    await request('/history/restore-backups/' + result.backupId, 'GET', undefined, a)
+  ).json();
+  assert.equal(backup.records.find((x: any) => x.id === r.id).notes, '第二版完整备注');
+  assert.equal(
+    (await request('/history/restore-backups/' + result.backupId, 'GET', undefined, b)).status,
+    403,
+  );
+  const restore = {
+    requestId: randomUUID(),
+    kind: 'workspace',
+    id: target.id,
+    revision: (await workspaceBase(b)).revision,
+  };
+  const restored = await request('/history/versions/restore', 'POST', restore, a);
+  assert.equal(restored.status, 200, await restored.clone().text());
+  const restoredState = await workspaceBase(b);
+  assert.equal(restoredState.data.projects[0].name, '历史甲');
+  assert(
+    restoredState.history.records.some((x: any) => x.action === '恢复' && x.source === target.id),
+  );
+  assert(restoredState.history.records.some((x: any) => x.id === target.id));
+  const archived = await (
+    await request('/history/restore-backups/' + restore.requestId, 'GET', undefined, a)
+  ).json();
+  assert.equal(archived.state.data.projects[0].name, '历史乙');
+  assert.equal(
+    (await request('/history/versions/restore', 'POST', { ...restore, requestId: randomUUID() }, a))
+      .status,
+    409,
+  );
+  await assert.rejects(
+    pool.query('UPDATE record_version SET actor_name=$1 WHERE workspace_id=$2', [
+      '伪造',
+      a.user.workspaceId,
+    ]),
+  );
+  const foreign = await seededWorkspace();
+  assert.equal(
+    (await request('/history/versions/record/' + r.id + ':1', 'GET', undefined, foreign.a)).status,
+    404,
+  );
+  assert.equal(
+    (
+      await request(
+        '/history/versions/restore',
+        'POST',
+        {
+          requestId: randomUUID(),
+          kind: 'record',
+          id: r.id + ':1',
+          currentVersion: 3,
+          revision: restoredState.revision,
+        },
+        a,
+      )
+    ).status,
+    409,
+  );
+  const oldLog = (
+    await pool.query(
+      `INSERT INTO record_history(workspace_id,record_id,actor_id,actor_name,at,operation,changed_fields,before_value,after_value) VALUES($1,$2,$3,'旧版真实姓名',now()-interval '1 day','update','["notes"]',null,null) RETURNING id`,
+      [a.user.workspaceId, r.id, a.user.id],
+    )
+  ).rows[0].id;
+  const legacyList = await (await request('/history/versions', 'GET', undefined, a)).json();
+  assert(legacyList.nodes.some((n: any) => n.kind === 'record-log' && n.id === String(oldLog)));
+  assert.equal(
+    (await request('/history/versions/record-log/' + oldLog, 'GET', undefined, a)).status,
+    200,
+  );
+  assert.equal(
+    (
+      await request(
+        '/history/versions/restore',
+        'POST',
+        {
+          requestId: randomUUID(),
+          kind: 'record-log',
+          id: String(oldLog),
+          revision: restoredState.revision,
+        },
+        a,
+      )
+    ).status,
+    400,
+  );
+});
+
+test('cloud restore races a same-field writer safely; failed restores roll back backups and expired snapshots never replace current data', async () => {
+  testClientIp = '203.0.113.251';
+  const { a, b } = await seededWorkspace();
+  let s = await workspaceBase(a);
+  await request(
+    '/workspace',
+    'PUT',
+    submission(s, (d) => {
+      d.projects[0].name = '可恢复旧版';
+    }),
+    a,
+  );
+  const list = await (await request('/history/versions', 'GET', undefined, a)).json();
+  const node = list.nodes.find(
+    (n: any) => n.kind === 'workspace' && n.scope === s.data.projects[0].id,
+  );
+  s = await workspaceBase(a);
+  await request(
+    '/workspace',
+    'PUT',
+    submission(s, (d) => {
+      d.projects[0].name = '当前新版';
+    }),
+    a,
+  );
+  s = await workspaceBase(a);
+  const restore = { requestId: randomUUID(), kind: 'workspace', id: node.id, revision: s.revision };
+  const peerBase = await workspaceBase(b);
+  const writes = await Promise.all([
+    request('/history/versions/restore', 'POST', restore, a),
+    request(
+      '/workspace',
+      'PUT',
+      submission(peerBase, (d) => {
+        d.projects[0].name = '同时修改';
+      }),
+      b,
+    ),
+  ]);
+  assert.deepEqual(writes.map((x) => x.status).sort(), [200, 409]);
+  const current = await workspaceBase(a);
+  assert(['可恢复旧版', '同时修改'].includes(current.data.projects[0].name));
+  const before = (
+    await pool.query('SELECT count(*)::int n FROM cloud_restore_backup WHERE workspace_id=$1', [
+      a.user.workspaceId,
+    ])
+  ).rows[0].n;
+  assert.equal(
+    (
+      await request(
+        '/history/versions/restore',
+        'POST',
+        { ...restore, requestId: randomUUID(), id: 'missing', revision: current.revision },
+        a,
+      )
+    ).status,
+    404,
+  );
+  assert.deepEqual((await workspaceBase(a)).data, current.data);
+  assert.equal(
+    (
+      await pool.query('SELECT count(*)::int n FROM cloud_restore_backup WHERE workspace_id=$1', [
+        a.user.workspaceId,
+      ])
+    ).rows[0].n,
+    before,
+  );
+  const oldId = randomUUID(),
+    actor = a.user.id;
+  await pool.query(
+    `INSERT INTO work_record(workspace_id,id,project_id,project_name,title,status,version,created_by,created_name,updated_by,updated_name,updated_at) VALUES($1,$2,$3,'旧项目','真实旧基线','待执行',20,$4,'旧名',$4,'旧名',now()-interval '16 days')`,
+    [a.user.workspaceId, oldId, current.data.projects[0].id, actor],
+  );
+  assert.equal(
+    (await request('/history/versions/record/' + oldId + ':20', 'GET', undefined, a)).status,
+    404,
+  );
+  const value = {
+    projectId: current.data.projects[0].id,
+    title: '当前新内容',
+    nodeDate: today(),
+    status: '待执行',
+    notes: '不能误删当前内容',
+    followUp: '',
+    owner: '',
+  };
+  const updated = await request(
+    '/records/' + oldId,
+    'PUT',
+    { requestId: randomUUID(), version: 20, value },
+    a,
+  );
+  assert.equal(updated.status, 200);
+  assert.equal(
+    (
+      await pool.query(
+        'SELECT version FROM record_version WHERE workspace_id=$1 AND record_id=$2',
+        [a.user.workspaceId, oldId],
+      )
+    ).rows[0].version,
+    21,
+  );
+  assert.equal(
+    (await (await request('/records', 'GET', undefined, a)).json()).records.find(
+      (x: any) => x.id === oldId,
+    ).notes,
+    value.notes,
+  );
+});
+
+test('cloud recovery rolls back workspace, record snapshots and audit when the automatic backup cannot be persisted', async () => {
+  testClientIp = '203.0.113.252';
+  const { a } = await seededWorkspace();
+  let s = await workspaceBase(a);
+  await request(
+    '/workspace',
+    'PUT',
+    submission(s, (d) => {
+      d.projects[0].name = '备份回滚旧版';
+    }),
+    a,
+  );
+  const target = (
+    await (await request('/history/versions', 'GET', undefined, a)).json()
+  ).nodes.find((n: any) => n.kind === 'workspace' && n.scope === s.data.projects[0].id);
+  s = await workspaceBase(a);
+  await request(
+    '/workspace',
+    'PUT',
+    submission(s, (d) => {
+      d.projects[0].name = '备份回滚当前版';
+    }),
+    a,
+  );
+  s = await workspaceBase(a);
+  const value = {
+    projectId: s.data.projects[0].id,
+    title: '恢复失败仍保留',
+    nodeDate: today(),
+    status: '待执行',
+    notes: '旧版',
+    followUp: '',
+    owner: '',
+  };
+  const record = await (
+    await request('/records', 'POST', { requestId: randomUUID(), value }, a)
+  ).json();
+  const newer = await (
+    await request(
+      '/records/' + record.id,
+      'PUT',
+      { requestId: randomUUID(), version: 1, value: { ...value, notes: '当前版' } },
+      a,
+    )
+  ).json();
+  const url = new URL(process.env.MIGRATION_DATABASE_URL!);
+  assert.equal(config.APP_ENV, 'test');
+  assert.equal(url.hostname, '127.0.0.1');
+  assert.equal(url.pathname, '/chunmo_test');
+  assert.match(a.user.workspaceId, /^[a-f0-9-]+$/);
+  const admin = new pg.Client({ connectionString: url.toString() });
+  await admin.connect();
+  const constraint = 'test_backup_fail_' + randomUUID().replaceAll('-', '');
+  const body = {
+    requestId: randomUUID(),
+    kind: 'record',
+    id: record.id + ':1',
+    revision: s.revision,
+    currentVersion: newer.version,
+  };
+  const versions = (
+    await pool.query(
+      'SELECT * FROM record_version WHERE workspace_id=$1 ORDER BY record_id,version',
+      [a.user.workspaceId],
+    )
+  ).rows;
+  const audit = (
+    await pool.query('SELECT count(*)::int n FROM audit_event WHERE workspace_id=$1', [
+      a.user.workspaceId,
+    ])
+  ).rows[0].n;
+  try {
+    await admin.query(
+      `ALTER TABLE cloud_restore_backup ADD CONSTRAINT ${constraint} CHECK (workspace_id <> '${a.user.workspaceId}')`,
+    );
+    const failed = await request('/history/versions/restore', 'POST', body, a);
+    assert.equal(failed.status, 503);
+    assert.match((await failed.json()).error, /备份保存失败.*回滚/);
+    assert.equal(
+      (
+        await request(
+          '/history/versions/restore',
+          'POST',
+          { requestId: randomUUID(), kind: 'workspace', id: target.id, revision: s.revision },
+          a,
+        )
+      ).status,
+      503,
+    );
+    assert.deepEqual((await workspaceBase(a)).data, s.data);
+    assert.deepEqual((await workspaceBase(a)).history, s.history);
+    assert.equal(
+      (await (await request('/records', 'GET', undefined, a)).json()).records.find(
+        (r: any) => r.id === record.id,
+      ).notes,
+      '当前版',
+    );
+    assert.deepEqual(
+      (
+        await pool.query(
+          'SELECT * FROM record_version WHERE workspace_id=$1 ORDER BY record_id,version',
+          [a.user.workspaceId],
+        )
+      ).rows,
+      versions,
+    );
+    assert.equal(
+      (
+        await pool.query('SELECT count(*)::int n FROM cloud_restore_backup WHERE workspace_id=$1', [
+          a.user.workspaceId,
+        ])
+      ).rows[0].n,
+      0,
+    );
+    assert.equal(
+      (
+        await pool.query('SELECT count(*)::int n FROM audit_event WHERE workspace_id=$1', [
+          a.user.workspaceId,
+        ])
+      ).rows[0].n,
+      audit,
+    );
+  } finally {
+    await admin.query(`ALTER TABLE cloud_restore_backup DROP CONSTRAINT IF EXISTS ${constraint}`);
+    await admin.end();
+  }
+  assert.equal((await request('/history/versions/restore', 'POST', body, a)).status, 200);
 });

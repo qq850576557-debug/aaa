@@ -1,3 +1,4 @@
+import { savedFeedback } from '../components/SaveFeedback';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyData, parseBackup, prepareWorkspace, type Data } from './model';
 import { canonical, emptyHistory, validateHistory } from './history';
@@ -245,6 +246,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
           setStatus('正在保存');
           dispatched = true;
           const s = validState(await cloudApi<CloudState>('/workspace', 'PUT', sent.body));
+          savedFeedback(sent.body.requestId);
           baseline.current = s;
           inFlight.current = null;
           setSavedData(s.data);
@@ -533,12 +535,12 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
       exclusive.current = true;
       setStatus('正在恢复');
       try {
-        apply(
-          await cloudApi<CloudState>('/history/restore', 'POST', {
-            revision: baseline.current!.revision,
-            id,
-          }),
-        );
+        const restored = await cloudApi<CloudState>('/history/restore', 'POST', {
+          revision: baseline.current!.revision,
+          id,
+        });
+        apply(restored);
+        savedFeedback('legacy-restore-' + restored.revision, 'restore');
       } catch (e) {
         setStatus('恢复未完成');
         throw e;

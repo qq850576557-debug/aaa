@@ -13,6 +13,7 @@ export function HistoryPanel({
   onClose,
   onRestore,
   canRestore,
+  isCloud = false,
 }: {
   data: Data;
   history: History;
@@ -22,6 +23,7 @@ export function HistoryPanel({
   onClose: () => void;
   onRestore: (id: string) => Promise<void>;
   canRestore: boolean;
+  isCloud?: boolean;
 }) {
   const [full, setFull] = useState(false),
     [selected, setSelected] = useState(scope),
@@ -46,14 +48,16 @@ export function HistoryPanel({
     <>
       <Modal
         title={full ? '完整修改历史' : '最近15天修改历史'}
-        subtitle={`${name} · 本地操作记录`}
+        subtitle={`${name} · ${isCloud ? '云端确认记录' : '本地操作记录'}`}
         onClose={onClose}
         anchor={anchor}
         className={`history-panel ${full ? 'history-full' : ''}`}
       >
         <div className="modal-body">
           <p className="form-info">
-            保留最近15天成功保存的版本。恢复到某次修改前会替换该范围完整数据，后续历史仍保留。不是云备份或身份审计。
+            {isCloud
+              ? '保留最近15天云端确认的版本。恢复前自动备份并校验最新版本；仅替换所选范围，后续历史保留。'
+              : '保留最近15天成功保存的版本。恢复到某次修改前会替换该范围完整数据，后续历史仍保留。不是云备份或身份审计。'}
           </p>
           {(full || selected === GLOBAL_SCOPE) && (
             <label className="form-field">
@@ -145,6 +149,7 @@ export function HistoryPanel({
       </Modal>
       {target && (
         <Confirm
+          busy={busy}
           title="恢复到此次修改之前？"
           message={`将恢复「${target.name}」在 ${localTime(target.at)} 该次修改前的完整状态。涉及：${[...new Set(target.changes.map((c) => c.module))].join('、') || '版本数据'}。${target.scope === GLOBAL_SCOPE ? '仅恢复全局人员、人员字典、姓名候选、颜色偏好和项目顺序，不覆盖项目内容；若人员关联不完整将拒绝恢复。' : '仅替换该项目的基本资料、人员关联、工种、施工任务、事项与采购，不改其他项目。'}当前状态将在同一事务中保留为新历史，后续历史不会删除。`}
           onCancel={() => !busy && setTarget(null)}

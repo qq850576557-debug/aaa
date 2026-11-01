@@ -1,3 +1,4 @@
+import { savedFeedback, failedFeedback } from '../components/SaveFeedback';
 import type { LegacyLink } from './legacy-records';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { cloudApi } from './cloud';
@@ -56,11 +57,16 @@ export function useWorkRecords(enabled: boolean) {
     ]);
     window.dispatchEvent(new Event('chunmo-records-changed'));
   }, []);
-  const toggle = async (record: WorkRecord) => {
-    const payload = {
-      value: { ...recordData(record), status: record.status === '已完成' ? '待执行' : '已完成' },
-      version: record.version,
-    };
+  const toggle = async (record: WorkRecord, remove = false) => {
+    const payload = remove
+      ? { version: record.version }
+      : {
+          value: {
+            ...recordData(record),
+            status: record.status === '已完成' ? '待执行' : '已完成',
+          },
+          version: record.version,
+        };
     const key = JSON.stringify(payload);
     let pending = mutations.current.get(record.id);
     if (pending?.busy) return;
@@ -72,20 +78,36 @@ export function useWorkRecords(enabled: boolean) {
     setBusyIds((old) => [...old, record.id]);
     try {
       accept(
-        await cloudApi<WorkRecord>(`/records/${encodeURIComponent(record.id)}`, 'PUT', {
-          ...payload,
-          requestId: pending.requestId,
-        }),
+        await cloudApi<WorkRecord>(
+          `/records/${encodeURIComponent(record.id)}`,
+          remove ? 'DELETE' : 'PUT',
+          {
+            ...payload,
+            requestId: pending.requestId,
+          },
+        ),
       );
+      savedFeedback('toggle-' + pending.requestId, 'record');
       mutations.current.delete(record.id);
       setError('');
     } catch (e) {
+      failedFeedback();
       setError(`${String(e)}；原记录未丢弃，请核对后重试。`);
     } finally {
       pending.busy = false;
       setBusyIds((old) => old.filter((x) => x !== record.id));
     }
   };
-  return { records, legacyLinks, loading, error, load, accept, toggle, busyIds };
+  return {
+    records,
+    legacyLinks,
+    loading,
+    error,
+    load,
+    accept,
+    toggle,
+    remove: (r: WorkRecord) => toggle(r, true),
+    busyIds,
+  };
 }
 export type RecordSource = ReturnType<typeof useWorkRecords>;

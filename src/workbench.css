@@ -2712,3 +2712,236 @@ textarea::placeholder {
 .timeline-agenda-hover {
   max-height: min(304px, calc(100dvh - 16px));
 }
+
+/* Acknowledged saves are transient; errors and drafts keep their existing durable controls. */
+.save-feedback {
+  position: fixed;
+  z-index: 140;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 24px);
+  padding: 9px 16px;
+  border: 1px solid #bed6c5;
+  border-radius: 12px;
+  background: #f4faf5;
+  color: #28523e;
+  box-shadow: 0 5px 20px #25473116;
+  font-size: 14px;
+}
+.save-feedback button {
+  min-height: 30px;
+  padding: 4px 10px;
+}
+.cloud-history-panel {
+  width: min(430px, calc(100vw - 24px));
+  max-height: min(720px, calc(100dvh - 24px));
+}
+.cloud-history-panel.show-detail {
+  width: min(740px, calc(100vw - 24px));
+}
+.cloud-history-body {
+  padding: 16px;
+  overflow: auto;
+}
+.cloud-history-body > .muted {
+  font-size: 12px;
+  line-height: 1.7;
+}
+.cloud-history-day {
+  margin-top: 14px;
+}
+.cloud-history-day h3 {
+  font-size: 13px;
+  color: #657e6d;
+  border-bottom: 1px solid #e0e9e1;
+  padding-bottom: 7px;
+}
+.cloud-history-day article {
+  margin: 6px 0;
+}
+.cloud-history-day .cloud-version-open {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 10px;
+  width: 100%;
+  height: auto;
+  min-height: 64px;
+  padding: 10px;
+  text-align: left;
+  border: 1px solid #dde8df;
+}
+.cloud-version-open time {
+  grid-column: 1;
+  font-size: 12px;
+}
+.cloud-version-open strong {
+  grid-column: 2;
+  font-size: 13px;
+}
+.cloud-version-open span,
+.cloud-version-open small {
+  grid-column: 1/-1;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.cloud-version-detail pre {
+  max-height: 42dvh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f4f7f3;
+  font-size: 12px;
+}
+.reminder-center {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.reminder-center .reminder-section {
+  padding: 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background: #fcfdfb;
+  min-width: 0;
+}
+.reminder-section .section-heading {
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.reminder-section h2 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 17px;
+  margin: 0;
+}
+.reminder-section .section-heading > span {
+  color: var(--ui-secondary);
+  font-size: 12px;
+}
+.reminder-record-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+  gap: 12px;
+}
+.agenda-item-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.reminder-center .agenda-item {
+  align-items: stretch;
+  flex-direction: column;
+  margin: 0;
+}
+.reminder-center .agenda-item-actions {
+  justify-content: flex-end;
+  border-top: 1px solid #e6eee6;
+  padding-top: 8px;
+}
+.reminder-center .agenda-item-actions button {
+  min-height: 34px;
+  padding: 6px 12px;
+}
+@media (max-width: 700px) {
+  .reminder-center .reminder-section {
+    padding: 12px;
+  }
+  .save-feedback {
+    top: 10px;
+  }
+  .cloud-history-panel .modal-head {
+    padding: 14px;
+  }
+  .reminder-center .agenda-item-actions button {
+    min-height: 40px;
+  }
+}
+
+.app-shell .reminder-center.reminder-columns {
+  grid-template-columns: minmax(0, 1fr);
+}
+.cloud-version-fields {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.cloud-version-fields > div {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px;
+  border-bottom: 1px solid #e4ece3;
+}
+.cloud-version-fields dt {
+  color: #6c8072;
+  font-size: 13px;
+}
+.cloud-version-fields dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cloud-version-scope section {
+  margin: 10px 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: #f6f9f4;
+}
+.cloud-version-scope h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.cloud-version-scope p {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.cloud-version-scope span {
+  color: #758677;
+}
+.reminder-center .empty-state.small {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 10px;
+  padding: 12px;
+  margin: 0;
+  text-align: left;
+  border: 1px solid #e4ece3;
+  border-radius: 10px;
+  background: #f7faf5;
+}
+.reminder-center .empty-state.small .empty-icon {
+  grid-row: 1/3;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+}
+.reminder-center .empty-state.small h3 {
+  display: block;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.reminder-center .empty-state.small p {
+  margin: 0;
+  max-width: none;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.reminder-other {
+  margin-top: 16px;
+}
+.reminder-other .panel {
+  background: #fcfdfb;
+}

@@ -1,3 +1,4 @@
+import { savedFeedback, failedFeedback } from './SaveFeedback';
 import { LegacySource } from './LegacySource';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
@@ -117,8 +118,11 @@ export function RecordDrawer({
         remove ? 'DELETE' : base ? 'PUT' : 'POST',
         { ...payload, requestId: request.current.id },
       );
+      if (!base || r.version !== base.version)
+        savedFeedback('record-' + r.id + '-' + r.version, 'record');
       onSaved(r);
     } catch (e) {
+      failedFeedback();
       setError(e instanceof CloudError ? e.message : '请检查任务事项、所属项目及节点日期。');
       setDeleting(false);
     } finally {

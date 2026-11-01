@@ -78,6 +78,9 @@ test('V1.1 additive upgrade retains old identities, password hash, business rows
       'record_submission',
       'legacy_migration_batch',
       'legacy_record_link',
+      'workspace_history_revision',
+      'record_version',
+      'cloud_restore_backup',
     ])
       assert.equal((await db.query(`SELECT count(*)::int n FROM ${table}`)).rows[0].n, 0, table);
     await db.query(
@@ -219,6 +222,14 @@ test('011 owner is an additive upgrade that preserves pre-existing board content
     await migrate(target.toString());
     const after = (await db.query("SELECT * FROM work_record WHERE id='legacy-record'")).rows[0];
     assert.equal(after.owner, '');
+    const baseline = (
+      await db.query("SELECT * FROM record_version WHERE record_id='legacy-record'")
+    ).rows;
+    assert.equal(baseline.length, 1);
+    assert.equal(baseline[0].version, 3);
+    assert.equal(baseline[0].baseline, true);
+    assert.equal(baseline[0].snapshot.notes, '原始内容');
+    assert.equal(baseline[0].snapshot.created_name, '旧姓名');
     delete after.owner;
     assert.deepEqual(after, before);
   } finally {

@@ -128,7 +128,7 @@ export async function grants(c: Deployment) {
     await db.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON assessment_recorder TO ${app}`);
     await db.query(`GRANT SELECT,INSERT,UPDATE ON daily_assessment TO ${app}`);
     await db.query(
-      `GRANT SELECT,INSERT ON assessment_history,assessment_submission,material_event,material_history,purchase_action,transfer_submission,record_history,record_submission,legacy_migration_batch,legacy_record_link TO ${app}`,
+      `GRANT SELECT,INSERT ON assessment_history,assessment_submission,material_event,material_history,purchase_action,transfer_submission,record_history,record_submission,workspace_history_revision,cloud_restore_backup,legacy_migration_batch,legacy_record_link TO ${app}`,
     );
     await db.query(
       `GRANT SELECT,INSERT,UPDATE,DELETE ON material_operator,department,account_note,account_avatar,card_avatar TO ${app}`,
@@ -140,6 +140,7 @@ export async function grants(c: Deployment) {
       `GRANT USAGE,SELECT ON SEQUENCE record_history_id_seq,legacy_record_link_id_seq TO ${app}`,
     );
     await db.query(`GRANT SELECT,INSERT,UPDATE ON person_private TO ${priv}`);
+    await db.query(`GRANT SELECT,INSERT,DELETE ON record_version TO ${app}`);
     await db.query(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${backup}`);
     await db.query(`GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO ${backup}`);
     await db.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${backup}`);

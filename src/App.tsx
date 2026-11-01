@@ -1,3 +1,5 @@
+import { CloudHistoryPanel } from './components/CloudHistoryPanel';
+import { SaveFeedback } from './components/SaveFeedback';
 import { visibleLegacyNotes } from './lib/legacy-records';
 import { LegacySource } from './components/LegacySource';
 import { ThemedWorkspace } from './components/ProjectThemes';
@@ -32,6 +34,7 @@ import {
   Check,
   ChevronDown,
   ClipboardList,
+  CloudUpload,
   FileJson,
   FolderOpen,
   LayoutDashboard,
@@ -87,7 +90,6 @@ import {
   purchaseComplete,
   procurementView,
   projectStatus,
-  todayNotes,
   noteDue,
   remainingTime,
   removeProject,
@@ -162,6 +164,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     draftRecoveryNotice,
     draftRecoveryPackage,
   } = useWorkspace(initialUser);
+  const [cloudHistoryAnchor, setCloudHistoryAnchor] = useState<
+    import('./components/Modal').Anchor | null
+  >(null);
   const [historyOpen, setHistoryOpen] = useState<{ scope: string; anchor?: Anchor } | null>(null);
   const [navExpanded, setNavExpanded] = useState(() => {
     try {
@@ -704,6 +709,22 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           data.projects.find((project) => project.id === item.projectId)?.name || '历史项目'
         }
         busy={recordSource.busyIds.includes(item.id)}
+        onDelete={
+          view === 'reminders'
+            ? () => {
+                if (item.kind === 'purchase') deleteEntity({ kind: 'purchase', value: item.value });
+                else
+                  setConfirmation({
+                    title: '删除事项？',
+                    message: '删除后仍保留操作历史，请确认这条事项不再需要。',
+                    run: () => {
+                      void recordSource.remove(item.value);
+                      setConfirmation(null);
+                    },
+                  });
+              }
+            : undefined
+        }
         canToggle={
           item.status !== '已取消' &&
           !(item.kind === 'purchase' && item.done && isCloud && !cloudUser?.owner)
@@ -729,103 +750,87 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     );
   }
   function reminderItems() {
-    const active = new Set(data.projects.filter((p) => !isHistorical(p)).map((p) => p.id));
+    const active = data.projects.filter((p) => !isHistorical(p));
+    const items = active.flatMap(
+      (project) => categorizedAgenda(agendaData, recordSource.records, project.id, now).items,
+    );
+    const purchases = items.filter(
+      (x) =>
+        x.kind === 'purchase' &&
+        !x.done &&
+        x.date <= plus(now, 15) &&
+        (!metricFilter ||
+          (metricFilter === '已逾期采购'
+            ? x.date < now
+            : metricFilter === '未来 15 天采购'
+              ? x.date >= now
+              : x.date <= now)),
+    );
+    const records = items.filter(
+      (x) =>
+        x.kind === 'record' && !x.done && (!x.date || x.date <= now || x.status === '持续跟进'),
+    );
+    const legacy = items.filter((x) => x.kind === 'legacy' && !x.done && x.date <= now);
     return (
-      <div className="reminder-columns" data-filter={metricFilter}>
+      <div className="reminder-center reminder-columns">
         {metricFilter && (
           <div className="project-filter">
             正在查看：{metricFilter}
-            <button className="text-btn" onClick={() => setMetricFilter('')}>
-              查看全部提醒
-            </button>
+            <button onClick={() => setMetricFilter('')}>查看全部提醒</button>
           </div>
         )}
-        <div
-          className="panel"
+        {recordSource.error && (
+          <p role="alert" className="error-banner">
+            {recordSource.error}
+          </p>
+        )}
+        <section
+          className="panel reminder-section"
           hidden={
             !!metricFilter && !['未来 15 天采购', '已逾期采购', '今日待办'].includes(metricFilter)
           }
         >
-          <h3>
-            <Package size={18} />
-            采购提醒 · 未来 15 天及逾期
-          </h3>
-          {data.purchases
-            .filter(
-              (x) =>
-                active.has(x.projectId) &&
-                !purchaseComplete(x) &&
-                purchaseDue(x, data) <= plus(now, 15) &&
-                (!metricFilter ||
-                  (metricFilter === '今日待办'
-                    ? purchaseDue(x, data) <= now
-                    : metricFilter === '已逾期采购'
-                      ? purchaseDue(x, data) < now
-                      : purchaseDue(x, data) >= now)),
-            )
-            .map(purchaseCard)}
-          {count.upcoming + count.overduePurchases === 0 && (
-            <Empty small title="暂无采购提醒" text="创建采购记录后，提醒会出现在这里。" />
+          <div className="section-heading">
+            <h2>
+              <Package size={18} />
+              采购提醒
+            </h2>
+            <span>{purchases.length} 项 · 未来15天及逾期</span>
+          </div>
+          <div className="purchase-list">
+            {purchases.map((x) => purchaseCard(x.value as Purchase))}
+          </div>
+          {!purchases.length && (
+            <Empty small title="暂无采购提醒" text="采购记录将按截止日期显示在这里。" />
           )}
-        </div>
-        <div className="panel" hidden={!!metricFilter && metricFilter !== '今日待办'}>
-          <h3>
-            <ClipboardList size={18} />
-            事项提醒 · 今日及逾期
-          </h3>
-          {todayNotes(agendaData, undefined, now)
-            .filter((n) => active.has(n.projectId) && !n.done)
-            .sort((a, b) => a.date.localeCompare(b.date))
-            .map((n) => (
-              <button
-                className="reminder-item"
-                key={n.id}
-                onClick={() => {
-                  setSelected(n.projectId);
-                  setArchived(false);
-                  setEdit({ kind: 'note', value: n });
-                }}
-              >
-                <span>
-                  <strong>{n.title}</strong>
-                  <small>{data.projects.find((x) => x.id === n.projectId)?.name}</small>
-                </span>
-                <em>
-                  {noteDue(n)} · {remainingTime(noteDue(n), now)}
-                </em>
-              </button>
-            ))}
-          {recordSource.records
-            .filter(
-              (r) =>
-                !r.deleted &&
-                r.nodeDate &&
-                r.nodeDate <= now &&
-                !['已完成', '已取消'].includes(r.status) &&
-                active.has(r.projectId),
-            )
-            .map((r) => (
-              <button
-                className="reminder-item"
-                key={'record:' + r.id}
-                onClick={() => {
-                  go('records');
-                  recordDirty.current = false;
-                  setFocusedRecord(r);
-                }}
-              >
-                <span>
-                  <strong>{r.title}</strong>
-                  <small>
-                    {data.projects.find((project) => project.id === r.projectId)?.name} · 事项
-                  </small>
-                </span>
-                <em>
-                  {r.nodeDate} · {r.status}
-                </em>
-              </button>
-            ))}
-        </div>
+        </section>
+        <section
+          className="panel reminder-section"
+          hidden={!!metricFilter && metricFilter !== '今日待办'}
+        >
+          <div className="section-heading">
+            <h2>
+              <ClipboardList size={18} />
+              事项提醒
+            </h2>
+            <span>{records.length} 项 · 待办与持续跟进</span>
+          </div>
+          <div className="reminder-record-grid">{records.map(agendaItem)}</div>
+          {!records.length && (
+            <Empty small title="暂无待处理事项" text="新增事项后，与事项管理同步显示。" />
+          )}
+        </section>
+        {!!legacy.length && (
+          <section
+            className="panel reminder-section"
+            hidden={!!metricFilter && metricFilter !== '今日待办'}
+          >
+            <div className="section-heading">
+              <h2>其他业务提醒 · 历史记录待分类</h2>
+            </div>
+            {legacy.map(agendaItem)}
+          </section>
+        )}
       </div>
     );
   }
@@ -989,11 +994,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           >
             <ArrowDownToLine size={17} />
           </button>
-          <div
-            className={`save-state compact-save ${status.includes('已保存') && !undo ? 'sr-only' : ''} ${status.includes('失败') ? 'red' : ''}`}
-            role="status"
-          >
+          <div className="save-state sr-only" role="status">
             <span>{status}</span>
+          </div>
+          <SaveFeedback status={status}>
             {undo && (
               <button
                 className="undo-quiet"
@@ -1011,7 +1015,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 撤销
               </button>
             )}
-          </div>
+          </SaveFeedback>
           <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
         <main className="workspace-content">
@@ -1100,6 +1104,19 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                   新建项目
                 </button>
               )}
+              {view === 'overview' && isCloud && (
+                <button
+                  aria-label="历史版本"
+                  title="云端历史版本"
+                  disabled={!ready}
+                  onClick={(e) =>
+                    setCloudHistoryAnchor({ x: e.clientX, y: e.clientY, element: e.currentTarget })
+                  }
+                >
+                  <CloudUpload size={17} />
+                  历史版本
+                </button>
+              )}
             </div>
           </div>
           <div
@@ -1181,14 +1198,16 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             <>
               {reminderItems()}
               {isCloud && (
-                <DeferredPanel>
-                  <MaterialAlertSummary
-                    onOpen={() => {
-                      setMaterialTab(5);
-                      go('materials');
-                    }}
-                  />
-                </DeferredPanel>
+                <section className="reminder-other" aria-label="其他业务提醒">
+                  <DeferredPanel>
+                    <MaterialAlertSummary
+                      onOpen={() => {
+                        setMaterialTab(5);
+                        go('materials');
+                      }}
+                    />
+                  </DeferredPanel>
+                </section>
               )}
             </>
           ) : view === 'materials' ? (
@@ -1460,12 +1479,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             onPurchase={(kind, value) => {
               save(kind, value);
               setAgendaEntry(null);
-              notify('采购事项已添加，正在自动保存。');
             }}
             onRecord={(record) => {
               recordSource.accept(record);
               setAgendaEntry(null);
-              notify('事项已保存。');
             }}
           />
         </DeferredPanel>
@@ -1568,8 +1585,20 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           }
         />
       )}
+      {cloudHistoryAnchor && (
+        <CloudHistoryPanel
+          anchor={cloudHistoryAnchor}
+          owner={!!cloudUser?.owner}
+          canRestore={status === '已保存' && !hasUnsavedChanges}
+          onClose={() => setCloudHistoryAnchor(null)}
+          onRestored={() => {
+            setUndo(null);
+          }}
+        />
+      )}
       {historyOpen && (
         <HistoryPanel
+          isCloud={isCloud}
           data={data}
           history={history}
           scope={historyOpen.scope}
@@ -1584,7 +1613,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             setDay(null);
             setScheduleProposal(null);
             setColorEdit(null);
-            notify('版本恢复已保存，相关工期与采购提醒已重新计算。');
           }}
         />
       )}

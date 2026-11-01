@@ -1,3 +1,4 @@
+import { cloudHistoryRoutes, captureRestoreBackup, persistRestoreBackup } from './cloud-history';
 import { legacyRoutes } from './legacy-records';
 import {
   saveWorkspaceSubmission,
@@ -141,6 +142,7 @@ export function createApp() {
   purchaseRoutes(app);
   recordRoutes(app);
   legacyRoutes(app);
+  cloudHistoryRoutes(app);
   assessmentRoutes(app);
   materialRoutes(app);
   transferRoutes(app);
@@ -791,7 +793,12 @@ export function createApp() {
       res.json(
         await transaction(async (c) => {
           const current = await getState(c, req.actor!.workspaceId, 'UPDATE');
-          return commit(c, req.actor!, b.revision, current.data, { restoreId: b.id });
+          const backup = await captureRestoreBackup(c, req.actor!.workspaceId);
+          const result = await commit(c, req.actor!, b.revision, current.data, { restoreId: b.id });
+          await persistRestoreBackup(c, req.actor!, crypto.randomUUID(), 'legacy-restore', backup, {
+            revision: result.revision,
+          });
+          return result;
         }).then((state) => workspaceStateWithProof(state, req.actor!)),
       );
     } catch (e) {

@@ -1,3 +1,4 @@
+import { savedFeedback } from '../components/SaveFeedback';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyData, prepareWorkspace, type Data } from './model';
 import { emptyHistory } from './history';
@@ -81,6 +82,8 @@ export function useLocalWorkspace(enabled = true) {
       .catch(() => {})
       .then(() => saveData(d, saved.current, meta))
       .then((result) => {
+        if (JSON.stringify(saved.current) !== JSON.stringify(result.data))
+          savedFeedback('local-' + version);
         saved.current = result.data;
         setSavedData(result.data);
         setHistory(result.history);
