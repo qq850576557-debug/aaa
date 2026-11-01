@@ -1,4 +1,5 @@
 import { cloudHistoryRoutes, captureRestoreBackup, persistRestoreBackup } from './cloud-history';
+import { databaseFailure, logDatabaseFailure } from './database-readiness';
 import { legacyRoutes } from './legacy-records';
 import {
   saveWorkspaceSubmission,
@@ -982,11 +983,15 @@ export function createApp() {
       });
       res.flushHeaders();
       let busy = false,
+        closed = false,
         last = -1,
         lastRecord = '',
         ticks = 0;
-      const close = () => {
-        if (!res.writableEnded && !res.destroyed) res.write('event: session-expired\ndata: {}\n\n');
+      const finish = (expired = false) => {
+        if (closed) return;
+        closed = true;
+        if (expired && !res.writableEnded && !res.destroyed)
+          res.write('event: session-expired\ndata: {}\n\n');
         clearInterval(timer);
         const removed = streams.delete(stream);
         res.end();
@@ -996,23 +1001,25 @@ export function createApp() {
         accountId: req.actor!.id,
         workspaceId: req.actor!.workspaceId,
         tokenHash: req.tokenHash!,
-        close,
+        close: () => finish(true),
         notify: () => {
           if (!res.writableEnded && !res.destroyed) res.write('event: presence\ndata: {}\n\n');
         },
       };
       const timer = setInterval(async () => {
-        if (busy) return;
+        if (busy || closed) return;
         busy = true;
         try {
           const actor = await session(req.tokenHash!);
+          if (closed) return;
           if (!actor) {
-            close();
+            finish(true);
             return;
           }
           const q = await pool.query('SELECT revision FROM workspace_state WHERE workspace_id=$1', [
             actor.workspaceId,
           ]);
+          if (closed) return;
           const revision = Number(q.rows[0].revision);
           if (revision !== last) {
             last = revision;
@@ -1026,20 +1033,24 @@ export function createApp() {
               )
             ).rows[0].revision,
           );
+          if (closed) return;
           if (recordRevision !== lastRecord) {
             lastRecord = recordRevision;
             res.write(`event: records\ndata: ${JSON.stringify({ revision: recordRevision })}\n\n`);
           }
           if (++ticks % 5 === 0) res.write('event: presence\ndata: {}\n\n');
-        } catch {
-          close();
+        } catch (e) {
+          logDatabaseFailure(e, 'sse.poll');
+          // Query/network failures are not proof of session revocation. Let EventSource
+          // reconnect and reauthenticate without locking the user's workspace or draft.
+          finish();
         } finally {
           busy = false;
         }
       }, 1000);
       streams.add(stream);
       announcePresence(req.actor!.workspaceId);
-      req.on('close', close);
+      req.on('close', () => finish());
       res.write(': connected\n\n');
     } catch (e) {
       next(e);
@@ -1078,6 +1089,12 @@ export function createApp() {
         res
           .status(409)
           .json({ error: error.message, conflicts: error.conflicts, current: error.current });
+        return;
+      }
+      const unavailable = !(error instanceof ApiError) && databaseFailure(error);
+      if (unavailable) {
+        logDatabaseFailure(error, req.method + ' ' + (req.route?.path ?? '/api'));
+        res.status(503).json(unavailable);
         return;
       }
       const e = error as { code?: string; status?: number };

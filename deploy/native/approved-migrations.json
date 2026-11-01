@@ -8,5 +8,8 @@
   "007_member_cards.sql": "18fd8d4fdbdcfb86996303e8c1b36d5e55ac3671b9e2f55c033ee0b5b35245a0",
   "008_material_assets.sql": "8bcdc6f92a0dc6e4e7467b510a4b13a5c4962cf308f92deec22bc39b467de445",
   "009_experience_v11.sql": "1a103d0185a3680ea2e596ac3cf3ed44a5f49e299aeafc27147d01f671c38f5a",
-  "010_record_board.sql": "aff19128bc4e3ffc8cb6265493f2b790bf24bb08bafe92eeca351eb5121791da"
+  "010_record_board.sql": "aff19128bc4e3ffc8cb6265493f2b790bf24bb08bafe92eeca351eb5121791da",
+  "011_record_owner.sql": "33b1e974291fd8328551fadd500e8f054cd122916f5d3048bd5b3b770513063c",
+  "012_legacy_classification.sql": "0f25b0a264ffcfef0cbf5daf6ac8ad6544276e5a9c50757e3a151cd35cd9a201",
+  "013_cloud_versions.sql": "f7867e7bc4a291b7c90fbdd5d2daa24b60f148e6d47ef0fb4d7a6b96df476ac2"
 }

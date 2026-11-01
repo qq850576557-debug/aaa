@@ -104,6 +104,21 @@ sudo bash /opt/chunmo-staging/current/deploy/native/add-tunnel-key.sh /path/to/e
 
 ## 更新、诊断与回退
 
+`git pull`只更新源码，不会自动更新`/opt/chunmo-staging/current`发行版本、数据库结构或运行授权。新版事项读取依赖011的负责人字段和012的历史来源关联，云端版本功能依赖013。部署迁移白名单必须包含这些SQL的精确哈希；不得删除白名单检查或手动修改已应用迁移的校验和绕过错误。
+
+若出现`records`返回400、`session/workspace/presence`仍为200，且SSE约一秒结束，先检查迁移及运行授权。旧API会把数据库缺表/缺字段/权限错误误报成数据校验失败，并在SSE查询失败后误发登录失效；修复版将数据库故障返回503，SSE普通故障只断开后重连，真正会话撤销仍强制重新登录。新API启动前会只读检查010—013及关键读取/写入授权，未就绪时拒绝启动，不自动迁移数据库。
+
+现有原生部署的只读排查命令如下（仅针对上述托管路径和数据库；若不存在则停止，不创建替代配置）：
+
+```bash
+git -C /opt/chunmo-source rev-parse HEAD
+readlink -f /opt/chunmo-staging/current
+sudo -u postgres /usr/pgsql-17/bin/psql -X -d chunmo_staging -c 'SELECT name FROM schema_migration ORDER BY name;'
+sudo journalctl -u chunmo-staging-api -n 60 --no-pager
+```
+
+分享日志前去除密码、Cookie、连接串和个人资料；不要清空浏览器草稿。修复部署必须先取得业务负责人确认并完成可恢复备份，再通过完整部署流程应用已审查的增量迁移、配套最小授权和匹配的前后端。012的结构迁移不会自动迁移历史业务记录，生产历史分类迁移仍需单独预览和确认。不要只替换前端资源或仅重启旧API。
+
 ```bash
 sudo bash /opt/chunmo-staging/current/deploy/native/update.sh
 ```

@@ -4,6 +4,79 @@ import pg from 'pg';
 import { randomUUID, createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { migrate } from './migrate';
+import { assertDatabaseReady } from './database-readiness';
+
+test('010-only deployment reproduces missing record fields/tables and refuses new API until additive upgrade', async () => {
+  const raw = process.env.MIGRATION_DATABASE_URL!;
+  const original = new URL(raw);
+  assert.equal(original.hostname, '127.0.0.1');
+  assert.equal(original.pathname, '/chunmo_test');
+  const admin = new pg.Client({ connectionString: raw });
+  await admin.connect();
+  const name = 'chunmo_readiness_' + randomUUID().replaceAll('-', '').slice(0, 10) + '_test';
+  const target = new URL(raw);
+  target.pathname = '/' + name;
+  let db: pg.Client | undefined;
+  try {
+    await admin.query(`CREATE DATABASE "${name}"`);
+    db = new pg.Client({ connectionString: target.toString() });
+    await db.connect();
+    await db.query(
+      'CREATE TABLE schema_migration(name text PRIMARY KEY,checksum text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now())',
+    );
+    for (const file of (await readdir('server/migrations'))
+      .filter((f) => f.endsWith('.sql') && f <= '010_record_board.sql')
+      .sort()) {
+      const sql = await readFile('server/migrations/' + file, 'utf8');
+      await db.query(sql);
+      await db.query('INSERT INTO schema_migration(name,checksum) VALUES($1,$2)', [
+        file,
+        createHash('sha256').update(sql).digest('hex'),
+      ]);
+    }
+    await assert.rejects(
+      db.query('SELECT owner FROM work_record LIMIT 0'),
+      (e: any) => e.code === '42703',
+    );
+    await assert.rejects(
+      db.query('SELECT * FROM legacy_record_link LIMIT 0'),
+      (e: any) => e.code === '42P01',
+    );
+    await assert.rejects(
+      assertDatabaseReady(db),
+      /011_record_owner.sql.*012_legacy_classification.sql.*013_cloud_versions.sql/,
+    );
+    await migrate(target.toString());
+    await migrate(target.toString());
+    await assertDatabaseReady(db);
+    const role = new URL(process.env.DATABASE_URL!).username;
+    assert.match(role, /^[a-z_][a-z0-9_]*$/);
+    await db.query(
+      `GRANT SELECT ON schema_migration,work_record,legacy_record_link,workspace_history_revision,record_version,cloud_restore_backup TO "${role}"`,
+    );
+    await db.query(`SET ROLE "${role}"`);
+    try {
+      await assert.rejects(assertDatabaseReady(db), /runtime grants incomplete/);
+    } finally {
+      await db.query('RESET ROLE');
+    }
+    await db.query(
+      `GRANT INSERT ON legacy_record_link,workspace_history_revision,record_version,cloud_restore_backup TO "${role}"`,
+    );
+    await db.query(`GRANT DELETE ON record_version TO "${role}"`);
+    await db.query(`GRANT USAGE ON SEQUENCE legacy_record_link_id_seq TO "${role}"`);
+    await db.query(`SET ROLE "${role}"`);
+    try {
+      await assertDatabaseReady(db);
+    } finally {
+      await db.query('RESET ROLE');
+    }
+    console.log('Retained isolated readiness-validation database: ' + name);
+  } finally {
+    await db?.end();
+    await admin.end();
+  }
+});
 
 test('V1.1 additive upgrade retains old identities, password hash, business rows and old-code audit inserts', async () => {
   const raw = process.env.MIGRATION_DATABASE_URL;

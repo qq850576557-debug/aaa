@@ -1,6 +1,6 @@
 import pg from 'pg';
 import sharp from 'sharp';
-import { test, before, after } from 'node:test';
+import { test, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -105,6 +105,85 @@ async function setup() {
     b = await login(f.employee, f.password);
   return { f, a, b };
 }
+test('database upgrade/permission errors return 503 diagnostics without leaking SQL or invalidating sessions', async () => {
+  const { a } = await setup();
+  const original = pool.query;
+  for (const code of ['42P01', '42703', '42501', 'ECONNRESET']) {
+    const fault = mock.method(pool, 'query', function (this: pg.Pool, ...args: any[]) {
+      if (String(args[0]).includes('FROM auth_session s'))
+        return Promise.reject(
+          Object.assign(new Error('secret SQL connection-string fixture'), { code }),
+        );
+      return (original as any).apply(this, args);
+    });
+    try {
+      const response = await request('/auth/session', 'GET', undefined, a);
+      assert.equal(response.status, 503);
+      const result = await response.json();
+      assert.equal(
+        result.code,
+        code === 'ECONNRESET' ? 'DATABASE_UNAVAILABLE' : 'DATABASE_SCHEMA_NOT_READY',
+      );
+      assert.doesNotMatch(JSON.stringify(result), /secret SQL|connection-string|42P01|42703|42501/);
+      assert.equal(response.headers.get('set-cookie'), null);
+    } finally {
+      fault.mock.restore();
+    }
+    assert.equal((await request('/auth/session', 'GET', undefined, a)).status, 200);
+  }
+});
+
+test('SSE database failures reconnect without session-expired; genuine logout still revokes the stream', async () => {
+  const { a } = await setup();
+  const original = pool.query;
+  for (const failedQuery of ['legacy_record_link', 'FROM auth_session s']) {
+    const stream = await fetch(base + '/api/events', {
+      headers: { Cookie: a.cookie },
+      signal: AbortSignal.timeout(8000),
+    });
+    assert.equal(stream.status, 200);
+    let triggered = false;
+    const fault = mock.method(pool, 'query', function (this: pg.Pool, ...args: any[]) {
+      if (String(args[0]).includes(failedQuery)) {
+        triggered = true;
+        return Promise.reject(
+          Object.assign(new Error('isolated SSE database fault'), { code: '42P01' }),
+        );
+      }
+      return (original as any).apply(this, args);
+    });
+    try {
+      const events = await stream.text();
+      assert.equal(triggered, true);
+      assert.match(events, /: connected/);
+      assert.doesNotMatch(events, /session-expired/);
+    } finally {
+      fault.mock.restore();
+    }
+    assert.equal((await request('/auth/session', 'GET', undefined, a)).status, 200);
+  }
+  const reconnect = await fetch(base + '/api/events', {
+    headers: { Cookie: a.cookie },
+    signal: AbortSignal.timeout(8000),
+  });
+  const reader = reconnect.body!.getReader();
+  let received = '';
+  try {
+    while (!received.includes('event: records')) {
+      const { done, value } = await reader.read();
+      assert.equal(done, false);
+      received += new TextDecoder().decode(value);
+    }
+  } finally {
+    await reader.cancel();
+  }
+  assert.match(received, /event: revision/);
+  const revoked = await request('/events', 'GET', undefined, a);
+  assert.equal((await request('/auth/logout', 'POST', {}, a)).status, 200);
+  assert.match(await revoked.text(), /event: session-expired/);
+  assert.equal((await request('/auth/session', 'GET', undefined, a)).status, 401);
+});
+
 test('record board: authenticated workspace scope, trustworthy history, deletion preservation and no inventory/workspace coupling', async () => {
   testClientIp = '203.0.113.171';
   const { a, b, f } = await setup(),

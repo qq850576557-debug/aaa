@@ -6,6 +6,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import argon2 from 'argon2';
 import { config, identifier, url, validate, type Deployment } from './shared';
 import { migrate } from '../../server/migrate';
+import { assertDatabaseReady } from '../../server/database-readiness';
 import { createWorkspace } from '../../server/store';
 export function scram(password: string) {
   const salt = randomBytes(16),
@@ -158,6 +159,7 @@ export async function grants(c: Deployment) {
       if (q.rows[0].rolsuper || q.rows[0].rolcreatedb || q.rows[0].rolcreaterole)
         throw Error('Unexpected runtime privileges');
       if (kind === 'app') {
+        await assertDatabaseReady(check);
         try {
           await check.query('SELECT * FROM person_private LIMIT 0');
           throw Error('Private SQL access unexpectedly allowed');

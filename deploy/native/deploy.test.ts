@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, unlinkSync, statSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, unlinkSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import {
   newDeployment,
   validate,
@@ -14,6 +14,21 @@ import {
   decrypt,
   nginx,
 } from './shared';
+test('every shipped migration has an explicit matching deployment approval', () => {
+  const approved = JSON.parse(readFileSync('deploy/native/approved-migrations.json', 'utf8'));
+  const files = readdirSync('server/migrations')
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
+  assert.deepEqual(Object.keys(approved).sort(), files);
+  for (const file of files)
+    assert.equal(
+      approved[file],
+      createHash('sha256')
+        .update(readFileSync('server/migrations/' + file))
+        .digest('hex'),
+      file,
+    );
+});
 test('repeat configuration preserves every credential and key; partial config never regenerates', () => {
   const parent = mkdtempSync(join(tmpdir(), 'chunmo-config-check-')),
     path = join(parent, 'private');
