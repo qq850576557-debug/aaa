@@ -36,3 +36,20 @@ if (!process.argv.includes('--production')) {
   assert.match(result.outputFiles[0].text, /value\s*=\s*1/);
   console.log(`PASS esbuild ${esbuild.version}: native TypeScript bundle.`);
 }
+
+const sharp = (await import('sharp')).default;
+const pixels = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#23543e' } })
+  .png()
+  .toBuffer();
+assert.equal((await sharp(pixels).metadata()).width, 2);
+console.log('PASS sharp: native image encode/decode.');
+if (!process.argv.includes('--production')) {
+  const { rollup } = await import('rollup');
+  const bundle = await rollup({
+    input: 'virtual-entry',
+    plugins: [{ name: 'native-check', resolveId: (id) => id, load: () => 'export const ok = 1' }],
+  });
+  await bundle.generate({ format: 'es' });
+  await bundle.close();
+  console.log('PASS rollup: native parser and bundle.');
+}

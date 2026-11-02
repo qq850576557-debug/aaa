@@ -51,6 +51,7 @@ Wants=chunmo-staging-api.service
 Type=simple
 User=chunmo-staging-web
 Group=chunmo-staging-web
+ExecStartPre=+/usr/bin/python3 {base}/prepare-web-state.py
 ExecStart={nginx} -p /var/lib/chunmo-staging-web/ -c {base}/nginx.conf -g "daemon off;"
 Restart=on-failure
 RestartSec=5

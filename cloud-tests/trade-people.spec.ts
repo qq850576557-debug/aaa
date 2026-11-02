@@ -138,7 +138,8 @@ test('a failed personnel sort is retained as an account draft and recovered on r
   );
   page.on('dialog', (dialog) => dialog.accept());
   await page.reload();
-  await expect(page.locator('.error-banner')).toContainText('已恢复本账号的未提交草稿');
+  await expect(page.locator('.save-feedback')).toContainText('同步中');
+  await expect(page.locator('.error-banner')).toHaveCount(0);
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   await expect(page.locator('.people-grid > [data-person-id]').first()).toHaveAttribute(
     'data-person-id',

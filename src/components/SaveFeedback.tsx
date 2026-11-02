@@ -16,6 +16,8 @@ export function SaveFeedback({
   cloud?: boolean;
 }) {
   const [message, setMessage] = useState('');
+  const [fading, setFading] = useState(false);
+  const fade = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [undoEligible, setUndo] = useState(false);
   const last = useRef('');
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -24,13 +26,16 @@ export function SaveFeedback({
   const confirmed = cloud ? '云端已保存' : '本地已保存';
   const present = (success = false) => {
     clearTimeout(timer.current);
+    clearTimeout(fade.current);
+    setFading(false);
     if (workspace.current.failed || record.current.failed)
       setMessage('同步失败，请保留本地内容并核对');
     else if (workspace.current.pending || record.current.pending)
       setMessage('本地已保存 · 云端同步中');
     else if (success) {
       setMessage(confirmed);
-      timer.current = setTimeout(() => setMessage(''), 5000);
+      fade.current = setTimeout(() => setFading(true), 2700);
+      timer.current = setTimeout(() => setMessage(''), 3000);
     }
   };
   useEffect(() => {
@@ -38,11 +43,19 @@ export function SaveFeedback({
       workspace.current.pending = true;
       workspace.current.failed = true;
       present();
+    } else if (status === '正在续传') {
+      workspace.current = { pending: true, failed: false, local: true, active: true };
+      clearTimeout(timer.current);
+      clearTimeout(fade.current);
+      setFading(false);
+      setMessage('本地草稿已恢复 · 云端同步中');
     } else if (status === '正在保存') {
       workspace.current.pending = true;
       workspace.current.failed = false;
       workspace.current.active = true;
       clearTimeout(timer.current);
+      clearTimeout(fade.current);
+      setFading(false);
       setMessage(workspace.current.local ? '本地已保存 · 云端同步中' : '正在保存到本地');
     } else if (status === '已保存') {
       workspace.current.pending = false;
@@ -77,6 +90,8 @@ export function SaveFeedback({
     };
     const failed = () => {
       clearTimeout(timer.current);
+      clearTimeout(fade.current);
+      setFading(false);
       setMessage('同步失败，请保留当前页面并核对内容');
     };
     const owner = verifiedOwner();
@@ -96,6 +111,7 @@ export function SaveFeedback({
     window.addEventListener('chunmo-save-failed', failed);
     return () => {
       clearTimeout(timer.current);
+      clearTimeout(fade.current);
       window.removeEventListener('chunmo-save-confirmed', show);
       window.removeEventListener('chunmo-workspace-local-saved', local);
       window.removeEventListener('chunmo-outbox-status', recordStatus);
@@ -104,7 +120,7 @@ export function SaveFeedback({
   }, [confirmed]);
   return message
     ? createPortal(
-        <div className="save-feedback" role="status">
+        <div className={`save-feedback ${fading ? 'is-fading' : ''}`} role="status">
           <span>{message}</span>
           {message === confirmed && undoEligible && children}
         </div>,

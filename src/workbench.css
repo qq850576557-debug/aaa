@@ -3359,3 +3359,89 @@ textarea::placeholder {
     background-repeat: no-repeat;
   }
 }
+
+/* Readable desktop agenda tiles; container height remains bounded. */
+@media (min-width: 701px) {
+  .app-shell .workspace-brief.agenda-brief .brief-content {
+    grid-template-columns: repeat(auto-fill, minmax(164px, 1fr));
+    height: 152px;
+    max-height: 152px;
+    gap: 10px;
+  }
+  .app-shell .workspace-brief.agenda-brief .brief-panel {
+    grid-template-rows: auto auto 152px auto;
+  }
+  .app-shell .workspace-brief.agenda-brief .brief-panel.brief-expanded {
+    height: auto;
+    grid-template-rows: auto auto 314px auto;
+  }
+  .app-shell .workspace-brief.agenda-brief .brief-expanded .brief-content {
+    height: 314px;
+    max-height: 314px;
+  }
+  .app-shell .workspace-brief.agenda-brief .agenda-item {
+    width: 100%;
+    height: 152px;
+    padding: 10px 12px;
+    gap: 6px;
+  }
+  .app-shell .workspace-brief.agenda-brief .agenda-item-main strong {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .app-shell .workspace-brief.agenda-brief .agenda-item-meta {
+    font-size: 12px;
+    line-height: 1.5;
+    gap: 3px;
+    margin-top: 5px;
+  }
+  .app-shell .workspace-brief.agenda-brief .agenda-item-actions button {
+    font-size: 12px;
+    min-height: 26px;
+    padding: 3px 7px;
+  }
+}
+.save-feedback {
+  animation: save-feedback-enter 150ms ease-out;
+}
+@keyframes save-feedback-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .save-feedback {
+    animation: none;
+  }
+}
+
+.save-feedback {
+  transition: opacity 300ms ease;
+}
+.save-feedback.is-fading {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .save-feedback {
+    transition: none;
+  }
+}
+@media (min-width: 701px) {
+  .app-shell .workspace-brief.agenda-brief .agenda-item {
+    align-items: stretch;
+  }
+  .app-shell .workspace-brief.agenda-brief .agenda-item-main {
+    width: 100%;
+    max-width: none;
+    align-self: stretch;
+    align-content: start;
+    grid-template-rows: 42px auto;
+    gap: 3px;
+  }
+  .app-shell .workspace-brief.agenda-brief .agenda-item-actions {
+    align-self: flex-start;
+  }
+}

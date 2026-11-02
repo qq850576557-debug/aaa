@@ -80,8 +80,8 @@ for (const width of [1280, 1440])
     const content = page.locator('[data-testid="today-panel"] .brief-content');
     for (const tile of await content.locator('.agenda-item').all()) {
       const rect = (await tile.boundingBox())!;
-      expect(Math.abs(rect.width - rect.height)).toBeLessThan(2);
-      expect(rect.height).toBeLessThanOrEqual(130);
+      expect(rect.width).toBeGreaterThanOrEqual(164);
+      expect(rect.height).toBe(152);
     }
     const bounds = (await content.boundingBox())!;
     const footer = (await page
@@ -89,8 +89,13 @@ for (const width of [1280, 1440])
       .boundingBox())!;
     expect(footer.y).toBeGreaterThanOrEqual(bounds.y + bounds.height);
     const box = (await home.boundingBox())!;
-    expect(box.height).toBeLessThanOrEqual(130);
-    expect(Math.abs(box.width - box.height)).toBeLessThan(2);
+    expect(box.height).toBe(152);
+    expect(box.width).toBeGreaterThanOrEqual(164);
+    const main = (await home.locator('.agenda-item-main').boundingBox())!;
+    expect(main.width).toBeGreaterThanOrEqual(box.width - 28);
+    expect(
+      await home.locator('strong').evaluate((n) => parseFloat(getComputedStyle(n).fontSize)),
+    ).toBeGreaterThanOrEqual(14);
     await page.screenshot({ path: `/tmp/density-home-${width}.png` });
     await home.locator('.agenda-item-main').click();
     await expect(

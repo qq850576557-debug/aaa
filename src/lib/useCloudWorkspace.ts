@@ -454,8 +454,8 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
           blocked.current = false;
           recovering.current = true;
           recoveryMessage.current = '已恢复本账号的未提交草稿，正在自动核对和续传；';
-          setStatus('草稿待恢复');
-          setError(recoveryMessage.current + '真正冲突的内容保留待核对，其他记录不受影响。');
+          setStatus('正在续传');
+          setError('');
         }
         initialized.current = true;
         events = new EventSource('/api/events');

@@ -218,7 +218,10 @@ LISTEN=$(sql 'SHOW listen_addresses')
 [[ $(sql "SELECT count(*) FROM pg_hba_file_rules WHERE type LIKE 'host%' AND auth_method='trust'") == 0 ]] || fail 'Existing host trust authentication could bypass passwords via another database. Review host trust rules before deploying; no global auth policy changed.'
 [[ -d $SOURCE_REPO/.git ]] || fail 'Clone the repository into /opt/chunmo-source first (see deployment guide).'
 [[ $(git -C "$SOURCE_REPO" branch --show-current) == feat/chunmo-project-manager ]] || fail 'Source checkout must remain on feat/chunmo-project-manager.'
-[[ -z $(git -C "$SOURCE_REPO" status --porcelain) ]] || fail 'Source has uncommitted files; preserve them and resolve before deploying.'
+# Updates build only the pinned Git archive; local edits are never used or reset.
+if [[ $# == 0 ]]; then
+  [[ -z $(git -C "$SOURCE_REPO" status --porcelain) ]] || fail 'Initial HEAD deployment needs a clean checkout; use update.sh to deploy remote while retaining local edits.'
+fi
 REMOTE=$(git -C "$SOURCE_REPO" remote get-url origin)
 [[ $REMOTE == https://github.com/qq850576557-debug/aaa.git || $REMOTE == git@github.com:qq850576557-debug/aaa.git ]] || fail 'Unexpected origin or embedded credentials; configure a clean authenticated remote.'
 REF=HEAD
@@ -286,13 +289,14 @@ else
   git -C "$SOURCE_REPO" archive "$COMMIT" | tar -x -C "$JOB"
   chown -R chunmo-build:chunmo-build "$JOB"
   prepare_build_environment
-  runuser -u chunmo-build -- env -i "${BUILD_ENV[@]}" bash -c 'set -e; cd "$1"; npm ci --ignore-scripts; npm rebuild argon2 esbuild --ignore-scripts=false --foreground-scripts; npm run verify:native; npm test; npm run build; npm run build:deploy; npm audit --omit=dev; npm prune --omit=dev --ignore-scripts; node scripts/verify-native.mjs --production' _ "$JOB"
+  runuser -u chunmo-build -- env -i "${BUILD_ENV[@]}" bash -c 'set -e; cd "$1"; npm ci --ignore-scripts; npm rebuild argon2 esbuild --ignore-scripts=false --foreground-scripts; npm run verify:native; npm test; npm run build; npm run build:deploy; npm audit --omit=dev; npm prune --omit=dev --ignore-scripts; node scripts/verify-native.mjs --production; node scripts/verify-release.mjs' _ "$JOB"
   printf '%s\n' "$COMMIT" > "$JOB/.verified-build"
   chown -R root:root "$JOB"
   chmod -R a+rX,go-w "$JOB"
   chmod 0755 "$JOB"
   mv "$JOB" "$RELEASE"
 fi
+(cd "$RELEASE" && "$NODE" scripts/verify-release.mjs && "$NODE" scripts/verify-native.mjs --production)
 PHASE=database
 "$NODE" "$RELEASE/dist-deploy/ops.mjs" config "$CONF"
 "$NODE" "$RELEASE/dist-deploy/ops.mjs" cluster-input "$CONF" | runuser -u postgres -- "$NODE" "$RELEASE/dist-deploy/admin.mjs" cluster
@@ -320,9 +324,15 @@ PHASE=services
 for unit in chunmo-staging-api chunmo-staging-web chunmo-staging-backup chunmo-staging-health; do
   if [[ -f /etc/systemd/system/$unit.service ]] && ! grep -q '^# Managed by chunmo native staging deploy' /etc/systemd/system/"$unit".service; then fail "Unmanaged unit exists: $unit"; fi
 done
+# Keep the narrowly scoped helper available even after rollback to a pre-helper release.
+[[ ! -L $BASE/prepare-web-state.py ]] || fail 'Unmanaged web helper symlink.'
+if [[ -e $BASE/prepare-web-state.py ]]; then
+  grep -q '^# Managed by chunmo native staging deploy$' "$BASE/prepare-web-state.py" || fail 'Unmanaged web helper exists; preserve and review.'
+fi
+install -o root -g root -m 0755 "$RELEASE/deploy/native/prepare-web-state.py" "$BASE/prepare-web-state.py"
 python3 "$RELEASE/deploy/native/render-units.py" "$NODE" "$NGINX" "$PG_UNIT"
 systemd-analyze verify /etc/systemd/system/chunmo-staging-*.service /etc/systemd/system/chunmo-staging-*.timer
-install -d -o chunmo-staging-web -g chunmo-staging-web -m 0700 /var/lib/chunmo-staging-web/body /var/lib/chunmo-staging-web/proxy
+python3 "$RELEASE/deploy/native/prepare-web-state.py"
 "$NODE" "$RELEASE/dist-deploy/ops.mjs" nginx "$BASE/current" "$TLS" /var/lib/chunmo-staging-web > "$BASE/nginx.conf.next"
 chmod 0644 "$BASE/nginx.conf.next"
 ln -s "$RELEASE" "$BASE/.current-next.$$"
