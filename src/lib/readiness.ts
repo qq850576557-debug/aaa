@@ -45,7 +45,9 @@ export function staffWork(data: Data, personId: string, now = today()) {
     const tasks = data.tasks.filter(
       (t) =>
         t.projectId === project.id &&
-        (t.staffIds?.includes(personId) || trades.some((g) => g.id === t.tradeId)),
+        (t.staffIds !== undefined
+          ? t.staffIds.includes(personId)
+          : trades.some((g) => g.id === t.tradeId)),
     );
     if (!project.staffIds?.includes(personId) && !trades.length && !tasks.length) return [];
     const start = tasks.length ? tasks.map((t) => t.start).sort()[0] : project.start;
@@ -62,28 +64,61 @@ export function staffWork(data: Data, personId: string, now = today()) {
 }
 
 export function staffConflicts(data: Data) {
-  return (data.people ?? []).flatMap((person) => {
-    const tasks = staffWork(data, person.id)
-      .filter((w) => !isHistorical(w.project))
-      .flatMap((w) =>
-        w.tasks.filter((t) => t.status !== '已完成').map((task) => ({ task, project: w.project })),
-      );
-    const conflicts = [];
-    for (let i = 0; i < tasks.length; i++)
-      for (let j = i + 1; j < tasks.length; j++) {
-        const a = tasks[i],
-          b = tasks[j];
-        if (a.project.id === b.project.id || a.task.end < b.task.start || b.task.end < a.task.start)
-          continue;
-        conflicts.push({
-          id: [person.id, a.task.id, b.task.id].join(':'),
-          person,
-          a,
-          b,
-          start: [a.task.start, b.task.start].sort()[1],
-          end: [a.task.end, b.task.end].sort()[0],
-        });
-      }
-    return conflicts;
-  });
+  return (data.people ?? [])
+    .filter((p) => p.active && !p.deleted && data.people!.filter((x) => x.id === p.id).length === 1)
+    .flatMap((person) => {
+      const tasks = staffWork(data, person.id)
+        .filter((w) => !isHistorical(w.project) && w.project.status !== '暂停')
+        .flatMap((w) =>
+          w.tasks
+            .filter(
+              (t) => t.status !== '已完成' && dateOK(t.start) && dateOK(t.end) && t.end >= t.start,
+            )
+            .map((task) => ({ task, project: w.project })),
+        );
+      const conflicts = [];
+      for (let i = 0; i < tasks.length; i++)
+        for (let j = i + 1; j < tasks.length; j++) {
+          const a = tasks[i],
+            b = tasks[j];
+          if (
+            a.project.id === b.project.id ||
+            a.task.end < b.task.start ||
+            b.task.end < a.task.start
+          )
+            continue;
+          conflicts.push({
+            id: [person.id, a.task.id, b.task.id].join(':'),
+            person,
+            a,
+            b,
+            start: [a.task.start, b.task.start].sort()[1],
+            end: [a.task.end, b.task.end].sort()[0],
+            days:
+              distance([a.task.start, b.task.start].sort()[1], [a.task.end, b.task.end].sort()[0]) +
+              1,
+          });
+        }
+      return conflicts;
+    });
+}
+
+// Diagnostics only: never guess a missing identity or rewrite historical assignments.
+export function staffAssignmentIssues(data: Data) {
+  const people = data.people ?? [];
+  return [...data.projects, ...data.trades, ...data.tasks].flatMap((source) =>
+    (source.staffIds ?? []).flatMap((id) => {
+      const matches = people.filter((p) => p.id === id);
+      return matches.length === 1
+        ? []
+        : [
+            {
+              sourceId: source.id,
+              sourceName: source.name,
+              personId: id,
+              reason: matches.length ? '人员ID重复，身份待确认' : '人员ID无对应档案，待确认映射',
+            },
+          ];
+    }),
+  );
 }

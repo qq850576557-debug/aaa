@@ -327,7 +327,14 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
               ];
               if (!failed.length) blocked.current = true;
             }
-            setStatus(e instanceof CloudError && e.status === 409 ? '保存冲突' : '保存失败');
+            setStatus(
+              e instanceof CloudError && e.status === 409
+                ? '保存冲突'
+                : e instanceof CloudError &&
+                    (e.status === 0 || e.status >= 500 || [408, 425, 429].includes(e.status))
+                  ? '网络异常，等待重试'
+                  : '保存失败',
+            );
             setError(
               `${recoveryMessage.current}${e instanceof Error ? e.message : String(e)}。未丢弃草稿，正在保留并核对待提交内容；也可下载紧急备份。`,
             );

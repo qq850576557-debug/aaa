@@ -5148,3 +5148,36 @@ test('raw upgrade inventory reports unknown old structures without normalizing, 
     ]);
   }
 });
+
+test('database connection outage rejects a save without clearing session or committing rows, then the same receipt succeeds once', async () => {
+  testClientIp = '203.0.113.196';
+  const { a } = await seededWorkspace();
+  const before = await workspaceBase(a);
+  const body = submission(before, (d) => {
+    d.projects[0].name = '数据库恢复后的完整修改';
+  });
+  const fault = mock.method(pool, 'connect', (...args: any[]) => {
+    const error = Object.assign(new Error('isolated database outage'), { code: 'ECONNRESET' });
+    const callback = args.find((x) => typeof x === 'function');
+    if (callback) {
+      queueMicrotask(() => callback(error));
+      return;
+    }
+    return Promise.reject(error);
+  });
+  try {
+    const response = await request('/workspace', 'PUT', body, a);
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('set-cookie'), null);
+  } finally {
+    fault.mock.restore();
+  }
+  assert.deepEqual(await workspaceBase(a), before);
+  const first = await request('/workspace', 'PUT', body, a);
+  assert.equal(first.status, 200);
+  const saved = await first.json();
+  const replay = await request('/workspace', 'PUT', body, a);
+  assert.equal(replay.status, 200);
+  assert.deepEqual(await replay.json(), saved);
+  assert.equal(saved.revision, before.revision + 1);
+});

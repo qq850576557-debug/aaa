@@ -61,3 +61,26 @@ it('an opaque proxy error remains ambiguous, whereas a structured API rejection 
     details: { protocolVersion: '2', issues: [{ path: ['data', 'people', 0, 'name'] }] },
   });
 });
+
+it('keeps gateway status diagnostics without treating an ambiguous write as rejected or exposing HTML', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue(
+      new Response('<html>private upstream detail</html>', {
+        status: 502,
+        headers: { 'content-type': 'text/html' },
+      }),
+    ),
+  );
+  await expect(cloudApi('/workspace', 'PUT', { requestId: 'retain' })).rejects.toMatchObject({
+    status: 0,
+    details: { code: 'INVALID_API_RESPONSE', httpStatus: 502, contentType: 'text/html' },
+  });
+});
+it('null JSON is an invalid response rather than an invented successful acknowledgement', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('null', { status: 200 })));
+  await expect(cloudApi('/workspace', 'PUT', {})).rejects.toMatchObject({
+    status: 0,
+    details: { code: 'INVALID_API_RESPONSE' },
+  });
+});

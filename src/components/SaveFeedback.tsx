@@ -10,7 +10,7 @@ export function SaveFeedback({ children, status }: { children?: ReactNode; statu
     last = useRef('');
   const [undoEligible, setUndoEligible] = useState(false);
   useEffect(() => {
-    if (/失败|冲突|未保存|草稿|未完成/.test(status)) setVisible(false);
+    if (/失败|冲突|未保存|草稿|未完成|等待重试/.test(status)) setVisible(false);
   }, [status]);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -36,7 +36,7 @@ export function SaveFeedback({ children, status }: { children?: ReactNode; statu
     };
   }, []);
   const pending = status === '正在保存' || status === '正在恢复';
-  return !/失败|冲突|未保存|草稿|未完成/.test(status) && (visible || pending)
+  return !/失败|冲突|未保存|草稿|未完成|等待重试/.test(status) && (visible || pending)
     ? createPortal(
         <div className="save-feedback" role="status">
           <span>{pending ? status + '…' : '已保存'}</span>

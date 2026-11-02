@@ -16,6 +16,8 @@ export class CloudError extends Error {
     message: string,
     public details?: {
       code?: string;
+      httpStatus?: number;
+      contentType?: string;
       protocolVersion?: string;
       issues?: import('./workspace-save-plan').ValidationIssue[];
       conflicts?: import('./workspace-merge').WorkspaceConflict[];
@@ -49,8 +51,22 @@ export async function cloudApi<T = Record<string, unknown>>(
     try {
       value = await r.json();
     } catch {
-      throw new CloudError(saving ? 0 : r.status, '云端API不可用或响应无效；保存结果尚未确认');
+      throw new CloudError(
+        saving ? 0 : r.status,
+        `云端响应不是有效JSON（HTTP ${r.status}，${(r.headers.get('content-type') ?? '未提供内容类型').split(';')[0]}）；${saving ? '保存结果尚未确认，将使用原提交编号核对' : '请检查API与反向代理配置'}`,
+        {
+          code: 'INVALID_API_RESPONSE',
+          httpStatus: r.status,
+          contentType: r.headers.get('content-type') ?? undefined,
+        },
+      );
     }
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new CloudError(
+        saving ? 0 : r.status,
+        `云端响应结构无效（HTTP ${r.status}）；保存结果尚未确认`,
+        { code: 'INVALID_API_RESPONSE', httpStatus: r.status },
+      );
     if (!r.ok)
       throw new CloudError(
         r.status,

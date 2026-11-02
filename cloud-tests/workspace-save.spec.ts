@@ -266,7 +266,7 @@ test('a committed response lost in transit survives refresh and replays the exac
     const form = await editor(a);
     await form.getByLabel('项目备注', { exact: true }).fill('响应丢失但已提交');
     await form.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(a.locator('.save-state')).toContainText('保存失败');
+    await expect(a.locator('.save-state')).toContainText('网络异常，等待重试');
     const latest = (await api(b)).value;
     latest.data.projects[1].notes = '响应丢失后的他人编辑';
     const change = await api(b, '/workspace', 'PUT', {
@@ -383,4 +383,101 @@ test('a duplicated tab receives an independent journal slot instead of overwriti
   } finally {
     await context.close();
   }
+});
+
+test('opaque gateway and null JSON preserve one receipt through retry without false saved state', async ({
+  page,
+}) => {
+  const f = await fixtureAccounts();
+  await enter(page, f.login, f.password);
+  await seed(page);
+  const receipts: string[] = [];
+  let release = false;
+  await page.route('**/api/workspace', async (route) => {
+    if (route.request().method() === 'PUT') {
+      receipts.push(route.request().postDataJSON().requestId);
+      if (!release)
+        return route.fulfill({
+          status: 502,
+          contentType: 'text/html',
+          body: '<html>gateway</html>',
+        });
+      if (receipts.length === 2)
+        return route.fulfill({ status: 200, contentType: 'application/json', body: 'null' });
+      if (receipts.length === 3)
+        return route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: '隔离测试暂时错误' }),
+        });
+    }
+    await route.continue();
+  });
+  const dialog = await editor(page);
+  await dialog.getByLabel('项目名称', { exact: true }).fill('网关恢复后完整保存');
+  await dialog.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('.error-banner')).toContainText('HTTP 502');
+  await expect(page.locator('.save-state')).not.toContainText('已保存');
+  release = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(page.locator('.save-state')).toContainText('已保存', { timeout: 15000 });
+  expect(new Set(receipts).size).toBe(1);
+  expect(
+    (await api(page)).value.data.projects.filter((p: any) => p.name === '网关恢复后完整保存'),
+  ).toHaveLength(1);
+});
+
+test('staff conflict panel uses current explicit IDs and updates after a saved reassignment via SSE', async ({
+  page,
+}) => {
+  const f = await fixtureAccounts();
+  await enter(page, f.login, f.password);
+  const d = await seed(page);
+  d.people = ['worker-a', 'worker-b'].map((id) => ({
+    id,
+    name: '同名瓦工',
+    trade: '瓦工',
+    role: '施工人员' as const,
+    active: true,
+    notes: '',
+  }));
+  d.projects[0].name = '宝嘉誉府3-2-903室';
+  d.projects[1].name = '元都新景12-1-1001室';
+  for (const p of d.projects.slice(0, 2)) {
+    const g = d.trades.find((g) => g.projectId === p.id)!;
+    g.staffIds = ['worker-a'];
+    d.tasks.push({
+      id: 'tile-' + p.id,
+      projectId: p.id,
+      tradeId: g.id,
+      name: '瓦工施工',
+      start: '2026-11-02',
+      end: '2026-11-04',
+      status: '未开始',
+      owner: '',
+      notes: '',
+      staffIds: [p.id === d.projects[0].id ? 'worker-a' : 'worker-b'],
+    });
+  }
+  async function commit() {
+    const s = (await api(page)).value;
+    expect((await api(page, '/workspace', 'PUT', { revision: s.revision, data: d })).status).toBe(
+      200,
+    );
+  }
+  await commit();
+  await page.reload();
+  await saved(page);
+  await page.getByRole('button', { name: '人员管理', exact: true }).click();
+  await expect(page.locator('.conflict-panel')).toHaveCount(0);
+  d.tasks[1].staffIds = ['worker-a'];
+  await commit();
+  await expect(page.locator('.conflict-panel')).toContainText('worker-a', { timeout: 15000 });
+  await expect(page.locator('.conflict-panel')).toContainText('3天');
+  await page.locator('.conflict-panel summary').click();
+  await expect(page.locator('.conflict-panel')).toContainText('宝嘉誉府3-2-903室');
+  await expect(page.locator('.conflict-panel')).toContainText('元都新景12-1-1001室');
+  d.tasks[1].staffIds = [];
+  await commit();
+  await expect(page.locator('.conflict-panel')).toHaveCount(0, { timeout: 15000 });
 });
