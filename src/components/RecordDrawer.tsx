@@ -282,17 +282,9 @@ export function RecordDrawer({
                   ))}
                 </select>
               </label>
-              <label>
-                <span>负责人</span>
-                <input
-                  aria-label="事项负责人"
-                  maxLength={100}
-                  value={value.owner ?? ''}
-                  disabled={busy}
-                  onChange={(e) => change('owner', e.target.value)}
-                />
-              </label>
               <MentionPicker
+                owner={value.owner ?? ''}
+                onOwnerChange={(text) => change('owner', text)}
                 value={value.mentionIds ?? []}
                 disabled={busy}
                 onChange={(ids) => setValue((old) => ({ ...old, mentionIds: ids }))}

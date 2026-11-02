@@ -1,5 +1,5 @@
 import { projectThemeStyle, useProjectTheme } from './ProjectThemes';
-import { Check, Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2 } from 'lucide-react';
 import {
   purchaseDue,
   purchaseComplete,
@@ -34,6 +34,28 @@ export function PurchaseCard({
       data-purchase-id={p.id}
       style={projectThemeStyle(useProjectTheme(p.projectId))}
     >
+      <div className="purchase-actions" role="group" aria-label={`采购操作：${p.name}`}>
+        <select
+          aria-label={`采购状态${p.name}`}
+          value={p.status}
+          onChange={(e) => onStatus(e.target.value as Purchase['status'])}
+        >
+          <option disabled={done && !canReopen}>待采购</option>
+          <option disabled={done && !canReopen}>已下单</option>
+          <option>已完成</option>
+          {p.status === '已到货' && <option>已到货</option>}
+        </select>
+        <button className="purchase-edit" onClick={onEdit} aria-label={`编辑采购${p.name}`}>
+          <Pencil size={14} />
+          编辑
+        </button>
+        {onDelete && (
+          <button className="purchase-delete" aria-label={`删除采购${p.name}`} onClick={onDelete}>
+            <Trash2 size={14} />
+            删除
+          </button>
+        )}
+      </div>
       <div className="purchase-main">
         <div className="purchase-card-title">
           <strong>{p.name}</strong>
@@ -58,43 +80,11 @@ export function PurchaseCard({
           </small>
         )}
       </div>
-      <div className="purchase-actions" role="group" aria-label={`采购操作：${p.name}`}>
-        <select
-          aria-label={`采购状态${p.name}`}
-          value={p.status}
-          onChange={(e) => onStatus(e.target.value as Purchase['status'])}
-        >
-          <option disabled={done && !canReopen}>待采购</option>
-          <option disabled={done && !canReopen}>已下单</option>
-          <option>已完成</option>
-          {p.status === '已到货' && <option>已到货</option>}
-        </select>
-        {onDelete && (
-          <button className="purchase-delete" aria-label={`删除采购${p.name}`} onClick={onDelete}>
-            <Trash2 size={14} />
-            删除
-          </button>
-        )}
-        {showProject && (
-          <span className="purchase-project-tag">
-            {data.projects.find((x) => x.id === p.projectId)?.name}
-          </span>
-        )}
-        <button className="purchase-edit" onClick={onEdit} aria-label={`编辑采购${p.name}`}>
-          <Pencil size={14} />
-          编辑
-        </button>
-        {!done && (
-          <button
-            className="purchase-complete"
-            onClick={() => onStatus('已完成')}
-            aria-label={`完成采购${p.name}`}
-          >
-            <Check size={14} />
-            完成
-          </button>
-        )}
-      </div>
+      {showProject && (
+        <span className="purchase-project-tag">
+          {data.projects.find((x) => x.id === p.projectId)?.name}
+        </span>
+      )}
     </article>
   );
 }

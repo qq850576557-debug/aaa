@@ -154,9 +154,9 @@ test('SYS-COLLAB-004: rejected deletion can be explicitly reconciled with cloud 
   await page.getByRole('button', { name: '采购管理', exact: true }).click();
   await page
     .locator('.purchase-list')
-    .getByRole('button', { name: /^完成采购/ })
+    .getByRole('combobox', { name: /^采购状态/ })
     .first()
-    .click();
+    .selectOption('已完成');
   await expect.poll(async () => (await api(page)).value.data.purchases[0].status).toBe('已完成');
   await page.getByRole('button', { name: '重新读取云端', exact: true }).click();
   const panel = page.getByRole('dialog', { name: '核对未保存记录', exact: true });
@@ -232,9 +232,9 @@ test('SYS-COLLAB-004: one rejected personnel save must not lock unrelated procur
   await page.getByRole('button', { name: '采购管理', exact: true }).click();
   await page
     .locator('.purchase-list')
-    .getByRole('button', { name: /^完成采购/ })
+    .getByRole('combobox', { name: /^采购状态/ })
     .first()
-    .click();
+    .selectOption('已完成');
   await expect.poll(async () => (await api(page)).value.data.purchases[0].status).toBe('已完成');
   expect((await api(page)).value.data.people).toHaveLength(0);
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
@@ -499,9 +499,9 @@ test('SYS-COLLAB-004: a genuine same-person conflict does not block unrelated pu
     await loser.getByRole('button', { name: '采购管理', exact: true }).click();
     await loser
       .locator('.purchase-list')
-      .getByRole('button', { name: /^完成采购/ })
+      .getByRole('combobox', { name: /^采购状态/ })
       .first()
-      .click();
+      .selectOption('已完成');
     await expect.poll(async () => (await api(loser)).value.data.purchases[0].status).toBe('已完成');
     expect((await api(loser)).value.data.people[0].name).toBe(cloud);
     loser.on('dialog', (d) => d.accept());

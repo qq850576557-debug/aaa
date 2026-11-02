@@ -8,6 +8,7 @@ export function AgendaItem({
   onToggle,
   busy,
   canToggle = true,
+  compact = false,
   onDelete,
 }: {
   item: Item;
@@ -16,6 +17,7 @@ export function AgendaItem({
   onToggle: () => void;
   busy?: boolean;
   canToggle?: boolean;
+  compact?: boolean;
   onDelete?: () => void;
 }) {
   const category = item.kind === 'purchase' ? '采购' : '事项';
@@ -43,7 +45,7 @@ export function AgendaItem({
           onClick={onToggle}
         >
           <Check size={15} />
-          <span>{busy ? '保存中' : item.done ? '已完成' : '完成'}</span>
+          <span>{busy ? '保存中' : compact ? item.status : item.done ? '已完成' : '完成'}</span>
         </button>
         {onDelete && (
           <>

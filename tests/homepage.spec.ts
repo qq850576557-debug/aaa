@@ -40,7 +40,10 @@ for (const width of widths)
         return { y: r.top, w: r.width, h: r.height, offset: n.top - r.top };
       }),
     );
-    expect(new Set(geometry.map((g) => g.h)).size).toBe(1);
+    // Grid coordinates and hover transitions may differ below a physical pixel.
+    expect(
+      Math.max(...geometry.map((g) => g.h)) - Math.min(...geometry.map((g) => g.h)),
+    ).toBeLessThan(1);
     expect(new Set(geometry.map((g) => Math.round(g.offset))).size).toBe(1);
     const topRow = geometry.filter((g) => g.y === geometry[0].y);
     expect(topRow).toHaveLength(width >= 1280 ? 5 : width === 1024 ? 3 : 2);
@@ -132,7 +135,7 @@ for (const width of [1280, 390])
     await expect(
       today.getByRole('button', { name: '打开采购：电线及线管', exact: true }),
     ).toHaveCount(1);
-    await today.locator('.note-main').first().click();
+    await today.getByRole('button', { name: '打开事项：确认厨房插座定位', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '编辑每日事项', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '关闭浮窗', exact: true }).click();
     expect(await state(page)).toEqual(original);
@@ -150,7 +153,7 @@ for (const width of [1280, 390])
     expect(
       await today.locator('.brief-content').evaluate((e) => e.scrollHeight > e.clientHeight),
     ).toBe(true);
-    await today.locator('[data-note-id="home-list-7"] .note-main').click();
+    await today.getByRole('button', { name: '打开事项：现场复核7', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '编辑每日事项', exact: true })).toBeVisible();
     await page.getByRole('button', { name: '关闭浮窗', exact: true }).click();
     expect((await state(page)).purchases).toEqual(original.purchases);

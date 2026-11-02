@@ -6,10 +6,14 @@ export function MentionPicker({
   value,
   onChange,
   disabled = false,
+  owner,
+  onOwnerChange,
 }: {
   value: string[];
   onChange: (ids: string[]) => void;
   disabled?: boolean;
+  owner?: string;
+  onOwnerChange?: (text: string) => void;
 }) {
   const [open, setOpen] = useState(false),
     [query, setQuery] = useState(''),
@@ -35,7 +39,7 @@ export function MentionPicker({
     return () => {
       active = false;
     };
-  }, [open]);
+  }, [open, value.join(',')]);
   if (!inCloud()) return null;
   const found = accounts.filter(
     (a) =>
@@ -48,54 +52,73 @@ export function MentionPicker({
   const pick = (a: Account) => {
     if (disabled || value.includes(a.id)) return;
     onChange([...value, a.id]);
+    if (onOwnerChange && query && owner?.endsWith(query))
+      onOwnerChange(owner.slice(0, -query.length));
     setQuery('');
     input.current?.focus();
   };
   return (
     <div
-      className="mention-picker form-field span2"
+      className={`mention-picker form-field span2 ${onOwnerChange ? 'owner-picker' : ''}`}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false);
       }}
     >
-      <label>同时@负责人</label>
-      <div className="mention-selected">
-        {value.map((id) => (
-          <button
-            type="button"
-            key={id}
-            disabled={disabled}
-            onClick={() => onChange(value.filter((x) => x !== id))}
-            aria-label={`取消@${accounts.find((a) => a.id === id)?.displayName ?? id}`}
-          >
-            @{accounts.find((a) => a.id === id)?.displayName ?? '已关联账号'}{' '}
-            <span aria-hidden="true">×</span>
-          </button>
-        ))}
+      <label htmlFor={onOwnerChange ? 'record-owner' : undefined}>
+        {onOwnerChange ? '负责人' : '同时@负责人'}
+      </label>
+      <div className="mention-control">
+        <div className="mention-selected">
+          {value.map((id) => (
+            <button
+              type="button"
+              key={id}
+              disabled={disabled}
+              onClick={() => onChange(value.filter((x) => x !== id))}
+              aria-label={`取消@${accounts.find((a) => a.id === id)?.displayName ?? id}`}
+            >
+              @{accounts.find((a) => a.id === id)?.displayName ?? '已关联账号'}{' '}
+              <span aria-hidden="true">×</span>
+            </button>
+          ))}
+        </div>
+        <input
+          ref={input}
+          id={onOwnerChange ? 'record-owner' : undefined}
+          aria-label={onOwnerChange ? '事项负责人' : '@负责人搜索'}
+          placeholder={
+            onOwnerChange ? '输入负责人姓名，或@搜索系统账号' : '输入@姓名或账号，可连续选择多人'
+          }
+          maxLength={onOwnerChange ? 100 : undefined}
+          value={onOwnerChange ? (owner ?? '') : query}
+          disabled={disabled}
+          onFocus={() => setOpen(!onOwnerChange || !!query)}
+          onChange={(e) => {
+            const text = e.target.value;
+            if (onOwnerChange) {
+              const at = text.lastIndexOf('@');
+              onOwnerChange(text);
+              setQuery(at < 0 ? '' : text.slice(at));
+              setOpen(at >= 0);
+            } else {
+              setQuery(text);
+              setOpen(true);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === 'Escape') {
+              e.preventDefault();
+              e.stopPropagation();
+              setOpen(false);
+            }
+            if (e.key === 'Enter' && open) {
+              e.preventDefault();
+              if (found[0]) pick(found[0]);
+            }
+          }}
+        />
       </div>
-      <input
-        ref={input}
-        aria-label="@负责人搜索"
-        placeholder="输入@姓名或账号，可连续选择多人"
-        value={query}
-        disabled={disabled}
-        onFocus={() => setOpen(true)}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setOpen(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            setOpen(false);
-          }
-          if (e.key === 'Enter' && open) {
-            e.preventDefault();
-            if (found[0]) pick(found[0]);
-          }
-        }}
-      />
       {open && (
         <div className="mention-options" role="group" aria-label="可@员工">
           {error ? (

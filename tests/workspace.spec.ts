@@ -164,6 +164,7 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
     content: '小陈负责现场复核',
   });
   await restore(page, legacy);
+  await page.getByRole('button', { name: '提醒中心', exact: true }).click();
   await page.getByRole('button', { name: '置顶核对门洞尺寸', exact: true }).click();
   await page.getByRole('button', { name: '完成核对门洞尺寸', exact: true }).click();
   expect((await state(page)).notes.find((n) => n.id === 'legacy-confirm')).toMatchObject({
@@ -171,6 +172,7 @@ test('notes, completion, search, pin, project copy/completion/recovery and confi
     pinned: true,
     content: '小陈负责现场复核',
   });
+  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await expect(page.getByTestId('memo-panel')).toHaveCount(0);
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   await page.getByRole('dialog').getByRole('button', { name: '复制', exact: true }).click();
@@ -349,8 +351,8 @@ test('task copy/delete, procurement CRUD, project settings validation and scroll
   await page
     .locator('.purchase-row')
     .filter({ hasText: '实木地板' })
-    .getByRole('button', { name: '完成采购实木地板', exact: true })
-    .click();
+    .getByRole('combobox', { name: '采购状态实木地板', exact: true })
+    .selectOption('已完成');
   await expect(page.locator('.stat-card').filter({ hasText: '已逾期采购' })).toContainText('暂无');
   await page.getByRole('button', { name: '编辑当前项目' }).click();
   modal = page.getByRole('dialog');

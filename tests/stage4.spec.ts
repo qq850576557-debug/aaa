@@ -84,7 +84,9 @@ test('stage 4: compact procurement updates statistics and calendar independently
   await expect(metric(page, '今日待办')).toHaveText('3');
   await page.getByLabel('选择采购工地', { exact: true }).selectOption('p-home');
   await page.getByRole('button', { name: '只看未完成', exact: true }).click();
-  await card.getByRole('button', { name: '完成采购厨房五金', exact: true }).click();
+  await card
+    .getByRole('combobox', { name: '采购状态厨房五金', exact: true })
+    .selectOption('已完成');
   await expect(card).toHaveCount(0);
   await expect(metric(page, '今日待办')).toHaveText('2');
   await expect(metric(page, '未来 15 天采购')).toHaveText('1');
@@ -205,7 +207,9 @@ test('stage 4: overdue/completed compatibility, inclusive future boundary and pr
   await page.getByLabel('选择采购工地', { exact: true }).selectOption('project-two');
   await expect(purchaseList(page)).toContainText('乙工地材料');
   await expect(purchaseList(page)).not.toContainText('逾期瓷砖');
-  await purchaseList(page).getByRole('button', { name: '完成采购乙工地材料', exact: true }).click();
+  await purchaseList(page)
+    .getByRole('combobox', { name: '采购状态乙工地材料', exact: true })
+    .selectOption('已完成');
   await expect(metric(page, '今日待办')).toHaveText('2');
   await expect(metric(page, '未来 15 天采购')).toHaveText('1');
   await page.getByLabel('选择采购工地', { exact: true }).selectOption('p-home');

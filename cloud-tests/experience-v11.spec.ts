@@ -48,7 +48,9 @@ for (const width of [1440, 390]) {
       await p.getByRole('button', { name: '只看未完成', exact: true }).click();
       const panel = p.locator('.purchase-list');
       await expect(panel).toContainText('V11测试采购');
-      await panel.getByRole('button', { name: '完成采购V11测试采购', exact: true }).click();
+      await panel
+        .getByRole('combobox', { name: '采购状态V11测试采购', exact: true })
+        .selectOption('已完成');
       await expect(panel).not.toContainText('V11测试采购');
       await p.getByRole('button', { name: '采购管理', exact: true }).click();
       await expect(p.getByLabel('采购记录筛选', { exact: true })).toHaveCount(0);

@@ -106,15 +106,17 @@ test('two employees receive independent realtime @ messages, open the current re
     await drawer.getByLabel('记录所属项目', { exact: true }).selectOption('p-home');
     await drawer.getByLabel('任务事项', { exact: true }).fill('多人现场联合核验');
     await drawer.getByLabel('记录节点日期', { exact: true }).fill(today());
-    const search = drawer.getByLabel('@负责人搜索', { exact: true });
-    await search.fill('@' + f.employee);
+    const search = drawer.getByLabel('事项负责人', { exact: true });
+    await search.fill('历史负责人 @' + f.employee);
     await drawer.locator('.mention-options button').filter({ hasText: f.employee }).click();
-    await search.fill('@' + f.login);
+    await search.fill('历史负责人 @' + f.login);
     await drawer.locator('.mention-options button').filter({ hasText: f.login }).click();
     await expect(drawer.locator('.mention-selected button')).toHaveCount(2);
-    await search.fill('@' + f.employee);
+    await search.fill('历史负责人 @' + f.employee);
     await expect(drawer.locator('.mention-options button')).toHaveCount(0);
     await search.press('Escape');
+    await search.fill('历史负责人 ');
+    await expect(drawer.getByText('同时@负责人', { exact: true })).toHaveCount(0);
     await mkdir('/tmp/chunmo-upgrade-ui', { recursive: true });
     await a.screenshot({ path: '/tmp/chunmo-upgrade-ui/multi-mention-1440.png' });
     await drawer.getByRole('button', { name: '保存记录', exact: true }).click();
@@ -134,6 +136,25 @@ test('two employees receive independent realtime @ messages, open the current re
     await expect(b.locator('.record-drawer').getByLabel('任务事项', { exact: true })).toHaveValue(
       '多人现场联合核验',
     );
+    await expect(b.locator('.record-drawer').getByLabel('事项负责人', { exact: true })).toHaveValue(
+      '历史负责人 ',
+    );
+    await expect(b.locator('.record-drawer .mention-selected button')).toHaveCount(2);
+    await b.locator('.record-drawer .mention-selected button').first().click();
+    await expect(b.locator('.record-drawer .mention-selected button')).toHaveCount(1);
+    await b
+      .locator('.record-drawer')
+      .getByRole('button', { name: '保存记录', exact: true })
+      .click();
+    await expect(b.locator('.record-drawer')).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const saved = (await api(b, '/records')).value.records.find(
+          (r: any) => r.title === '多人现场联合核验',
+        );
+        return { owner: saved?.owner, mentions: saved?.mentionIds?.length };
+      })
+      .toEqual({ owner: '历史负责人 ', mentions: 1 });
     await expect(b.getByRole('button', { name: '我的@消息', exact: true })).toBeVisible();
     await expect(a.getByRole('button', { name: '我的@消息，1条未读', exact: true })).toBeVisible();
   } finally {

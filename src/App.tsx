@@ -681,7 +681,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           .toLowerCase()
           .includes(search.toLowerCase()),
     )
-    .sort((a, b) => purchaseDue(a, data).localeCompare(purchaseDue(b, data)));
+    .sort(
+      (a, b) =>
+        Number(purchaseComplete(a)) - Number(purchaseComplete(b)) ||
+        purchaseDue(a, data).localeCompare(purchaseDue(b, data)),
+    );
   function purchaseCard(x: Purchase) {
     return (
       <PurchaseCard
@@ -721,6 +725,19 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     setProjectStatusFilter(false);
   }
   function agendaItem(item: AgendaEntry) {
+    if (item.kind === 'legacy' && ['overview', 'schedule', 'completed'].includes(view))
+      return (
+        <AgendaItem
+          key={'legacy:' + item.id}
+          item={item}
+          compact
+          projectName={
+            data.projects.find((project) => project.id === item.projectId)?.name ?? '历史项目'
+          }
+          onOpen={() => noteEditor(item.value)}
+          onToggle={() => save('note', { ...item.value, done: !item.done })}
+        />
+      );
     if (item.kind === 'legacy')
       return (
         <NoteCard
@@ -738,6 +755,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       <AgendaItem
         key={item.kind + ':' + item.id}
         item={item}
+        compact={['overview', 'schedule', 'completed'].includes(view)}
         projectName={
           data.projects.find((project) => project.id === item.projectId)?.name || '历史项目'
         }

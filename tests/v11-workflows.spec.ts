@@ -62,7 +62,9 @@ for (const width of [1440, 390])
     await list.getByRole('button', { name: '删除采购核查材料0', exact: true }).click();
     await page.getByRole('button', { name: '确认操作', exact: true }).click();
     expect((await state(page)).purchases).toHaveLength(7);
-    await list.getByRole('button', { name: '完成采购核查材料1', exact: true }).click();
+    await list
+      .getByRole('combobox', { name: '采购状态核查材料1', exact: true })
+      .selectOption('已完成');
     expect((await state(page)).purchases.find((p) => p.id === 'v11-p1')?.status).toBe('已完成');
     await expect(page.getByLabel('采购记录筛选', { exact: true })).toHaveCount(0);
     await expect(list.locator('.purchase-row.done')).toHaveCount(1);

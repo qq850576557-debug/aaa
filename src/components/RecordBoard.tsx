@@ -74,7 +74,9 @@ export function RecordBoard({
     window.addEventListener('chunmo-before-navigation', navigate);
     return () => window.removeEventListener('chunmo-before-navigation', navigate);
   }, []);
-  const visible = visibleRecords(records, { project, status, search, sort });
+  const visible = visibleRecords(records, { project, status, search, sort }).sort(
+    (a, b) => Number(a.status === '已完成') - Number(b.status === '已完成'),
+  );
   const projectGroups = [
     ...projects.map((p) => ({ id: p.id, name: p.name, missing: false })),
     ...records
@@ -249,7 +251,7 @@ export function RecordBoard({
                   {list.length ? (
                     list.map((r) => (
                       <button
-                        className="workbench-card record-card"
+                        className={`workbench-card record-card ${r.status === '已完成' ? 'done' : ''}`}
                         style={themeStyle(r.projectId)}
                         key={r.id}
                         disabled={source.busyIds.includes(r.id)}

@@ -114,7 +114,7 @@ for (const width of [1440, 1280, 390])
     await board.getByLabel('搜索看板记录', { exact: true }).fill('');
     await board.getByLabel('看板状态筛选', { exact: true }).selectOption('');
     await board.getByLabel('看板排序', { exact: true }).selectOption('dateDesc');
-    expect(await lane.locator('.record-card').first().textContent()).toContain('复核厨房');
+    expect(await lane.locator('.record-card').last().textContent()).toContain('复核厨房');
     await board.getByLabel('看板分组', { exact: true }).selectOption('status');
     await expect(board.locator('.board-lane')).toHaveCount(7);
     await board.getByLabel('看板分组', { exact: true }).selectOption('project');

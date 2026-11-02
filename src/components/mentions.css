@@ -151,3 +151,20 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.owner-picker .mention-control {
+  border: 1px solid #ccdcd2;
+  border-radius: 10px;
+  background: #fafcfb;
+  padding: 6px;
+}
+.owner-picker .mention-control:focus-within {
+  border-color: #648b74;
+  box-shadow: 0 0 0 2px #648b741a;
+}
+.record-fields .owner-picker .mention-control input {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  width: 100%;
+  min-width: 0;
+}
