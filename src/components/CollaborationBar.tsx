@@ -46,9 +46,10 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
   }, [isCloud]);
   return (
     <div className="collaboration-bar">
-      {selected && (
+      {selected && user && (
         <OnlineCard
           account={selected}
+          user={user}
           online={online.some((a) => a.id === selected.id)}
           onClose={() => setSelected(null)}
         />
@@ -83,6 +84,7 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
           <button
             type="button"
             className="online-member"
+            data-account-id={a.id}
             key={a.id}
             title={`${a.displayName} · 在线`}
             aria-label={`查看${a.displayName}的在线名片`}

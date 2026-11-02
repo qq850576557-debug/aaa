@@ -168,7 +168,7 @@ test('procurement shows all sites in square cards and completed navigation canno
   await expect(page.locator('.sidebar-projects')).toContainText('第二工地');
   const box = await page.locator('.procurement-workspace .purchase-card').first().boundingBox();
   expect(Math.abs(box!.width - box!.height)).toBeLessThan(2);
-  await page.getByLabel('采购所属工地筛选', { exact: true }).selectOption('site-two');
+  await page.getByLabel('选择采购工地', { exact: true }).selectOption('site-two');
   await expect(page.locator('.procurement-workspace .purchase-card')).toHaveCount(1);
   await page.getByRole('button', { name: '事项管理', exact: true }).click();
   await expect(page.locator('.sidebar-projects')).toContainText('第二工地');

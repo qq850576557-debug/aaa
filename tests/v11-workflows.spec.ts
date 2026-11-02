@@ -64,8 +64,8 @@ for (const width of [1440, 390])
     expect((await state(page)).purchases).toHaveLength(7);
     await list.getByRole('button', { name: '完成采购核查材料1', exact: true }).click();
     expect((await state(page)).purchases.find((p) => p.id === 'v11-p1')?.status).toBe('已完成');
-    await page.getByLabel('采购记录筛选', { exact: true }).selectOption('已完成');
-    await expect(list.locator('.purchase-row')).toHaveCount(1);
+    await expect(page.getByLabel('采购记录筛选', { exact: true })).toHaveCount(0);
+    await expect(list.locator('.purchase-row.done')).toHaveCount(1);
     expect((await state(page)).notes).toHaveLength(12);
   });
 test('V1.1 held pointer scrolls continuously at the timeline edge, stops in center and saves aligned dates', async ({

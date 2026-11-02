@@ -45,13 +45,13 @@ for (const width of [1440, 390]) {
       await modal.getByLabel('采购内容 / 事项标题', { exact: true }).fill('V11测试采购');
       await modal.getByLabel('采购截止日期', { exact: true }).fill(today());
       await modal.getByRole('button', { name: '保存', exact: true }).click();
-      await p.getByLabel('采购记录筛选', { exact: true }).selectOption('待采购');
+      await p.getByRole('button', { name: '只看未完成', exact: true }).click();
       const panel = p.locator('.purchase-list');
       await expect(panel).toContainText('V11测试采购');
       await panel.getByRole('button', { name: '完成采购V11测试采购', exact: true }).click();
       await expect(panel).not.toContainText('V11测试采购');
       await p.getByRole('button', { name: '采购管理', exact: true }).click();
-      await p.getByLabel('采购记录筛选', { exact: true }).selectOption('已完成');
+      await expect(p.getByLabel('采购记录筛选', { exact: true })).toHaveCount(0);
       const row = p.locator('.purchase-list .purchase-row');
       await expect(row).toContainText('V11测试采购');
       // The compact card intentionally omits provenance controls. Verify the
@@ -72,7 +72,7 @@ for (const width of [1440, 390]) {
       await expect(row.locator('.purchase-trace')).toHaveCount(0);
       await expect(row.getByRole('button', { name: '采购历史', exact: true })).toHaveCount(0);
       await row.getByLabel('采购状态V11测试采购', { exact: true }).selectOption('待采购');
-      await p.getByLabel('采购记录筛选', { exact: true }).selectOption('待采购');
+      await p.getByRole('button', { name: '只看未完成', exact: true }).click();
       await expect(row).toContainText('V11测试采购');
       await p.reload();
       await p.getByRole('button', { name: '采购管理', exact: true }).click();

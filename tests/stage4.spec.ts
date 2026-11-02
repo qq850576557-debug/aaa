@@ -82,7 +82,8 @@ test('stage 4: compact procurement updates statistics and calendar independently
   const card = purchaseList(page).locator(`[data-purchase-id="${purchase.id}"]`);
   await expect(card).toContainText('今天截止');
   await expect(metric(page, '今日待办')).toHaveText('3');
-  await page.getByLabel('采购记录筛选', { exact: true }).selectOption('待采购');
+  await page.getByLabel('选择采购工地', { exact: true }).selectOption('p-home');
+  await page.getByRole('button', { name: '只看未完成', exact: true }).click();
   await card.getByRole('button', { name: '完成采购厨房五金', exact: true }).click();
   await expect(card).toHaveCount(0);
   await expect(metric(page, '今日待办')).toHaveText('2');
@@ -187,7 +188,8 @@ test('stage 4: overdue/completed compatibility, inclusive future boundary and pr
   await boot(page);
   await restore(page, d);
   await showPurchases(page);
-  await page.getByLabel('采购记录筛选', { exact: true }).selectOption('待采购');
+  await page.getByLabel('选择采购工地', { exact: true }).selectOption('p-home');
+  await page.getByRole('button', { name: '只看未完成', exact: true }).click();
   await expect(purchaseList(page)).toContainText('已逾期 2 天');
   await expect(purchaseList(page)).not.toContainText('已完成材料');
   await expect(purchaseList(page)).not.toContainText('旧已到货');
@@ -200,13 +202,13 @@ test('stage 4: overdue/completed compatibility, inclusive future boundary and pr
   await expect(page.locator('.reminder-columns')).toContainText('剩余 15 天');
   await expect(page.locator('.reminder-columns')).not.toContainText('十六天材料');
   await showPurchases(page);
-  await page.locator('.sidebar-project-list [data-project-id="project-two"]').click();
+  await page.getByLabel('选择采购工地', { exact: true }).selectOption('project-two');
   await expect(purchaseList(page)).toContainText('乙工地材料');
   await expect(purchaseList(page)).not.toContainText('逾期瓷砖');
   await purchaseList(page).getByRole('button', { name: '完成采购乙工地材料', exact: true }).click();
   await expect(metric(page, '今日待办')).toHaveText('2');
   await expect(metric(page, '未来 15 天采购')).toHaveText('1');
-  await page.locator('.sidebar-project-list [data-project-id="p-home"]').click();
+  await page.getByLabel('选择采购工地', { exact: true }).selectOption('p-home');
   await expect(purchaseList(page)).toContainText('已逾期 2 天');
   expect((await state(page)).purchases.find((p) => p.name === '逾期瓷砖')?.status).toBe('待采购');
 });

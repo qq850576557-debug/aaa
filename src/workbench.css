@@ -3027,3 +3027,117 @@ textarea::placeholder {
   flex-wrap: wrap;
   margin-top: auto;
 }
+
+/* Keep online avatars clickable beside the full identity capsule on narrow screens. */
+@media (max-width: 700px) {
+  .app-shell .topbar {
+    height: auto;
+    min-height: 102px;
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .app-shell .topbar > .collaboration-bar {
+    order: 0;
+    flex: 1 0 100%;
+    width: 100%;
+  }
+  .app-shell .topbar > :not(.collaboration-bar) {
+    order: 1;
+  }
+  .app-shell .topbar > .sync-status {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+  }
+  .app-shell main {
+    padding-top: 102px;
+  }
+  .app-shell .sidebar-projects {
+    top: 108px;
+  }
+}
+
+.purchase-project-groups {
+  display: grid;
+  gap: 20px;
+}
+.purchase-project-group {
+  min-width: 0;
+}
+.purchase-project-group > h3 {
+  margin: 0 0 9px;
+  font-size: 14px;
+  color: var(--project-ink);
+  border-left: 3px solid var(--project-border);
+  padding-left: 9px;
+}
+.purchase-project-group > h3 small {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: #6b8074;
+}
+.app-shell .procurement-workspace .purchase-list {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 220px));
+  gap: 12px;
+}
+.app-shell .procurement-workspace .purchase-list .purchase-card {
+  padding: 11px;
+  gap: 8px;
+  border-radius: 12px;
+}
+.app-shell .procurement-workspace .purchase-card .purchase-actions {
+  gap: 5px;
+}
+.app-shell .procurement-workspace .purchase-card .purchase-actions :is(button, select) {
+  min-height: 28px;
+  padding: 4px 7px;
+  font-size: 11px;
+}
+.app-shell .procurement-workspace .purchase-card .purchase-actions svg {
+  width: 12px;
+  height: 12px;
+}
+.app-shell .purchase-project-picker {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 5px 9px;
+  max-width: 320px;
+  min-width: 0;
+  border-color: var(--project-border);
+  background: var(--project-surface);
+}
+.purchase-project-picker > span {
+  white-space: nowrap;
+  font-size: 12px;
+}
+.app-shell .purchase-project-picker select {
+  min-width: 0;
+  width: auto;
+  max-width: 230px;
+  min-height: 28px;
+  padding: 2px 20px 2px 0;
+  background-color: transparent;
+  border: 0;
+  color: var(--project-ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+@media (max-width: 700px) {
+  .app-shell .procurement-workspace .purchase-list {
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 220px));
+    gap: 9px;
+  }
+  .app-shell .procurement-workspace .purchase-list .purchase-card {
+    padding: 10px;
+  }
+  .app-shell .procurement-workspace .purchase-card .purchase-actions :is(button, select) {
+    min-height: 32px;
+  }
+  .app-shell .purchase-project-picker {
+    max-width: 100%;
+  }
+}

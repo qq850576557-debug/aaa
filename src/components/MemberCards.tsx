@@ -20,11 +20,15 @@ export function MemberCards({
   onlyId,
   onPhotoClick,
   headerAction,
+  readOnly = false,
+  onlineStatus,
 }: {
   user: CloudUser;
   onlyId?: string;
   onPhotoClick?: (aspect: number) => void;
   headerAction?: ReactNode;
+  readOnly?: boolean;
+  onlineStatus?: boolean;
   onSaved: (card: MemberCard) => Promise<void>;
 }) {
   const [cards, setCards] = useState<MemberCard[]>([]),
@@ -121,20 +125,22 @@ export function MemberCards({
   }
   return (
     <section className="member-cards-section" aria-label="员工名片">
-      <div className="section-heading">
-        <h3>团队名片</h3>
-        {headerAction}
-        {user.owner && (
-          <button
-            onClick={() => {
-              setManage(true);
-              setError('');
-            }}
-          >
-            部门管理
-          </button>
-        )}
-      </div>
+      {!readOnly && (
+        <div className="section-heading">
+          <h3>团队名片</h3>
+          {headerAction}
+          {user.owner && (
+            <button
+              onClick={() => {
+                setManage(true);
+                setError('');
+              }}
+            >
+              部门管理
+            </button>
+          )}
+        </div>
+      )}
       <div className="member-cards-grid">
         {cards
           .filter((card) => !onlyId || card.id === onlyId)
@@ -148,7 +154,7 @@ export function MemberCards({
                 >
                   <Avatar account={card} kind="card" showStatus />
                 </button>
-                {onPhotoClick && card.id === user.id ? (
+                {!readOnly && onPhotoClick && card.id === user.id ? (
                   <button
                     type="button"
                     className="member-photo-edit"
@@ -170,6 +176,9 @@ export function MemberCards({
               </div>
               <div className="member-card-content">
                 <h3>{card.displayName}</h3>
+                {onlineStatus !== undefined && (
+                  <p className="member-card-presence">{onlineStatus ? '● 在线' : '○ 离线'}</p>
+                )}
                 {card.englishName ? (
                   <p className="member-card-english">{card.englishName}</p>
                 ) : (
@@ -191,7 +200,7 @@ export function MemberCards({
                     {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉品牌 Logo" />}
                     SJD<span className="brand-name">春茉</span>
                   </strong>
-                  {(user.owner || user.id === card.id) && (
+                  {!readOnly && (user.owner || user.id === card.id) && (
                     <button
                       className="text-btn member-card-edit"
                       aria-label={`编辑${card.displayName}名片`}

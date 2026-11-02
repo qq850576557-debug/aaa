@@ -1,9 +1,10 @@
+import { PurchaseProjectPicker } from './components/PurchaseProjectPicker';
 import { SyncStatus } from './components/SyncStatus';
 import { CloudHistoryPanel } from './components/CloudHistoryPanel';
 import { SaveFeedback } from './components/SaveFeedback';
 import { visibleLegacyNotes } from './lib/legacy-records';
 import { LegacySource } from './components/LegacySource';
-import { ThemedWorkspace } from './components/ProjectThemes';
+import { ProjectSurface, ThemedWorkspace } from './components/ProjectThemes';
 import { WorkspaceSaveConflict } from './components/WorkspaceSaveConflict';
 import { DeferredPanel } from './components/ModuleBoundary';
 import { mergeWorkspace } from './lib/workspace-merge';
@@ -214,7 +215,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [purchaseProject, setPurchaseProject] = useState('');
-  const [purchaseFilter, setPurchaseFilter] = useState('全部');
   const { notices, notify, dismiss } = useNotices();
   useEffect(() => {
     const open = (event: Event) => {
@@ -504,7 +504,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       kind: 'purchase',
       value: v ?? {
         id: id(),
-        projectId: p!.id,
+        projectId: view === 'purchases' ? purchaseProject || p!.id : p!.id,
         name: '',
         taskId: '',
         due: date,
@@ -677,8 +677,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           ? !purchaseProject || x.projectId === purchaseProject
           : x.projectId === p?.id) &&
         (!onlyOpen || !purchaseComplete(x)) &&
-        (purchaseFilter === '全部' ||
-          (purchaseFilter === '已完成' ? purchaseComplete(x) : !purchaseComplete(x))) &&
         `${x.name} ${x.notes} ${x.owner} ${x.quantity ?? ''} ${x.specification ?? ''}`
           .toLowerCase()
           .includes(search.toLowerCase()),
@@ -1242,23 +1240,25 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                   </button>
                 </div>
               )}
-              <div className="project-toolbar">
-                {p ? (
-                  <ProjectContext project={p} />
-                ) : (
-                  <strong className="current-project-name">暂无项目</strong>
-                )}
-                <div className="toolbar">
-                  {p && (
-                    <>
-                      <button onClick={archiveProject}>
-                        <Archive size={15} />
-                        {isHistorical(p) ? '恢复施工中' : '标记完工'}
-                      </button>
-                    </>
+              {view !== 'purchases' && (
+                <div className="project-toolbar">
+                  {p ? (
+                    <ProjectContext project={p} />
+                  ) : (
+                    <strong className="current-project-name">暂无项目</strong>
                   )}
+                  <div className="toolbar">
+                    {p && (
+                      <>
+                        <button onClick={archiveProject}>
+                          <Archive size={15} />
+                          {isHistorical(p) ? '恢复施工中' : '标记完工'}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
               {!p ? (
                 <Empty
                   title={archived ? '暂无已完工项目' : '一个理想的家，从一份好计划开始。'}
@@ -1409,6 +1409,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                         <h2>
                           采购清单 <span className="count">{projectPurchases.length} 条记录</span>
                         </h2>
+                        <PurchaseProjectPicker
+                          projects={data.projects}
+                          value={purchaseProject}
+                          onChange={setPurchaseProject}
+                        />
                         <div className="search-field">
                           <Search size={16} />
                           <input
@@ -1418,36 +1423,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                             onChange={(e) => setSearch(e.target.value)}
                           />
                         </div>
-                        <label className="purchase-filter">
-                          <span className="sr-only">采购所属工地</span>
-                          <select
-                            aria-label="采购所属工地筛选"
-                            value={purchaseProject}
-                            onChange={(e) => setPurchaseProject(e.target.value)}
-                          >
-                            <option value="">全部工地</option>
-                            {data.projects.map((project) => (
-                              <option key={project.id} value={project.id}>
-                                {project.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="purchase-filter">
-                          <span className="sr-only">采购状态</span>
-                          <select
-                            aria-label="采购记录筛选"
-                            value={purchaseFilter}
-                            onChange={(e) => {
-                              setPurchaseFilter(e.target.value);
-                              setOnlyOpen(false);
-                            }}
-                          >
-                            <option>全部</option>
-                            <option>待采购</option>
-                            <option>已完成</option>
-                          </select>
-                        </label>
                         <button
                           className="purchase-open-toggle"
                           aria-pressed={onlyOpen}
@@ -1461,14 +1436,33 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                           新增采购
                         </button>
                       </div>
-                      <div className="purchase-list">
-                        {projectPurchases.map(purchaseCard)}
+                      <div className="purchase-project-groups">
+                        {data.projects.map((project) => {
+                          const items = projectPurchases.filter((x) => x.projectId === project.id);
+                          return items.length ? (
+                            <ProjectSurface
+                              key={project.id}
+                              projectId={project.id}
+                              className="purchase-project-group"
+                              role="region"
+                              aria-label={`采购工地：${project.name}`}
+                            >
+                              <h3>
+                                {project.name}
+                                <small>{items.length}条</small>
+                              </h3>
+                              <div className="purchase-list">{items.map(purchaseCard)}</div>
+                            </ProjectSurface>
+                          ) : null;
+                        })}
                         {!projectPurchases.length && (
-                          <Empty
-                            small
-                            title="采购清单还是空的"
-                            text="添加材料并关联施工任务，提前安排到货时间。"
-                          />
+                          <div className="purchase-list">
+                            <Empty
+                              small
+                              title="采购清单还是空的"
+                              text="添加材料并关联施工任务，提前安排到货时间。"
+                            />
+                          </div>
                         )}
                       </div>
                     </section>

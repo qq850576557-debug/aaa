@@ -134,3 +134,9 @@
     height: 192px;
   }
 }
+
+.member-card-presence {
+  color: #5c806a;
+  font-size: 12px;
+  margin: 4px 0 8px;
+}
