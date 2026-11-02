@@ -78,8 +78,8 @@ for (const width of [1440, 1280, 390, 320])
     await edit.getByLabel('采购内容 / 事项标题', { exact: true }).fill('更新后的采购五金');
     await edit.getByRole('button', { name: '保存', exact: true }).click();
     await expect.poll(() => calls).toBe(1);
-    await expect(page.locator('.save-feedback')).toContainText('正在保存');
-    await expect(page.locator('.save-feedback')).not.toContainText('已保存');
+    await expect(page.locator('.save-feedback')).toContainText('云端同步中');
+    await expect(page.locator('.save-feedback')).not.toContainText('云端已保存');
     release();
     await expect(page.locator('.save-feedback')).toContainText('已保存');
     await expect(page.locator('.save-state')).toContainText('已保存');

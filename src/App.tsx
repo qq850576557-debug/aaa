@@ -1,5 +1,5 @@
+import { downloadLocalRecovery } from './components/SyncStatus';
 import { PurchaseProjectPicker } from './components/PurchaseProjectPicker';
-import { SyncStatus } from './components/SyncStatus';
 import { CloudHistoryPanel } from './components/CloudHistoryPanel';
 import { SaveFeedback } from './components/SaveFeedback';
 import { visibleLegacyNotes } from './lib/legacy-records';
@@ -306,7 +306,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     setUndo(null);
     update((d) => {
       const next = fn(d);
-      parseBackup(next);
+      if (!isCloud) parseBackup(next);
       return {
         ...next,
         projects: next.projects.map((x) =>
@@ -819,6 +819,22 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         )}
         <section
           className="panel reminder-section"
+          hidden={!!metricFilter && metricFilter !== '今日待办'}
+        >
+          <div className="section-heading">
+            <h2>
+              <ClipboardList size={18} />
+              事项管理
+            </h2>
+            <span>{records.length} 项 · 待办与持续跟进</span>
+          </div>
+          <div className="reminder-record-grid">{records.map(agendaItem)}</div>
+          {!records.length && (
+            <Empty small title="暂无待处理事项" text="新增事项后，与事项管理同步显示。" />
+          )}
+        </section>
+        <section
+          className="panel reminder-section procurement-workspace reminder-purchases"
           hidden={
             !!metricFilter && !['未来 15 天采购', '已逾期采购', '今日待办'].includes(metricFilter)
           }
@@ -826,31 +842,34 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           <div className="section-heading">
             <h2>
               <Package size={18} />
-              采购提醒
+              采购管理
             </h2>
             <span>{purchases.length} 项 · 未来15天及逾期</span>
           </div>
-          <div className="purchase-list">
-            {purchases.map((x) => purchaseCard(x.value as Purchase))}
+          <div className="purchase-project-groups">
+            {active.map((project) => {
+              const rows = purchases.filter((x) => x.projectId === project.id);
+              return rows.length ? (
+                <ProjectSurface
+                  className="purchase-project-group"
+                  key={project.id}
+                  projectId={project.id}
+                  role="region"
+                  aria-label={`采购提醒工地：${project.name}`}
+                >
+                  <h3>
+                    {project.name}
+                    <small>{rows.length}条</small>
+                  </h3>
+                  <div className="purchase-list">
+                    {rows.map((x) => purchaseCard(x.value as Purchase))}
+                  </div>
+                </ProjectSurface>
+              ) : null;
+            })}
           </div>
           {!purchases.length && (
             <Empty small title="暂无采购提醒" text="采购记录将按截止日期显示在这里。" />
-          )}
-        </section>
-        <section
-          className="panel reminder-section"
-          hidden={!!metricFilter && metricFilter !== '今日待办'}
-        >
-          <div className="section-heading">
-            <h2>
-              <ClipboardList size={18} />
-              事项提醒
-            </h2>
-            <span>{records.length} 项 · 待办与持续跟进</span>
-          </div>
-          <div className="reminder-record-grid">{records.map(agendaItem)}</div>
-          {!records.length && (
-            <Empty small title="暂无待处理事项" text="新增事项后，与事项管理同步显示。" />
           )}
         </section>
         {!!legacy.length && (
@@ -1018,8 +1037,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           </div>
           <button
             className="icon-btn workspace-backup"
-            aria-label="备份数据"
-            title="备份数据"
+            aria-label="下载数据"
+            title="下载数据"
             onClick={() => setBackup(true)}
             disabled={!ready}
           >
@@ -1028,8 +1047,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           <div className="save-state sr-only" role="status">
             <span>{status}</span>
           </div>
-          {isCloud && <SyncStatus status={status} />}
-          <SaveFeedback status={status}>
+          <SaveFeedback status={status} cloud={isCloud}>
             {undo && (
               <button
                 className="undo-quiet"
@@ -1082,7 +1100,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                       重新读取云端
                     </button>
                   )}
-                  <button onClick={() => backupJSON(data)}>紧急备份</button>
+                  <button
+                    onClick={() => (isCloud ? void downloadLocalRecovery() : backupJSON(data))}
+                  >
+                    紧急备份
+                  </button>
                 </>
               ) : (
                 <button onClick={() => window.location.reload()}>重新读取</button>
@@ -1474,7 +1496,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           <footer className="page-footer">
             <span>SJD · 春茉空间设计</span>
 
-            <span>本地存储 · 不自动同步</span>
+            <span>{isCloud ? '本地优先 · 云端自动同步' : '本地存储 · 不自动同步'}</span>
           </footer>
         </main>
       </div>
@@ -1515,6 +1537,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         <DeferredPanel>
           <RecordDrawer
             key={focusedRecord.id}
+            onQueued={() => {
+              recordDirty.current = false;
+              setFocusedRecord(null);
+            }}
             record={focusedRecord}
             initialProject={focusedRecord.projectId}
             projects={data.projects}

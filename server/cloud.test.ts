@@ -5181,3 +5181,148 @@ test('database connection outage rejects a save without clearing session or comm
   assert.deepEqual(await replay.json(), saved);
   assert.equal(saved.revision, before.revision + 1);
 });
+
+test('incremental saves verify resource proofs, merge peer fields, replay one receipt and never rewrite unrelated graph rows', async () => {
+  testClientIp = '203.0.113.180';
+  const { a, b } = await seededWorkspace();
+  const get = async (client: Client) =>
+    await (await request('/workspace', 'GET', undefined, client)).json();
+  const first = await get(a),
+    peer = await get(b);
+  const { makeWorkspaceDelta } = await import('../src/lib/workspace-delta');
+  const local = structuredClone(first.data);
+  local.projects[0].notes = '增量备注';
+  const second = structuredClone(peer.data);
+  second.projects[0].name = '同事项目名';
+  const rows = async () => ({
+    tasks: (
+      await pool.query('SELECT id,xmin::text AS tx FROM task WHERE workspace_id=$1 ORDER BY id', [
+        a.user.workspaceId,
+      ])
+    ).rows,
+    assignments: (
+      await pool.query(
+        'SELECT scope_kind,scope_id,person_id,xmin::text AS tx FROM assignment WHERE workspace_id=$1 ORDER BY scope_kind,scope_id,person_id',
+        [a.user.workspaceId],
+      )
+    ).rows,
+  });
+  const before = await rows();
+  const one = makeWorkspaceDelta(
+      first.data,
+      local,
+      first.revision,
+      randomUUID(),
+      first.resourceProofs,
+    ),
+    two = makeWorkspaceDelta(peer.data, second, peer.revision, randomUUID(), peer.resourceProofs);
+  for (const [body, client] of [
+    [one, a],
+    [two, b],
+  ] as const) {
+    const response = await request('/workspace', 'PUT', body, client);
+    assert.equal(response.status, 200, await response.clone().text());
+  }
+  const saved = await get(a);
+  assert.equal(saved.data.projects[0].notes, '增量备注');
+  assert.equal(saved.data.projects[0].name, '同事项目名');
+  assert.deepEqual(await rows(), before);
+  assert.equal((await request('/workspace', 'PUT', one, a)).status, 200);
+  assert.equal((await get(a)).revision, saved.revision);
+  const forged = structuredClone(one);
+  forged.requestId = randomUUID();
+  (forged.changes[0].before as any).notes = '伪造基线';
+  assert.equal((await request('/workspace', 'PUT', forged, a)).status, 403);
+  assert.equal(
+    (await request('/workspace', 'PUT', { ...one, requestId: randomUUID() }, b)).status,
+    403,
+  );
+  const changed = structuredClone(one);
+  (changed.changes[0].after as any).notes = '同编号不同内容';
+  assert.equal((await request('/workspace', 'PUT', changed, a)).status, 409);
+  assert.deepEqual(await get(a), saved);
+});
+test('incremental create/delete keeps relational validation, project deletion permissions and historical idempotency', async () => {
+  testClientIp = '203.0.113.179';
+  const { a, b } = await seededWorkspace();
+  const { makeWorkspaceDelta } = await import('../src/lib/workspace-delta');
+  const first = await (await request('/workspace', 'GET', undefined, a)).json();
+  const next = structuredClone(first.data);
+  next.notes.push({ ...next.notes[0], id: randomUUID(), title: '只增一条' });
+  const delta = makeWorkspaceDelta(
+    first.data,
+    next,
+    first.revision,
+    randomUUID(),
+    first.resourceProofs,
+  );
+  const created = await request('/workspace', 'PUT', delta, a);
+  assert.equal(created.status, 200, await created.clone().text());
+  const saved = await created.json();
+  assert.equal(saved.data.notes.length, first.data.notes.length + 1);
+  const bad = structuredClone(saved.data);
+  bad.tasks[0].tradeId = '不存在的工种';
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        makeWorkspaceDelta(saved.data, bad, saved.revision, randomUUID(), saved.resourceProofs),
+        a,
+      )
+    ).status,
+    409,
+  );
+  const peer = await (await request('/workspace', 'GET', undefined, b)).json();
+  const empty = emptyData();
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        makeWorkspaceDelta(peer.data, empty, peer.revision, randomUUID(), peer.resourceProofs),
+        b,
+      )
+    ).status,
+    403,
+  );
+  const deleted = structuredClone(saved.data);
+  deleted.notes = deleted.notes.filter((x: any) => x.id !== next.notes.at(-1).id);
+  const response = await request(
+    '/workspace',
+    'PUT',
+    makeWorkspaceDelta(saved.data, deleted, saved.revision, randomUUID(), saved.resourceProofs),
+    a,
+  );
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data.notes, first.data.notes);
+});
+
+test('incremental first-time personnel and optional metadata use the signed null baseline consistently', async () => {
+  testClientIp = '203.0.113.178';
+  const { b } = await setup();
+  const baseline = await (await request('/workspace', 'GET', undefined, b)).json();
+  const next = structuredClone(baseline.data);
+  next.people = [
+    {
+      id: randomUUID(),
+      name: '新增师傅',
+      role: '施工人员',
+      trade: '瓦工',
+      notes: '保留原始资料',
+      active: true,
+    },
+  ];
+  next.nameHistory = ['新增师傅'];
+  const { makeWorkspaceDelta } = await import('../src/lib/workspace-delta');
+  const body = makeWorkspaceDelta(
+    baseline.data,
+    next,
+    baseline.revision,
+    randomUUID(),
+    baseline.resourceProofs,
+  );
+  const response = await request('/workspace', 'PUT', body, b);
+  assert.equal(response.status, 200, await response.clone().text());
+  assert.deepEqual((await response.json()).data.people, next.people);
+});

@@ -51,7 +51,7 @@ for (const width of widths)
     expect(Math.max(...boxes)).toBeLessThan(270);
     await expect(page.locator('.brief-empty')).toHaveCount(2);
     await expect(page.locator('.workspace-status-group,.local-notice')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '备份数据', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '下载数据', exact: true })).toBeVisible();
     await expect(page.locator('.save-state')).toContainText('已保存');
     expect(await page.locator('h1').evaluate((e) => parseFloat(getComputedStyle(e).fontSize))).toBe(
       24,

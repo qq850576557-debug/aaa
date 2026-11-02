@@ -1,0 +1,102 @@
+{
+  "baselineCommit": "b6a867d0436cc99a1615262b02d87939c13f4506",
+  "method": "Median of 3 measured browser saves per network, synthetic fixtures in isolated localhost test database; no production profiling.",
+  "fixture": {
+    "projects": 20,
+    "tasks": 60,
+    "purchases": 200,
+    "historyNodes": 101
+  },
+  "networks": {
+    "loopback": {
+      "before": {
+        "localFeedbackMs": 118.4,
+        "indexedDbMs": 5.3,
+        "requestBytes": 267258,
+        "responseWireBytes": 1079987,
+        "requestMs": 360.4,
+        "ingressMs": 1.2,
+        "serverMs": 349.9,
+        "dbMs": 121.2,
+        "dbWriteMs": 60.1,
+        "queries": 26,
+        "graphRows": 960,
+        "overallMs": 833
+      },
+      "after": {
+        "localFeedbackMs": 55,
+        "indexedDbMs": 4.3,
+        "requestBytes": 914,
+        "responseWireBytes": 113770,
+        "requestMs": 257.4,
+        "ingressMs": 0.5,
+        "serverMs": 248.5,
+        "dbMs": 55.2,
+        "dbWriteMs": 32.7,
+        "queries": 12,
+        "graphRows": 1,
+        "overallMs": 679.5
+      }
+    },
+    "60ms-10Mbps": {
+      "before": {
+        "localFeedbackMs": 117.1,
+        "indexedDbMs": 5,
+        "requestBytes": 267264,
+        "responseWireBytes": 1097955,
+        "requestMs": 1444.3,
+        "ingressMs": 204.2,
+        "serverMs": 331.4,
+        "dbMs": 119.6,
+        "dbWriteMs": 57.3,
+        "queries": 26,
+        "graphRows": 960,
+        "overallMs": 1868.4
+      },
+      "after": {
+        "localFeedbackMs": 53.5,
+        "indexedDbMs": 4.9,
+        "requestBytes": 920,
+        "responseWireBytes": 115453,
+        "requestMs": 353.2,
+        "ingressMs": 0.4,
+        "serverMs": 244.5,
+        "dbMs": 61.4,
+        "dbWriteMs": 37.7,
+        "queries": 12,
+        "graphRows": 1,
+        "overallMs": 808.6
+      }
+    },
+    "150ms-1.6Mbps": {
+      "before": {
+        "localFeedbackMs": 128.3,
+        "indexedDbMs": 4.3,
+        "requestBytes": 267269,
+        "responseWireBytes": 1115943,
+        "requestMs": 8126,
+        "ingressMs": 2016,
+        "serverMs": 373.9,
+        "dbMs": 130.8,
+        "dbWriteMs": 66.8,
+        "queries": 26,
+        "graphRows": 960,
+        "overallMs": 8710.5
+      },
+      "after": {
+        "localFeedbackMs": 55.3,
+        "indexedDbMs": 6.9,
+        "requestBytes": 925,
+        "responseWireBytes": 116741,
+        "requestMs": 864.5,
+        "ingressMs": 0.4,
+        "serverMs": 249.8,
+        "dbMs": 61.2,
+        "dbWriteMs": 41.4,
+        "queries": 12,
+        "graphRows": 1,
+        "overallMs": 1350.4
+      }
+    }
+  }
+}

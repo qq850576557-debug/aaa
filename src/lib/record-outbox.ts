@@ -1,7 +1,15 @@
 import { confirmRecordSnapshots } from './useEditorJournal';
 import { openDB } from 'idb';
 export type Owner = { id: string; workspaceId: string };
-type Entry = { owner: Owner; path: string; method: string; body: any; blocked?: boolean };
+type Entry = {
+  owner: Owner;
+  path: string;
+  method: string;
+  body: any;
+  blocked?: boolean;
+  failureStatus?: number;
+  message?: string;
+};
 const db = () =>
   openDB('chunmo-record-outbox', 1, {
     upgrade(d) {
@@ -34,7 +42,13 @@ export function startRecordSync(owner: Owner, send: typeof transport) {
   void pendingRecords(owner)
     .then((entries) => {
       if (entries.some((e) => e.blocked)) signal('存在待处理数据冲突，本地内容已保留');
-      for (const e of entries) if (!e.blocked) void deliver(e).catch(() => {});
+      for (const e of entries)
+        if (
+          !e.blocked ||
+          e.failureStatus === 401 ||
+          (e.failureStatus === 403 && e.message?.includes('请求验证'))
+        )
+          void deliver(e).catch(() => {});
     })
     .catch(() => signal('本地存储异常，请保留页面并备份'));
 }
@@ -78,10 +92,20 @@ function deliver(entry: Entry): Promise<any> {
         if (status && status >= 400 && status < 500 && ![408, 425, 429].includes(status)) {
           const d = await db();
           try {
-            await d.put('pending', { ...entry, blocked: true }, id);
+            await d.put(
+              'pending',
+              {
+                ...entry,
+                blocked: true,
+                failureStatus: status,
+                message: error instanceof Error ? error.message : String(error),
+              },
+              id,
+            );
           } finally {
             d.close();
           }
+          window.dispatchEvent(new Event('chunmo-records-changed'));
           signal(status === 409 ? '存在数据冲突，完整本地内容已保留' : '上传失败，本地内容已保留');
           throw error;
         }
@@ -101,7 +125,7 @@ function deliver(entry: Entry): Promise<any> {
   flights.set(id, run);
   return run;
 }
-export async function durableRecord(path: string, method: string, body: any) {
+async function persistRecord(path: string, method: string, body: any) {
   if (!current) throw Error('尚未验证当前账号，未发送事项保存');
   const entry: Entry = { owner: { ...current }, path, method, body: structuredClone(body) };
   const d = await db();
@@ -116,5 +140,20 @@ export async function durableRecord(path: string, method: string, body: any) {
     d.close();
   }
   signal('本地已保存');
-  return deliver(entry);
+  window.dispatchEvent(new CustomEvent('chunmo-record-queued', { detail: { path } }));
+  return entry;
+}
+
+export async function durableRecord(path: string, method: string, body: any) {
+  return deliver(await persistRecord(path, method, body));
+}
+export async function queueRecord(path: string, method: string, body: any) {
+  const entry = await persistRecord(path, method, body);
+  const completion = new Promise<any>((resolve, reject) => {
+    setTimeout(() => {
+      void deliver(entry).then(resolve, reject);
+    }, 0);
+  });
+  void completion.catch(() => {});
+  return { completion };
 }

@@ -1,3 +1,4 @@
+import { pendingRecords, verifiedOwner } from './record-outbox';
 import { savedFeedback, failedFeedback } from '../components/SaveFeedback';
 import type { LegacyLink } from './legacy-records';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -12,6 +13,7 @@ export function useWorkRecords(enabled: boolean) {
   const [error, setError] = useState('');
   const [busyIds, setBusyIds] = useState<string[]>([]);
   const mutations = useRef(new Map<string, { key: string; requestId: string; busy: boolean }>());
+  const queuedIds = useRef(new Set<string>());
   const active = useRef(false),
     sequence = useRef(0);
   const load = useCallback(async () => {
@@ -24,7 +26,34 @@ export function useWorkRecords(enabled: boolean) {
       if (active.current && token === sequence.current) {
         setRecords(result.records);
         setLegacyLinks(result.legacyLinks ?? []);
-        setError('');
+        const owner = verifiedOwner();
+        if (owner) {
+          const entries = await pendingRecords(owner);
+          const blocked = entries.filter((e) => e.blocked);
+          if (active.current && token === sequence.current) {
+            for (const e of entries) {
+              if (e.path.startsWith('/records/')) {
+                const id = decodeURIComponent(e.path.slice(9));
+                if (e.blocked) queuedIds.current.delete(id);
+                else queuedIds.current.add(id);
+              }
+            }
+            setBusyIds([
+              ...new Set([
+                ...queuedIds.current,
+                ...Array.from(mutations.current)
+                  .filter(([, v]) => v.busy)
+                  .map(([id]) => id),
+              ]),
+            ]);
+          }
+          if (active.current && token === sequence.current)
+            setError(
+              blocked.length
+                ? `事项同步失败：${blocked[0].message ?? '存在待处理冲突'}；完整本地内容已保留，请核对原事项或恢复副本。`
+                : '',
+            );
+        } else setError('');
       }
     } catch (e) {
       if (active.current && token === sequence.current) setError(String(e));
@@ -37,6 +66,27 @@ export function useWorkRecords(enabled: boolean) {
     if (!enabled) return;
     setLoading(true);
     void load();
+    const queued = (e: Event) => {
+      const path = (e as CustomEvent<{ path: string }>).detail.path;
+      const id = path.startsWith('/records/') ? decodeURIComponent(path.slice(9)) : '';
+      if (id) {
+        ++sequence.current;
+        queuedIds.current.add(id);
+        setBusyIds((old) => [...new Set([...old, id])]);
+      }
+    };
+    const uploaded = (e: Event) => {
+      const record = (e as CustomEvent<{ record: WorkRecord }>).detail.record;
+      ++sequence.current;
+      queuedIds.current.delete(record.id);
+      setRecords((old) => [
+        ...old.filter((x) => x.id !== record.id),
+        ...(record.deleted ? [] : [record]),
+      ]);
+      setBusyIds((old) => old.filter((id) => id !== record.id));
+    };
+    window.addEventListener('chunmo-record-uploaded', uploaded);
+    window.addEventListener('chunmo-record-queued', queued);
     const refresh = () => {
       if (document.visibilityState === 'visible') void load();
     };
@@ -46,6 +96,8 @@ export function useWorkRecords(enabled: boolean) {
       active.current = false;
       ++sequence.current;
       window.removeEventListener('chunmo-records-changed', refresh);
+      window.removeEventListener('chunmo-record-queued', queued);
+      window.removeEventListener('chunmo-record-uploaded', uploaded);
       document.removeEventListener('visibilitychange', refresh);
     };
   }, [enabled, load]);

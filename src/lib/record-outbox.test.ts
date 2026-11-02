@@ -38,3 +38,22 @@ it('retains a real conflict and isolates accounts rather than overwriting or aut
   expect((await pendingRecords(owner))[0]).toMatchObject({ blocked: true, body: { version: 1 } });
   expect(await pendingRecords({ ...owner, id: 'other' })).toEqual([]);
 });
+
+it('local enqueue returns before cloud response and keeps pending data until the server confirms', async () => {
+  vi.stubGlobal('window', new EventTarget());
+  const owner = { id: 'queued-fast', workspaceId: 'studio' };
+  let release: (value: any) => void = () => {};
+  const response = new Promise<any>((resolve) => {
+    release = resolve;
+  });
+  startRecordSync(owner, async () => response);
+  const { queueRecord } = await import('./record-outbox');
+  const queued = await queueRecord('/records', 'POST', {
+    requestId: crypto.randomUUID(),
+    value: { title: '本地先完成' },
+  });
+  expect(await pendingRecords(owner)).toHaveLength(1);
+  release({ id: 'confirmed', version: 1 });
+  await queued.completion;
+  expect(await pendingRecords(owner)).toEqual([]);
+});

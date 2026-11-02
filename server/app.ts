@@ -6,6 +6,7 @@ import { sendWorkspaceState } from './workspace-response';
 import { legacyRoutes } from './legacy-records';
 import {
   saveWorkspaceSubmission,
+  saveWorkspaceDelta,
   workspaceStateWithProof,
   WorkspaceConflictError,
 } from './workspace-save';
@@ -730,6 +731,47 @@ export function createApp() {
   });
   app.put('/api/workspace', async (req: AuthRequest, res, next) => {
     try {
+      if (req.body?.protocol === 3) {
+        const delta = z
+          .object({
+            protocol: z.literal(3),
+            revision: version,
+            requestId: z.string().uuid(),
+            changes: z
+              .array(
+                z
+                  .object({
+                    collection: z.enum([
+                      'projects',
+                      'trades',
+                      'tasks',
+                      'notes',
+                      'purchases',
+                      'people',
+                      'dictionaries',
+                      'workspace',
+                    ]),
+                    id: z.string().max(100),
+                    kind: z.enum(['record', 'order', 'value']),
+                    before: z.unknown(),
+                    after: z.unknown(),
+                    proof: z
+                      .string()
+                      .regex(/^[a-f0-9]{64}$/i)
+                      .optional(),
+                  })
+                  .strict()
+                  .refine((x) => Object.hasOwn(x, 'before') && Object.hasOwn(x, 'after')),
+              )
+              .max(5000),
+          })
+          .strict()
+          .parse(req.body);
+        const result = await transaction((c) => saveWorkspaceDelta(c, req.actor!, delta));
+        await sendWorkspaceState(req, res, result);
+        return;
+      }
+
       const b = z
         .object({
           revision: version,
@@ -748,7 +790,9 @@ export function createApp() {
         if (b.base === undefined || !b.baseProof || !b.requestId)
           throw new ApiError(400, '保存基线与提交编号必须完整');
         const base = parseWorkspaceInput(b.base, 'base');
-        res.json(
+        await sendWorkspaceState(
+          req,
+          res,
           await transaction((c) =>
             saveWorkspaceSubmission(c, req.actor!, {
               ...b,

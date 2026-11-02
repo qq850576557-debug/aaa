@@ -167,6 +167,7 @@ export function AgendaEntryDialog({
                 else onClose();
               }}
               onSaved={onRecord}
+              onQueued={onClose}
             />
           )}
         </div>

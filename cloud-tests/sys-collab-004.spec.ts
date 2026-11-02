@@ -127,12 +127,14 @@ test('SYS-COLLAB-004: rejected deletion can be explicitly reconciled with cloud 
   const { f, d } = await seed(page);
   let rejected = false;
   await page.route('**/api/workspace', async (route) => {
+    const wire = route.request().method() === 'PUT' ? route.request().postDataJSON() : null;
     if (
-      route.request().method() === 'PUT' &&
-      !route
-        .request()
-        .postDataJSON()
-        .data.trades.some((x: { id: string }) => x.id === d.trades[0].id)
+      wire &&
+      (wire.protocol === 3
+        ? wire.changes.some(
+            (x: any) => x.collection === 'trades' && x.id === d.trades[0].id && x.after === null,
+          )
+        : !wire.data.trades.some((x: { id: string }) => x.id === d.trades[0].id))
     ) {
       rejected = true;
       return route.fulfill({
@@ -195,7 +197,17 @@ test('SYS-COLLAB-004: one rejected personnel save must not lock unrelated procur
   let rejected = false;
   await page.route('**/api/workspace', async (route) => {
     const body = route.request().method() === 'PUT' ? route.request().postDataJSON() : null;
-    if (body?.data.people.some((p: { name: string }) => p.name === '需要修正的师傅')) {
+    if (
+      body?.protocol === 3
+        ? body.changes.some(
+            (x: any) => x.collection === 'people' && x.after?.name === '需要修正的师傅',
+          )
+        : body?.protocol === 3
+          ? body.changes.some(
+              (x: any) => x.collection === 'people' && x.after?.name === '需要修正的师傅',
+            )
+          : body?.data.people.some((p: { name: string }) => p.name === '需要修正的师傅')
+    ) {
       rejected = true;
       return route.fulfill({
         status: 400,

@@ -85,59 +85,93 @@ export async function getState(c: Db, workspaceId: string, lock = 'SHARE') {
     history: retainHistory(structuredClone(cached.history)),
   };
 }
-export async function graph(c: Db, w: string, d: Data) {
-  for (const table of ['assignment', 'memo', 'purchase', 'task', 'trade', 'project', 'person'])
-    await c.query(`DELETE FROM ${table} WHERE workspace_id=$1`, [w]);
-  const insert = async (table: string, list: unknown[], columns: string, expressions: string) => {
+export async function graph(c: Db, w: string, d: Data, prior: Data) {
+  const tables = [
+    ['project', d.projects, prior.projects, '', ''],
+    ['person', d.people ?? [], prior.people ?? [], '', ''],
+    ['trade', d.trades, prior.trades, ',project_id', ",v->>'projectId'"],
+    [
+      'task',
+      d.tasks,
+      prior.tasks,
+      ',project_id,trade_id,start_date,end_date',
+      ",v->>'projectId',v->>'tradeId',(v->>'start')::date,(v->>'end')::date",
+    ],
+    [
+      'purchase',
+      d.purchases,
+      prior.purchases,
+      ',project_id,task_id',
+      ",v->>'projectId',NULLIF(v->>'taskId','')",
+    ],
+    [
+      'memo',
+      d.notes,
+      prior.notes,
+      ',project_id,task_id',
+      ",v->>'projectId',NULLIF(v->>'taskId','')",
+    ],
+  ] as const;
+  const scopes = [
+    ['project', prior.projects, d.projects],
+    ['trade', prior.trades, d.trades],
+    ['task', prior.tasks, d.tasks],
+  ] as const;
+  for (const [kind, before, after] of scopes) {
+    const old = new Map(before.map((x) => [x.id, x]));
+    const next = new Map(after.map((x) => [x.id, x]));
+    const ids = [...new Set([...old.keys(), ...next.keys()])].filter((id) => {
+      const a = old.get(id),
+        b = next.get(id);
+      return (
+        !a ||
+        !b ||
+        canonical([a.staffIds ?? [], (a as any).projectId ?? a.id]) !==
+          canonical([b.staffIds ?? [], (b as any).projectId ?? b.id])
+      );
+    });
+    if (!ids.length) continue;
     await c.query(
-      `INSERT INTO ${table}(workspace_id,id,payload${columns}) SELECT $1,v->>'id',v${expressions} FROM jsonb_array_elements($2::jsonb) v`,
-      [w, JSON.stringify(list)],
+      'DELETE FROM assignment WHERE workspace_id=$1 AND scope_kind=$2 AND scope_id=ANY($3::text[])',
+      [w, kind, ids],
     );
-  };
-  await insert('project', d.projects, '', '');
-  await insert('person', d.people ?? [], '', '');
-  await insert('trade', d.trades, ',project_id', ",v->>'projectId'");
-  await insert(
-    'task',
-    d.tasks,
-    ',project_id,trade_id,start_date,end_date',
-    ",v->>'projectId',v->>'tradeId',(v->>'start')::date,(v->>'end')::date",
-  );
-  for (const [table, list] of [
-    ['purchase', d.purchases],
-    ['memo', d.notes],
-  ] as const)
-    await insert(table, list, ',project_id,task_id', ",v->>'projectId',NULLIF(v->>'taskId','')");
-  const assignments = [
-    ...d.projects.flatMap((x) =>
-      (x.staffIds ?? []).map((person) => ({
-        scope_kind: 'project',
-        scope_id: x.id,
-        project_id: x.id,
-        person_id: person,
-      })),
-    ),
-    ...d.trades.flatMap((x) =>
-      (x.staffIds ?? []).map((person) => ({
-        scope_kind: 'trade',
-        scope_id: x.id,
-        project_id: x.projectId,
-        person_id: person,
-      })),
-    ),
-    ...d.tasks.flatMap((x) =>
-      (x.staffIds ?? []).map((person) => ({
-        scope_kind: 'task',
-        scope_id: x.id,
-        project_id: x.projectId,
-        person_id: person,
-      })),
-    ),
-  ];
-  await c.query(
-    'INSERT INTO assignment SELECT $1,x.scope_kind,x.scope_id,x.project_id,x.person_id FROM jsonb_to_recordset($2::jsonb) AS x(scope_kind text,scope_id text,project_id text,person_id text)',
-    [w, JSON.stringify(assignments)],
-  );
+    const rows = after
+      .filter((x) => ids.includes(x.id))
+      .flatMap((x) =>
+        (x.staffIds ?? []).map((person) => ({
+          scope_kind: kind,
+          scope_id: x.id,
+          project_id: (x as any).projectId ?? x.id,
+          person_id: person,
+        })),
+      );
+    if (rows.length)
+      await c.query(
+        'INSERT INTO assignment SELECT $1,x.scope_kind,x.scope_id,x.project_id,x.person_id FROM jsonb_to_recordset($2::jsonb) AS x(scope_kind text,scope_id text,project_id text,person_id text)',
+        [w, JSON.stringify(rows)],
+      );
+  }
+  for (const [table, after, before] of [...tables].reverse()) {
+    const ids = new Set(after.map((x) => x.id));
+    const removed = before.filter((x) => !ids.has(x.id)).map((x) => x.id);
+    if (removed.length)
+      await c.query(`DELETE FROM ${table} WHERE workspace_id=$1 AND id=ANY($2::text[])`, [
+        w,
+        removed,
+      ]);
+  }
+  for (const [table, after, before, columns, expressions] of tables) {
+    const old = new Map(before.map((x) => [x.id, x]));
+    const changed = after.filter((x) => canonical(x) !== canonical(old.get(x.id)));
+    if (!changed.length) continue;
+    const updates = ['payload', ...columns.split(',').filter(Boolean)]
+      .map((column) => `${column}=excluded.${column}`)
+      .join(',');
+    await c.query(
+      `INSERT INTO ${table}(workspace_id,id,payload${columns}) SELECT $1,v->>'id',v${expressions} FROM jsonb_array_elements($2::jsonb) v ON CONFLICT(workspace_id,id) DO UPDATE SET ${updates}`,
+      [w, JSON.stringify(changed)],
+    );
+  }
 }
 export async function audit(
   c: Db,
@@ -192,6 +226,7 @@ export async function commit(
   base: number,
   input: Data,
   opts?: {
+    prior?: Awaited<ReturnType<typeof getState>>;
     restoreId?: string;
     restoreAfter?: boolean;
     importHistory?: History;
@@ -199,7 +234,7 @@ export async function commit(
     deadlineChange?: { id: string; date: string; reason: string };
   },
 ) {
-  const prior = await getState(c, a.workspaceId, 'UPDATE');
+  const prior = opts?.prior ?? (await getState(c, a.workspaceId, 'UPDATE'));
   if (prior.revision !== base)
     throw new ApiError(409, '版本冲突：他人已提交，请备份草稿并重新读取');
   if (!a.owner && prior.data.projects.some((p) => !input.projects.some((x) => x.id === p.id)))
@@ -331,7 +366,7 @@ export async function commit(
         throw e;
       }
     }
-  await graph(c, a.workspaceId, result.data);
+  await graph(c, a.workspaceId, result.data, prior.data);
   await c.query('UPDATE workspace_state SET revision=$2,data=$3,history=$4 WHERE workspace_id=$1', [
     a.workspaceId,
     revision,

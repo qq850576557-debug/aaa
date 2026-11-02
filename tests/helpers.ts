@@ -145,7 +145,7 @@ export async function boot(page: Page) {
 export async function restore(page: Page, d = fixture()) {
   const b = page.getByRole('button', { name: '数据与备份' });
   if (await b.isVisible()) await b.click();
-  else await page.getByRole('button', { name: '备份数据' }).click();
+  else await page.getByRole('button', { name: '下载数据' }).click();
   await page.locator('input[type=file]').setInputFiles({
     name: 'project.json',
     mimeType: 'application/json',

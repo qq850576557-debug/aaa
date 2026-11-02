@@ -1,3 +1,4 @@
+import { downloadLocalRecovery } from './SyncStatus';
 import { archiveEditor } from '../lib/useEditorJournal';
 import { ProjectSurface, useProjectThemeStyles } from './ProjectThemes';
 import { useEffect, useRef, useState } from 'react';
@@ -186,6 +187,7 @@ export function RecordBoard({
         <div role="alert" className="error-banner">
           {error}
           <button onClick={() => void load()}>重试</button>
+          <button onClick={() => void downloadLocalRecovery()}>下载未同步内容</button>
         </div>
       )}
       {loading ? (
@@ -250,6 +252,7 @@ export function RecordBoard({
                         className="workbench-card record-card"
                         style={themeStyle(r.projectId)}
                         key={r.id}
+                        disabled={source.busyIds.includes(r.id)}
                         onClick={() => switchEditor({ record: r })}
                         aria-label={`打开记录：${r.title}`}
                       >
@@ -259,6 +262,7 @@ export function RecordBoard({
                           </span>
                         )}
                         <h3>{r.title}</h3>
+                        {source.busyIds.includes(r.id) && <small>本地已保存，云端同步中</small>}
                         <div className="record-card-meta">
                           <span className="record-date">
                             <CalendarDays size={13} />
@@ -304,6 +308,11 @@ export function RecordBoard({
             dirty.current = value;
           }}
           onClose={() => switchEditor(null)}
+          onQueued={() => {
+            dirty.current = false;
+            setEditor(null);
+            setNotice('本地已保存，云端同步中。');
+          }}
           onSaved={(r) => {
             dirty.current = false;
             setEditor(null);

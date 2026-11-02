@@ -23,6 +23,7 @@ export function AgendaItem({
     <ProjectSurface projectId={item.projectId} className={`agenda-item ${item.done ? 'done' : ''}`}>
       <button
         className="agenda-item-main"
+        disabled={busy}
         onClick={onOpen}
         aria-label={`打开${category}：${item.title}`}
       >
@@ -46,7 +47,9 @@ export function AgendaItem({
         </button>
         {onDelete && (
           <>
-            <button onClick={onOpen}>编辑</button>
+            <button disabled={busy} onClick={onOpen}>
+              编辑
+            </button>
             <button className="danger" disabled={busy} onClick={onDelete}>
               删除
             </button>

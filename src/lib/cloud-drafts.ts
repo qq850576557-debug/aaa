@@ -6,6 +6,7 @@ export type WorkspaceSubmission = Pick<CloudState, 'revision' | 'baseProof'> & {
   base: Data;
   data: Data;
   requestId: string;
+  delta?: import('./workspace-delta').WorkspaceDelta;
 };
 export type CloudDraft = {
   version: 1;

@@ -1,5 +1,5 @@
 import { confirmEditorSnapshots } from './useEditorJournal';
-import { durableRecord, startRecordSync } from './record-outbox';
+import { durableRecord, startRecordSync, queueRecord } from './record-outbox';
 import type { Data } from './model';
 import type { History } from './history';
 export type CloudUser = {
@@ -11,7 +11,13 @@ export type CloudUser = {
   cardAvatarVersion?: string | null;
   owner: boolean;
 };
-export type CloudState = { data: Data; history: History; revision: number; baseProof: string };
+export type CloudState = {
+  data: Data;
+  history: History;
+  revision: number;
+  baseProof: string;
+  resourceProofs?: Record<string, string>;
+};
 export class CloudError extends Error {
   constructor(
     public status: number,
@@ -48,7 +54,15 @@ async function sendApi<T = Record<string, unknown>>(
       method,
       credentials: 'same-origin',
       headers: method === 'GET' ? {} : { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined
+        ? {}
+        : {
+            body: JSON.stringify(
+              path === '/workspace' && method === 'PUT' && (body as any)?.delta
+                ? (body as any).delta
+                : body,
+            ),
+          }),
       ...(controller ? { signal: controller.signal } : {}),
     });
     let value;
@@ -80,7 +94,7 @@ async function sendApi<T = Record<string, unknown>>(
           : value,
       );
     if (path === '/workspace' && method === 'PUT' && value.data)
-      await confirmEditorSnapshots(value.data);
+      void confirmEditorSnapshots(value.data).catch(() => {});
     return value;
   } catch (error) {
     if (controller?.signal.aborted)
@@ -105,6 +119,8 @@ export function cloudApi<T = Record<string, unknown>>(
     return durableRecord(path, method, body);
   return sendApi<T>(path, method, body);
 }
+export const queueCloudRecord = (path: string, method: string, body: unknown) =>
+  queueRecord(path, method, body);
 export async function cloudSession() {
   const s = await cloudApi<{ user: CloudUser; csrf: string }>('/auth/session');
   csrf = s.csrf;

@@ -43,7 +43,7 @@ for (const width of [1440, 1280, 390, 320])
     const original = await state(page);
     await expect(page.locator('.workspace-status-group,.local-notice')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '事项与备忘', exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '备份数据', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: '下载数据', exact: true })).toBeVisible();
     await expect(page.locator('.ui-module-group')).toHaveCount(2);
     for (const group of await page.locator('.ui-module-group').all()) {
       const style = await group.evaluate((e) => {

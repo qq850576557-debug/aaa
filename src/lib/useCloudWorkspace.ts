@@ -1,3 +1,4 @@
+import { makeWorkspaceDelta } from './workspace-delta';
 import { savedFeedback } from '../components/SaveFeedback';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyData, parseBackup, prepareWorkspace, type Data } from './model';
@@ -241,6 +242,17 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
               },
             };
             created = true;
+          }
+          if (created && baseline.current?.resourceProofs) {
+            const body = inFlight.current!.body;
+            const delta = makeWorkspaceDelta(
+              body.base,
+              body.data,
+              body.revision,
+              body.requestId,
+              baseline.current.resourceProofs,
+            );
+            if (delta.changes.length <= 5000) body.delta = delta;
           }
           await stash(); // Durable before the request; if storage fails, do not send an unsafe request.
           const sent = inFlight.current!;
@@ -533,15 +545,26 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
       pending.current = true;
       setStatus('正在保存');
       setError('');
-      // The worker persists this edit before sending it, including edits queued behind an earlier request.
-      void stash().catch(() => setError('浏览器草稿保存失败，请勿关闭页面并下载紧急备份。'));
+      // Commit the local snapshot before doing the heavier merge/upload planning.
       const prior = working.current;
-      void persist();
-      // If an older request fails while this edit is queued, resume this latest edit once
-      // after that worker settles. Do not strand it in “saving” or spin on an unchanged error.
-      if (prior)
-        void prior.then(() => {
-          if (seq === sequence.current && pending.current && !blocked.current) void persist();
+      void stash()
+        .then(() => {
+          window.dispatchEvent(
+            new CustomEvent('chunmo-workspace-local-saved', { detail: { sequence: seq } }),
+          );
+          setTimeout(() => {
+            void persist();
+          }, 0);
+          if (prior)
+            void prior.then(() => {
+              if (seq === sequence.current && pending.current && !blocked.current) void persist();
+            });
+        })
+        .catch(() => {
+          setStatus('保存失败');
+          setError(
+            '浏览器无法保留草稿（存储受限或空间不足）。草稿仍在当前页面；请立即下载紧急备份，暂勿关闭页面。',
+          );
         });
     },
     [persist, ready, stash],

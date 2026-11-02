@@ -3,7 +3,7 @@ import { savedFeedback, failedFeedback } from './SaveFeedback';
 import { LegacySource } from './LegacySource';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
-import { cloudApi } from '../lib/cloud';
+import { cloudApi, queueCloudRecord } from '../lib/cloud';
 import {
   recordStatuses,
   recordValue,
@@ -41,6 +41,7 @@ export function RecordDrawer({
   onBusyChange,
   onClose,
   onSaved,
+  onQueued,
   initialValue,
   onDraftChange,
 }: {
@@ -55,6 +56,7 @@ export function RecordDrawer({
   onBusyChange?: (busy: boolean) => void;
   onClose: () => void;
   onSaved: (r: WorkRecord) => void;
+  onQueued?: () => void;
   initialValue?: RecordValue;
   onDraftChange?: (value: RecordValue) => void;
 }) {
@@ -115,6 +117,7 @@ export function RecordDrawer({
     onBusyChange?.(true);
     setError('');
     try {
+      if (!base && !remove && !value.nodeDate) throw Error('请选择有效的事项处理日期');
       const parsed = remove ? null : recordValue.parse(value);
       const payload = remove
         ? { version: base!.version }
@@ -122,6 +125,21 @@ export function RecordDrawer({
       const key = JSON.stringify({ id: base?.id, remove, payload });
       if (request.current?.key !== key)
         request.current = { key, id: base ? crypto.randomUUID() : journal.operationId };
+      if (base && stale)
+        throw Error('记录已被其他人更新，完整草稿保留；请重新读取已保存版本并核对。');
+      if (onQueued) {
+        const queued = await queueCloudRecord(
+          base ? `/records/${encodeURIComponent(base.id)}` : '/records',
+          remove ? 'DELETE' : base ? 'PUT' : 'POST',
+          { ...payload, requestId: request.current.id },
+        );
+        onDirty(false);
+        onQueued();
+        void queued.completion
+          .then((r: WorkRecord) => savedFeedback('record-' + r.id + '-' + r.version, 'record'))
+          .catch(() => failedFeedback());
+        return;
+      }
       const r = await cloudApi<WorkRecord>(
         base ? `/records/${encodeURIComponent(base.id)}` : '/records',
         remove ? 'DELETE' : base ? 'PUT' : 'POST',
