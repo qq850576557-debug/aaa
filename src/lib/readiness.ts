@@ -37,6 +37,15 @@ export function remainingSchedule(p: Pick<Project, 'status' | 'archived' | 'end'
         ? `即将完工 · 剩余 ${n} 天`
         : `剩余 ${n} 天`;
 }
+export function ambiguousTaskStaff(data: Data, task: Data['tasks'][number]) {
+  const stage = data.trades.find((g) => g.id === task.tradeId && g.projectId === task.projectId);
+  return (
+    !task.staffAssignment &&
+    !!task.staffIds?.length &&
+    !!stage?.staffIds?.length &&
+    JSON.stringify([...task.staffIds].sort()) !== JSON.stringify([...stage.staffIds].sort())
+  );
+}
 export function staffWork(data: Data, personId: string, now = today()) {
   return data.projects.flatMap((project) => {
     const trades = data.trades.filter(
@@ -45,7 +54,8 @@ export function staffWork(data: Data, personId: string, now = today()) {
     const tasks = data.tasks.filter(
       (t) =>
         t.projectId === project.id &&
-        (t.staffIds !== undefined
+        !ambiguousTaskStaff(data, t) &&
+        (t.staffAssignment !== 'inherit' && t.staffIds !== undefined
           ? t.staffIds.includes(personId)
           : trades.some((g) => g.id === t.tradeId)),
     );
@@ -106,19 +116,31 @@ export function staffConflicts(data: Data) {
 // Diagnostics only: never guess a missing identity or rewrite historical assignments.
 export function staffAssignmentIssues(data: Data) {
   const people = data.people ?? [];
-  return [...data.projects, ...data.trades, ...data.tasks].flatMap((source) =>
-    (source.staffIds ?? []).flatMap((id) => {
-      const matches = people.filter((p) => p.id === id);
-      return matches.length === 1
-        ? []
-        : [
-            {
-              sourceId: source.id,
-              sourceName: source.name,
-              personId: id,
-              reason: matches.length ? '人员ID重复，身份待确认' : '人员ID无对应档案，待确认映射',
-            },
-          ];
-    }),
-  );
+  const ambiguous = data.tasks
+    .filter((t) => ambiguousTaskStaff(data, t))
+    .map((t) => ({
+      sourceId: t.id,
+      sourceName: `${data.projects.find((p) => p.id === t.projectId)?.name ?? t.projectId} / ${t.name}`,
+      personId: t.staffIds!.join('、'),
+      reason:
+        '历史任务人员与当前工种人员不一致，可能是旧复制关联；请在任务中确认跟随工种或独立分配，不作为已确认冲突',
+    }));
+  return [
+    ...ambiguous,
+    ...[...data.projects, ...data.trades, ...data.tasks].flatMap((source) =>
+      (source.staffIds ?? []).flatMap((id) => {
+        const matches = people.filter((p) => p.id === id);
+        return matches.length === 1
+          ? []
+          : [
+              {
+                sourceId: source.id,
+                sourceName: source.name,
+                personId: id,
+                reason: matches.length ? '人员ID重复，身份待确认' : '人员ID无对应档案，待确认映射',
+              },
+            ];
+      }),
+    ),
+  ];
 }

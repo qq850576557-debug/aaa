@@ -1,3 +1,4 @@
+import { useEditorJournal } from '../lib/useEditorJournal';
 import { AssessmentPanel } from './AssessmentPanel';
 import { ConflictPanel } from './ConflictPanel';
 import { categoryName, tradeNames } from '../lib/dictionaries';
@@ -43,6 +44,12 @@ export function PeoplePanel({
     [target, setTarget] = useState('project');
   const [error, setError] = useState(''),
     [filter, setFilter] = useState('');
+  const journal = useEditorJournal(
+    `editor:person:${editing && data.people?.some((p) => p.id === editing.id) ? editing.id : 'new'}`,
+    editing,
+    setEditing,
+    !!editing,
+  );
   const [removeAssignment, setRemoveAssignment] = useState(false);
   // Card colors are browser presentation preferences, never workspace or schedule fields.
   const [cardColors, setCardColors] = useState<Record<string, string>>(() => {
@@ -462,6 +469,13 @@ export function PeoplePanel({
           onClose={() => setEditing(null)}
         >
           <form onSubmit={save}>
+            {journal.status && <p role="status">{journal.status}</p>}
+            {!!journal.recovery && (
+              <details>
+                <summary>查看保留的本地恢复副本</summary>
+                <pre>{JSON.stringify(journal.recovery, null, 2)}</pre>
+              </details>
+            )}
             <div className="modal-body form-grid">
               <label>
                 姓名

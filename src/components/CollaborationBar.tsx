@@ -1,3 +1,4 @@
+import { OnlineCard } from './OnlineCard';
 import { PersonalCard } from './PersonalCard';
 import { Avatar } from './Avatar';
 import { MentionInbox } from './MentionInbox';
@@ -10,6 +11,7 @@ export type OnlineAccount = {
   avatarVersion: string | null;
 };
 export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; isCloud: boolean }) {
+  const [selected, setSelected] = useState<OnlineAccount | null>(null);
   const [card, setCard] = useState(false);
   const [online, setOnline] = useState<OnlineAccount[]>([]);
   const [limit, setLimit] = useState(() => (matchMedia('(max-width:950px)').matches ? 2 : 5));
@@ -44,6 +46,13 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
   }, [isCloud]);
   return (
     <div className="collaboration-bar">
+      {selected && (
+        <OnlineCard
+          account={selected}
+          online={online.some((a) => a.id === selected.id)}
+          onClose={() => setSelected(null)}
+        />
+      )}
       {card && user && <PersonalCard user={user} onClose={() => setCard(false)} />}
       <div className="current-account" role="group" aria-label="当前登录账号">
         {user && (
@@ -71,12 +80,19 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
       {isCloud && user && <MentionInbox key={user.id} />}
       <div className="online-accounts" aria-label="在线协作人员">
         {online.slice(0, limit).map((a) => (
-          <span className="online-member" key={a.id} title={`${a.displayName} · 在线`}>
+          <button
+            type="button"
+            className="online-member"
+            key={a.id}
+            title={`${a.displayName} · 在线`}
+            aria-label={`查看${a.displayName}的在线名片`}
+            onClick={() => setSelected(a)}
+          >
             <Avatar
               account={a.id === user?.id ? user : a}
               version={a.id === user?.id ? user.avatarVersion : a.avatarVersion}
             />
-          </span>
+          </button>
         ))}
         {online.length > limit && <span className="online-more">+{online.length - limit}</span>}
         {!online.length && isCloud && <small>暂无在线连接</small>}

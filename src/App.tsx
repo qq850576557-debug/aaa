@@ -1,3 +1,4 @@
+import { SyncStatus } from './components/SyncStatus';
 import { CloudHistoryPanel } from './components/CloudHistoryPanel';
 import { SaveFeedback } from './components/SaveFeedback';
 import { visibleLegacyNotes } from './lib/legacy-records';
@@ -212,6 +213,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [projectStatusFilter, setProjectStatusFilter] = useState(false);
   const [showAllProjects, setShowAllProjects] = useState(false);
   const [onlyOpen, setOnlyOpen] = useState(false);
+  const [purchaseProject, setPurchaseProject] = useState('');
   const [purchaseFilter, setPurchaseFilter] = useState('全部');
   const { notices, notify, dismiss } = useNotices();
   useEffect(() => {
@@ -262,7 +264,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const projects = data.projects.filter(
     (p) =>
-      (showAllProjects || isHistorical(p) === archived) &&
+      (view === 'purchases' ||
+        view === 'records' ||
+        showAllProjects ||
+        isHistorical(p) === archived) &&
       (!projectStatusFilter || projectStatus(p.status) === '施工中'),
   );
   const p = projects.find((p) => p.id === selected) ?? projects[0];
@@ -288,7 +293,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           data.projects.some((project) => project.id === r.projectId && !isHistorical(project)),
       ).length,
   };
-  const procurement = procurementView(data, p?.id, now);
+  const procurement = procurementView(data, view === 'purchases' ? undefined : p?.id, now);
   const agenda = categorizedAgenda(agendaData, recordSource.records, p?.id, now);
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
@@ -668,7 +673,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const projectPurchases = procurement.all
     .filter(
       (x) =>
-        x.projectId === p?.id &&
+        (view === 'purchases'
+          ? !purchaseProject || x.projectId === purchaseProject
+          : x.projectId === p?.id) &&
         (!onlyOpen || !purchaseComplete(x)) &&
         (purchaseFilter === '全部' ||
           (purchaseFilter === '已完成' ? purchaseComplete(x) : !purchaseComplete(x))) &&
@@ -706,7 +713,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     setView(v);
     if (v === 'completed') {
       setArchived(true);
-    } else if (v === 'overview') {
+    } else {
       setArchived(false);
     }
     setSearch('');
@@ -1023,6 +1030,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           <div className="save-state sr-only" role="status">
             <span>{status}</span>
           </div>
+          {isCloud && <SyncStatus status={status} />}
           <SaveFeedback status={status}>
             {undo && (
               <button
@@ -1344,7 +1352,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                       {scheduleForecast(data, p).label} · 工期按自然日计算
                     </p>
                   )}
-                  <ConflictPanel data={data} projectId={p.id} />
+                  {view !== 'purchases' && <ConflictPanel data={data} projectId={p.id} />}
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <Gantt
                       data={agendaData}
@@ -1364,7 +1372,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                             owner: '',
                             status: '未开始',
                             notes: '',
-                            staffIds: g.staffIds,
+                            // Inherit the current stage assignment; do not freeze a copied personnel list.
+                            staffIds: undefined,
                           });
                         } catch (e) {
                           notify(`无法创建施工任务：${e instanceof Error ? e.message : String(e)}`);
@@ -1395,7 +1404,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                     />
                   )}
                   {view === 'purchases' && (
-                    <section className="records-section">
+                    <section className="records-section procurement-workspace">
                       <div className="purchase-toolbar" role="toolbar" aria-label="采购清单工具栏">
                         <h2>
                           采购清单 <span className="count">{projectPurchases.length} 条记录</span>
@@ -1409,6 +1418,21 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                             onChange={(e) => setSearch(e.target.value)}
                           />
                         </div>
+                        <label className="purchase-filter">
+                          <span className="sr-only">采购所属工地</span>
+                          <select
+                            aria-label="采购所属工地筛选"
+                            value={purchaseProject}
+                            onChange={(e) => setPurchaseProject(e.target.value)}
+                          >
+                            <option value="">全部工地</option>
+                            {data.projects.map((project) => (
+                              <option key={project.id} value={project.id}>
+                                {project.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <label className="purchase-filter">
                           <span className="sr-only">采购状态</span>
                           <select

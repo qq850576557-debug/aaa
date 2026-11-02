@@ -1,3 +1,4 @@
+import { useEditorJournal } from '../lib/useEditorJournal';
 import { useId, useRef, useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
 import { Confirm, Modal, type Anchor } from './Modal';
@@ -82,10 +83,21 @@ export function Editor({
   const uid = useId();
   const [discard, setDiscard] = useState(false);
   const dirty = JSON.stringify(v) !== JSON.stringify(initial);
+  const journal = useEditorJournal(
+    `editor:${edit.kind}:${data[({ project: 'projects', trade: 'trades', task: 'tasks', purchase: 'purchases', note: 'notes' } as const)[edit.kind]]?.some((x: any) => x.id === edit.value.id) ? edit.value.id : 'new'}`,
+    v,
+    set,
+    dirty,
+  );
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const close = () => (dirty ? setDiscard(true) : onClose());
   const [again, setAgain] = useState(false);
-  const change = (key: string, value: unknown) => set((old) => ({ ...old, [key]: value }));
+  const change = (key: string, value: unknown) =>
+    set((old) => ({
+      ...old,
+      [key]: value,
+      ...(edit.kind === 'task' && key === 'staffIds' ? { staffAssignment: 'explicit' } : {}),
+    }));
   const dateChange = (key: string, value: string) =>
     set((old) => {
       if (
@@ -407,8 +419,32 @@ export function Editor({
             <div className="form-grid">
               {kind === 'trade' && peopleFields}
               {fields}
+              {kind === 'task' && (
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    aria-label="跟随工种当前人员"
+                    checked={v.staffAssignment === 'inherit' || v.staffIds === undefined}
+                    onChange={(e) =>
+                      set((old) => ({
+                        ...old,
+                        staffAssignment: e.target.checked ? 'inherit' : 'explicit',
+                        staffIds: e.target.checked ? undefined : (old.staffIds ?? []),
+                      }))
+                    }
+                  />
+                  跟随工种当前人员（取消后独立分配）
+                </label>
+              )}
               {kind !== 'trade' && peopleFields}
             </div>
+            {journal.status && <p role="status">{journal.status}</p>}
+            {!!journal.recovery && (
+              <details>
+                <summary>查看保留的本地恢复副本</summary>
+                <pre>{JSON.stringify(journal.recovery, null, 2)}</pre>
+              </details>
+            )}
             {error && (
               <p className="error" role="alert">
                 {error}

@@ -85,6 +85,7 @@ export const taskSchema = z
     personnel: personnelSchema.optional(),
     dependsOn: z.array(uid).max(100).optional(),
     staffIds: z.array(uid).max(100).optional(),
+    staffAssignment: z.enum(['inherit', 'explicit']).optional(),
   })
   .strict()
   .refine((t) => t.end >= t.start, { message: '结束日期不能早于开始日期', path: ['end'] })

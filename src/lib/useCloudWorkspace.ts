@@ -6,6 +6,7 @@ import { cloudApi, cloudSession, CloudError, type CloudState, type CloudUser } f
 import {
   clearCloudDraft,
   claimDraftTab,
+  reclaimClosedDraft,
   recoverCloudDraft,
   cloudDraftRecoveryPackage,
   hasCloudDraftArchive,
@@ -383,14 +384,21 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         const [s, draft] = await Promise.all([
           cloudApi<CloudState>('/workspace').then(validState),
           (async () => {
-            const lease = await claimDraftTab();
+            let lease = await claimDraftTab();
+            const originalLeaseId = lease.id;
+            const own = await recoverCloudDraft(u.workspaceId, u.id, lease.id);
+            if (!own.draft && !own.archived)
+              lease = await reclaimClosedDraft(u.workspaceId, u.id, lease);
             if (!active) {
               lease.release();
               return;
             }
             releaseTab = lease.release;
             tab.current = lease.id;
-            const loaded = await recoverCloudDraft(u.workspaceId, u.id, lease.id);
+            const loaded =
+              lease.id === originalLeaseId
+                ? own
+                : await recoverCloudDraft(u.workspaceId, u.id, lease.id);
             if (loaded.archived) {
               lease.release();
               sessionStorage.setItem('chunmo-cloud-draft-tab', crypto.randomUUID());

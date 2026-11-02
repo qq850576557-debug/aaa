@@ -8,7 +8,7 @@ export function ConflictPanel({ data, projectId }: { data: Data; projectId?: str
   if (!conflicts.length && !issues.length) return null;
   return (
     <section className="conflict-panel" role="status">
-      <h3>人员档期冲突 · {conflicts.length}</h3>
+      <h3>{conflicts.length ? `人员档期冲突 · ${conflicts.length}` : '人员分配待确认'}</h3>
       <p>
         自然日含首尾；只检测实际已安排任务段，不把项目团队成员推断为全程驻场。不会自动改动其他项目；特殊安排须待真实管理员授权流程。
       </p>

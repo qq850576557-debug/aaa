@@ -1,3 +1,5 @@
+import { confirmEditorSnapshots } from './useEditorJournal';
+import { durableRecord, startRecordSync } from './record-outbox';
 import type { Data } from './model';
 import type { History } from './history';
 export type CloudUser = {
@@ -29,12 +31,14 @@ export class CloudError extends Error {
 }
 let csrf = '';
 export const WORKSPACE_SAVE_TIMEOUT = 30000;
-export async function cloudApi<T = Record<string, unknown>>(
+async function sendApi<T = Record<string, unknown>>(
   path: string,
   method = 'GET',
   body?: unknown,
 ): Promise<T> {
-  const saving = path === '/workspace' && method === 'PUT';
+  const saving =
+    (path === '/workspace' && method === 'PUT') ||
+    (/^\/records(?:\/[^/]+)?$/.test(path) && method !== 'GET');
   const controller = saving ? new AbortController() : undefined;
   const timeout = controller
     ? setTimeout(() => controller.abort(), WORKSPACE_SAVE_TIMEOUT)
@@ -75,6 +79,8 @@ export async function cloudApi<T = Record<string, unknown>>(
           ? { ...value, protocolVersion: r.headers.get('X-Chunmo-Workspace-Protocol') ?? 'unknown' }
           : value,
       );
+    if (path === '/workspace' && method === 'PUT' && value.data)
+      await confirmEditorSnapshots(value.data);
     return value;
   } catch (error) {
     if (controller?.signal.aborted)
@@ -86,9 +92,24 @@ export async function cloudApi<T = Record<string, unknown>>(
     clearTimeout(timeout);
   }
 }
+export function cloudApi<T = Record<string, unknown>>(
+  path: string,
+  method = 'GET',
+  body?: unknown,
+): Promise<T> {
+  if (
+    /^\/records(?:\/[^/]+)?$/.test(path) &&
+    ['POST', 'PUT', 'DELETE'].includes(method) &&
+    (body as any)?.requestId
+  )
+    return durableRecord(path, method, body);
+  return sendApi<T>(path, method, body);
+}
 export async function cloudSession() {
   const s = await cloudApi<{ user: CloudUser; csrf: string }>('/auth/session');
   csrf = s.csrf;
+  await confirmEditorSnapshots({});
+  startRecordSync(s.user, sendApi);
   return s.user;
 }
 export function inCloud() {

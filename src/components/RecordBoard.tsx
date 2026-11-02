@@ -1,3 +1,4 @@
+import { archiveEditor } from '../lib/useEditorJournal';
 import { ProjectSurface, useProjectThemeStyles } from './ProjectThemes';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -316,7 +317,8 @@ export function RecordBoard({
           title="放弃未保存的修改？"
           message="当前记录的草稿尚未保存。确认后关闭草稿，已保存记录不受影响。"
           onCancel={() => setConfirm(null)}
-          onConfirm={() => {
+          onConfirm={async () => {
+            await archiveEditor(`record:${editor?.record?.id ?? 'new'}`);
             confirm();
             setConfirm(null);
           }}

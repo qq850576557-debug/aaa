@@ -137,3 +137,18 @@ it('same-site tasks never conflict and invalid ranges do not inflate overlap', (
   d.tasks[1].end = '2026-10-01';
   expect(staffConflicts(d)).toEqual([]);
 });
+it('legacy copied task staff differing from the stage is retained for confirmation; explicit and inherited modes are unambiguous', () => {
+  const d = assignmentFixture();
+  d.trades[1].staffIds = ['b'];
+  d.tasks[1].staffIds = ['a'];
+  const original = structuredClone(d);
+  expect(staffConflicts(d)).toEqual([]);
+  expect(staffAssignmentIssues(d).some((x) => x.reason.includes('旧复制关联'))).toBe(true);
+  expect(d).toEqual(original);
+  d.tasks[1].staffAssignment = 'explicit';
+  expect(staffConflicts(d)).toHaveLength(1);
+  d.tasks[1].staffAssignment = 'inherit';
+  expect(staffConflicts(d)).toEqual([]);
+  d.trades[1].staffIds = ['a'];
+  expect(staffConflicts(d)).toHaveLength(1);
+});

@@ -2965,3 +2965,58 @@ textarea::placeholder {
     display: none;
   }
 }
+
+.online-accounts button.online-member {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.online-card {
+  text-align: center;
+}
+.online-card .avatar {
+  margin: auto;
+  width: 72px;
+  height: 72px;
+}
+.sync-status {
+  color: #386353;
+  max-width: 240px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+@media (max-width: 700px) {
+  .sync-status {
+    max-width: 120px;
+    font-size: 10px;
+  }
+}
+
+.app-shell .procurement-workspace .purchase-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  gap: 16px;
+}
+.app-shell .procurement-workspace .purchase-list .purchase-card {
+  aspect-ratio: 1;
+  min-height: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  padding: 16px;
+  gap: 12px;
+}
+.app-shell .procurement-workspace .purchase-card .purchase-main {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.app-shell .procurement-workspace .purchase-card .purchase-actions {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: auto;
+}

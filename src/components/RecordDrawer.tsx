@@ -1,8 +1,9 @@
+import { useEditorJournal } from '../lib/useEditorJournal';
 import { savedFeedback, failedFeedback } from './SaveFeedback';
 import { LegacySource } from './LegacySource';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
-import { cloudApi, CloudError } from '../lib/cloud';
+import { cloudApi } from '../lib/cloud';
 import {
   recordStatuses,
   recordValue,
@@ -73,6 +74,7 @@ export function RecordDrawer({
   useEffect(() => onDraftChange?.(value), [value, onDraftChange]);
   const original = base ? recordData(base) : blank(initialProject, initialDate);
   const changed = JSON.stringify(value) !== JSON.stringify(original);
+  const journal = useEditorJournal(`record:${record?.id ?? 'new'}`, value, setValue, changed);
   useEffect(() => onDirty(changed), [changed, onDirty]);
   useEffect(() => {
     if (!changed) return;
@@ -118,7 +120,8 @@ export function RecordDrawer({
         ? { version: base!.version }
         : { value: parsed, ...(base ? { version: base.version } : {}) };
       const key = JSON.stringify({ id: base?.id, remove, payload });
-      if (request.current?.key !== key) request.current = { key, id: crypto.randomUUID() };
+      if (request.current?.key !== key)
+        request.current = { key, id: base ? crypto.randomUUID() : journal.operationId };
       const r = await cloudApi<WorkRecord>(
         base ? `/records/${encodeURIComponent(base.id)}` : '/records',
         remove ? 'DELETE' : base ? 'PUT' : 'POST',
@@ -127,9 +130,10 @@ export function RecordDrawer({
       if (!base || r.version !== base.version)
         savedFeedback('record-' + r.id + '-' + r.version, 'record');
       onSaved(r);
+      void journal.clear().catch(() => {});
     } catch (e) {
       failedFeedback();
-      setError(e instanceof CloudError ? e.message : '请检查任务事项、所属项目及节点日期。');
+      setError(e instanceof Error ? e.message : '请检查任务事项、所属项目及节点日期。');
       setDeleting(false);
     } finally {
       setBusy(false);
@@ -171,6 +175,13 @@ export function RecordDrawer({
           </button>
         </div>
         <div className="record-drawer-body">
+          {journal.status && <p role="status">{journal.status}</p>}
+          {!!journal.recovery && (
+            <details>
+              <summary>查看保留的本地恢复副本</summary>
+              <pre>{JSON.stringify(journal.recovery, null, 2)}</pre>
+            </details>
+          )}
           {error && (
             <div className="error-banner" role="alert">
               {error}

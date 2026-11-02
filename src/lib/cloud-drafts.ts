@@ -213,3 +213,57 @@ export async function clearCloudDraft(workspaceId: string, accountId: string, ta
     db.close();
   }
 }
+// Reclaim only a closed tab's slot, guarded by its original Web Lock. Never steal a live tab.
+export async function reclaimClosedDraft(
+  workspaceId: string,
+  accountId: string,
+  lease: { id: string; release: () => void },
+) {
+  if (!navigator.locks) return lease;
+  const d = await database();
+  let candidates: CloudDraft[];
+  try {
+    const keys = await d.getAllKeys('drafts');
+    candidates = (await d.getAll('drafts'))
+      .filter((_, i) => {
+        try {
+          return JSON.parse(String(keys[i])).length === 3;
+        } catch {
+          return false;
+        }
+      })
+      .filter(
+        (x: any) =>
+          x?.version === 1 &&
+          x.workspaceId === workspaceId &&
+          x.accountId === accountId &&
+          x.tabId !== lease.id,
+      );
+  } finally {
+    d.close();
+  }
+  for (const candidate of candidates) {
+    let release = () => {};
+    const claimed = await new Promise<boolean>((resolve, reject) => {
+      void navigator.locks
+        .request('chunmo-cloud-draft:' + candidate.tabId, { ifAvailable: true }, async (lock) => {
+          if (!lock) {
+            resolve(false);
+            return;
+          }
+          const wait = new Promise<void>((r) => {
+            release = r;
+          });
+          resolve(true);
+          await wait;
+        })
+        .catch(reject);
+    });
+    if (claimed) {
+      lease.release();
+      sessionStorage.setItem('chunmo-cloud-draft-tab', candidate.tabId);
+      return { id: candidate.tabId, release };
+    }
+  }
+  return lease;
+}
