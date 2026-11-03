@@ -46,7 +46,7 @@ export function ConflictPanel({
         >
           ⚠{' '}
           {conflicts.length === 1
-            ? `${conflicts[0].person.name}｜${conflicts[0].a.project.name} ↔ ${conflicts[0].b.project.name}`
+            ? `${conflicts[0].person.name}丨施工日期重叠`
             : conflicts.length
               ? `人员冲突 × ${conflicts.length}`
               : `人员分配待确认 × ${issues.length}`}
@@ -67,13 +67,12 @@ export function ConflictPanel({
               </summary>
               <div>
                 <p>
-                  人员ID：{c.person.id} · 重叠 {c.start} — {c.end} · {c.days}天
+                  重叠 {c.start} — {c.end} · {c.days}天
                 </p>
                 {[c.a, c.b].map((x) => (
                   <p key={x.task.id}>
-                    {x.project.name} · {x.project.address || '未登记地址/房号'} ·{' '}
-                    {data.trades.find((g) => g.id === x.task.tradeId)?.name} / {x.task.name} ·{' '}
-                    {x.task.start} — {x.task.end}{' '}
+                    {x.project.name} · {data.trades.find((g) => g.id === x.task.tradeId)?.name} /{' '}
+                    {x.task.name} · {x.task.start} — {x.task.end}{' '}
                     {onTask && <button onClick={() => onTask(x.task)}>核对任务分配</button>}
                   </p>
                 ))}
@@ -99,13 +98,12 @@ export function ConflictPanel({
       {conflicts.map((c) => (
         <details key={c.id}>
           <summary>
-            {c.person.name}（人员ID：{c.person.id}） · 重叠 {c.start} — {c.end} · {c.days}天
+            {c.person.name} · 重叠 {c.start} — {c.end} · {c.days}天
           </summary>
           {[c.a, c.b].map((x) => (
             <p key={x.task.id}>
-              {x.project.name} · {x.project.address || '未登记地址/房号'} ·{' '}
-              {data.trades.find((g) => g.id === x.task.tradeId)?.name} / {x.task.name} ·{' '}
-              {x.task.start} — {x.task.end}
+              {x.project.name} · {data.trades.find((g) => g.id === x.task.tradeId)?.name} /{' '}
+              {x.task.name} · {x.task.start} — {x.task.end}
               {onTask && (
                 <button
                   type="button"

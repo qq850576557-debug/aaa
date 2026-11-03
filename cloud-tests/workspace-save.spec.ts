@@ -472,7 +472,7 @@ test('staff conflict panel uses current explicit IDs and updates after a saved r
   await expect(page.locator('.conflict-panel')).toHaveCount(0);
   d.tasks[1].staffIds = ['worker-a'];
   await commit();
-  await expect(page.locator('.conflict-panel')).toContainText('worker-a', { timeout: 15000 });
+  await expect(page.locator('.conflict-panel')).toContainText('同名瓦工', { timeout: 15000 });
   await expect(page.locator('.conflict-panel')).toContainText('3天');
   await page.locator('.conflict-panel > summary').click();
   await expect(page.locator('.conflict-panel')).toContainText('宝嘉誉府3-2-903室');

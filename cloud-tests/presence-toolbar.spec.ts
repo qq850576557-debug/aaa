@@ -66,7 +66,7 @@ for (const width of [1280, 1440])
     await expect(page.locator('.save-state')).toContainText('已保存');
     const heading = page.locator('.schedule-section > .section-heading'),
       chip = heading.locator('.conflict-compact');
-    await expect(chip).toContainText('梅勇');
+    await expect(chip.locator(':scope > summary')).toHaveText('⚠ 梅勇丨施工日期重叠');
     await expect(page.locator('main > .conflict-panel')).toHaveCount(0);
     await heading.scrollIntoViewIfNeeded();
     const box = (await chip.boundingBox())!,
@@ -81,6 +81,8 @@ for (const width of [1280, 1440])
     await expect(chip.locator('.conflict-popover')).toBeVisible();
     await expect(chip).toContainText('8天');
     await expect(chip).toContainText('木工吊顶');
+    await expect(chip).not.toContainText('人员ID');
+    await expect(chip).not.toContainText('未登记地址/房号');
     await page.screenshot({ path: `/tmp/conflict-toolbar-${width}.png`, fullPage: true });
     await page.keyboard.press('Escape');
     await expect(chip).not.toHaveAttribute('open', '');
