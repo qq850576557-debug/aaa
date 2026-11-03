@@ -126,12 +126,14 @@ export function publicHTTPS(value: unknown): PublicHTTPS {
   if (
     u.protocol !== 'https:' ||
     u.origin !== c.origin ||
-    u.port !== '15001' ||
+    (u.port !== '15001' && !(u.port === '' && !/^[0-9.]+$/.test(u.hostname))) ||
     !/^[a-zA-Z0-9.-]+$/.test(u.hostname) ||
     u.hostname === 'localhost' ||
     u.hostname === '127.0.0.1'
   )
-    throw Error('Public HTTPS requires an exact HTTPS origin on port 15001');
+    throw Error(
+      'Public HTTPS requires an exact domain HTTPS origin on port 443 or legacy port 15001',
+    );
   if (
     (c.mode !== undefined && c.mode !== 'private-ca') ||
     (c.mode === 'private-ca' ? typeof c.ca !== 'string' || !c.ca : c.ca !== undefined)
@@ -210,12 +212,18 @@ http {
   const start = rendered.indexOf('  server {');
   const block = rendered
     .slice(start, rendered.lastIndexOf('\n}'))
-    .replace(`listen 127.0.0.1:${webPort} ssl;`, 'listen 0.0.0.0:15001 ssl;')
+    .replace(
+      `listen 127.0.0.1:${webPort} ssl;`,
+      `listen 0.0.0.0:${new URL(c.origin).port || '443'} ssl;`,
+    )
     .replace(
       'server_name localhost 127.0.0.1;',
       `server_name ${host};\n    if ($host != "${host}") { return 421; }`,
     )
     .replace(`${tls}/server.crt`, c.certificate)
     .replace(`${tls}/server.key`, c.key);
-  return rendered.slice(0, rendered.lastIndexOf('\n}')) + '\n' + block + '\n}\n';
+  const redirect = new URL(c.origin).port
+    ? ''
+    : `\n  server {\n    listen 0.0.0.0:80;\n    server_name ${host};\n    if ($host != "${host}") { return 421; }\n    return 308 https://${host}$request_uri;\n  }\n`;
+  return rendered.slice(0, rendered.lastIndexOf('\n}')) + '\n' + block + redirect + '\n}\n';
 }

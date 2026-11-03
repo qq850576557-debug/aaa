@@ -178,7 +178,7 @@ if (process.argv[1]?.endsWith('/public.mjs')) {
     else throw Error('Expected --private-ca origin OR origin fullchain key');
   } catch {
     console.error(
-      'Public HTTPS preparation refused: check exact HTTPS origin :15001, SAN, validity >=24h, matching keys and trusted chain. Private mode requires the existing valid ca.crt/ca.key; neither is regenerated. No service was changed.',
+      'Public HTTPS preparation refused: check exact HTTPS domain origin :443 or legacy :15001, SAN, validity >=24h, matching keys and trusted chain. Private mode requires the existing valid ca.crt/ca.key; neither is regenerated. No service was changed.',
     );
     process.exitCode = 1;
   }

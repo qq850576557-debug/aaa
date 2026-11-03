@@ -51,11 +51,13 @@ replace "$BUNDLE/public-https.json" "$CONF/public-https.json" 0600
 replace "$BUNDLE/nginx.conf" "$BASE/nginx.conf" 0644
 systemctl restart chunmo-staging-api chunmo-staging-web
 HOST=${ORIGIN#https://}; HOST=${HOST%:15001}
+PORT=443
+[[ $ORIGIN != *:15001 ]] || PORT=15001
 for attempt in $(seq 1 30); do
-  if curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 3 --resolve "$HOST:15001:127.0.0.1" "$ORIGIN/api/health" >/dev/null; then break; fi
+  if curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 3 --resolve "$HOST:$PORT:127.0.0.1" "$ORIGIN/api/health" >/dev/null; then break; fi
   sleep 1
 done
-curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 10 --resolve "$HOST:15001:127.0.0.1" "$ORIGIN/api/health" | /usr/bin/python3 -c 'import sys,json; assert json.load(sys.stdin)["ok"] is True'
+curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 10 --resolve "$HOST:$PORT:127.0.0.1" "$ORIGIN/api/health" | /usr/bin/python3 -c 'import sys,json; assert json.load(sys.stdin)["ok"] is True'
 # Full existing account/permission/CAS/SSE smoke runs locally with the exact public Origin.
 (cd "$BASE/current" && "$NODE_BIN" dist-deploy/ops.mjs smoke "$CONF" https://localhost:8443 "$TLS/ca.crt")
 systemctl restart chunmo-staging-api
@@ -65,7 +67,7 @@ for attempt in $(seq 1 30); do
 done
 (cd "$BASE/current" && "$NODE_BIN" dist-deploy/ops.mjs after-restart "$CONF" https://localhost:8443 "$TLS/ca.crt")
 trap - ERR
-printf 'PASS public HTTPS local verification: %s\nBackup: %s\nAllow inbound TCP 15001 in existing firewall/security group only after review; no rules changed.\nRenew the trusted certificate before expiry by rerunning this command with the renewed files.\n' "$ORIGIN" "$BACKUP"
+printf 'PASS public HTTPS local verification: %s\nBackup: %s\nReview inbound TCP for the configured HTTPS port (443 for domains, 15001 for legacy); domain HTTP redirect also requires TCP 80. No firewall rules changed.\nRenew the trusted certificate before expiry by rerunning this command with the renewed files.\n' "$ORIGIN" "$BACKUP"
 if [[ -n $CA ]]; then
   printf 'Private CA mode: each employee must verify this SHA-256 fingerprint via a trusted channel before installing ONLY the public CA certificate: %s\n' "$CA"
   openssl x509 -in "$CA" -noout -fingerprint -sha256
