@@ -284,6 +284,10 @@ while [[ $1 != -- ]]; do shift; done; shift; exec "$@"
       writeFileSync(join(conf, 'tools.env'), `NODE_BIN=${join(bin, 'fake-node')}\n`);
       const script = readFileSync('deploy/native/public-https.sh', 'utf8')
         .replace('[[ $EUID == 0 ]]', '[[ 1 == 1 ]]')
+        .replace(
+          'install -d -o root -g root -m 0755 /var/lib/chunmo-acme /var/lib/chunmo-acme/.well-known /var/lib/chunmo-acme/.well-known/acme-challenge',
+          'true # isolated webroot provisioning',
+        )
         .replace('BASE=/opt/chunmo-staging', `BASE=${base}`)
         .replace('CONF=/etc/chunmo-staging', `CONF=${conf}`)
         .replace('TLS=/etc/pki/chunmo-staging', `TLS=${tls}`)

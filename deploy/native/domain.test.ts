@@ -11,6 +11,9 @@ test('domain uses standard HTTPS, fixed-host HTTP redirect, same-origin API and 
   const text = nginx('/app', '/tls', '/state', 8443, 4000, c);
   assert.match(text, /listen 0\.0\.0\.0:443 ssl;/);
   assert.match(text, /listen 0\.0\.0\.0:80;/);
+  assert.match(text, /location \^~ \/\.well-known\/acme-challenge\//);
+  assert.match(text, /root \/var\/lib\/chunmo-acme;/);
+  assert.match(text, /try_files \$uri =404;/);
   assert.match(text, /return 308 https:\/\/chmsj\.cn\$request_uri;/);
   assert.match(text, /server_name chmsj\.cn;/);
   assert.match(text, /proxy_buffering off;/);

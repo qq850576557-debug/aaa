@@ -24,6 +24,7 @@ chmod 0640 "$BUNDLE/nginx.conf" "$BUNDLE/fullchain.pem" "$BUNDLE/server.key"
 CA=$(/usr/bin/python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print(c.get("ca", "") if c.get("mode")=="private-ca" else "")' "$BUNDLE/public-https.json")
 CURL_TRUST=()
 if [[ -n $CA ]]; then CURL_TRUST=(--cacert "$CA" --capath "${CA%/*}"); fi
+install -d -o root -g root -m 0755 /var/lib/chunmo-acme /var/lib/chunmo-acme/.well-known /var/lib/chunmo-acme/.well-known/acme-challenge
 NGINX=$(command -v nginx)
 setpriv --reuid=chunmo-staging-web --regid=chunmo-staging-web --init-groups --bounding-set=-all,+net_bind_service --inh-caps=-all,+net_bind_service --ambient-caps=-all,+net_bind_service --no-new-privs -- "$NGINX" -t -p /var/lib/chunmo-staging-web/ -c "$BUNDLE/nginx.conf"
 BACKUP=$(mktemp -d "$CONF/public-before.XXXXXXXX")

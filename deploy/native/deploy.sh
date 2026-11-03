@@ -238,6 +238,7 @@ if command -v getenforce >/dev/null && [[ $(getenforce) == Enforcing ]]; then
   fail 'SELinux is Enforcing. Review required nginx file/network policy with your administrator before deployment; installer will not disable SELinux or broadly grant network access.'
 fi
 if ! command -v nginx >/dev/null; then dnf -y install nginx; fi
+install -d -o root -g root -m 0755 /var/lib/chunmo-acme /var/lib/chunmo-acme/.well-known /var/lib/chunmo-acme/.well-known/acme-challenge
 NGINX=$(command -v nginx)
 for user in chunmo-build chunmo-staging-api chunmo-staging-web; do
   if ! id "$user" >/dev/null 2>&1; then useradd --system --user-group --create-home --home-dir "/var/lib/$user" --shell /sbin/nologin "$user"; fi

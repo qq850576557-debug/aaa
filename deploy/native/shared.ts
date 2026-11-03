@@ -224,6 +224,6 @@ http {
     .replace(`${tls}/server.key`, c.key);
   const redirect = new URL(c.origin).port
     ? ''
-    : `\n  server {\n    listen 0.0.0.0:80;\n    server_name ${host};\n    if ($host != "${host}") { return 421; }\n    return 308 https://${host}$request_uri;\n  }\n`;
+    : `\n  server {\n    listen 0.0.0.0:80;\n    server_name ${host};\n    if ($host != "${host}") { return 421; }\n    location ^~ /.well-known/acme-challenge/ {\n      root /var/lib/chunmo-acme;\n      default_type text/plain;\n      try_files $uri =404;\n    }\n    location / { return 308 https://${host}$request_uri; }\n  }\n`;
   return rendered.slice(0, rendered.lastIndexOf('\n}')) + '\n' + block + redirect + '\n}\n';
 }

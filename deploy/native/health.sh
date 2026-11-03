@@ -10,7 +10,8 @@ if [[ -f /etc/chunmo-staging/public-https.json ]]; then
   CURL_TRUST=()
   if [[ -n ${PUBLIC[2]:-} ]]; then CURL_TRUST=(--cacert "${PUBLIC[2]}" --capath "${PUBLIC[2]%/*}"); fi
   HOST=${PUBLIC[0]#https://}; HOST=${HOST%:15001}
-  curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 10 --resolve "$HOST:15001:127.0.0.1" "${PUBLIC[0]}/api/health" | /usr/bin/python3 -c 'import sys,json; assert json.load(sys.stdin)["ok"] is True'
+  PORT=443; [[ ${PUBLIC[0]} != *:15001 ]] || PORT=15001
+  curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 10 --resolve "$HOST:$PORT:127.0.0.1" "${PUBLIC[0]}/api/health" | /usr/bin/python3 -c 'import sys,json; assert json.load(sys.stdin)["ok"] is True'
   openssl x509 -checkend 86400 -noout -in "${PUBLIC[1]}"
   printf 'PASS public HTTPS health (24-hour certificate expiry warning threshold).\n'
 fi
