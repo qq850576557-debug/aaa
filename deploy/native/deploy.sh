@@ -306,13 +306,24 @@ command -v restorecon >/dev/null && restorecon "$HBA" || true
 [[ $(sql "SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL") == 0 ]] || fail 'HBA validation failed; original copy is in protected config directory.'
 sql 'SELECT pg_reload_conf()' >/dev/null
 sleep 1
+# BEGIN CURRENT RELEASE CHECK
 if [[ -L $BASE/current ]]; then
   PREVIOUS=$(readlink -e "$BASE/current")
-  [[ $PREVIOUS == "$BASE/releases/"* && -f $PREVIOUS/.verified-build ]] || fail 'Current symlink is not a managed release.'
+  [[ $PREVIOUS == "$BASE/releases/"* ]] || fail 'Current target is outside managed releases.'
+  if [[ ! -f $PREVIOUS/.verified-build ]]; then
+    # Legacy manually built releases are rollback targets, never certified as new builds.
+    [[ ${PREVIOUS#"$BASE/releases/"} =~ ^[a-f0-9]{7,40}$ ]] || fail 'Unrecognized legacy release directory.'
+    [[ -f $PREVIOUS/dist/index.html && -f $PREVIOUS/dist-api/server.mjs ]] || fail 'Legacy release artifacts are incomplete.'
+    [[ -z $(find "$PREVIOUS" -xdev \( ! -user root -o -perm /022 \) -print -quit) ]] || fail 'Legacy release must be root-owned and not writable by other users.'
+    printf 'Legacy release retained for rollback without adding a verification marker: %s\n' "$PREVIOUS"
+  fi
 elif [[ -e $BASE/current ]]; then fail 'Current release path must be a managed symlink.'; fi
 if [[ -n $PREVIOUS && $PREVIOUS != "$RELEASE" ]]; then
-  (cd "$PREVIOUS" && "$NODE" dist-deploy/ops.mjs backup "$CONF" "$BACKUPS" "$DUMP")
+  # The old manual deployment may have no ops bundle. Use the verified candidate
+  # to back up the existing configured database before any schema migration.
+  (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs backup "$CONF" "$BACKUPS" "$DUMP")
 fi
+# END CURRENT RELEASE CHECK
 (cd "$RELEASE" && "$NODE" dist-deploy/admin.mjs migrate "$CONF" && "$NODE" dist-deploy/admin.mjs owner "$CONF")
 printf 'NODE_BIN=%q\nPG_DUMP_BIN=%q\nPG_RESTORE_BIN=%q\nPG_ADMIN_SOCKET=%q\n' "$NODE" "$DUMP" "$RESTORE" "$PG_ADMIN_SOCKET" > "$CONF/tools.env"
 chmod 0600 "$CONF/tools.env"
