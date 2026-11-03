@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { staffConflicts, staffAssignmentIssues } from '../lib/readiness';
 import type { Data, Task } from '../lib/model';
 export function ConflictPanel({
@@ -5,17 +6,83 @@ export function ConflictPanel({
   projectId,
   onTask,
   pending = false,
+  compact = false,
 }: {
   data: Data;
   projectId?: string;
   onTask?: (task: Task) => void;
   pending?: boolean;
+  compact?: boolean;
 }) {
+  const root = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const outside = (e: PointerEvent) => {
+      if (root.current && !root.current.contains(e.target as Node)) root.current.open = false;
+    };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && root.current) root.current.open = false;
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, []);
   const conflicts = staffConflicts(data).filter(
     (c) => !projectId || c.a.project.id === projectId || c.b.project.id === projectId,
   );
-  const issues = staffAssignmentIssues(data);
+  const issues = compact ? [] : staffAssignmentIssues(data);
   if (!conflicts.length && !issues.length) return null;
+  if (compact)
+    return conflicts.length || issues.length ? (
+      <details ref={root} className="conflict-panel conflict-compact">
+        <summary
+          title={
+            conflicts.length === 1
+              ? `${conflicts[0].person.name}｜${conflicts[0].a.project.name} ↔ ${conflicts[0].b.project.name} · ${conflicts[0].start} — ${conflicts[0].end} · ${conflicts[0].days}天`
+              : '点击核对人员排班'
+          }
+        >
+          ⚠{' '}
+          {conflicts.length === 1
+            ? `${conflicts[0].person.name}｜${conflicts[0].a.project.name} ↔ ${conflicts[0].b.project.name}`
+            : conflicts.length
+              ? `人员冲突 × ${conflicts.length}`
+              : `人员分配待确认 × ${issues.length}`}
+        </summary>
+        <div className="conflict-popover" role="region" aria-label="人员冲突清单">
+          {pending && <p>本地待同步排班预览</p>}
+          {issues.map((issue, i) => (
+            <p key={i}>
+              {issue.sourceName} · {issue.reason}
+            </p>
+          ))}
+          {conflicts.map((c) => (
+            <details className="conflict-entry" key={c.id} open={conflicts.length === 1}>
+              <summary
+                title={`${c.person.name} · ${c.start} — ${c.end} · 重叠${c.days}天 · ${[c.a, c.b].map((x) => data.trades.find((g) => g.id === x.task.tradeId)?.name + ' / ' + x.task.name).join(' ↔ ')}`}
+              >
+                {c.person.name}｜{c.a.project.name} ↔ {c.b.project.name}
+              </summary>
+              <div>
+                <p>
+                  人员ID：{c.person.id} · 重叠 {c.start} — {c.end} · {c.days}天
+                </p>
+                {[c.a, c.b].map((x) => (
+                  <p key={x.task.id}>
+                    {x.project.name} · {x.project.address || '未登记地址/房号'} ·{' '}
+                    {data.trades.find((g) => g.id === x.task.tradeId)?.name} / {x.task.name} ·{' '}
+                    {x.task.start} — {x.task.end}{' '}
+                    {onTask && <button onClick={() => onTask(x.task)}>核对任务分配</button>}
+                  </p>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      </details>
+    ) : null;
   return (
     <section className="conflict-panel" role="status">
       <h3>{conflicts.length ? `人员档期冲突 · ${conflicts.length}` : '人员分配待确认'}</h3>

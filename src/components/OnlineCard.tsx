@@ -1,3 +1,4 @@
+import type { PresenceStatus } from '../lib/presence-state';
 import { Modal } from './Modal';
 import { MemberCards } from './MemberCards';
 import { PersonalCard } from './PersonalCard';
@@ -7,12 +8,12 @@ import './photo-editor.css';
 export function OnlineCard({
   account,
   user,
-  online,
+  status,
   onClose,
 }: {
   account: OnlineAccount;
   user: CloudUser;
-  online: boolean;
+  status: PresenceStatus;
   onClose: () => void;
 }) {
   if (account.id === user.id) return <PersonalCard user={user} onClose={onClose} />;
@@ -29,7 +30,7 @@ export function OnlineCard({
           user={user}
           onlyId={account.id}
           readOnly
-          onlineStatus={online}
+          onlineStatus={status}
           onSaved={async () => {}}
         />
       </div>

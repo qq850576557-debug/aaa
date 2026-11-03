@@ -23,7 +23,6 @@ import {
   initialStageColor,
   defaultTradeColor,
 } from './lib/trade-colors';
-import { ConflictPanel } from './components/ConflictPanel';
 import { scheduleForecast } from './lib/readiness';
 import { CollaborationBar } from './components/CollaborationBar';
 import { lazy, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
@@ -1398,16 +1397,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                       {scheduleForecast(data, p).label} · 工期按自然日计算
                     </p>
                   )}
-                  {view !== 'purchases' && (
-                    <ConflictPanel
-                      data={data}
-                      projectId={p.id}
-                      onTask={taskEditor}
-                      pending={isCloud && hasUnsavedChanges}
-                    />
-                  )}
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <Gantt
+                      pending={isCloud && hasUnsavedChanges}
                       data={agendaData}
                       records={recordSource.records}
                       project={p}

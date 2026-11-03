@@ -5436,3 +5436,120 @@ test('concurrent new ids cannot duplicate an identical personnel profile; distin
   assert.equal(accepted.status, 200, await accepted.clone().text());
   assert.equal((await accepted.json()).data.people.length, before.data.people.length + 1);
 });
+test('presence heartbeat is stream/session scoped, aggregates devices, preserves idle status and revokes on logout', async () => {
+  const f = await fixtureAccounts();
+  const a = await login(f.login, f.password),
+    b = await login(f.employee, f.password),
+    device = await login(f.employee, f.password);
+  const ids = [randomUUID(), randomUUID()],
+    controllers = [new AbortController(), new AbortController()];
+  try {
+    for (let i = 0; i < 2; i++)
+      assert.equal(
+        (
+          await fetch(base + '/api/events?clientId=' + ids[i], {
+            headers: { Cookie: i === 0 ? b.cookie : device.cookie, Origin: config.APP_ORIGIN },
+            signal: controllers[i].signal,
+          })
+        ).status,
+        200,
+      );
+    const read = async () =>
+      (await (await request('/presence', 'GET', undefined, a)).json()).accounts.find(
+        (x: any) => x.id === b.user.id,
+      );
+    assert.equal(
+      (await request('/presence', 'POST', { clientId: ids[0], status: 'active', idleMs: 0 }, a))
+        .status,
+      409,
+    );
+    assert.equal(
+      (await request('/presence', 'POST', { clientId: ids[0], status: 'active', idleMs: 0 }, b))
+        .status,
+      200,
+    );
+    assert.equal((await read()).status, 'active');
+    await request('/presence', 'POST', { clientId: ids[1], status: 'busy', idleMs: 0 }, device);
+    assert.equal((await read()).status, 'active');
+    await request('/presence', 'POST', { clientId: ids[0], status: 'busy', idleMs: 0 }, b);
+    assert.equal((await read()).status, 'busy');
+    await request('/presence', 'POST', { clientId: ids[0], status: 'active', idleMs: 300000 }, b);
+    assert.equal((await read()).status, 'busy');
+    await request('/auth/logout', 'POST', {}, b);
+    assert.equal((await read()).status, 'busy');
+    await request('/presence', 'POST', { clientId: ids[1], status: 'active', idleMs: 0 }, device);
+    assert.equal((await read()).status, 'active');
+    await request('/auth/logout', 'POST', {}, device);
+    assert.equal(await read(), undefined);
+  } finally {
+    controllers.forEach((c) => c.abort());
+  }
+});
+
+test('presence expires a silent connected client after heartbeat timeout without revoking its login', async () => {
+  const f = await fixtureAccounts(),
+    a = await login(f.login, f.password);
+  const id = randomUUID(),
+    controller = new AbortController();
+  const response = await fetch(base + '/api/events?clientId=' + id, {
+    headers: { Cookie: a.cookie, Origin: config.APP_ORIGIN },
+    signal: controller.signal,
+  });
+  assert.equal(response.status, 200);
+  await request('/presence', 'POST', { clientId: id, status: 'busy', idleMs: 0 }, a);
+  const original = Date.now.bind(Date);
+  const clock = mock.method(Date, 'now', () => original() + 180001);
+  try {
+    assert.deepEqual((await (await request('/presence', 'GET', undefined, a)).json()).accounts, []);
+    await new Promise((r) => setTimeout(r, 1200));
+  } finally {
+    clock.mock.restore();
+  }
+  assert.deepEqual((await (await request('/presence', 'GET', undefined, a)).json()).accounts, []);
+  try {
+    assert.equal(
+      (await request('/presence', 'POST', { clientId: id, status: 'active', idleMs: 0 }, a)).status,
+      200,
+    );
+    assert.equal(
+      (await (await request('/presence', 'GET', undefined, a)).json()).accounts[0].status,
+      'active',
+    );
+  } finally {
+    controller.abort();
+  }
+  assert.equal((await request('/auth/session', 'GET', undefined, a)).status, 200);
+});
+test('busy activity transitions notify SSE even when the prior active lease has just elapsed', async () => {
+  const f = await fixtureAccounts(),
+    a = await login(f.login, f.password);
+  const id = randomUUID(),
+    controller = new AbortController();
+  const response = await fetch(base + '/api/events?clientId=' + id, {
+    headers: { Cookie: a.cookie, Origin: config.APP_ORIGIN },
+    signal: controller.signal,
+  });
+  const reader = response.body!.getReader();
+  try {
+    await reader.read(); // membership announcement
+    await request('/presence', 'POST', { clientId: id, status: 'active', idleMs: 299999 }, a);
+    await reader.read();
+    await new Promise((r) => setTimeout(r, 20));
+    await request('/presence', 'POST', { clientId: id, status: 'busy', idleMs: 300000 }, a);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const update = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(Error('missing presence change notification')), 700);
+        }),
+      ]);
+      assert.match(new TextDecoder().decode(update.value), /event: presence/);
+    } finally {
+      clearTimeout(timer);
+    }
+  } finally {
+    controller.abort();
+    await reader.cancel().catch(() => {});
+  }
+});

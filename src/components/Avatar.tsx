@@ -1,3 +1,4 @@
+import { presenceLabel, type PresenceStatus } from '../lib/presence-state';
 import { useState } from 'react';
 export type AvatarAccount = {
   id: string;
@@ -13,6 +14,7 @@ export function Avatar({
   label,
   kind = 'system',
   showStatus = false,
+  presence,
 }: {
   account: AvatarAccount;
   version?: string | null;
@@ -20,6 +22,7 @@ export function Avatar({
   label?: string;
   kind?: 'system' | 'card';
   showStatus?: boolean;
+  presence?: PresenceStatus;
 }) {
   const [failed, setFailed] = useState('');
   const [loaded, setLoaded] = useState({ src: '', width: 0, height: 0 });
@@ -34,7 +37,7 @@ export function Avatar({
     (imageVersion
       ? `/api/accounts/${encodeURIComponent(account.id)}/${kind === 'card' ? 'card-avatar' : 'avatar'}?v=${encodeURIComponent(imageVersion)}`
       : '');
-  return (
+  const avatar = (
     <span
       className="account-avatar"
       role={label ? 'img' : undefined}
@@ -79,5 +82,18 @@ export function Avatar({
           </span>
         )}
     </span>
+  );
+  return presence ? (
+    <span className="avatar-with-presence" title={presenceLabel(presence)}>
+      {avatar}
+      <span
+        className={`presence-dot presence-${presence}`}
+        role="img"
+        aria-label={presenceLabel(presence)}
+        title={presenceLabel(presence)}
+      />
+    </span>
+  ) : (
+    avatar
   );
 }

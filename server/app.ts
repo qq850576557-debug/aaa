@@ -1,3 +1,9 @@
+import {
+  aggregatePresence,
+  leaseStatus,
+  PRESENCE_TIMEOUT,
+  type PresenceLease,
+} from '../src/lib/presence-state';
 import { cloudHistoryRoutes, captureRestoreBackup, persistRestoreBackup } from './cloud-history';
 import { databaseFailure, logDatabaseFailure } from './database-readiness';
 import { mentionRoutes } from './mentions';
@@ -289,18 +295,56 @@ export function createApp() {
       const ids = [
         ...new Set(
           [...streams]
-            .filter((s) => s.workspaceId === req.actor!.workspaceId)
+            .filter((s) => s.workspaceId === req.actor!.workspaceId && leaseStatus(s) !== 'offline')
             .map((s) => s.accountId),
         ),
       ];
       const tokens = [...streams]
-        .filter((s) => s.workspaceId === req.actor!.workspaceId)
+        .filter((s) => s.workspaceId === req.actor!.workspaceId && leaseStatus(s) !== 'offline')
         .map((s) => s.tokenHash);
       const q = await pool.query(
         `SELECT DISTINCT a.id,a.login,COALESCE(NULLIF(a.display_name,''),a.login) AS "displayName",v.version AS "avatarVersion" FROM account a JOIN auth_session s ON s.account_id=a.id LEFT JOIN account_avatar v ON v.account_id=a.id WHERE a.workspace_id=$1 AND a.id=ANY($2::text[]) AND s.token_hash=ANY($3::text[]) AND s.expires_at>now() AND a.active=true ORDER BY a.id`,
         [req.actor!.workspaceId, ids, tokens],
       );
-      res.json({ accounts: q.rows });
+      res.json({
+        accounts: q.rows.map((a) => ({
+          ...a,
+          status: aggregatePresence(
+            [...streams].filter((s) => s.accountId === a.id && tokens.includes(s.tokenHash)),
+          ),
+        })),
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+  app.post('/api/presence', (req: AuthRequest, res, next) => {
+    try {
+      const body = z
+        .object({
+          clientId: z.string().uuid(),
+          status: z.enum(['active', 'busy']),
+          idleMs: z.number().min(0).max(86400000),
+        })
+        .strict()
+        .parse(req.body);
+      const stream = [...streams].find(
+        (s) =>
+          s.clientId === body.clientId &&
+          s.tokenHash === req.tokenHash &&
+          s.accountId === req.actor!.id &&
+          s.workspaceId === req.actor!.workspaceId,
+      );
+      if (!stream) throw new ApiError(409, '在线连接尚未就绪');
+      const before = leaseStatus(stream);
+      const reportedBefore = stream.status;
+      stream.expired = false;
+      stream.heartbeatAt = Date.now();
+      stream.status = body.status;
+      stream.activeUntil = Date.now() + Math.max(0, 300000 - body.idleMs);
+      if (before !== leaseStatus(stream) || reportedBefore !== stream.status)
+        announcePresence(stream.workspaceId);
+      res.json({ ok: true });
     } catch (e) {
       next(e);
     }
@@ -437,13 +481,16 @@ export function createApp() {
       next(e);
     }
   });
-  const streams = new Set<{
-    accountId: string;
-    workspaceId: string;
-    tokenHash: string;
-    close: () => void;
-    notify: () => void;
-  }>();
+  const streams = new Set<
+    PresenceLease & {
+      clientId: string;
+      accountId: string;
+      workspaceId: string;
+      tokenHash: string;
+      close: () => void;
+      notify: () => void;
+    }
+  >();
   function announcePresence(workspaceId: string) {
     for (const stream of streams) if (stream.workspaceId === workspaceId) stream.notify();
   }
@@ -1050,6 +1097,13 @@ export function createApp() {
         if (removed) announcePresence(req.actor!.workspaceId);
       };
       const stream = {
+        clientId: z.string().uuid().safeParse(req.query.clientId).success
+          ? String(req.query.clientId)
+          : randomUUID(),
+        expired: false,
+        heartbeatAt: Date.now(),
+        activeUntil: 0,
+        status: 'busy' as PresenceLease['status'],
         accountId: req.actor!.id,
         workspaceId: req.actor!.workspaceId,
         tokenHash: req.tokenHash!,
@@ -1062,6 +1116,10 @@ export function createApp() {
         if (busy || closed) return;
         busy = true;
         try {
+          if (!stream.expired && Date.now() - stream.heartbeatAt > PRESENCE_TIMEOUT) {
+            stream.expired = true;
+            announcePresence(stream.workspaceId);
+          }
           const actor = await session(req.tokenHash!);
           if (closed) return;
           if (!actor) {
@@ -1090,7 +1148,7 @@ export function createApp() {
             lastRecord = recordRevision;
             res.write(`event: records\ndata: ${JSON.stringify({ revision: recordRevision })}\n\n`);
           }
-          if (++ticks % 5 === 0) res.write('event: presence\ndata: {}\n\n');
+          if (++ticks % 30 === 0) res.write('event: presence\ndata: {}\n\n');
           const mentions = String(
             (
               await pool.query(

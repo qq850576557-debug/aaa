@@ -1,3 +1,5 @@
+import { usePresenceHeartbeat } from '../lib/usePresenceHeartbeat';
+import { presenceLabel, PRESENCE_TIMEOUT, type PresenceStatus } from '../lib/presence-state';
 import { OnlineCard } from './OnlineCard';
 import { PersonalCard } from './PersonalCard';
 import { Avatar } from './Avatar';
@@ -9,8 +11,10 @@ export type OnlineAccount = {
   login: string;
   displayName: string;
   avatarVersion: string | null;
+  status?: PresenceStatus;
 };
 export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; isCloud: boolean }) {
+  usePresenceHeartbeat(isCloud && !!user);
   const [selected, setSelected] = useState<OnlineAccount | null>(null);
   const [card, setCard] = useState(false);
   const [online, setOnline] = useState<OnlineAccount[]>([]);
@@ -24,22 +28,47 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
   useEffect(() => {
     if (!isCloud) return;
     let active = true;
+    let lastRead = Date.now();
+    let reading = false;
+    let reread = false;
     const read = () => {
+      if (reading) {
+        reread = true;
+        return;
+      }
+      reading = true;
       void cloudApi<{ accounts: OnlineAccount[] }>('/presence')
         .then((r) => {
-          if (active) setOnline(r.accounts);
+          if (active) {
+            lastRead = Date.now();
+            setOnline(r.accounts);
+          }
         })
         .catch(() => {
-          if (active) setOnline([]);
+          if (active && Date.now() - lastRead > PRESENCE_TIMEOUT) setOnline([]);
+        })
+        .finally(() => {
+          reading = false;
+          if (reread && active) {
+            reread = false;
+            read();
+          }
         });
     };
     read();
-    const timer = setInterval(read, 10000);
+    const timer = setInterval(read, 60000);
+    const foreground = () => {
+      if (document.visibilityState === 'visible') read();
+    };
+    window.addEventListener('focus', foreground);
+    document.addEventListener('visibilitychange', foreground);
     window.addEventListener('chunmo-presence', read);
     window.addEventListener('chunmo-profile-updated', read);
     return () => {
       active = false;
       clearInterval(timer);
+      window.removeEventListener('focus', foreground);
+      document.removeEventListener('visibilitychange', foreground);
       window.removeEventListener('chunmo-presence', read);
       window.removeEventListener('chunmo-profile-updated', read);
     };
@@ -50,7 +79,7 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
         <OnlineCard
           account={selected}
           user={user}
-          online={online.some((a) => a.id === selected.id)}
+          status={online.find((a) => a.id === selected.id)?.status ?? 'offline'}
           onClose={() => setSelected(null)}
         />
       )}
@@ -62,7 +91,10 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
             aria-label="打开我的个人名片"
             onClick={() => setCard(true)}
           >
-            <Avatar account={user} />
+            <Avatar
+              account={user}
+              presence={online.find((a) => a.id === user.id)?.status ?? 'offline'}
+            />
           </button>
         )}
         {user ? (
@@ -86,11 +118,12 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
             className="online-member"
             data-account-id={a.id}
             key={a.id}
-            title={`${a.displayName} · 在线`}
+            title={`${a.displayName} · ${presenceLabel(a.status ?? 'busy')}`}
             aria-label={`查看${a.displayName}的在线名片`}
             onClick={() => setSelected(a)}
           >
             <Avatar
+              presence={a.status ?? 'busy'}
               account={a.id === user?.id ? user : a}
               version={a.id === user?.id ? user.avatarVersion : a.avatarVersion}
             />

@@ -1,3 +1,4 @@
+import { ConflictPanel } from './ConflictPanel';
 import { edgeScrollSpeed, timelineWheelDelta } from '../lib/gantt-scroll';
 import { resolvedTradeColor, tradeTone } from '../lib/trade-colors';
 import { ganttGroups, resizeGanttGroup, type GanttGroup } from '../lib/gantt-groups';
@@ -32,6 +33,7 @@ const LANE = 40;
 interface Props {
   data: Data;
   records?: WorkRecord[];
+  pending?: boolean;
   project: Project;
   onTask: (task?: Task, trade?: Trade, start?: string, end?: string, anchor?: Anchor) => void;
   onDay: (date: string) => void;
@@ -55,6 +57,7 @@ type Drag = {
 export function Gantt({
   data,
   records = [],
+  pending = false,
   project,
   onTask,
   onQuickCreate,
@@ -414,6 +417,13 @@ export function Gantt({
           </h2>
           <p>双击空白日期直接新增施工任务 · 拖选创建施工任务 · 拖动时间条调整</p>
         </div>
+        <ConflictPanel
+          data={data}
+          projectId={project.id}
+          onTask={onTask}
+          pending={pending}
+          compact
+        />
         <div className="toolbar">
           <DateField
             compact

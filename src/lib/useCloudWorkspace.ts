@@ -459,8 +459,13 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
           setError('');
         }
         initialized.current = true;
-        events = new EventSource('/api/events');
-        events.addEventListener('open', () => window.dispatchEvent(new Event('chunmo-presence')));
+        const presenceClientId = crypto.randomUUID();
+        events = new EventSource('/api/events?clientId=' + presenceClientId);
+        events.addEventListener('open', () =>
+          window.dispatchEvent(
+            new CustomEvent('chunmo-presence', { detail: { clientId: presenceClientId } }),
+          ),
+        );
         events.addEventListener('presence', () =>
           window.dispatchEvent(new Event('chunmo-presence')),
         );

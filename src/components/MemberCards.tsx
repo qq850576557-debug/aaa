@@ -1,3 +1,4 @@
+import { presenceLabel, type PresenceStatus } from '../lib/presence-state';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { cloudApi, type CloudUser } from '../lib/cloud';
 import {
@@ -28,7 +29,7 @@ export function MemberCards({
   onPhotoClick?: (aspect: number) => void;
   headerAction?: ReactNode;
   readOnly?: boolean;
-  onlineStatus?: boolean;
+  onlineStatus?: boolean | PresenceStatus;
   onSaved: (card: MemberCard) => Promise<void>;
 }) {
   const [cards, setCards] = useState<MemberCard[]>([]),
@@ -177,7 +178,13 @@ export function MemberCards({
               <div className="member-card-content">
                 <h3>{card.displayName}</h3>
                 {onlineStatus !== undefined && (
-                  <p className="member-card-presence">{onlineStatus ? '● 在线' : '○ 离线'}</p>
+                  <p className="member-card-presence">
+                    {typeof onlineStatus === 'string'
+                      ? presenceLabel(onlineStatus)
+                      : onlineStatus
+                        ? '● 在线'
+                        : '○ 离线'}
+                  </p>
                 )}
                 {card.englishName ? (
                   <p className="member-card-english">{card.englishName}</p>

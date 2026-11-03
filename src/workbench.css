@@ -3445,3 +3445,94 @@ textarea::placeholder {
     align-self: flex-start;
   }
 }
+.app-shell .schedule-section > .section-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+}
+.app-shell .schedule-section > .section-heading > .toolbar {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.app-shell .conflict-panel.conflict-compact {
+  position: relative;
+  flex: 0 1 auto;
+  width: fit-content;
+  max-width: 290px;
+  min-width: 0;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid #e6c7a2;
+  border-radius: 10px;
+  background: #fff3e5;
+  color: #79522c;
+  font-size: 12px;
+}
+.conflict-compact > summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
+}
+.conflict-popover {
+  position: absolute;
+  z-index: 65;
+  top: calc(100% + 7px);
+  right: 0;
+  width: min(460px, calc(100vw - 40px));
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid #e6c7a2;
+  border-radius: 12px;
+  background: #fffaf3;
+  box-shadow: 0 7px 24px #4e402421;
+  padding: 12px;
+  color: #3f5147;
+  white-space: normal;
+}
+.conflict-entry {
+  margin: 5px 0;
+  padding: 6px;
+  border-radius: 7px;
+}
+.conflict-entry > summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.conflict-entry > div {
+  font-size: 12px;
+}
+@media (min-width: 1101px) and (max-width: 1350px) {
+  .app-shell .schedule-section > .section-heading > div:first-child {
+    flex-basis: 100%;
+  }
+  .app-shell .schedule-section > .section-heading {
+    gap: 8px 12px;
+  }
+}
+@media (min-width: 701px) {
+  .app-shell .schedule-section > .section-heading {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(0, auto) auto;
+    gap: 10px;
+  }
+  .app-shell .schedule-section > .section-heading > div:first-child {
+    min-width: 0;
+  }
+  .app-shell .schedule-section > .section-heading > div:first-child h2 {
+    flex-wrap: wrap;
+  }
+  .app-shell .schedule-section > .section-heading > div:first-child p {
+    font-size: 11px;
+    max-width: 250px;
+  }
+  .app-shell .schedule-section > .section-heading > .toolbar {
+    grid-column: 3;
+    flex-wrap: nowrap;
+  }
+  .app-shell .schedule-section > .section-heading > .conflict-compact {
+    max-width: clamp(140px, 17vw, 250px);
+  }
+}

@@ -413,3 +413,29 @@
     flex: 0 0 28px;
   }
 }
+.avatar-with-presence {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  overflow: visible;
+}
+.presence-dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-sizing: content-box;
+  z-index: 2;
+}
+.presence-active {
+  background: #65a984;
+}
+.presence-busy {
+  background: #d9ad53;
+}
+.presence-offline {
+  background: #a1aaa5;
+}

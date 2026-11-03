@@ -91,7 +91,7 @@ test('conflicts: task dates and personnel allocation synchronize both directions
   await restore(page, d);
   await expect(page.locator('.conflict-panel')).toContainText('张师傅');
   await expect(page.locator('.conflict-panel')).toContainText('2026-10-28 — 2026-11-02');
-  await page.locator('.conflict-panel summary').click();
+  await page.locator('.conflict-panel > summary').click();
   await expect(page.locator('.conflict-panel')).toContainText('2号房');
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   let card = page.locator('[data-person-id="w"]');

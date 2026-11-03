@@ -3,7 +3,7 @@ import { useEditorJournal } from '../lib/useEditorJournal';
 import { AssessmentPanel } from './AssessmentPanel';
 import { ConflictPanel } from './ConflictPanel';
 import { categoryName, tradeNames } from '../lib/dictionaries';
-import { staffWork } from '../lib/readiness';
+import { staffWork, staffAssignmentIssues } from '../lib/readiness';
 import { useCurrentDate } from '../lib/useCurrentDate';
 import { useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import {
@@ -81,6 +81,7 @@ export function PeoplePanel({
   const [colorError, setColorError] = useState('');
   const now = useCurrentDate();
   const people = data.people ?? [];
+  const assignmentIssues = staffAssignmentIssues(data);
   const names = data.nameHistory ?? usedNames(data);
   const [manageTrades, setManageTrades] = useState(false);
   const tradeOptions = workerTradeChoices(data);
@@ -222,7 +223,17 @@ export function PeoplePanel({
         </p>
       )}
       <AssessmentPanel data={data} isCloud={isCloud} />
-      <ConflictPanel data={data} onTask={onTask} pending={pending} />
+      {!!assignmentIssues.length && (
+        <details className="assignment-issues">
+          <summary>历史人员关联待核对 · {assignmentIssues.length}</summary>
+          {assignmentIssues.map((issue, index) => (
+            <p key={index}>
+              {issue.sourceName} · {issue.reason}（人员ID：{issue.personId}）
+            </p>
+          ))}
+        </details>
+      )}
+      <ConflictPanel data={data} onTask={onTask} pending={pending} compact />
       <div className="people-grid" ref={grid}>
         {registered.map((p, index) => {
           const trades = tradesFor(p),
