@@ -23,7 +23,14 @@ export async function auditProduction(run, wait = setTimeout, log = console.erro
         return 0;
       }
     }
-    log(`Production audit unavailable (attempt ${attempt}/3); no security result accepted.`);
+    const code =
+      result.error?.code ?? report?.error?.code ?? result.signal ?? `EXIT_${result.status}`;
+    const safeCode = /^[A-Z0-9_-]{1,40}$/.test(String(code))
+      ? String(code)
+      : 'INVALID_AUDIT_RESPONSE';
+    log(
+      `Production audit unavailable (attempt ${attempt}/3, ${safeCode}); no security result accepted.`,
+    );
     if (attempt < 3) await wait(attempt * 2000);
   }
   log(
@@ -36,8 +43,23 @@ if (process.argv[1] && import.meta.url === new URL(process.argv[1], 'file:').hre
   process.exitCode = await auditProduction(() =>
     spawnSync(
       'npm',
-      ['audit', '--omit=dev', '--json', '--fetch-retries=0', '--fetch-timeout=20000'],
-      { encoding: 'utf8', timeout: 30000, maxBuffer: 8 * 1024 * 1024 },
+      [
+        'audit',
+        '--omit=dev',
+        '--json',
+        '--registry=https://registry.npmjs.org',
+        '--fetch-retries=0',
+        '--fetch-timeout=30000',
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 90000,
+        maxBuffer: 8 * 1024 * 1024,
+        env: {
+          ...process.env,
+          NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --dns-result-order=ipv4first`,
+        },
+      },
     ),
   );
 }

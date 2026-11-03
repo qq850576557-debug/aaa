@@ -11,6 +11,7 @@ for (const [label, outcomes, expected, calls] of [
   ['clean audit', [clean], 0, 1],
   ['transient failure', [unavailable, clean], 0, 2],
   ['persistent failure', [unavailable], 1, 3],
+  ['process timeout', [{ status: null, error: { code: 'ETIMEDOUT' }, stdout: '' }], 1, 3],
   ['malformed output', [{ status: 0, stdout: 'not-json' }], 1, 3],
   [
     'real vulnerability',
