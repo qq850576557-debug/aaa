@@ -289,7 +289,7 @@ else
   git -C "$SOURCE_REPO" archive "$COMMIT" | tar -x -C "$JOB"
   chown -R chunmo-build:chunmo-build "$JOB"
   prepare_build_environment
-  runuser -u chunmo-build -- env -i "${BUILD_ENV[@]}" bash -c 'set -e; cd "$1"; npm ci --ignore-scripts; npm rebuild argon2 esbuild --ignore-scripts=false --foreground-scripts; npm run verify:native; npm test; npm run build; npm run build:deploy; npm audit --omit=dev; npm prune --omit=dev --ignore-scripts; node scripts/verify-native.mjs --production; node scripts/verify-release.mjs' _ "$JOB"
+  runuser -u chunmo-build -- env -i "${BUILD_ENV[@]}" bash -c 'set -e; cd "$1"; npm ci --ignore-scripts; npm rebuild argon2 esbuild --ignore-scripts=false --foreground-scripts; npm run verify:native; npm test; npm run build; npm run build:deploy; node scripts/audit-production.mjs; npm prune --omit=dev --ignore-scripts; node scripts/verify-native.mjs --production; node scripts/verify-release.mjs' _ "$JOB"
   printf '%s\n' "$COMMIT" > "$JOB/.verified-build"
   chown -R root:root "$JOB"
   chmod -R a+rX,go-w "$JOB"
