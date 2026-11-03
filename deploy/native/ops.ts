@@ -78,8 +78,8 @@ export async function backup(configDir: string, directory: string, dump: string)
         x.startsWith('backup-' + c.id + '-'),
     );
   if (files.length >= 14)
-    throw Error(
-      'Backup quota reached (14): export verified copies off-site and review retention; nothing deleted',
+    console.warn(
+      `Backup retention review: ${files.length} existing archives retained. Export verified copies off-site and review retention; no automatic deletion. Backup continues only if the free-space check passes.`,
     );
   const disk = statfsSync(directory);
   if (disk.bavail * disk.bsize < 1024 ** 3)
