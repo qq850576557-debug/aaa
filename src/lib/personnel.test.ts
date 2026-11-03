@@ -118,3 +118,11 @@ it('project version restore recomputes conflicts and assignments without overwri
   expect(staffConflicts(restored)).toHaveLength(1);
   expect(restored.tasks.find((t) => t.id === 'tb')).toEqual(d.tasks[1]);
 });
+it('a deleted identity never borrows a same-name active identity for conflict detection', () => {
+  const d = fixture();
+  expect(staffConflicts(d)).toHaveLength(1);
+  d.people![0] = { ...d.people![0], deleted: true, active: false };
+  d.people!.push({ ...d.people![0], id: 'different-worker', deleted: false, active: true });
+  expect(staffConflicts(d)).toEqual([]);
+  expect(d.trades[0].staffIds).toEqual(['w']);
+});

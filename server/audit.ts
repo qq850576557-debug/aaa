@@ -103,7 +103,7 @@ const referenceDomains: Record<string, string> = {
   tradeIds: 'dictionary',
   dependsOn: 'task',
 };
-function auditReference(domain: string, id: string, key: string) {
+export function auditReference(domain: string, id: string, key: string) {
   return (
     'obj_' +
     createHmac('sha256', key)

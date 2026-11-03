@@ -439,7 +439,7 @@ test('staff conflict panel uses current explicit IDs and updates after a saved r
     trade: '瓦工',
     role: '施工人员' as const,
     active: true,
-    notes: '',
+    notes: id === 'worker-a' ? '同名师傅甲的独立资料' : '同名师傅乙的独立资料',
   }));
   d.projects[0].name = '宝嘉誉府3-2-903室';
   d.projects[1].name = '元都新景12-1-1001室';

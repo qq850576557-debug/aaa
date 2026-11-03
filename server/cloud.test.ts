@@ -5326,3 +5326,113 @@ test('incremental first-time personnel and optional metadata use the signed null
   assert.equal(response.status, 200, await response.clone().text());
   assert.deepEqual((await response.json()).data.people, next.people);
 });
+
+test('deleted identities cannot reappear through before-null deltas, full saves or soft-person undelete; unrelated creation remains possible', async () => {
+  testClientIp = '203.0.113.176';
+  const { a } = await seededWorkspace();
+  const get = async () => (await request('/workspace', 'GET', undefined, a)).json();
+  const { makeWorkspaceDelta } = await import('../src/lib/workspace-delta');
+  const initial = await get();
+  const gone = structuredClone(initial.data);
+  gone.projects = [];
+  gone.trades = [];
+  gone.tasks = [];
+  gone.notes = [];
+  gone.purchases = [];
+  gone.people = gone.people.map((x: any) => ({ ...x, deleted: true, active: false }));
+  const deletedResponse = await request(
+    '/workspace',
+    'PUT',
+    makeWorkspaceDelta(initial.data, gone, initial.revision, randomUUID(), initial.resourceProofs),
+    a,
+  );
+  assert.equal(deletedResponse.status, 200, await deletedResponse.clone().text());
+  const deleted = await get();
+  const resurrect = {
+    protocol: 3,
+    revision: deleted.revision,
+    requestId: randomUUID(),
+    changes: [
+      {
+        collection: 'projects',
+        kind: 'record',
+        id: initial.data.projects[0].id,
+        before: null,
+        after: initial.data.projects[0],
+      },
+    ],
+  };
+  assert.equal((await request('/workspace', 'PUT', resurrect, a)).status, 400);
+  assert.deepEqual(await get(), deleted);
+  const full = structuredClone(deleted.data);
+  full.projects = [initial.data.projects[0]];
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: deleted.revision, data: full }, a)).status,
+    400,
+  );
+  const people = structuredClone(deleted.data);
+  people.people = initial.data.people;
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        makeWorkspaceDelta(
+          deleted.data,
+          people,
+          deleted.revision,
+          randomUUID(),
+          deleted.resourceProofs,
+        ),
+        a,
+      )
+    ).status,
+    400,
+  );
+  assert.deepEqual(await get(), deleted);
+  const unrelated = structuredClone(deleted.data);
+  unrelated.projects = [
+    { ...initial.data.projects[0], id: randomUUID(), name: '真正的新工地', staffIds: [] },
+  ];
+  const created = await request(
+    '/workspace',
+    'PUT',
+    makeWorkspaceDelta(
+      deleted.data,
+      unrelated,
+      deleted.revision,
+      randomUUID(),
+      deleted.resourceProofs,
+    ),
+    a,
+  );
+  assert.equal(created.status, 200, await created.clone().text());
+  assert.deepEqual((await created.json()).data.people, deleted.data.people);
+});
+test('concurrent new ids cannot duplicate an identical personnel profile; distinct same-name people and unrelated edits remain intact', async () => {
+  testClientIp = '203.0.113.175';
+  const { a } = await seededWorkspace();
+  const get = async () => (await request('/workspace', 'GET', undefined, a)).json();
+  const { makeWorkspaceDelta } = await import('../src/lib/workspace-delta');
+  const before = await get();
+  const next = structuredClone(before.data);
+  const person = { ...next.people[0], id: randomUUID() };
+  next.people.push(person);
+  const rejected = await request(
+    '/workspace',
+    'PUT',
+    makeWorkspaceDelta(before.data, next, before.revision, randomUUID(), before.resourceProofs),
+    a,
+  );
+  assert.equal(rejected.status, 400);
+  assert.deepEqual(await get(), before);
+  person.notes = '同名的另一位人员，有独立资料';
+  const accepted = await request(
+    '/workspace',
+    'PUT',
+    makeWorkspaceDelta(before.data, next, before.revision, randomUUID(), before.resourceProofs),
+    a,
+  );
+  assert.equal(accepted.status, 200, await accepted.clone().text());
+  assert.equal((await accepted.json()).data.people.length, before.data.people.length + 1);
+});

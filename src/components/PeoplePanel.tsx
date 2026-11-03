@@ -1,3 +1,4 @@
+import { duplicatePerson } from '../lib/person-identity';
 import { useEditorJournal } from '../lib/useEditorJournal';
 import { AssessmentPanel } from './AssessmentPanel';
 import { ConflictPanel } from './ConflictPanel';
@@ -15,7 +16,7 @@ import {
   ArrowDown,
 } from 'lucide-react';
 import { ColorControls } from './ColorPopover';
-import { id, personSchema, usedNames, type Data, type Person } from '../lib/model';
+import { id, personSchema, usedNames, type Data, type Person, type Task } from '../lib/model';
 import { Confirm, Modal } from './Modal';
 import { WorkerTradePicker } from './WorkerTradePicker';
 import { DictionaryPanel } from './DictionaryPanel';
@@ -32,9 +33,13 @@ export function PeoplePanel({
   data,
   onChange,
   isCloud = false,
+  onTask,
+  pending = false,
 }: {
   data: Data;
   isCloud?: boolean;
+  onTask?: (task: Task) => void;
+  pending?: boolean;
   onChange: (fn: (d: Data) => Data) => void;
 }) {
   const [editing, setEditing] = useState<Person | null>(null),
@@ -96,6 +101,13 @@ export function PeoplePanel({
     e.preventDefault();
     try {
       const p = personSchema.parse(editing);
+      const existing = people.find((x) => x.id === p.id);
+      if (existing?.deleted && !p.deleted)
+        throw Error('此档案已删除，旧输入不能将其重新启用；请通过历史恢复核对。');
+      if (!existing && duplicatePerson(people, p))
+        throw Error(
+          '已有相同姓名和资料的在用或已删除档案，未重复创建；请核对原档案，不同人员请补充区分信息。',
+        );
       onChange((d) => ({
         ...d,
         dictionaries: [
@@ -210,7 +222,7 @@ export function PeoplePanel({
         </p>
       )}
       <AssessmentPanel data={data} isCloud={isCloud} />
-      <ConflictPanel data={data} />
+      <ConflictPanel data={data} onTask={onTask} pending={pending} />
       <div className="people-grid" ref={grid}>
         {registered.map((p, index) => {
           const trades = tradesFor(p),

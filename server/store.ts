@@ -1,7 +1,13 @@
+import { personProfile } from '../src/lib/person-identity';
 import type { PoolClient } from 'pg';
 import { trackPurchases } from './purchase-tracking';
 import { syncMentions, validateMentionAccounts } from './mention-delivery';
-import { businessAuditChanges, safeActorDisplayName, type AuditDevice } from './audit';
+import {
+  businessAuditChanges,
+  auditReference,
+  safeActorDisplayName,
+  type AuditDevice,
+} from './audit';
 type Db = Pick<PoolClient, 'query'>;
 import { randomUUID, createHash } from 'node:crypto';
 import {
@@ -366,6 +372,87 @@ export async function commit(
         throw e;
       }
     }
+  if (!opts?.restoreId) {
+    const priorIds = new Set((prior.data.people ?? []).map((p) => p.id));
+    const profiles = new Map<string, NonNullable<Data['people']>>();
+    for (const person of result.data.people ?? []) {
+      const fingerprint = personProfile(person);
+      const rows = profiles.get(fingerprint) ?? [];
+      rows.push(person);
+      profiles.set(fingerprint, rows);
+    }
+    for (const person of result.data.people ?? []) {
+      if (priorIds.has(person.id)) continue; // Existing same-name records are retained verbatim.
+      const duplicate = profiles.get(personProfile(person))?.find((x) => x.id !== person.id);
+      if (duplicate) {
+        const error = new ApiError(
+          400,
+          duplicate.deleted
+            ? '相同资料的人员档案已删除，不能作为新档案自动重新创建；请核对历史，或为确属不同的人员补充区分信息。'
+            : '已有相同姓名和资料的人员档案，未重复创建；请使用原档案，确属不同人员时请补充区分信息。',
+        );
+        error.validationIssues = [
+          {
+            path: ['data', 'people'],
+            code: 'custom',
+            message: error.message,
+            resource: { collection: 'people', id: person.id },
+          },
+        ];
+        throw error;
+      }
+    }
+  }
+  // Ordinary saves/imports must never act as an implicit restore. Audit history is
+  // append-only and outlives the UI history retention; no new table or data migration.
+  if (!opts?.restoreId) {
+    const key = process.env.PRIVATE_DATA_KEY;
+    if (!key || !/^[a-f0-9]{64}$/i.test(key)) throw new ApiError(500, '删除保护校验配置无效');
+    const collections = [
+      ['projects', 'project'],
+      ['trades', 'trade'],
+      ['tasks', 'task'],
+      ['notes', 'note'],
+      ['purchases', 'purchase'],
+      ['people', 'person'],
+      ['dictionaries', 'dictionary'],
+    ] as const;
+    const additions = collections.flatMap(([collection, type]) => {
+      const old = new Set((prior.data[collection] ?? []).map((x) => x.id));
+      return (result.data[collection] ?? [])
+        .filter((x) => !old.has(x.id))
+        .map((x) => ({ collection, type, id: x.id, reference: auditReference(type, x.id, key) }));
+    });
+    const priorDeleted = additions.length
+      ? await c.query(
+          "SELECT DISTINCT entity_type,entity_id FROM audit_event WHERE workspace_id=$1 AND action='business.delete' AND entity_id=ANY($2::text[])",
+          [a.workspaceId, additions.flatMap((x) => [x.reference, x.id])],
+        )
+      : { rows: [] };
+    const blocked = additions.filter((x) =>
+      priorDeleted.rows.some(
+        (row) => row.entity_type === x.type && [x.reference, x.id].includes(row.entity_id),
+      ),
+    );
+    for (const person of result.data.people ?? []) {
+      const old = prior.data.people?.find((x) => x.id === person.id);
+      if (old?.deleted && !person.deleted)
+        blocked.push({ collection: 'people', type: 'person', id: person.id, reference: '' });
+    }
+    if (blocked.length) {
+      const error = new ApiError(
+        400,
+        '已删除的记录不能通过旧草稿、普通保存或备份导入重新出现；原始内容已保留，请通过历史恢复明确处理。',
+      );
+      error.validationIssues = blocked.map((x) => ({
+        path: ['data', x.collection],
+        code: 'custom',
+        message: '该记录已删除，禁止隐式恢复',
+        resource: { collection: x.collection, id: x.id },
+      }));
+      throw error;
+    }
+  }
   await graph(c, a.workspaceId, result.data, prior.data);
   await c.query('UPDATE workspace_state SET revision=$2,data=$3,history=$4 WHERE workspace_id=$1', [
     a.workspaceId,

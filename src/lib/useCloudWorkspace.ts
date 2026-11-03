@@ -1,6 +1,7 @@
+import { deletedDraftView } from './deleted-draft-view';
 import { makeWorkspaceDelta } from './workspace-delta';
 import { savedFeedback } from '../components/SaveFeedback';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { emptyData, parseBackup, prepareWorkspace, type Data } from './model';
 import { canonical, emptyHistory, validateHistory } from './history';
 import { cloudApi, cloudSession, CloudError, type CloudState, type CloudUser } from './cloud';
@@ -735,8 +736,12 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     window.addEventListener('beforeunload', guard);
     return () => window.removeEventListener('beforeunload', guard);
   }, [enabled]);
+  const visibleData = useMemo(
+    () => deletedDraftView(data, viewBase.current, savedData, holds.current),
+    [data, savedData, status, error],
+  );
   return {
-    data,
+    data: visibleData,
     savedData,
     history,
     historyError: '',

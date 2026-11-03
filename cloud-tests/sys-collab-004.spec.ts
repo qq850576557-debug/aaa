@@ -656,7 +656,8 @@ test('SYS-COLLAB-004: a deleted-project conflict keeps its original draft while 
         { timeout: 15000 },
       )
       .toBe('冲突待处理期间继续收到的SSE更新');
-    await b.getByRole('button', { name: '编辑项目不受冲突影响的工地', exact: true }).click();
+    await expect(b.locator('.sidebar-project-list .project-card')).toHaveCount(1);
+    await b.getByRole('button', { name: '编辑当前项目', exact: true }).click();
     const project = b.getByRole('dialog', { name: '编辑项目', exact: true });
     await project.getByLabel('项目备注', { exact: true }).fill('冲突期间另一个项目仍能保存');
     await project.getByRole('button', { name: '保存', exact: true }).click();

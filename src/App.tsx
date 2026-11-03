@@ -1268,7 +1268,13 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             <>{reminderItems()}</>
           ) : view === 'people' ? (
             <DeferredPanel key="people">
-              <PeoplePanel isCloud={isCloud} data={data} onChange={(fn) => mutate(fn)} />
+              <PeoplePanel
+                onTask={taskEditor}
+                pending={isCloud && hasUnsavedChanges}
+                isCloud={isCloud}
+                data={data}
+                onChange={(fn) => mutate(fn)}
+              />
             </DeferredPanel>
           ) : (
             <>
@@ -1392,7 +1398,14 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                       {scheduleForecast(data, p).label} · 工期按自然日计算
                     </p>
                   )}
-                  {view !== 'purchases' && <ConflictPanel data={data} projectId={p.id} />}
+                  {view !== 'purchases' && (
+                    <ConflictPanel
+                      data={data}
+                      projectId={p.id}
+                      onTask={taskEditor}
+                      pending={isCloud && hasUnsavedChanges}
+                    />
+                  )}
                   {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                     <Gantt
                       data={agendaData}
