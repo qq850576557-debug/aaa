@@ -195,7 +195,7 @@ flock -n 9 || fail 'Another deployment/backup/restore is running.'
 # shellcheck disable=SC1091
 source /etc/os-release
 [[ ${ID:-} == alinux && ${VERSION_ID:-} == 3* ]] || fail 'This installer targets Alibaba Cloud Linux 3 only.'
-for command in git runuser openssl curl python3 flock systemctl ss; do command -v "$command" >/dev/null || fail "Missing prerequisite: $command"; done
+for command in git runuser setpriv openssl curl python3 flock systemctl ss; do command -v "$command" >/dev/null || fail "Missing prerequisite: $command"; done
 NODE=$(readlink -f "$(command -v node)")
 [[ $NODE =~ ^/[a-zA-Z0-9_./-]+$ ]] || fail 'Node must have a system-wide executable path without spaces.'
 "$NODE" -e 'const [m,n]=process.versions.node.split(".").map(Number);if(!((m===22&&n>=12)||m===24))process.exit(1)' || fail 'Use supported Node22.12+ or Node24; Node22.23.4 is supported.'
@@ -350,7 +350,7 @@ ln -s "$RELEASE" "$BASE/.current-next.$$"
 mv -Tf "$BASE/.current-next.$$" "$BASE/current"
 PROMOTED=1
 mv -f "$BASE/nginx.conf.next" "$BASE/nginx.conf"
-runuser -u chunmo-staging-web -- "$NGINX" -t -p /var/lib/chunmo-staging-web/ -c "$BASE/nginx.conf"
+setpriv --reuid=chunmo-staging-web --regid=chunmo-staging-web --init-groups --bounding-set=-all,+net_bind_service --inh-caps=-all,+net_bind_service --ambient-caps=-all,+net_bind_service --no-new-privs -- "$NGINX" -t -p /var/lib/chunmo-staging-web/ -c "$BASE/nginx.conf"
 systemctl daemon-reload
 systemctl enable chunmo-staging-api chunmo-staging-web
 systemctl restart chunmo-staging-api chunmo-staging-web

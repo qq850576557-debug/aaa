@@ -43,6 +43,7 @@ MemoryMax=640M
 {common}[Install]
 WantedBy=multi-user.target
 '''
+web_common = common.replace('CapabilityBoundingSet=\n', 'CapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n')
 units['chunmo-staging-web.service'] = f'''[Unit]
 Description=Chunmo loopback HTTPS (SSH tunnel only)
 After=chunmo-staging-api.service
@@ -57,7 +58,7 @@ Restart=on-failure
 RestartSec=5
 MemoryMax=96M
 ReadWritePaths=/var/lib/chunmo-staging-web
-{common}[Install]
+{web_common}[Install]
 WantedBy=multi-user.target
 '''
 units['chunmo-staging-backup.service'] = f'''[Unit]

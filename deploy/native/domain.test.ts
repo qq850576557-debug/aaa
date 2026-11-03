@@ -23,3 +23,24 @@ test('domain uses standard HTTPS, fixed-host HTTP redirect, same-origin API and 
   ])
     assert.throws(() => publicHTTPS({ ...c, origin }));
 });
+
+test('rendered units grant low-port binding only to the dedicated web account', async () => {
+  const { mkdtempSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const out = mkdtempSync(join(tmpdir(), 'cm-lowport-'));
+  execFileSync(
+    'python3',
+    ['deploy/native/render-units.py', '/usr/bin/node', '/usr/sbin/nginx', 'postgresql.service'],
+    { env: { ...process.env, CHUNMO_UNIT_TEST_OUTPUT: out } },
+  );
+  const web = readFileSync(join(out, 'chunmo-staging-web.service'), 'utf8');
+  const api = readFileSync(join(out, 'chunmo-staging-api.service'), 'utf8');
+  assert.match(web, /^User=chunmo-staging-web$/m);
+  assert.match(web, /^CapabilityBoundingSet=CAP_NET_BIND_SERVICE$/m);
+  assert.match(web, /^AmbientCapabilities=CAP_NET_BIND_SERVICE$/m);
+  assert.match(web, /^NoNewPrivileges=yes$/m);
+  assert.match(api, /^CapabilityBoundingSet=$/m);
+  assert.ok(!api.includes('AmbientCapabilities='));
+});

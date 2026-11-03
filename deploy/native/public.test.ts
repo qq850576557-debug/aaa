@@ -258,7 +258,7 @@ for (const privateMode of [false, true])
       executable('systemctl', 'echo "$*" >> "$TEST_LOG"');
       executable('nginx', 'exit 0');
       executable(
-        'runuser',
+        'setpriv',
         `
 # Check the permissions at the exact preflight boundary, before activation.
 [[ $(stat -c %a "$TEST_BUNDLE") == 750 ]]
@@ -270,7 +270,7 @@ done
 for file in runtime.env public-https.json; do
   [[ $(stat -c %a "$TEST_BUNDLE/$file") == 600 ]]
 done
-shift 3; exec "$@"
+while [[ $1 != -- ]]; do shift; done; shift; exec "$@"
 `,
       );
       executable('curl', `echo \"$*\" >> \"$TEST_CURL_LOG\"; echo '{"ok":true}'`);

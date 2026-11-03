@@ -25,7 +25,7 @@ CA=$(/usr/bin/python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); print
 CURL_TRUST=()
 if [[ -n $CA ]]; then CURL_TRUST=(--cacert "$CA" --capath "${CA%/*}"); fi
 NGINX=$(command -v nginx)
-runuser -u chunmo-staging-web -- "$NGINX" -t -p /var/lib/chunmo-staging-web/ -c "$BUNDLE/nginx.conf"
+setpriv --reuid=chunmo-staging-web --regid=chunmo-staging-web --init-groups --bounding-set=-all,+net_bind_service --inh-caps=-all,+net_bind_service --ambient-caps=-all,+net_bind_service --no-new-privs -- "$NGINX" -t -p /var/lib/chunmo-staging-web/ -c "$BUNDLE/nginx.conf"
 BACKUP=$(mktemp -d "$CONF/public-before.XXXXXXXX")
 cp -p "$CONF/runtime.env" "$BASE/nginx.conf" "$BACKUP/"
 if [[ -f $CONF/public-https.json ]]; then cp -p "$CONF/public-https.json" "$BACKUP/"; fi
