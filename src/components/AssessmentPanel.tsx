@@ -573,14 +573,8 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
         </p>
       </section>
     );
-  if (!access || verifiedScope !== ownerKey)
-    return (
-      <section className="assessment-panel">
-        <h2>师傅每日考核</h2>
-        <p role="status">{error || '正在检查考核权限…'}</p>
-      </section>
-    );
-  if (!access.allowed)
+  const checking = !access || verifiedScope !== ownerKey;
+  if (!checking && !access?.allowed)
     return (
       <section className="assessment-panel">
         <h2>师傅每日考核</h2>
@@ -588,12 +582,18 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       </section>
     );
   return (
-    <section className="assessment-panel daily-assessment" aria-label="师傅每日考核">
+    <section
+      className={`assessment-panel daily-assessment${checking ? ' assessment-loading' : ''}`}
+      aria-label="师傅每日考核"
+      aria-busy={checking}
+      inert={checking}
+      data-loading-message={error || '正在读取考核记录…'}
+    >
       <div className="section-heading">
         <h2>师傅每日考核</h2>
         <div className="toolbar">
           <AssessmentGrants
-            access={access}
+            access={access ?? { allowed: false, owner: false }}
             onChanged={() => {
               void load();
             }}

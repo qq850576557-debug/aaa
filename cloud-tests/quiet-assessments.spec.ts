@@ -245,3 +245,41 @@ test('after another tab changes a person, replacing the visible row uses that ac
     )
     .toEqual(['quiet-0', 'quiet-1']);
 });
+
+test('personnel entry reserves its final layout while permission loads and keeps footer compact', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  let release = () => {};
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  await page.route('**/api/assessments/access', async (route) => {
+    await gate;
+    await route.continue();
+  });
+  const entering = enter(page);
+  try {
+    await expect(page.locator('.assessment-loading')).toBeAttached();
+    const before = await page.locator('.personnel-directory').boundingBox();
+    await expect(page.locator('.daily-assessment')).toHaveAttribute('inert', '');
+    release();
+    await entering;
+    await expect(page.locator('.daily-assessment')).toHaveAttribute('aria-busy', 'false');
+    expect((await page.locator('.personnel-directory').boundingBox())!.y).toBe(before!.y);
+    const footer = await page.locator('.sidebar-bottom').boundingBox();
+    expect(footer!.height).toBeLessThan(170);
+    await choose(page, 0, 'quiet-0');
+    const check = card(page).getByRole('combobox', { name: '甲师傅签到', exact: true });
+    for (const state of ['yes', 'no', 'pending']) {
+      await check.selectOption(state);
+      expect(await check.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain(
+        'linear-gradient',
+      );
+      expect(await check.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe('none');
+    }
+  } finally {
+    release();
+    await entering;
+  }
+});

@@ -1,3 +1,4 @@
+import { PeoplePanel } from './components/PeoplePanel';
 import { UndoControls } from './components/UndoControls';
 import { businessUndo } from './lib/undo-manager';
 import { downloadLocalRecovery } from './components/SyncStatus';
@@ -119,9 +120,6 @@ const RecordBoard = lazy(() =>
 );
 const CloudControl = lazy(() =>
   import('./components/CloudControl').then((m) => ({ default: m.CloudControl })),
-);
-const PeoplePanel = lazy(() =>
-  import('./components/PeoplePanel').then((m) => ({ default: m.PeoplePanel })),
 );
 const LegacyMigrationPanel = lazy(() =>
   import('./components/LegacyMigrationPanel').then((m) => ({ default: m.LegacyMigrationPanel })),

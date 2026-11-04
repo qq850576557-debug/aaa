@@ -242,14 +242,28 @@ button[aria-busy='true'] {
   padding: 5px 8px;
   margin-top: 6px;
 }
-/* Reserve the same sidebar footprint during upload, confirmation and errors. */
+/* Compact footer retains a fixed footprint throughout saves. */
+.app-shell .sidebar-bottom {
+  padding-top: 6px;
+}
+.app-shell .sidebar-bottom > button {
+  min-height: 30px;
+  padding-block: 4px;
+  font-size: 12px;
+}
+.app-shell .sidebar-bottom > p {
+  margin-block: 4px 0;
+  padding-top: 6px;
+  font-size: 12px;
+}
+
 .sidebar-save-status {
-  min-height: 90px;
-  padding: 8px 0;
+  min-height: 66px;
+  padding: 2px 0;
 }
 .sidebar-save-status > button {
-  height: 74px;
-  min-height: 74px;
+  height: 62px;
+  min-height: 62px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
