@@ -1,7 +1,11 @@
+import { recordBefore, rememberRecord } from './record-undo';
+import { businessUndo } from './undo-manager';
 import { confirmRecordSnapshots } from './useEditorJournal';
 import { openDB } from 'idb';
 export type Owner = { id: string; workspaceId: string };
 export type OutboxEntry = {
+  undoBefore?: import('./records').WorkRecord | null;
+  undoScope?: string;
   owner: Owner;
   path: string;
   method: string;
@@ -99,6 +103,17 @@ function deliver(entry: Entry): Promise<any> {
         } else {
           if (!result || typeof result.id !== 'string' || !Number.isInteger(result.version))
             throw Object.assign(Error('事项响应无效，保存结果未确认'), { status: 0 });
+          if (
+            (entry.method === 'POST' || entry.undoBefore) &&
+            current?.id === entry.owner.id &&
+            current.workspaceId === entry.owner.workspaceId
+          )
+            rememberRecord(
+              entry.undoBefore ?? null,
+              result,
+              entry.body.requestId,
+              entry.undoScope ?? '',
+            );
           await confirmRecordSnapshots(entry.owner, entry.body.requestId, entry.body.value);
         }
         const d = await db();
@@ -189,11 +204,29 @@ function deliver(entry: Entry): Promise<any> {
 }
 async function persistRecord(path: string, method: string, body: any) {
   if (!current) throw Error('尚未验证当前账号，未发送事项保存');
-  const entry: Entry = { owner: { ...current }, path, method, body: structuredClone(body) };
+  const entry: Entry = {
+    owner: { ...current },
+    path,
+    method,
+    body: structuredClone(body),
+    ...(path === '/records' || path.startsWith('/records/')
+      ? {
+          undoBefore: (() => {
+            const before = recordBefore(path);
+            return method === 'POST' || before?.version === body.version ? before : null;
+          })(),
+          undoScope: businessUndo.replaying ? undefined : businessUndo.scope,
+        }
+      : {}),
+  };
   const d = await db();
   try {
     const tx = d.transaction('pending', 'readwrite');
     const previous = await tx.store.get(key(entry));
+    if (previous) {
+      entry.undoBefore = previous.undoBefore;
+      entry.undoScope = previous.undoScope;
+    }
     if (previous && JSON.stringify(previous.body) !== JSON.stringify(entry.body))
       throw Error('同一提交编号不能改写内容，原记录已保留');
     const running = flightBodies.get(key(entry));

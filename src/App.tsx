@@ -1,3 +1,5 @@
+import { UndoControls } from './components/UndoControls';
+import { businessUndo } from './lib/undo-manager';
 import { downloadLocalRecovery } from './components/SyncStatus';
 import { PurchaseProjectPicker } from './components/PurchaseProjectPicker';
 import { CloudHistoryPanel } from './components/CloudHistoryPanel';
@@ -7,7 +9,6 @@ import { LegacySource } from './components/LegacySource';
 import { ProjectSurface, ThemedWorkspace } from './components/ProjectThemes';
 import { WorkspaceSaveConflict } from './components/WorkspaceSaveConflict';
 import { DeferredPanel } from './components/ModuleBoundary';
-import { mergeWorkspace } from './lib/workspace-merge';
 import { BriefPanel } from './components/BriefPanel';
 import { ProjectContext } from './components/ProjectContext';
 import { categorizedAgenda, type AgendaItem as AgendaEntry } from './lib/agenda';
@@ -178,7 +179,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const now = useCurrentDate();
   const [deadlineChange, setDeadlineChange] = useState<string | null>(null);
   const [scheduleProposal, setScheduleProposal] = useState<ScheduleProposal | null>(null);
-  const [undo, setUndo] = useState<{ before: Data; after: Data; label: string } | null>(null);
+
   const [colorEdit, setColorEdit] = useState<{ id: string; anchor: Anchor } | null>(null);
   const [selected, setSelected] = useState('');
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
@@ -302,7 +303,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     .filter((t) => t.projectId === p?.id)
     .sort((a, b) => a.order - b.order);
   function mutate(fn: (d: Data) => Data, pid = p?.id) {
-    setUndo(null);
     update((d) => {
       const next = fn(d);
       if (!isCloud) parseBackup(next);
@@ -323,7 +323,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       ),
     };
     update(() => stamped);
-    setUndo({ before, after: stamped, label });
+    void before;
+    void label;
   }
   function changeTask(value: Task) {
     const plan = data.tasks.some((t) => t.id === value.id)
@@ -593,7 +594,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   }
   function duplicate() {
     if (!edit) return;
-    setUndo(null);
+
     if (edit.kind === 'project') {
       const source = edit.value;
       update((d) => {
@@ -1027,25 +1028,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             数据与备份
             <ArrowRight size={15} />
           </button>
-          <SaveFeedback status={status} cloud={isCloud} onRetry={() => void retry()}>
-            {undo && (
-              <button
-                className="undo-quiet"
-                title={undo.label}
-                onClick={() => {
-                  const reverted = mergeWorkspace(undo.after, undo.before, data);
-                  if (reverted.conflicts.length) {
-                    notify('该工序已有新的修改，未执行撤销。请核对当前日期后再调整。');
-                    return;
-                  }
-                  update(() => parseBackup(reverted.data));
-                  setUndo(null);
-                }}
-              >
-                撤销
-              </button>
-            )}
-          </SaveFeedback>
+          <SaveFeedback status={status} cloud={isCloud} onRetry={() => void retry()} />
           <p>
             {isCloud ? '云端工作空间' : '本地工作空间'} <i />
           </p>
@@ -1053,6 +1036,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       </aside>
       <div className="main-shell">
         <header className="topbar">
+          <UndoControls
+            scope={isCloud ? `${cloudUser?.workspaceId}:${cloudUser?.id}` : 'local-session'}
+          />
           <DeferredPanel>
             <CloudControl isCloud={isCloud} dirty={hasUnsavedChanges} initialUser={cloudUser} />
           </DeferredPanel>
@@ -1665,9 +1651,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           owner={!!cloudUser?.owner}
           canRestore={status === '已保存' && !hasUnsavedChanges}
           onClose={() => setCloudHistoryAnchor(null)}
-          onRestored={() => {
-            setUndo(null);
-          }}
+          onRestored={() => {}}
         />
       )}
       {historyOpen && (
@@ -1682,7 +1666,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           onClose={() => setHistoryOpen(null)}
           onRestore={async (revision) => {
             await restoreVersion(revision);
-            setUndo(null);
+
             setEdit(null);
             setDay(null);
             setScheduleProposal(null);
@@ -1816,13 +1800,13 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           message={`备份校验通过：${restore.projects.length} 个项目、${restore.tasks.length} 段任务、${restore.notes.length} 条事项、${restore.purchases.length} 条采购。确认后将替换全部本地数据。请先下载当前备份。`}
           onCancel={() => setRestore(null)}
           onConfirm={() => {
-            setUndo(null);
             update(() => restore, { history: restoreVersions, source: 'JSON备份恢复' });
             setRestore(null);
             setBackup(false);
             setSelected('');
             setArchived(false);
             setView('overview');
+            businessUndo.reset();
             notify('备份已载入，正在保存到当前浏览器。');
           }}
         />

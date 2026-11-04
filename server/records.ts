@@ -101,8 +101,13 @@ export function recordRoutes(app: Express) {
                       [a.workspaceId, req.params.id],
                     )
                   ).rows[0];
-            if (method !== 'post' && (!old || old.deleted))
+            if (
+              method !== 'post' &&
+              (!old || (old.deleted && !('restore' in body && body.restore)))
+            )
               throw new ApiError(404, '记录已删除或不存在，请刷新看板');
+            if (old?.deleted && old.updatedBy !== a.id)
+              throw new ApiError(409, '已删除记录的恢复必须由原操作账号核对，不能覆盖他人操作');
             if (old && 'version' in body && old.version !== body.version)
               throw new ApiError(409, '记录已被其他人更新；草稿已保留，请重新读取后再保存');
             const value = 'value' in body ? body.value : old!;
@@ -114,6 +119,7 @@ export function recordRoutes(app: Express) {
             if (
               method === 'put' &&
               old &&
+              !old.deleted &&
               Object.keys(recordFields)
                 .filter((k) => k !== 'deleted')
                 .every(

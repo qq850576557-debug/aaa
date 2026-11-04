@@ -1,3 +1,5 @@
+import { businessUndo } from './undo-manager';
+import { observeRecords } from './record-undo';
 import { confirmEditorSnapshots } from './useEditorJournal';
 import { durableRecord, startRecordSync, queueRecord, verifiedOwner } from './record-outbox';
 import type { Data } from './model';
@@ -97,6 +99,9 @@ async function sendApi<T = Record<string, unknown>>(
       );
     if (path === '/workspace' && method === 'PUT' && value.data)
       void confirmEditorSnapshots(value.data).catch(() => {});
+    if (method !== 'GET' && /(?:restore|import\/commit|auth\/logout)/.test(path))
+      businessUndo.reset();
+    if (path === '/records' && method === 'GET') observeRecords(value);
     if (saving || (path === '/workspace' && method === 'GET')) {
       const at = r.headers.get('X-Chunmo-Confirmed-At');
       if (at && Number.isFinite(Date.parse(at))) {

@@ -1,3 +1,5 @@
+import { rememberWorkspace } from './workspace-undo';
+import { businessUndo } from './undo-manager';
 import { deletedDraftView } from './deleted-draft-view';
 import { makeWorkspaceDelta } from './workspace-delta';
 import { savedFeedback } from '../components/SaveFeedback';
@@ -546,8 +548,15 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         throw Error('当前登录或保存基线不可用，请重新登录或核对云端；草稿已保留');
       if (options?.history || options?.source)
         throw Error('云空间请使用云端账号中的预览导入流程，不能覆盖整个空间');
+      const beforeUndo = current.current;
       const d = prepareWorkspace(parseBackup(fn(current.current)));
       holds.current = releaseCorrectedHolds(current.current, d, holds.current);
+      rememberWorkspace(
+        beforeUndo,
+        d,
+        () => current.current,
+        (next) => update(() => next),
+      );
       current.current = d;
       setData(d);
       const seq = ++sequence.current;
@@ -590,6 +599,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
           id,
         });
         apply(restored);
+        businessUndo.reset();
         savedFeedback('legacy-restore-' + restored.revision, 'restore');
       } catch (e) {
         setStatus('恢复未完成');

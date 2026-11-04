@@ -186,6 +186,13 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       local();
       refresh();
     };
+    const undoPreview = (e: Event) => {
+      const { key, values, owner } = (e as CustomEvent).detail;
+      const current = verifiedOwner();
+      if (owner?.id !== current?.id || owner?.workspaceId !== current?.workspaceId) return;
+      setVolatile((old) => ({ ...old, [key]: values }));
+    };
+    window.addEventListener('chunmo-assessment-undo-preview', undoPreview);
     window.addEventListener('chunmo-assessments-changed', refresh);
     window.addEventListener('chunmo-assessment-drafts', local);
     window.addEventListener('chunmo-assessment-confirmed', confirmed);
@@ -196,6 +203,7 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       loadGuard.current = null;
       clearTimeout(timer);
       clearInterval(fallback);
+      window.removeEventListener('chunmo-assessment-undo-preview', undoPreview);
       window.removeEventListener('chunmo-assessments-changed', refresh);
       window.removeEventListener('chunmo-assessment-drafts', local);
       window.removeEventListener('chunmo-assessment-confirmed', confirmed);

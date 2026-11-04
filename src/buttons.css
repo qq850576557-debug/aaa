@@ -211,3 +211,34 @@ button[aria-busy='true'] {
   font-size: 11px;
   overflow-wrap: anywhere;
 }
+.business-undo-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+}
+.business-undo-controls > button {
+  flex: 0 0 34px;
+  padding: 7px;
+}
+.undo-operation-message {
+  position: absolute;
+  top: 42px;
+  left: 0;
+  width: 260px;
+  padding: 8px 11px;
+  border: 1px solid #dce6db;
+  background: #fffdf6;
+  color: #48634e;
+  font-size: 11px;
+  line-height: 1.6;
+  border-radius: 9px;
+  z-index: 50;
+  pointer-events: none;
+}
+.undo-operation-message button {
+  pointer-events: auto;
+  font-size: 11px;
+  padding: 5px 8px;
+  margin-top: 6px;
+}

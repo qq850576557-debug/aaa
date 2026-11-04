@@ -1,3 +1,4 @@
+import { rememberAssessment } from './assessment-undo';
 import { cloudApi } from './cloud';
 import {
   outboxDB,
@@ -94,20 +95,26 @@ async function mutate(
 export async function setAssessmentIntent(
   target: AssessmentTarget,
   changes: Partial<Record<CheckField, CheckStatus>>,
+  captureUndo = true,
 ) {
   const owner = verifiedOwner();
   if (!owner) throw Error('请先登录再记录考核');
+  let previous: Partial<Record<CheckField, CheckStatus>> = {};
   const next = await mutate(owner, target, (old) => {
     const row: AssessmentDraft = old ?? {
       owner: { ...owner },
       target: { ...structuredClone(target), sources: knownSources(owner, target) },
       fields: {},
     };
+    previous = Object.fromEntries(
+      checkFields.map((f) => [f, row.fields[f]?.value ?? row.target.sources[0]?.[f] ?? 'pending']),
+    );
     for (const f of checkFields)
       if (changes[f] !== undefined)
         row.fields[f] = { value: changes[f]!, stamp: crypto.randomUUID() };
     return row;
   });
+  if (captureUndo) rememberAssessment(target, previous, changes);
   signalOutbox('本地已保存，正在上传');
   if (next) void syncDraft(next);
 }

@@ -1,3 +1,4 @@
+import { businessUndo } from './undo-manager';
 import { pendingRecords, verifiedOwner } from './record-outbox';
 import { savedFeedback, failedFeedback } from '../components/SaveFeedback';
 import type { LegacyLink } from './legacy-records';
@@ -13,6 +14,7 @@ export function useWorkRecords(enabled: boolean) {
   const [error, setError] = useState('');
   const [busyIds, setBusyIds] = useState<string[]>([]);
   const mutations = useRef(new Map<string, { key: string; requestId: string; busy: boolean }>());
+  const optimistic = useRef(new Map<string, WorkRecord>());
   const queuedIds = useRef(new Set<string>());
   const active = useRef(false),
     sequence = useRef(0);
@@ -24,7 +26,6 @@ export function useWorkRecords(enabled: boolean) {
         '/records',
       );
       if (active.current && token === sequence.current) {
-        setRecords(result.records);
         setLegacyLinks(result.legacyLinks ?? []);
         const owner = verifiedOwner();
         if (owner) {
@@ -36,8 +37,21 @@ export function useWorkRecords(enabled: boolean) {
             for (const e of entries) {
               if (e.path.startsWith('/records/')) {
                 const id = decodeURIComponent(e.path.slice(9));
-                if (e.blocked) queuedIds.current.delete(id);
-                else queuedIds.current.add(id);
+                if (e.blocked) {
+                  queuedIds.current.delete(id);
+                  optimistic.current.delete(id);
+                } else {
+                  queuedIds.current.add(id);
+                  if (e.undoScope === undefined && e.undoBefore) {
+                    optimistic.current.set(id, {
+                      ...e.undoBefore,
+                      ...e.body.value,
+                      id,
+                      version: e.body.version + 1,
+                      deleted: e.method === 'DELETE',
+                    });
+                  }
+                }
               }
             }
             setBusyIds([
@@ -56,6 +70,13 @@ export function useWorkRecords(enabled: boolean) {
                 : '',
             );
         } else setError('');
+        if (active.current && token === sequence.current)
+          setRecords(
+            [
+              ...result.records.filter((r) => !optimistic.current.has(r.id)),
+              ...optimistic.current.values(),
+            ].filter((r) => !r.deleted),
+          );
       }
     } catch (e) {
       if (active.current && token === sequence.current) setError(String(e));
@@ -81,12 +102,26 @@ export function useWorkRecords(enabled: boolean) {
       const record = (e as CustomEvent<{ record: WorkRecord }>).detail.record;
       ++sequence.current;
       queuedIds.current.delete(record.id);
-      setRecords((old) => [
-        ...old.filter((x) => x.id !== record.id),
-        ...(record.deleted ? [] : [record]),
-      ]);
+      optimistic.current.delete(record.id);
+      setRecords((old) =>
+        old.some((r) => r.id === record.id && r.version > record.version)
+          ? old
+          : [...old.filter((x) => x.id !== record.id), ...(record.deleted ? [] : [record])],
+      );
       setBusyIds((old) => old.filter((id) => id !== record.id));
     };
+    const preview = (e: Event) => {
+      const { id, record, scope, generation } = (e as CustomEvent).detail;
+      if (scope !== businessUndo.scope || generation !== businessUndo.generation) return;
+      if (record) optimistic.current.set(id, record);
+      else optimistic.current.delete(id);
+      if (record)
+        setRecords((old) => [
+          ...old.filter((r) => r.id !== id),
+          ...(record.deleted ? [] : [record]),
+        ]);
+    };
+    window.addEventListener('chunmo-record-optimistic', preview);
     window.addEventListener('chunmo-record-uploaded', uploaded);
     window.addEventListener('chunmo-record-queued', queued);
     const refresh = () => {
@@ -99,6 +134,7 @@ export function useWorkRecords(enabled: boolean) {
       ++sequence.current;
       window.removeEventListener('chunmo-records-changed', refresh);
       window.removeEventListener('chunmo-record-queued', queued);
+      window.removeEventListener('chunmo-record-optimistic', preview);
       window.removeEventListener('chunmo-record-uploaded', uploaded);
       document.removeEventListener('visibilitychange', refresh);
     };

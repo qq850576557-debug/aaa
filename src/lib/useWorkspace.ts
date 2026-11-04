@@ -1,3 +1,5 @@
+import { rememberWorkspace } from './workspace-undo';
+import { businessUndo } from './undo-manager';
 import { savedFeedback } from '../components/SaveFeedback';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyData, prepareWorkspace, type Data } from './model';
@@ -109,7 +111,14 @@ export function useLocalWorkspace(enabled = true) {
     (fn: (d: Data) => Data, options?: SaveOptions) => {
       if (!ready) return;
       if (restoring.current) throw Error('正在恢复版本，请等待完成');
+      const beforeUndo = current.current;
       const d = prepareWorkspace(fn(current.current));
+      rememberWorkspace(
+        beforeUndo,
+        d,
+        () => current.current,
+        (next) => update(() => next),
+      );
       current.current = d;
       setData(d);
       void persist(d, options);
@@ -123,6 +132,7 @@ export function useLocalWorkspace(enabled = true) {
     try {
       await queue.current;
       const result = await restoreRevision(saved.current, revisionId);
+      businessUndo.reset();
       saved.current = result.data;
       setSavedData(result.data);
       current.current = result.data;

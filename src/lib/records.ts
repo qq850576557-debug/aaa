@@ -51,7 +51,12 @@ export const recordCreate = z
   .strict();
 // Historical undated records remain readable/recoverable; do not rewrite them on upgrade.
 export const recordUpdate = z
-  .object({ requestId: z.uuid(), value: recordValue, version: z.number().int().min(1) })
+  .object({
+    requestId: z.uuid(),
+    value: recordValue,
+    restore: z.literal(true).optional(),
+    version: z.number().int().min(1),
+  })
   .strict();
 export const recordDelete = z
   .object({ requestId: z.uuid(), version: z.number().int().min(1) })
