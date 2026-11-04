@@ -39,6 +39,8 @@ sudo env CHUNMO_SOURCE_REPO=/实际源码路径 /usr/local/sbin/chunmo-update
 
 无需先手动拉代码。固定入口每次取 GitHub 最新部署脚本，再固定到完整 SHA 构建；不会一直执行 `/current` 中旧版本的安装逻辑。失败会返回非零退出码，只有现有部署的备份、构建、权限、健康和持久化等检查全部完成后才输出 `PASS update <完整SHA>`。备份额度、网络下载、磁盘、证书、非托管服务或前置依赖异常仍会明确停止，不通过清数据、关闭校验或重置密码“强行成功”。
 
+生产依赖审计始终使用官方 `https://registry.npmjs.org`，不受交互终端中下载镜像源的影响。网络较慢时，每次审计请求允许等待120秒，npm子进程上限150秒；最多尝试3次。`npm ping` 成功只代表该请求可达，不代表审计已通过。持续超时、无效报告或发现漏洞仍会阻止更新，不跳过审计。看到 `Production audit unavailable` 时，可等待网络恢复后重新运行同一更新命令；应以 `PASS production dependency audit: 0 vulnerabilities.` 和后续 `PASS update <完整SHA>` 分别判断审计与整体更新完成。
+
 ## 截图问题对应的处理
 
 | 截图中的问题                             | 更新流程                                                                                                                                   |

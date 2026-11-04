@@ -49,11 +49,13 @@ if (process.argv[1] && import.meta.url === new URL(process.argv[1], 'file:').hre
         '--json',
         '--registry=https://registry.npmjs.org',
         '--fetch-retries=0',
-        '--fetch-timeout=30000',
+        // Slow registry links can take over a minute even for a successful ping.
+        '--fetch-timeout=120000',
       ],
       {
         encoding: 'utf8',
-        timeout: 90000,
+        // Allow the request deadline to finish before terminating npm itself.
+        timeout: 150000,
         maxBuffer: 8 * 1024 * 1024,
         env: {
           ...process.env,
