@@ -17,14 +17,27 @@ export function ProjectAssessmentSummary({
   projectName,
   records,
   onClose,
+  onHistory,
 }: {
   projectId: string;
   projectName: string;
   records: Assessment[];
   onClose: () => void;
+  onHistory?: (personId: string) => void;
 }) {
   const theme = useProjectTheme(projectId);
-  const rows = assessmentStats(records.filter((r) => r.projectId === projectId));
+  const siteRecords = records.filter((r) => r.projectId === projectId);
+  const rows = assessmentStats(siteRecords);
+  for (const r of siteRecords)
+    if (!rows.some((s) => s.personId === r.personId))
+      rows.push({
+        personId: r.personId,
+        personName: r.personName,
+        projectId: r.projectId,
+        projectName: r.projectName,
+        total: 0,
+        counts: Object.fromEntries(checkFields.map((f) => [f, { yes: 0, no: 0, pending: 0 }])),
+      } as (typeof rows)[number]);
   return (
     <aside
       className="assessment-summary"
@@ -47,6 +60,7 @@ export function ProjectAssessmentSummary({
             <th>签到/天</th>
             <th>拍照/天</th>
             <th>卫生/天</th>
+            <th>记录</th>
           </tr>
         </thead>
         <tbody>
@@ -56,6 +70,16 @@ export function ProjectAssessmentSummary({
               {checkFields.map((f) => (
                 <td key={f}>{r.counts[f].yes}天</td>
               ))}
+              <td>
+                <button
+                  type="button"
+                  className="assessment-summary-history"
+                  onClick={() => onHistory?.(r.personId)}
+                  aria-label={`查看${r.personName}打卡历史`}
+                >
+                  历史
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>

@@ -1,3 +1,4 @@
+import { downloadLocalRecovery } from './SyncStatus';
 import { pendingRecords, verifiedOwner } from '../lib/record-outbox';
 import { useEffect, useState, type ReactNode } from 'react';
 export const savedFeedback = (
@@ -75,8 +76,21 @@ export function SaveFeedback({
           : '本地工作空间';
   return (
     <div className="sidebar-save-status" role="status">
-      <button onClick={() => setDetails(!details)} aria-expanded={details}>
-        {message}
+      <button onClick={() => setDetails(!details)} aria-expanded={details} aria-label={message}>
+        <span className="save-label">最新保存：</span>
+        <time className="save-confirmed-time" dateTime={at || undefined}>
+          {at && cloud
+            ? `${part('year')}年${part('month')}月${part('day')}日 ${part('hour')}点${part('minute')}分`
+            : cloud
+              ? '尚无云端确认'
+              : '本地工作空间'}
+        </time>
+        <span
+          className="save-current-state"
+          style={{ visibility: failed || pending ? 'visible' : 'hidden' }}
+        >
+          {failed || pending ? message : '\u00a0'}
+        </span>
       </button>
       {details && (
         <div>
@@ -93,6 +107,7 @@ export function SaveFeedback({
           >
             重试同步
           </button>
+          <button onClick={() => void downloadLocalRecovery()}>下载未同步内容</button>
           {children}
         </div>
       )}

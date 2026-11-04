@@ -135,7 +135,7 @@ test('workspace save sends only the changed signed resource, local feedback is n
     expect(body.data).toBeUndefined();
     expect(JSON.stringify(body)).not.toContain('t-water');
     await expect(page.locator('.sidebar-save-status')).toContainText('正在同步');
-    await expect(page.locator('.sidebar-save-status')).not.toContainText('最新保存：');
+    await expect(page.locator('.sidebar-save-status .save-current-state')).toContainText('同步');
     await page.getByRole('button', { name: '提醒中心', exact: true }).click();
     release();
     await expect(page.locator('.save-state')).toContainText('已保存');
@@ -177,7 +177,7 @@ test('record editor returns after durable local commit while the server response
     await expect(drawer).toHaveCount(0);
     await expect.poll(() => pending).toBe(true);
     await expect(page.locator('.sidebar-save-status')).toContainText('正在同步');
-    await expect(page.locator('.sidebar-save-status')).not.toContainText('最新保存：');
+    await expect(page.locator('.sidebar-save-status .save-current-state')).toContainText('同步');
     await page.getByRole('button', { name: '采购管理', exact: true }).click();
     release();
     await expect
@@ -340,7 +340,7 @@ test('one record acknowledgement cannot announce cloud saved while an unrelated 
     await expect.poll(() => sentWorkspace).toBe(true);
     releaseRecord();
     await expect.poll(async () => (await api(page, '/records')).value.records.length).toBe(1);
-    await expect(page.locator('.sidebar-save-status')).not.toContainText('最新保存：');
+    await expect(page.locator('.sidebar-save-status .save-current-state')).toContainText('同步');
     await expect(page.locator('.sidebar-save-status')).toContainText('正在同步');
     releaseWorkspace();
     await expect(page.locator('.save-state')).toContainText('已保存');

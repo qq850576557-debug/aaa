@@ -1,8 +1,12 @@
 import { primaryPerson, linkedAssessmentView, linkedDailyView } from '../lib/person-links';
-import { Check, X, Minus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cloudApi, queueCloudRecord, CloudError } from '../lib/cloud';
-import { verifiedOwner, pendingRecords, finishSupersededRecord } from '../lib/record-outbox';
+import {
+  verifiedOwner,
+  pendingRecords,
+  finishSupersededRecord,
+  signalOutbox,
+} from '../lib/record-outbox';
 import {
   assessmentCandidates,
   assessmentToday,
@@ -87,9 +91,29 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
     setSlots({});
     setPerson('');
     setProject('');
+    setReplacement(null);
+    setOrders({});
+    ordersRef.current = {};
+    setSelectionPreviews({});
+    selectionQueue.current = Promise.resolve();
+    selectionVersions.current = {};
   }, [ownerKey]);
-  const [correcting, setCorrecting] = useState<DailyAssessment | null>(null);
-  const [correctionBusy, setCorrectionBusy] = useState(false);
+  type Selection = {
+    projectId: string;
+    projectName: string;
+    date: string;
+    index: number;
+    oldId: string;
+    nextId: string;
+    order: (string | null)[];
+  };
+  const [replacement, setReplacement] = useState<Selection | null>(null);
+  const [selectionPreviews, setSelectionPreviews] = useState<Record<string, Selection>>({});
+  const [orders, setOrders] = useState<Record<string, (string | null)[]>>({});
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
+  const selectionQueue = useRef(Promise.resolve());
+  const selectionVersions = useRef<Record<string, number>>({});
   const report = useCallback(
     (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
     [],
@@ -274,6 +298,7 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
     }
   }
   async function showHistory(row: DailyAssessment) {
+    const scope = ownerKey;
     try {
       const events = (
         await Promise.all(
@@ -284,6 +309,7 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
           ),
         )
       ).flatMap((r) => r.events);
+      if (scope !== verifiedOwner()?.workspaceId + ':' + verifiedOwner()?.id) return;
       setHistory({
         name: row.personName,
         sources: row.sources,
@@ -306,86 +332,237 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       report(e);
     }
   }
-  async function correctRow(replacement?: string) {
-    if (!correcting || correctionBusy) return;
-    setCorrectionBusy(true);
+  function setRowOrder(action: Selection, id: string) {
+    const key = JSON.stringify([action.date, action.projectId]);
+    const order = [...action.order];
+    selectionVersions.current[key] = (selectionVersions.current[key] ?? 0) + 1;
+    order[action.index] = id || null;
+    ordersRef.current = { ...ordersRef.current, [key]: order };
+    setOrders(ordersRef.current);
+  }
+  async function choosePerson(action: Selection, confirmed = false) {
+    const scope = ownerKey;
+    const live = () => scope === verifiedOwner()?.workspaceId + ':' + verifiedOwner()?.id;
+    const key = JSON.stringify([action.date, action.projectId]) + ':' + action.index;
     try {
-      const edits = correcting.sources.map((r) => ({
+      if (!live()) return;
+      if (
+        !action.oldId &&
+        action.nextId &&
+        !confirmedRows.some(
+          (r) =>
+            r.projectId === action.projectId &&
+            r.date === action.date &&
+            primaryPerson(data.people ?? [], r.personId) === action.nextId,
+        )
+      ) {
+        const p = people.find((p) => p.id === action.nextId);
+        if (!p) throw Error('请选择有效人员档案');
+        const next: AssessmentTarget = {
+          date: action.date,
+          projectId: action.projectId,
+          projectName: action.projectName,
+          personId: p.id,
+          personName: p.name,
+          sources: [],
+        };
+        setRowOrder(action, p.id);
+        setReserved((old) => [...old.filter((r) => dailyKey(r) !== dailyKey(next)), next]);
+        await change(next, { attendance: 'pending', photo: 'pending', cleaning: 'pending' });
+        return;
+      }
+      // Let the existing durable row queue finish before creating the inverse link.
+      for (let i = 0; i < 30; i++) {
+        const pending = (await assessmentDrafts()).find(
+          (d) =>
+            d.target.projectId === action.projectId &&
+            d.target.date === action.date &&
+            d.target.personId === action.oldId,
+        );
+        if (!pending) break;
+        if (pending.blocked || !navigator.onLine || i === 29)
+          throw Error('本行仍有待同步打卡，请先完成同步或核对冲突后再更换人员。');
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (!live()) return;
+      const fresh: Assessment[] = [];
+      let cursor: string | null = null;
+      do {
+        const params: URLSearchParams = new URLSearchParams({
+          from: action.date,
+          to: action.date,
+          projectId: action.projectId,
+          ...(cursor ? { cursor } : {}),
+        });
+        const page: { records: Assessment[]; nextCursor: string | null } = await cloudApi<{
+          records: Assessment[];
+          nextCursor: string | null;
+        }>('/assessments?' + params);
+        fresh.push(...page.records);
+        cursor = page.nextCursor;
+      } while (cursor);
+      if (scope !== verifiedOwner()?.workspaceId + ':' + verifiedOwner()?.id) return;
+      const oldSources = fresh.filter(
+        (r) =>
+          r.projectId === action.projectId &&
+          primaryPerson(data.people ?? [], r.personId) === action.oldId &&
+          !r.withdrawn,
+      );
+      if (action.oldId === action.nextId) return;
+      if (action.oldId && !oldSources.length)
+        throw Error('该行人员已由其他操作更换，请核对当前记录后重新选择。');
+      if (oldSources.length && !confirmed) {
+        let recorded = oldSources.some((r) => checkFields.some((f) => r[f] !== 'pending'));
+        if (!recorded) {
+          const history = await Promise.all(
+            oldSources.map((r) =>
+              cloudApi<{ events: HistoryEvent[] }>(
+                `/assessments/${encodeURIComponent(r.id)}/history`,
+              ),
+            ),
+          );
+          recorded = history.some((h) =>
+            h.events.some((e) =>
+              checkFields.some(
+                (f) => e.after[f] !== 'pending' || (e.before && e.before[f] !== 'pending'),
+              ),
+            ),
+          );
+        }
+        if (!live()) return;
+        if (recorded) {
+          setReplacement(action);
+          return;
+        }
+      }
+      const candidates = fresh.filter(
+        (r) =>
+          r.projectId === action.projectId &&
+          primaryPerson(data.people ?? [], r.personId) === action.nextId,
+      );
+      if (action.nextId && candidates.some((r) => !r.withdrawn))
+        throw Error('该师傅在此工地当天已有一行，请直接使用原行，不能重复选择。');
+      // Restoring a prior person restores their own states; it never copies another person's grades.
+      if (
+        action.nextId &&
+        !confirmed &&
+        candidates.some((r) => checkFields.some((f) => r[f] !== 'pending'))
+      ) {
+        setReplacement(action);
+        return;
+      }
+      const edits: any[] = oldSources.map((r) => ({
         date: r.date,
-        personId: r.personId,
         projectId: r.projectId,
+        personId: r.personId,
         tradeId: r.tradeId,
         version: r.version,
-        changes: {
-          withdrawn: true,
-          correctionReason: replacement ? '误选人员，另行选择师傅' : '误选人员，移除当天行',
-        },
+        changes: { withdrawn: true, correctionReason: '更换或暂时不选当天打卡人员' },
       }));
-      const pending = await pendingRecords(verifiedOwner()!);
-      const sameCorrection = (body: any) =>
-        body?.edits?.length === edits.length &&
-        edits.every((e) =>
-          body.edits.some(
-            (x: any) =>
-              x.date === e.date &&
-              x.personId === e.personId &&
-              x.projectId === e.projectId &&
-              x.tradeId === e.tradeId &&
-              x.changes?.withdrawn === true,
+      if (action.nextId) {
+        if (candidates.length)
+          edits.push(
+            ...candidates.map((r) => ({
+              date: r.date,
+              projectId: r.projectId,
+              personId: r.personId,
+              tradeId: r.tradeId,
+              version: r.version,
+              changes: { withdrawn: false, correctionReason: '确认恢复该人员自身当天记录' },
+            })),
+          );
+        else
+          edits.push({
+            date: action.date,
+            projectId: action.projectId,
+            personId: action.nextId,
+            tradeId: 'daily',
+            version: 0,
+            changes: { attendance: 'pending', photo: 'pending', cleaning: 'pending' },
+          });
+      }
+      if (!edits.length) {
+        setRowOrder(action, '');
+        return;
+      }
+      if (!live()) return;
+      const rejected = (await pendingRecords(verifiedOwner()!)).filter(
+        (e) =>
+          e.blocked &&
+          e.path === '/assessments/batch' &&
+          e.body?.edits?.some(
+            (edit: any) =>
+              edit.date === action.date &&
+              edit.projectId === action.projectId &&
+              ((edit.changes?.withdrawn === true &&
+                primaryPerson(data.people ?? [], edit.personId) === action.oldId) ||
+                (!action.oldId &&
+                  edit.changes?.withdrawn === false &&
+                  primaryPerson(data.people ?? [], edit.personId) === action.nextId)),
           ),
-        );
-      const previous = pending.find(
-        (e) => e.path === '/assessments/batch' && !e.blocked && sameCorrection(e.body),
       );
-      const queued = await queueCloudRecord(
-        '/assessments/batch',
-        'POST',
-        previous?.body ?? { requestId: crypto.randomUUID(), confirmed: true, edits },
-      );
+      if (!live()) return;
+      const queued = await queueCloudRecord('/assessments/batch', 'POST', {
+        requestId: crypto.randomUUID(),
+        confirmed: true,
+        edits,
+      });
+      if (!live()) return;
+      setSelectionPreviews((old) => ({ ...old, [key]: action }));
+      setRowOrder(action, action.nextId);
       const result = await queued.completion;
+      if (scope !== verifiedOwner()?.workspaceId + ':' + verifiedOwner()?.id) return;
       setRecords((old) => mergeRecords(old, result.records));
-      setReserved((old) => old.filter((r) => dailyKey(r) !== dailyKey(correcting)));
-      if (replacement) {
-        const p = people.find((p) => p.id === replacement)!;
-        await change(
-          {
-            date: correcting.date,
-            projectId: correcting.projectId,
-            personId: p.id,
-            personName: p.name,
-            projectName: correcting.projectName,
-            sources: [],
-          },
-          { attendance: 'pending', photo: 'pending', cleaning: 'pending' },
+      setReserved((old) =>
+        old.filter(
+          (r) =>
+            !(
+              r.projectId === action.projectId &&
+              r.date === action.date &&
+              (r.personId === action.oldId || r.personId === action.nextId)
+            ),
+        ),
+      );
+      for (const entry of rejected) await finishSupersededRecord(entry.body.requestId);
+      if (rejected.length) {
+        const pending = await pendingRecords(verifiedOwner()!);
+        const local = await assessmentDrafts();
+        signalOutbox(
+          pending.some((e) => e.blocked) || local.some((e) => e.blocked)
+            ? '存在待处理冲突'
+            : pending.length || local.length
+              ? '本地已保存，正在上传'
+              : '云端已保存',
         );
       }
-      for (const entry of pending.filter((e) => e.blocked && sameCorrection(e.body)))
-        await finishSupersededRecord(entry.body.requestId);
-      setCorrecting(null);
+      setReplacement(null);
     } catch (e) {
-      if (e instanceof CloudError && e.status === 409) {
-        const latest = await readAllAssessments(now);
-        setRecords(latest);
-        setCorrecting(
-          linkedDailyView(latest, data).find((r) => dailyKey(r) === dailyKey(correcting)) ?? null,
-        );
-      }
+      if (!live()) return;
       report(e);
+      setRowOrder(action, action.oldId);
     } finally {
-      setCorrectionBusy(false);
+      if (!live()) return;
+      setSelectionPreviews((old) => {
+        const next = { ...old };
+        delete next[key];
+        return next;
+      });
     }
   }
-  function exportPending() {
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify({ savedAt: new Date().toISOString(), drafts }, null, 2)], {
-        type: 'application/json',
-      }),
-    );
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = '春茉待同步考核副本.json';
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  function selectPerson(action: Selection) {
+    const key = JSON.stringify([action.date, action.projectId]);
+    const revision = selectionVersions.current[key] ?? 0;
+    selectionQueue.current = selectionQueue.current
+      .catch(() => {})
+      .then(() => {
+        const order = ordersRef.current[key];
+        const advanced = (selectionVersions.current[key] ?? 0) !== revision;
+        return choosePerson(
+          advanced && order
+            ? { ...action, order: [...order], oldId: order[action.index] || '' }
+            : action,
+        );
+      });
   }
   if (!isCloud)
     return (
@@ -422,7 +599,6 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
             }}
             onError={report}
           />
-          {drafts.length > 0 && <button onClick={exportPending}>导出待同步副本</button>}
         </div>
       </div>
       <div className="assessment-filters">
@@ -475,15 +651,7 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
           {error}
         </p>
       )}
-      {
-        <p className="assessment-sync-status" role="status">
-          {!drafts.length
-            ? '统计以云端确认记录为准。'
-            : drafts.some((d) => d.blocked)
-              ? '存在待核对考核，完整本地选择已保留。'
-              : '本地已保存，后台同步中。'}{' '}
-        </p>
-      }
+      <p className="assessment-sync-status">统计以云端确认记录为准。</p>
       {person && (
         <PersonAssessmentStats
           personId={person}
@@ -496,9 +664,6 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
           const date = dates[projectId] ?? now;
           const validDate = dateOK(date) && date <= now;
           const candidates = assessmentCandidates(data, date);
-          const withdrawn = confirmedRows.filter(
-            (r) => r.withdrawn && r.projectId === projectId && r.date === date,
-          );
           const selected = daily
             .filter((r) => r.projectId === projectId && r.date === date)
             .sort(
@@ -512,8 +677,13 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
           const local = drafts.filter(
             (d) => d.target.projectId === projectId && d.target.date === date,
           );
-          const reservedHere = reserved.filter((r) => r.projectId === projectId && r.date === date);
-          const chosen = [
+          const reservedHere = reserved.filter(
+            (r) =>
+              r.projectId === projectId &&
+              r.date === date &&
+              !confirmedRows.some((saved) => dailyKey(saved) === dailyKey(r)),
+          );
+          const detected = [
             ...new Set([
               ...selected.map((r) => r.personId),
               ...local.map((d) => d.target.personId),
@@ -521,6 +691,24 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
             ]),
           ];
           const slotKey = JSON.stringify([date, projectId]);
+          const previews = Object.values(selectionPreviews).filter(
+            (r) => r.projectId === projectId && r.date === date,
+          );
+          const ids = [
+            ...new Set([
+              ...detected.filter((id) => !previews.some((p) => p.oldId === id)),
+              ...previews.map((p) => p.nextId).filter(Boolean),
+            ]),
+          ];
+          const chosen = (orders[slotKey] ?? detected).map((id) =>
+            id && ids.includes(id) ? id : null,
+          );
+          for (const id of ids)
+            if (!chosen.includes(id)) {
+              const empty = chosen.indexOf(null);
+              if (empty >= 0) chosen[empty] = id;
+              else chosen.push(id);
+            }
           const count = Math.max(chosen.length, slots[slotKey] ?? 3);
           const preferred = new Set(
             candidates.filter((r) => r.projectId === projectId).map((r) => r.personId),
@@ -569,7 +757,8 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                     ))}
                   </div>
                   {Array.from({ length: count }, (_, index) => {
-                    const personId = chosen[index];
+                    const personId = chosen[index] || undefined;
+                    const selecting = previews.some((p) => p.index === index);
                     const saved = selected.find((r) => r.personId === personId);
                     const draft = local.find((d) => d.target.personId === personId);
                     const target =
@@ -577,7 +766,7 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                       (saved
                         ? {
                             date,
-                            personId,
+                            personId: saved.personId,
                             projectId,
                             personName: saved.personName,
                             projectName,
@@ -606,120 +795,32 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                       >
                         <div className="assessment-four-column" role="row">
                           <div className="assessment-person-cell" role="cell">
-                            {personId ? (
-                              <>
-                                <button
-                                  type="button"
-                                  className="assessment-person-name"
-                                  title="重新选择师傅（保留原始历史）"
-                                  disabled={!saved || !!draft}
-                                  onClick={() => saved && setCorrecting(saved)}
-                                >
-                                  {name} ⌄
-                                </button>
-                                {saved && (
-                                  <button
-                                    className="assessment-remove-empty"
-                                    disabled={!!draft}
-                                    aria-label={`移除${name}当天打卡`}
-                                    onClick={() => setCorrecting(saved)}
-                                  >
-                                    ×
-                                  </button>
-                                )}
-                                {saved && (
-                                  <button
-                                    className="assessment-history-link"
-                                    aria-label={`查看${name}打卡历史`}
-                                    onClick={() => void showHistory(saved)}
-                                  >
-                                    历史
-                                  </button>
-                                )}
-                                <small>
-                                  {draft?.blocked
-                                    ? '待核对'
-                                    : Object.keys(volatile[rowKey] ?? {}).length
-                                      ? '正在保存本地'
-                                      : draft
-                                        ? '本地已保存·待同步'
-                                        : '已同步'}
-                                  {saved && (
-                                    <span
-                                      title={`实际录入：${saved.createdName} ${new Date(saved.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`}
-                                    >
-                                      {' '}
-                                      · {saved.updatedName}
-                                    </span>
-                                  )}
-                                </small>
-                              </>
-                            ) : (
-                              <div className="assessment-empty-person">
-                                <AssessmentPersonPicker
-                                  people={people}
-                                  assigned={preferred}
-                                  excluded={
-                                    new Set(
-                                      chosen.map((id) => primaryPerson(data.people ?? [], id)),
-                                    )
-                                  }
-                                  label={`${projectName}第${index + 1}行选择师傅`}
-                                  disabled={!canCreate}
-                                  onSelect={(id) => {
-                                    const p = people.find((p) => p.id === id)!;
-                                    const next: AssessmentTarget = {
-                                      date,
-                                      projectId,
-                                      personId: id,
-                                      personName: p.name,
-                                      projectName,
-                                      sources: [],
-                                    };
-                                    const oldSources = withdrawn.filter((r) => r.personId === id);
-                                    if (oldSources.length) {
-                                      void queueCloudRecord('/assessments/batch', 'POST', {
-                                        requestId: crypto.randomUUID(),
-                                        confirmed: true,
-                                        edits: oldSources.map((r) => ({
-                                          date: r.date,
-                                          personId: r.personId,
-                                          projectId: r.projectId,
-                                          tradeId: r.tradeId,
-                                          version: r.version,
-                                          changes: {
-                                            withdrawn: false,
-                                            correctionReason: '确认恢复当天人员',
-                                          },
-                                        })),
-                                      })
-                                        .then((q) => q.completion)
-                                        .then((result) =>
-                                          setRecords((old) => mergeRecords(old, result.records)),
-                                        )
-                                        .catch(report);
-                                      return;
-                                    }
-                                    setReserved((old) => [...old, next]);
-                                    void change(next, {
-                                      attendance: 'pending',
-                                      photo: 'pending',
-                                      cleaning: 'pending',
-                                    });
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  className="assessment-remove-empty"
-                                  aria-label={`移除${projectName}第${index + 1}个空白行`}
-                                  onClick={() =>
-                                    setSlots((old) => ({ ...old, [slotKey]: count - 1 }))
-                                  }
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            )}
+                            <AssessmentPersonPicker
+                              people={people}
+                              assigned={preferred}
+                              excluded={
+                                new Set(
+                                  chosen
+                                    .filter((id): id is string => !!id && id !== personId)
+                                    .map((id) => primaryPerson(data.people ?? [], id)),
+                                )
+                              }
+                              value={personId || ''}
+                              selectedName={name}
+                              label={`${projectName}第${index + 1}行选择师傅`}
+                              disabled={!canCreate}
+                              onSelect={(id) =>
+                                selectPerson({
+                                  projectId,
+                                  projectName,
+                                  date,
+                                  index,
+                                  oldId: personId || '',
+                                  nextId: id,
+                                  order: chosen,
+                                })
+                              }
+                            />
                           </div>
                           {checkFields.map((f) => (
                             <div
@@ -728,38 +829,33 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                               key={f}
                               aria-label={`${name || '未选师傅'}${labels[f]}`}
                             >
-                              {states.map((s) => (
-                                <button
-                                  type="button"
-                                  key={s.value}
-                                  className={`assessment-check check-${s.value}`}
-                                  disabled={!target || !validDate}
-                                  aria-label={`${name || '未选师傅'}${labels[f]}${s.label}`}
-                                  aria-pressed={!!target && values[f] === s.value}
-                                  title={s.label}
-                                  onClick={() => {
-                                    if (
-                                      target &&
-                                      (values[f] !== s.value || saved?.differences.includes(f))
-                                    )
-                                      void change(target, { [f]: s.value });
-                                  }}
-                                >
-                                  {s.value === 'yes' ? (
-                                    <Check size={15} strokeWidth={3} />
-                                  ) : s.value === 'no' ? (
-                                    <X size={15} strokeWidth={3} />
-                                  ) : (
-                                    <Minus size={15} />
-                                  )}
-                                </button>
-                              ))}
+                              <select
+                                className={`assessment-status-select status-${values[f]}`}
+                                aria-label={`${name || '未选师傅'}${labels[f]}`}
+                                title={`${labels[f]}：${states.find((s) => s.value === values[f])?.label}`}
+                                value={values[f]}
+                                disabled={!target || !validDate || selecting}
+                                onChange={(e) =>
+                                  target &&
+                                  void change(target, { [f]: e.target.value as CheckStatus })
+                                }
+                              >
+                                {states.map((s) => (
+                                  <option key={s.value} value={s.value} aria-label={s.label}>
+                                    {s.glyph}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                           ))}
                         </div>
-                        {saved?.differences.length ? (
+                        {saved && saved.sources.length > 1 ? (
                           <details className="assessment-legacy-warning">
-                            <summary>同日旧工种记录存在差异，未计为失败；查看来源</summary>
+                            <summary>
+                              {saved.differences.length
+                                ? '同日来源有差异（不计失败）'
+                                : '同日来源已一致（历史保留）'}
+                            </summary>
                             {saved.sources.map((r) => (
                               <p key={r.id}>
                                 {r.tradeName}：
@@ -799,21 +895,6 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                     );
                   })}
                 </div>
-                {!!withdrawn.length && (
-                  <details className="assessment-source-detail">
-                    <summary>已撤回的当天来源（{withdrawn.length}）</summary>
-                    {withdrawn.map((r) => (
-                      <p key={r.id}>
-                        {r.personName} · {r.correctionReason} · {r.updatedName}
-                        <button
-                          onClick={() => void showHistory({ ...r, sources: [r], differences: [] })}
-                        >
-                          查看保留历史
-                        </button>
-                      </p>
-                    ))}
-                  </details>
-                )}
                 <footer>
                   <button
                     type="button"
@@ -822,7 +903,6 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                   >
                     ＋ 添加人员
                   </button>
-                  <small>移除仅撤回当天记录，历史可追溯</small>
                 </footer>
               </ProjectSurface>
               {expanded.includes(projectId) && (
@@ -830,6 +910,14 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                   projectId={projectId}
                   projectName={projectName}
                   records={statisticsRows}
+                  onHistory={(id) => {
+                    const rows = linkedDailyView(
+                      confirmedRows.map((r) => ({ ...r, withdrawn: false })),
+                      data,
+                    ).filter((r) => r.projectId === projectId && r.personId === id);
+                    if (rows.length)
+                      void showHistory({ ...rows[0], sources: rows.flatMap((r) => r.sources) });
+                  }}
                   onClose={() => setExpanded((old) => old.filter((id) => id !== projectId))}
                 />
               )}
@@ -840,37 +928,27 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       {!sites.length && (
         <p className="assessment-empty">暂无符合条件的工地。可从筛选中选择历史工地。</p>
       )}
-      {correcting && (
-        <Modal title="更正当天人员" onClose={() => !correctionBusy && setCorrecting(null)}>
+      {replacement && (
+        <Modal title="确认更换打卡人员" onClose={() => setReplacement(null)}>
           <div className="modal-body">
-            <p>
-              将撤回「{correcting.personName}」在 {correcting.date}、{correcting.projectName}{' '}
-              的本日记录，保留原始状态和操作历史。其他日期及工地不受影响。
-            </p>
-            <p>重新选择后，新师傅从未记录开始，不转记原师傅成绩。待同步完成后可更正。</p>
-            <AssessmentPersonPicker
-              people={people}
-              assigned={new Set()}
-              excluded={
-                new Set(
-                  daily
-                    .filter(
-                      (r) => r.projectId === correcting.projectId && r.date === correcting.date,
-                    )
-                    .map((r) => r.personId),
-                )
-              }
-              label="更正为其他师傅"
-              disabled={correctionBusy}
-              onSelect={(id) => void correctRow(id)}
-            />
-            <button disabled={correctionBusy} className="danger" onClick={() => void correctRow()}>
-              确认仅移除当天人员
-            </button>
-            <button disabled={correctionBusy} onClick={() => setCorrecting(null)}>
-              取消
-            </button>
+            <p>已有打卡记录，是否确认更换打卡人员？</p>
+            <p>原人员的打卡及历史保留，不会转记给另一位师傅。选择原人员时恢复其自身记录。</p>
           </div>
+          <footer className="modal-foot">
+            <button onClick={() => setReplacement(null)}>取消</button>
+            <button
+              className="primary"
+              onClick={() => {
+                const action = replacement;
+                setReplacement(null);
+                selectionQueue.current = selectionQueue.current
+                  .catch(() => {})
+                  .then(() => choosePerson(action, true));
+              }}
+            >
+              确认
+            </button>
+          </footer>
         </Modal>
       )}
       {history && (
@@ -890,6 +968,12 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                   {e.actorName} ·{' '}
                   {new Date(e.createdAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}
                 </strong>
+                {e.before?.withdrawn !== e.after.withdrawn && (
+                  <p>
+                    {e.after.withdrawn ? '已撤回当天人员' : '恢复人员自身记录'} ·{' '}
+                    {e.after.correctionReason}
+                  </p>
+                )}
                 <p>
                   {checkFields
                     .map(

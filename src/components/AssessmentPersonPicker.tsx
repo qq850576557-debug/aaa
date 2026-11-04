@@ -7,6 +7,8 @@ export function AssessmentPersonPicker({
   disabled,
   onSelect,
   label,
+  value = '',
+  selectedName = '',
 }: {
   people: Person[];
   assigned: Set<string>;
@@ -14,6 +16,8 @@ export function AssessmentPersonPicker({
   disabled?: boolean;
   onSelect: (id: string) => void;
   label: string;
+  value?: string;
+  selectedName?: string;
 }) {
   const [open, setOpen] = useState(false),
     [query, setQuery] = useState('');
@@ -53,7 +57,7 @@ export function AssessmentPersonPicker({
     >
       <button
         type="button"
-        className="assessment-choose-person"
+        className={`assessment-choose-person ${value ? 'has-person' : ''}`}
         disabled={disabled}
         aria-label={label}
         aria-haspopup="listbox"
@@ -61,7 +65,8 @@ export function AssessmentPersonPicker({
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        选择师傅 <span aria-hidden="true">⌄</span>
+        {selectedName || people.find((p) => p.id === value)?.name || '选择师傅'}{' '}
+        <span aria-hidden="true">⌄</span>
       </button>
       {open && (
         <div className="assessment-person-menu">
@@ -74,12 +79,25 @@ export function AssessmentPersonPicker({
             onChange={(e) => setQuery(e.target.value)}
           />
           <div role="listbox" id={id} aria-label="已有师傅档案">
+            <button
+              type="button"
+              role="option"
+              aria-selected={!value}
+              data-person-id=""
+              onClick={() => {
+                onSelect('');
+                setOpen(false);
+                setQuery('');
+              }}
+            >
+              暂时不选
+            </button>
             {options.map((p) => (
               <button
                 type="button"
                 role="option"
                 data-person-id={p.id}
-                aria-selected="false"
+                aria-selected={p.id === value}
                 key={p.id}
                 title={[p.name, p.trade, p.notes].filter(Boolean).join(' · ')}
                 onClick={() => {

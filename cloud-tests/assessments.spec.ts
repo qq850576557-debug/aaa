@@ -42,7 +42,10 @@ const row = (p: Page, id: string, project = 'p-home') =>
   card(p, project).locator(`.assessment-day-row[data-person-id="${id}"]`);
 async function choose(p: Page, id: string, project = 'p-home') {
   await card(p, project).evaluate((el) => el.scrollIntoView({ block: 'center' }));
-  await card(p, project).locator('.assessment-choose-person').first().click();
+  await card(p, project)
+    .locator('.assessment-day-row.empty .assessment-choose-person')
+    .first()
+    .click();
   await p
     .getByRole('listbox', { name: '已有师傅档案' })
     .locator(`[data-person-id="${id}"]`)
@@ -83,34 +86,37 @@ for (const width of [1280, 1440])
       ).toBeVisible();
       await expect(card(p).locator('.assessment-day-row')).toHaveCount(3);
       await expect(card(p, 'second-site').locator('.assessment-day-row')).toHaveCount(3);
-      expect(await card(p).locator('.assessment-check:not(:disabled)').count()).toBe(0);
-      await card(p).locator('.assessment-remove-empty').first().click();
-      await expect(card(p).locator('.assessment-day-row')).toHaveCount(2);
-      await card(p).getByRole('button', { name: '＋ 添加人员', exact: true }).click();
-      await expect(card(p).locator('.assessment-day-row')).toHaveCount(3);
+      expect(await card(p).locator('.assessment-status-select:not(:disabled)').count()).toBe(0);
+      await expect(card(p).locator('.assessment-remove-empty')).toHaveCount(0);
       expect(await records(c)).toHaveLength(0);
 
       await card(p).locator('header input').fill(plus(assessmentToday(), 1));
       await expect(panel.getByRole('alert')).toContainText('不能记录未来日期');
-      await expect(card(p).locator('.assessment-choose-person').first()).toBeDisabled();
+      await expect(
+        card(p).locator('.assessment-day-row.empty .assessment-choose-person').first(),
+      ).toBeDisabled();
       const date = plus(assessmentToday(), -2);
       await card(p).locator('header input').fill(date);
-      await card(p).locator('.assessment-choose-person').first().click();
+      await card(p).locator('.assessment-day-row.empty .assessment-choose-person').first().click();
       const menu = p.getByRole('listbox', { name: '已有师傅档案' });
-      await expect(menu.getByRole('option').first()).toContainText('已分配');
+      await expect(
+        menu.locator('[role=option][data-person-id]:not([data-person-id=""])').first(),
+      ).toContainText('已分配');
       await p.getByLabel('搜索师傅姓名', { exact: true }).fill('王');
-      await expect(menu.getByRole('option')).toHaveCount(2);
+      await expect(
+        menu.locator('[role=option][data-person-id]:not([data-person-id=""])'),
+      ).toHaveCount(2);
       await menu.locator('[data-person-id="worker-a"]').click();
       await row(p, 'worker-a')
-        .getByRole('button', { name: '王师傅签到已完成', exact: true })
-        .click();
+        .getByRole('combobox', { name: '王师傅签到', exact: true })
+        .selectOption('yes');
       await row(p, 'worker-a')
-        .getByRole('button', { name: '王师傅拍照未完成', exact: true })
-        .click();
+        .getByRole('combobox', { name: '王师傅拍照', exact: true })
+        .selectOption('no');
       await expect
         .poll(async () => (await records(c, date)).find((r: any) => r.personId === 'worker-a'))
         .toMatchObject({ attendance: 'yes', photo: 'no', cleaning: 'pending' });
-      await card(p).locator('.assessment-choose-person').first().click();
+      await card(p).locator('.assessment-day-row.empty .assessment-choose-person').first().click();
       await expect(p.getByRole('listbox').locator('[data-person-id="worker-a"]')).toHaveCount(0);
       await p.getByRole('listbox').locator('[data-person-id="worker-b"]').click();
       await expect.poll(async () => (await records(c, date)).length).toBe(2);
@@ -128,7 +134,7 @@ for (const width of [1280, 1440])
       expect(side.x).toBeGreaterThanOrEqual(after.x);
 
       await expect(summary.locator('tbody tr')).toHaveCount(2);
-      await expect(summary.locator('[data-person-id="worker-a"] td')).toHaveText([
+      await expect(summary.locator('[data-person-id="worker-a"] td:not(:last-child)')).toHaveText([
         '1天',
         '0天',
         '0天',
@@ -138,15 +144,17 @@ for (const width of [1280, 1440])
       await choose(p, 'worker-d');
       await expect.poll(async () => (await records(c, date)).length).toBe(4);
       await expect(card(p).locator('.assessment-day-row')).toHaveCount(4);
-      await summary.getByRole('button').click();
+      await summary
+        .getByRole('button', { name: `收起${d.projects[0].name}数据小结`, exact: true })
+        .click();
       await card(p, 'second-site').locator('header input').fill(date);
       await choose(p, 'worker-a', 'second-site');
       await row(p, 'worker-a', 'second-site')
-        .getByRole('button', { name: '王师傅签到已完成', exact: true })
-        .click();
+        .getByRole('combobox', { name: '王师傅签到', exact: true })
+        .selectOption('yes');
       await row(p, 'worker-a', 'second-site')
-        .getByRole('button', { name: '王师傅拍照已完成', exact: true })
-        .click();
+        .getByRole('combobox', { name: '王师傅拍照', exact: true })
+        .selectOption('yes');
       await expect
         .poll(
           async () =>
@@ -166,17 +174,17 @@ for (const width of [1280, 1440])
       await expect(card(p).locator('.assessment-day-row[data-person-id]')).toHaveCount(0);
       await card(p).locator('header input').fill(date);
       await row(p, 'worker-a')
-        .getByRole('button', { name: '王师傅卫生已完成', exact: true })
-        .click();
-      await expect(summary.locator('[data-person-id="worker-a"] td')).toHaveText([
+        .getByRole('combobox', { name: '王师傅卫生', exact: true })
+        .selectOption('yes');
+      await expect(summary.locator('[data-person-id="worker-a"] td:not(:last-child)')).toHaveText([
         '1天',
         '0天',
         '1天',
       ]);
       await row(p, 'worker-a')
-        .getByRole('button', { name: '王师傅卫生未记录', exact: true })
-        .click();
-      await expect(summary.locator('[data-person-id="worker-a"] td')).toHaveText([
+        .getByRole('combobox', { name: '王师傅卫生', exact: true })
+        .selectOption('pending');
+      await expect(summary.locator('[data-person-id="worker-a"] td:not(:last-child)')).toHaveText([
         '1天',
         '0天',
         '0天',
@@ -190,8 +198,8 @@ for (const width of [1280, 1440])
         )
         .toBe('pending');
       await row(p, 'worker-a')
-        .getByRole('button', { name: '王师傅卫生未完成', exact: true })
-        .click();
+        .getByRole('combobox', { name: '王师傅卫生', exact: true })
+        .selectOption('no');
       await expect
         .poll(
           async () =>
@@ -201,20 +209,21 @@ for (const width of [1280, 1440])
         )
         .toBe('no');
       await row(p, 'worker-a')
-        .getByRole('button', { name: '王师傅卫生已完成', exact: true })
-        .click();
-      await expect(summary.locator('[data-person-id="worker-a"] td')).toHaveText([
+        .getByRole('combobox', { name: '王师傅卫生', exact: true })
+        .selectOption('yes');
+      await expect(summary.locator('[data-person-id="worker-a"] td:not(:last-child)')).toHaveText([
         '1天',
         '0天',
         '1天',
       ]);
-      await expect(row(p, 'worker-a').locator('.assessment-remove-empty')).toHaveCount(1);
+      await expect(row(p, 'worker-a').locator('.assessment-remove-empty')).toHaveCount(0);
       const saved = (await records(c, date)).find(
         (r: any) => r.personId === 'worker-a' && r.projectId === 'p-home',
       );
       expect(saved.date).toBe(date);
       expect(Math.abs(Date.now() - Date.parse(saved.createdAt))).toBeLessThan(90000);
-      await row(p, 'worker-a')
+      await summary
+        .locator('[data-person-id="worker-a"]')
         .getByRole('button', { name: '查看王师傅打卡历史', exact: true })
         .click();
       await expect(p.getByRole('dialog', { name: '考核历史 · 王师傅', exact: true })).toContainText(
@@ -227,8 +236,8 @@ for (const width of [1280, 1440])
       await enter(p);
       await card(p).locator('header input').fill(date);
       await expect(
-        row(p, 'worker-a').getByRole('button', { name: '王师傅卫生已完成', exact: true }),
-      ).toHaveAttribute('aria-pressed', 'true');
+        row(p, 'worker-a').getByRole('combobox', { name: '王师傅卫生', exact: true }),
+      ).toHaveValue('yes');
       await expect(card(p).locator('.assessment-day-row')).toHaveCount(4);
       expect((await records(c, date)).length).toBe(5);
     } finally {
@@ -261,18 +270,20 @@ test('daily collaboration: separate sites, exact conflict review, offline refres
     await choose(a, 'worker-a');
     await choose(b, 'worker-a', 'second-site');
     await Promise.all([
-      row(a, 'worker-a').getByRole('button', { name: '王师傅签到已完成', exact: true }).click(),
+      row(a, 'worker-a')
+        .getByRole('combobox', { name: '王师傅签到', exact: true })
+        .selectOption('yes'),
       row(b, 'worker-a', 'second-site')
-        .getByRole('button', { name: '王师傅签到已完成', exact: true })
-        .click(),
+        .getByRole('combobox', { name: '王师傅签到', exact: true })
+        .selectOption('yes'),
     ]);
     await expect
       .poll(async () => (await records(ca)).filter((r: any) => r.attendance === 'yes').length)
       .toBe(2);
     await expect(row(b, 'worker-a')).toBeVisible({ timeout: 10000 });
     await expect(
-      row(b, 'worker-a').getByRole('button', { name: '王师傅签到已完成', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true');
+      row(b, 'worker-a').getByRole('combobox', { name: '王师傅签到', exact: true }),
+    ).toHaveValue('yes');
     let held = false,
       release!: () => void;
     const gate = new Promise<void>((r) => {
@@ -285,9 +296,13 @@ test('daily collaboration: separate sites, exact conflict review, offline refres
       }
       await route.continue();
     });
-    await row(a, 'worker-a').getByRole('button', { name: '王师傅拍照已完成', exact: true }).click();
+    await row(a, 'worker-a')
+      .getByRole('combobox', { name: '王师傅拍照', exact: true })
+      .selectOption('yes');
     await expect.poll(() => held).toBe(true);
-    await row(b, 'worker-a').getByRole('button', { name: '王师傅拍照未完成', exact: true }).click();
+    await row(b, 'worker-a')
+      .getByRole('combobox', { name: '王师傅拍照', exact: true })
+      .selectOption('no');
     await expect
       .poll(async () => (await records(ca)).find((r: any) => r.projectId === 'p-home').photo)
       .toBe('no');
@@ -311,16 +326,22 @@ test('daily collaboration: separate sites, exact conflict review, offline refres
       if (offline) await route.abort('failed');
       else await route.continue();
     });
-    await row(a, 'worker-a').getByRole('button', { name: '王师傅卫生已完成', exact: true }).click();
-    await expect(a.locator('.assessment-sync-status')).toContainText('本地已保存');
+    await row(a, 'worker-a')
+      .getByRole('combobox', { name: '王师傅卫生', exact: true })
+      .selectOption('yes');
+    await expect(a.locator('.sidebar-save-status .save-current-state')).toContainText(
+      /同步|上传|重试/,
+    );
     await expect.poll(() => receipts.length).toBeGreaterThan(0);
     const receipt = receipts[0];
     await a.reload();
     await enter(a);
     await expect(
-      row(a, 'worker-a').getByRole('button', { name: '王师傅卫生已完成', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true');
-    await expect(a.locator('.assessment-sync-status')).toContainText('本地已保存');
+      row(a, 'worker-a').getByRole('combobox', { name: '王师傅卫生', exact: true }),
+    ).toHaveValue('yes');
+    await expect(a.locator('.sidebar-save-status .save-current-state')).toContainText(
+      /同步|上传|重试/,
+    );
     expect((await records(ca)).find((r: any) => r.projectId === 'p-home').cleaning).toBe('pending');
     offline = false;
     await a.evaluate(() => window.dispatchEvent(new Event('online')));
@@ -340,8 +361,8 @@ test('daily collaboration: separate sites, exact conflict review, offline refres
     await login(a, f.login, f.password);
     await enter(a);
     await expect(
-      row(a, 'worker-a').getByRole('button', { name: '王师傅卫生已完成', exact: true }),
-    ).toHaveAttribute('aria-pressed', 'true');
+      row(a, 'worker-a').getByRole('combobox', { name: '王师傅卫生', exact: true }),
+    ).toHaveValue('yes');
     expect(await records(ca)).toEqual(saved);
   } finally {
     await ca.close();
@@ -382,7 +403,9 @@ test('assessment recorder authorization is explicit, scoped, live-revocable and 
     });
     await expect(b.getByRole('button', { name: '考核记录人授权', exact: true })).toHaveCount(0);
     await choose(b, 'worker-a');
-    await row(b, 'worker-a').getByRole('button', { name: '王师傅拍照已完成', exact: true }).click();
+    await row(b, 'worker-a')
+      .getByRole('combobox', { name: '王师傅拍照', exact: true })
+      .selectOption('yes');
     await expect
       .poll(async () => (await records(monitor)).find((r: any) => r.personId === 'worker-a')?.photo)
       .toBe('yes');
@@ -450,15 +473,18 @@ test('safe correction retains original audit, independent dates, stable nodes an
     await choose(p, 'worker-a');
     await expect.poll(async () => (await records(c)).length).toBe(1);
     await row(p, 'worker-a').evaluate((el) => ((window as any).__stableAssessmentRow = el));
-    await row(p, 'worker-a').getByRole('button', { name: '王师傅签到已完成', exact: true }).click();
+    await row(p, 'worker-a')
+      .getByRole('combobox', { name: '王师傅签到', exact: true })
+      .selectOption('yes');
     await expect.poll(async () => (await records(c))[0]?.attendance).toBe('yes');
     expect(
       await row(p, 'worker-a').evaluate((el) => el === (window as any).__stableAssessmentRow),
     ).toBe(true);
     await expect(card(p, 'second-site').locator('header input')).toHaveValue(historical);
     await expect(p.locator('.sidebar-save-status')).toContainText('最新保存：');
-    await row(p, 'worker-a').getByRole('button', { name: '移除王师傅当天打卡' }).click();
-    await p.getByRole('dialog').getByRole('button', { name: '确认仅移除当天人员' }).click();
+    await row(p, 'worker-a').locator('.assessment-choose-person').click();
+    await p.getByRole('listbox').locator('[data-person-id=""]').click();
+    await p.getByRole('dialog').getByRole('button', { name: '确认', exact: true }).click();
     await expect(row(p, 'worker-a')).toHaveCount(0);
     const retained = (await records(c))[0];
     expect(retained.withdrawn).toBe(true);
@@ -468,9 +494,7 @@ test('safe correction retains original audit, independent dates, stable nodes an
     expect(history.events.some((e: any) => e.after.withdrawn)).toBe(true);
     await choose(p, 'worker-b');
     await expect.poll(async () => (await records(c)).length).toBe(2);
-    await row(p, 'worker-b').getByRole('button', { name: '重新选择师傅（保留原始历史）' }).count();
-    await row(p, 'worker-b').locator('.assessment-person-name').click();
-    await p.getByRole('dialog').getByRole('button', { name: '更正为其他师傅' }).click();
+    await row(p, 'worker-b').locator('.assessment-choose-person').click();
     await p.getByRole('listbox').locator('[data-person-id="worker-c"]').click();
     await expect(row(p, 'worker-c')).toBeVisible();
     await expect
@@ -478,7 +502,9 @@ test('safe correction retains original audit, independent dates, stable nodes an
         (await records(c)).filter((r: any) => !r.withdrawn).map((r: any) => r.personId),
       )
       .toEqual(['worker-c']);
-    await choose(p, 'worker-a'); // restores the original person's own record, never copies another's result
+    await card(p).locator('.assessment-day-row.empty .assessment-choose-person').first().click();
+    await p.getByRole('listbox').locator('[data-person-id="worker-a"]').click();
+    await p.getByRole('dialog').getByRole('button', { name: '确认', exact: true }).click();
     await expect
       .poll(async () => (await records(c)).find((r: any) => r.personId === 'worker-a')?.withdrawn)
       .toBe(false);

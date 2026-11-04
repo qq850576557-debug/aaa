@@ -520,3 +520,78 @@ button.assessment-person-name {
 .assessment-site-card button {
   scroll-margin-block: 110px 40px;
 }
+/* Quiet, uniform check-in controls; changing a value never animates other areas. */
+.daily-assessment *,
+.daily-assessment *::before,
+.daily-assessment *::after {
+  animation: none !important;
+  transition: none !important;
+}
+.daily-assessment button,
+.daily-assessment button:hover,
+.daily-assessment button:active {
+  translate: none !important;
+  scale: none !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+.daily-assessment .assessment-day-row .assessment-choose-person {
+  height: 32px;
+  min-height: 32px;
+  padding: 5px 9px;
+  --button-soft: #f0f2ed;
+  --button-soft-hover: #f0f2ed;
+  color: #8b9786;
+  border: 1px solid #dce5d9;
+  border-radius: 8px;
+}
+.daily-assessment .assessment-day-row .assessment-choose-person.has-person {
+  color: var(--project-ink, #355a45);
+  --button-soft: #fafcf8;
+  --button-soft-hover: #fafcf8;
+}
+.assessment-status-select {
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  padding: 3px 6px;
+  border-radius: 8px;
+  background: #fafcf8;
+  border: 1px solid #dce5d9;
+  text-align: center;
+  font-size: 17px;
+  font-weight: 600;
+}
+.assessment-status-select.status-yes {
+  color: #43835b;
+}
+.assessment-status-select.status-no {
+  color: #ad6157;
+}
+.assessment-status-select.status-pending,
+.assessment-status-select:disabled {
+  color: #929d8e;
+}
+.assessment-checks {
+  display: block;
+  padding: 0 3px;
+}
+.assessment-summary-history {
+  font-size: 11px;
+  padding: 4px 7px;
+}
+.daily-assessment .assessment-four-column {
+  grid-template-columns: minmax(105px, 1fr) repeat(3, 74px);
+}
+.assessment-site-card {
+  min-height: 300px;
+}
+@media (max-width: 600px) {
+  .daily-assessment .assessment-four-column {
+    grid-template-columns: minmax(76px, 1fr) repeat(3, 58px);
+    gap: 2px;
+  }
+}
+.assessment-summary table {
+  table-layout: fixed;
+}

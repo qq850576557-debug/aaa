@@ -1,6 +1,5 @@
-import { pool } from '../server/db';
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
-import { fixtureAccounts } from '../server/test-fixtures';
+import { fixtureAccounts, fixtureQuery } from '../server/test-fixtures';
 import { fixture } from '../tests/helpers';
 import { assessmentToday } from '../src/lib/assessments';
 async function login(p: Page, login: string, password: string) {
@@ -141,7 +140,7 @@ test('record creation, editing and soft deletion undo/redo keep ID and audit, re
     });
     await c.setOffline(true);
     await undo(p).click();
-    await expect(p.locator('.sidebar-save-status')).not.toContainText('最新保存：');
+    await expect(p.locator('.sidebar-save-status .save-current-state')).toContainText(/同步|异常/);
     await c.setOffline(false);
     await p.evaluate(() => window.dispatchEvent(new Event('online')));
     await expect
@@ -176,18 +175,14 @@ test('daily checks undo and redo share durable tri-state records and preserve se
   await page.locator('.assessment-choose-person').first().click();
   await page.getByRole('listbox').locator('[data-person-id="undo-worker"]').click();
   const row = page.locator('.assessment-day-row[data-person-id="undo-worker"]');
-  await row.getByRole('button', { name: '撤销师傅签到已完成', exact: true }).click();
-  await expect(
-    row.getByRole('button', { name: '撤销师傅签到已完成', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  await row.getByRole('combobox', { name: '撤销师傅签到', exact: true }).selectOption('yes');
+  await expect(row.getByRole('combobox', { name: '撤销师傅签到', exact: true })).toHaveValue('yes');
   await undo(page).click();
-  await expect(
-    row.getByRole('button', { name: '撤销师傅签到未记录', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(row.getByRole('combobox', { name: '撤销师傅签到', exact: true })).toHaveValue(
+    'pending',
+  );
   await redo(page).click();
-  await expect(
-    row.getByRole('button', { name: '撤销师傅签到已完成', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(row.getByRole('combobox', { name: '撤销师傅签到', exact: true })).toHaveValue('yes');
   await expect
     .poll(
       async () =>
@@ -299,7 +294,7 @@ test('undo of a legacy multi-trade correction restores every original source sta
   }));
   // Simulate existing legacy rows only inside the isolated fixture workspace.
   for (const r of original)
-    await pool.query(
+    await fixtureQuery(
       'INSERT INTO daily_assessment(workspace_id,id,work_date,person_id,project_id,trade_id,version,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
       [
         f.workspaceId,
@@ -315,19 +310,23 @@ test('undo of a legacy multi-trade correction restores every original source sta
   await page.reload();
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
   const row = page.locator('.assessment-day-row[data-person-id="legacy-undo"]');
-  await row.getByRole('button', { name: '历史师傅签到已完成', exact: true }).click();
+  const before = (await page.locator('.assessment-site-card').first().boundingBox())!;
+  await row.getByRole('combobox', { name: '历史师傅签到', exact: true }).selectOption('yes');
   const read = async () =>
     (await (await api(page.context(), `/assessments?from=${date}&to=${date}`)).json()).records;
   await expect
     .poll(async () => (await read()).map((r: any) => r.attendance))
     .toEqual(['yes', 'yes']);
+  expect((await page.locator('.assessment-site-card').first().boundingBox())!.height).toBe(
+    before.height,
+  );
   await undo(page).click();
   await expect
     .poll(async () => (await read()).find((r: any) => r.id === original[1].id).attendance)
     .toBe('no');
-  await expect(
-    row.getByRole('button', { name: '历史师傅签到未记录', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(row.getByRole('combobox', { name: '历史师傅签到', exact: true })).toHaveValue(
+    'pending',
+  );
   const after = await read();
   expect(after).toHaveLength(2);
   for (const old of original) {
