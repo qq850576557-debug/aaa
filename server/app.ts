@@ -1085,6 +1085,7 @@ export function createApp() {
         last = -1,
         lastRecord = '',
         lastMention = '',
+        lastAssessment = '',
         ticks = 0;
       const finish = (expired = false) => {
         if (closed) return;
@@ -1147,6 +1148,20 @@ export function createApp() {
           if (recordRevision !== lastRecord) {
             lastRecord = recordRevision;
             res.write(`event: records\ndata: ${JSON.stringify({ revision: recordRevision })}\n\n`);
+          }
+          const assessmentChange = (
+            await pool.query(
+              `
+            SELECT CASE WHEN $2::boolean OR EXISTS (SELECT 1 FROM assessment_recorder WHERE workspace_id=$1 AND account_id=$3)
+              THEN 'allowed:' || (SELECT count(*)::text || ':' || coalesce(max(created_at)::text,'') FROM assessment_history WHERE workspace_id=$1)
+              ELSE 'denied' END AS revision`,
+              [actor.workspaceId, actor.owner, actor.id],
+            )
+          ).rows[0].revision;
+          if (closed) return;
+          if (assessmentChange !== lastAssessment) {
+            lastAssessment = assessmentChange;
+            res.write('event: assessments\ndata: {}\n\n');
           }
           if (++ticks % 30 === 0) res.write('event: presence\ndata: {}\n\n');
           const mentions = String(

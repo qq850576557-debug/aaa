@@ -57,3 +57,19 @@ it('local enqueue returns before cloud response and keeps pending data until the
   await queued.completion;
   expect(await pendingRecords(owner)).toEqual([]);
 });
+it('overlapping callers for one exact receipt never leave a ghost pending entry after acknowledgement', async () => {
+  vi.stubGlobal('window', new EventTarget());
+  const owner = { id: 'overlap-receipt', workspaceId: 'studio' };
+  startRecordSync(owner, async () => ({ id: 'one-confirmed-record', version: 1 }));
+  for (let i = 0; i < 10; i++) {
+    const body = { requestId: crypto.randomUUID(), value: { title: '同一次安全重试' } };
+    const first = durableRecord('/records', 'POST', body);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    await Promise.all([
+      first,
+      durableRecord('/records', 'POST', body),
+      durableRecord('/records', 'POST', body),
+    ]);
+    expect(await pendingRecords(owner)).toEqual([]);
+  }
+});

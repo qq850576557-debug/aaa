@@ -4,10 +4,12 @@ import { cloudDraftRecoveryPackage } from '../lib/cloud-drafts';
 export async function downloadLocalRecovery() {
   const owner = verifiedOwner();
   if (!owner) return;
+  const { assessmentDrafts } = await import('../lib/assessment-sync');
   const value = {
     workspace: await cloudDraftRecoveryPackage(owner.workspaceId, owner.id),
     editors: await localRecoveryBackup(),
     records: await pendingRecords(owner),
+    assessments: await assessmentDrafts(owner),
   };
   const url = URL.createObjectURL(
     new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }),

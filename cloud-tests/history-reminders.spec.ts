@@ -57,6 +57,34 @@ for (const width of [1440, 1280, 390, 320])
     await page.getByRole('button', { name: '提醒中心', exact: true }).click();
     await expect(page.locator('.reminder-center .purchase-list')).toContainText('提醒采购五金');
     await expect(page.locator('.reminder-record-grid')).toContainText('提醒现场复核');
+    const themedCard = page
+      .locator('.reminder-record-grid .agenda-item')
+      .filter({ hasText: '提醒现场复核' });
+    const projectTag = themedCard.locator('.agenda-item-actions .agenda-project-footer');
+    await expect(projectTag).toHaveText(d.projects[0].name);
+    await expect(themedCard.locator('.agenda-item-meta')).not.toContainText(d.projects[0].name);
+    const tagBox = (await projectTag.boundingBox())!;
+    const completeBox = (await themedCard.locator('.agenda-complete').boundingBox())!;
+    expect(tagBox.x + tagBox.width).toBeLessThanOrEqual(completeBox.x);
+    expect(
+      Math.abs(tagBox.y + tagBox.height / 2 - completeBox.y - completeBox.height / 2),
+    ).toBeLessThan(2);
+    for (const [selector, variable] of [
+      ['.agenda-item-main', '--project-surface'],
+      ['.agenda-project-footer', '--project-tag'],
+    ]) {
+      const target = themedCard.locator(selector);
+      const expected = await target.evaluate((el, name) => {
+        const probe = document.createElement('i');
+        probe.style.color = getComputedStyle(el).getPropertyValue(name);
+        el.append(probe);
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return color;
+      }, variable);
+      await expect(target).toHaveCSS('background-color', expected);
+    }
+
     // Hold the actual save: no success feedback is allowed before the HTTP acknowledgement.
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));

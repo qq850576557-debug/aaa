@@ -755,6 +755,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         key={item.kind + ':' + item.id}
         item={item}
         compact={['overview', 'schedule', 'completed'].includes(view)}
+        projectInFooter={view === 'reminders' && item.kind === 'record'}
         projectName={
           data.projects.find((project) => project.id === item.projectId)?.name || '历史项目'
         }

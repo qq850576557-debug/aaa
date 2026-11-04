@@ -472,6 +472,9 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         events.addEventListener('records', () =>
           window.dispatchEvent(new Event('chunmo-records-changed')),
         );
+        events.addEventListener('assessments', () =>
+          window.dispatchEvent(new Event('chunmo-assessments-changed')),
+        );
         events.addEventListener('mentions', () =>
           window.dispatchEvent(new Event('chunmo-mentions-changed')),
         );

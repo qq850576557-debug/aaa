@@ -7,13 +7,14 @@ import { transaction } from './db';
 import { ApiError, audit, hash, type Actor } from './store';
 import {
   assessmentEdit,
+  assessmentToday,
   assessmentCandidates,
   assessmentCSV,
   daySchema,
   keyOf,
   type Assessment,
 } from '../src/lib/assessments';
-import { parseBackup, today } from '../src/lib/model';
+import { parseBackup } from '../src/lib/model';
 async function allowed(c: PoolClient, a: Actor, write = false) {
   // Serializes writes and grant revocation; reads hold a shared authorization lock.
   await c.query(
@@ -100,7 +101,7 @@ export function assessmentRoutes(app: Express) {
       async (req: AuthRequest, res, next) => {
         try {
           const q = querySchema.parse(req.query),
-            from = q.from ?? today(),
+            from = q.from ?? assessmentToday(),
             to = q.to ?? from;
           if (from > to) throw new ApiError(400, '日期范围无效');
           const rows = await transaction(async (c) => {
@@ -198,6 +199,7 @@ export function assessmentRoutes(app: Express) {
         const saved: Assessment[] = [];
         const now = new Date().toISOString();
         for (const edit of body.edits) {
+          if (edit.date > assessmentToday()) throw new ApiError(400, '不能记录未来日期的考核');
           const params = [a.workspaceId, edit.date, edit.personId, edit.projectId, edit.tradeId];
           const old = (
             await c.query(
@@ -207,8 +209,24 @@ export function assessmentRoutes(app: Express) {
           ).rows[0]?.payload as Assessment | undefined;
           if ((old?.version ?? 0) !== edit.version)
             throw new ApiError(409, '考核记录已被他人修改，请刷新后重试；本次未保存');
-          if (!old && !assessmentCandidates(data, edit.date).some((r) => keyOf(r) === keyOf(edit)))
-            throw new ApiError(400, '请选择已登记并分配到该项目工种的施工人员');
+          if (!old) {
+            const duplicate = await c.query(
+              'SELECT 1 FROM daily_assessment WHERE workspace_id=$1 AND work_date=$2 AND person_id=$3 AND project_id=$4',
+              params.slice(0, 4),
+            );
+            if (duplicate.rowCount)
+              throw new ApiError(409, '该师傅在此工地当天已有记录，请读取后修改；本次未保存');
+            if (edit.tradeId === 'daily') {
+              if (
+                !data.projects.some((p) => p.id === edit.projectId) ||
+                !data.people?.some(
+                  (p) => p.id === edit.personId && p.role === '施工人员' && p.active && !p.deleted,
+                )
+              )
+                throw new ApiError(400, '请选择有效工地和在用施工人员');
+            } else if (!assessmentCandidates(data, edit.date).some((r) => keyOf(r) === keyOf(edit)))
+              throw new ApiError(400, '请选择已登记并分配到该项目工种的施工人员');
+          }
           if (
             old &&
             Object.entries(edit.changes).every(
@@ -227,7 +245,10 @@ export function assessmentRoutes(app: Express) {
               tradeId: edit.tradeId,
               personName: data.people!.find((p) => p.id === edit.personId)!.name,
               projectName: data.projects.find((p) => p.id === edit.projectId)!.name,
-              tradeName: data.trades.find((p) => p.id === edit.tradeId)!.name,
+              tradeName:
+                edit.tradeId === 'daily'
+                  ? '每日打卡'
+                  : data.trades.find((p) => p.id === edit.tradeId)!.name,
               attendance: 'pending',
               photo: 'pending',
               cleaning: 'pending',

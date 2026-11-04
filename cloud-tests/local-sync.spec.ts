@@ -119,7 +119,7 @@ test('record outbox survives failure and refresh then reconnects with the exact 
   await expect
     .poll(() =>
       page.evaluate(async () => {
-        const req = indexedDB.open('chunmo-record-outbox', 1);
+        const req = indexedDB.open('chunmo-record-outbox');
         return new Promise<number>((resolve) => {
           req.onsuccess = () => {
             const db = req.result;

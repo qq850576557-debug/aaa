@@ -10,6 +10,7 @@ export function AgendaItem({
   canToggle = true,
   compact = false,
   onDelete,
+  projectInFooter = false,
 }: {
   item: Item;
   projectName: string;
@@ -19,6 +20,7 @@ export function AgendaItem({
   canToggle?: boolean;
   compact?: boolean;
   onDelete?: () => void;
+  projectInFooter?: boolean;
 }) {
   const category = item.kind === 'purchase' ? '采购' : '事项';
   return (
@@ -32,12 +34,17 @@ export function AgendaItem({
         <strong>{item.title}</strong>
         <span className="agenda-item-meta">
           <span className={`agenda-category category-${item.kind}`}>{category}</span>
-          <span>{projectName}</span>
+          {!projectInFooter && <span>{projectName}</span>}
           <time dateTime={item.date}>{item.date || '未设日期'}</time>
           <span className="status-tag">{item.status}</span>
         </span>
       </button>
       <div className="agenda-item-actions">
+        {projectInFooter && (
+          <span className="agenda-project-footer" title={projectName}>
+            {projectName}
+          </span>
+        )}
         <button
           className="agenda-complete"
           disabled={busy || !canToggle}

@@ -28,7 +28,9 @@ export function useWorkRecords(enabled: boolean) {
         setLegacyLinks(result.legacyLinks ?? []);
         const owner = verifiedOwner();
         if (owner) {
-          const entries = await pendingRecords(owner);
+          const entries = (await pendingRecords(owner)).filter(
+            (e) => e.path === '/records' || e.path.startsWith('/records/'),
+          );
           const blocked = entries.filter((e) => e.blocked);
           if (active.current && token === sequence.current) {
             for (const e of entries) {

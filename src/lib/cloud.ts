@@ -44,6 +44,7 @@ async function sendApi<T = Record<string, unknown>>(
 ): Promise<T> {
   const saving =
     (path === '/workspace' && method === 'PUT') ||
+    (path === '/assessments/batch' && method === 'POST') ||
     (/^\/records(?:\/[^/]+)?$/.test(path) && method !== 'GET');
   const controller = saving ? new AbortController() : undefined;
   const timeout = controller
@@ -126,6 +127,13 @@ export async function cloudSession() {
   csrf = s.csrf;
   await confirmEditorSnapshots({});
   startRecordSync(s.user, sendApi);
+  void import('./assessment-sync')
+    .then((m) => m.startAssessmentSync(s.user))
+    .catch(() => {
+      window.dispatchEvent(
+        new CustomEvent('chunmo-outbox-status', { detail: '考核本地存储异常，请保留页面并备份' }),
+      );
+    });
   return s.user;
 }
 export function inCloud() {

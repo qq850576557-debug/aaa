@@ -3536,3 +3536,33 @@ textarea::placeholder {
     max-width: clamp(140px, 17vw, 250px);
   }
 }
+
+/* Reminder records share each project's theme, with the project beside actions. */
+.app-shell .reminder-record-grid .agenda-item-main {
+  --button-soft: var(--project-surface, #f8faf7);
+  --button-soft-hover: var(--project-tag, #e8efe6);
+  --button-ink: var(--project-ink, #345e48);
+  background: var(--project-surface, #f8faf7);
+  color: var(--project-ink, #345e48);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.reminder-record-grid .agenda-item-actions {
+  flex-wrap: nowrap;
+}
+.reminder-record-grid .agenda-project-footer {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--project-tag, #e8efe6);
+  color: var(--project-ink, #345e48);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reminder-record-grid .agenda-item-actions > button {
+  flex-shrink: 0;
+}

@@ -76,6 +76,29 @@ export function assessmentCandidates(data: Data, date: string): AssessmentKey[] 
   }
   return result;
 }
+export const assessmentToday = (at = new Date()) =>
+  new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai' }).format(at);
+export const dailyKey = (r: Pick<AssessmentKey, 'date' | 'personId' | 'projectId'>) =>
+  JSON.stringify([r.date, r.personId, r.projectId]);
+export type DailyAssessment = Assessment & { sources: Assessment[]; differences: CheckField[] };
+export function dailyAssessments(rows: Assessment[]): DailyAssessment[] {
+  const groups = new Map<string, Assessment[]>();
+  for (const row of rows) groups.set(dailyKey(row), [...(groups.get(dailyKey(row)) ?? []), row]);
+  return [...groups.values()].map((sources) => {
+    const latest = [...sources].sort(
+      (a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id),
+    )[0];
+    const differences: CheckField[] = [];
+    const values = Object.fromEntries(
+      checkFields.map((f) => {
+        const known = new Set(sources.map((r) => r[f]).filter((v) => v !== 'pending'));
+        if (known.size > 1) differences.push(f);
+        return [f, known.size === 1 ? [...known][0] : 'pending'];
+      }),
+    ) as Record<CheckField, CheckStatus>;
+    return { ...latest, ...values, sources, differences };
+  });
+}
 export function assessmentStats(rows: Assessment[]) {
   const map = new Map<
     string,
@@ -88,7 +111,7 @@ export function assessmentStats(rows: Assessment[]) {
       counts: Record<CheckField, Record<CheckStatus, number>>;
     }
   >();
-  for (const r of rows) {
+  for (const r of dailyAssessments(rows)) {
     const key = JSON.stringify([r.personId, r.projectId]);
     let value = map.get(key);
     if (!value) {

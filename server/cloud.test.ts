@@ -5654,3 +5654,169 @@ test('purchase manual earlier/later dates retain every offline edit, original de
     409,
   );
 });
+
+test('daily assessment mode allows authorized valid workers, rejects future and duplicate days, and preserves exact receipts and concurrent site edits', async () => {
+  const { assessmentToday } = await import('../src/lib/assessments');
+  const { plus } = await import('../src/lib/model');
+  const { a, b } = await setup();
+  const d = data();
+  const worker = { ...d.people![0], id: randomUUID(), name: '同名师傅' };
+  const sameName = { ...worker, id: randomUUID() };
+  d.people!.push(worker, sameName);
+  const other = { ...d.projects[0], id: randomUUID(), name: '第二工地' };
+  d.projects.push(other);
+  assert.equal((await request('/workspace', 'PUT', { revision: 0, data: d }, a)).status, 200);
+  const date = plus(assessmentToday(), -2);
+  const edit = {
+    date,
+    personId: worker.id,
+    projectId: d.projects[0].id,
+    tradeId: 'daily',
+    version: 0,
+    changes: { attendance: 'yes', photo: 'pending', cleaning: 'no' },
+  };
+  const body = { requestId: randomUUID(), confirmed: true, edits: [edit] };
+  assert.equal((await request('/assessments/batch', 'POST', body, b)).status, 403);
+  assert.equal(
+    (await request('/assessments/recorders/' + b.user.id, 'PUT', { enabled: true }, a)).status,
+    200,
+  );
+  const made = await request('/assessments/batch', 'POST', body, b);
+  assert.equal(made.status, 200, await made.clone().text());
+  const row = (await made.json()).records[0];
+  assert.equal(row.createdBy, b.user.id);
+  assert.equal(row.date, date);
+  assert.ok(Math.abs(Date.now() - Date.parse(row.createdAt)) < 10000);
+  assert.deepEqual(await (await request('/assessments/batch', 'POST', body, b)).json(), {
+    records: [row],
+  });
+  const submit = (edits: unknown[]) =>
+    request('/assessments/batch', 'POST', { requestId: randomUUID(), confirmed: true, edits }, b);
+  assert.equal((await submit([{ ...edit, date: plus(assessmentToday(), 1) }])).status, 400);
+  assert.equal((await submit([{ ...edit, tradeId: d.trades[0].id }])).status, 409);
+  const differentSites = await Promise.all([
+    submit([{ ...edit, personId: sameName.id }]),
+    submit([{ ...edit, projectId: other.id }]),
+  ]);
+  assert.deepEqual(
+    differentSites.map((r) => r.status),
+    [200, 200],
+  );
+  const race = await Promise.all([
+    submit([{ ...edit, version: 1, changes: { photo: 'yes' } }]),
+    submit([{ ...edit, version: 1, changes: { photo: 'no' } }]),
+  ]);
+  assert.deepEqual(race.map((r) => r.status).sort(), [200, 409]);
+  const rows = (
+    await (await request(`/assessments?from=${date}&to=${date}`, 'GET', undefined, a)).json()
+  ).records;
+  assert.equal(rows.length, 3);
+  const changed = rows.find((r: any) => r.id === row.id);
+  assert.equal(changed.attendance, 'yes');
+  assert.equal(changed.cleaning, 'no');
+  assert.equal(changed.createdAt, row.createdAt);
+  assert.equal(changed.version, 2);
+  const historical = (
+    await (await request('/assessments/' + row.id + '/history', 'GET', undefined, a)).json()
+  ).events;
+  assert.equal(historical.length, 2);
+  assert.equal(historical[0].actorId, b.user.id);
+});
+
+test('legacy multi-trade assessments remain separate immutable sources while the daily view counts one day and edits preserve first-entry metadata', async () => {
+  const { dailyAssessments, assessmentStats, assessmentToday } =
+    await import('../src/lib/assessments');
+  const { a } = await setup();
+  const d = data();
+  assert.equal((await request('/workspace', 'PUT', { revision: 0, data: d }, a)).status, 200);
+  const edit = {
+    date: assessmentToday(),
+    personId: d.people![0].id,
+    projectId: d.projects[0].id,
+    tradeId: d.trades[0].id,
+    version: 0,
+    changes: { attendance: 'yes', photo: 'yes', cleaning: 'pending' },
+  };
+  const made = await request(
+    '/assessments/batch',
+    'POST',
+    { requestId: randomUUID(), confirmed: true, edits: [edit] },
+    a,
+  );
+  assert.equal(made.status, 200);
+  const first = (await made.json()).records[0];
+  // Simulate a pre-existing legacy source. No migration or production data is used.
+  const second = {
+    ...first,
+    id: randomUUID(),
+    tradeId: 'legacy-trade-two',
+    tradeName: '历史其他工种',
+    photo: 'no',
+  };
+  await pool.query(
+    'INSERT INTO daily_assessment(workspace_id,id,work_date,person_id,project_id,trade_id,version,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
+    [
+      a.user.workspaceId,
+      second.id,
+      second.date,
+      second.personId,
+      second.projectId,
+      second.tradeId,
+      second.version,
+      JSON.stringify(second),
+    ],
+  );
+  await pool.query(
+    'INSERT INTO assessment_history(id,workspace_id,record_id,actor_id,actor_name,before_value,after_value) VALUES($1,$2,$3,$4,$5,NULL,$6)',
+    [
+      randomUUID(),
+      a.user.workspaceId,
+      second.id,
+      a.user.id,
+      a.user.displayName ?? a.user.login,
+      JSON.stringify(second),
+    ],
+  );
+  const get = async () =>
+    (
+      await (
+        await request(`/assessments?from=${edit.date}&to=${edit.date}`, 'GET', undefined, a)
+      ).json()
+    ).records;
+  const before = await get();
+  assert.equal(before.length, 2);
+  assert.equal(dailyAssessments(before).length, 1);
+  assert.deepEqual(dailyAssessments(before)[0].differences, ['photo']);
+  assert.equal(assessmentStats(before)[0].counts.photo.pending, 1);
+  assert.equal(assessmentStats(before)[0].counts.photo.no, 0);
+  assert.deepEqual(await get(), before);
+  const updated = await request(
+    '/assessments/batch',
+    'POST',
+    {
+      requestId: randomUUID(),
+      confirmed: true,
+      edits: before.map((r: any) => ({
+        date: r.date,
+        personId: r.personId,
+        projectId: r.projectId,
+        tradeId: r.tradeId,
+        version: r.version,
+        changes: { photo: 'yes' },
+      })),
+    },
+    a,
+  );
+  assert.equal(updated.status, 200);
+  const after = await get();
+  assert.equal(after.length, 2);
+  assert.equal(assessmentStats(after)[0].counts.photo.yes, 1);
+  assert.equal(assessmentStats(after)[0].total, 1);
+  for (const row of after) {
+    const old = before.find((r: any) => r.id === row.id);
+    assert.equal(row.createdAt, old.createdAt);
+    assert.equal(row.createdBy, old.createdBy);
+    assert.equal(row.tradeId, old.tradeId);
+    assert.equal(row.cleaning, old.cleaning);
+  }
+});
