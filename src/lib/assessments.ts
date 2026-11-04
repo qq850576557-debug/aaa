@@ -30,6 +30,8 @@ export const assessmentEdit = assessmentKey
     version: z.number().int().nonnegative(),
     changes: z
       .object({
+        withdrawn: z.boolean().optional(),
+        correctionReason: z.string().min(1).max(200).optional(),
         attendance: checkStatus.optional(),
         photo: checkStatus.optional(),
         cleaning: checkStatus.optional(),
@@ -40,6 +42,8 @@ export const assessmentEdit = assessmentKey
   .strict();
 export type AssessmentEdit = z.infer<typeof assessmentEdit>;
 export type Assessment = AssessmentKey & {
+  withdrawn?: boolean;
+  correctionReason?: string;
   id: string;
   version: number;
   personName: string;
@@ -83,7 +87,8 @@ export const dailyKey = (r: Pick<AssessmentKey, 'date' | 'personId' | 'projectId
 export type DailyAssessment = Assessment & { sources: Assessment[]; differences: CheckField[] };
 export function dailyAssessments(rows: Assessment[]): DailyAssessment[] {
   const groups = new Map<string, Assessment[]>();
-  for (const row of rows) groups.set(dailyKey(row), [...(groups.get(dailyKey(row)) ?? []), row]);
+  for (const row of rows.filter((r) => !r.withdrawn))
+    groups.set(dailyKey(row), [...(groups.get(dailyKey(row)) ?? []), row]);
   return [...groups.values()].map((sources) => {
     const latest = [...sources].sort(
       (a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id),

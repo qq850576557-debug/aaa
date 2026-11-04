@@ -154,7 +154,9 @@ async function syncDraft(initial: AssessmentDraft): Promise<void> {
                 confirmed: true,
                 edits: current.target.sources.length
                   ? current.target.sources.map((r) => ({
-                      ...identity,
+                      date: r.date,
+                      personId: r.personId,
+                      projectId: r.projectId,
                       tradeId: r.tradeId,
                       version: r.version,
                       changes,

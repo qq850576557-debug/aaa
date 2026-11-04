@@ -1,3 +1,5 @@
+import { duplicatePeople } from '../lib/person-links';
+import { PersonIdentityReview } from './PersonIdentityReview';
 import { useEditorJournal } from '../lib/useEditorJournal';
 import { AssessmentPanel } from './AssessmentPanel';
 import { ConflictPanel } from './ConflictPanel';
@@ -47,6 +49,9 @@ export function PeoplePanel({
     [project, setProject] = useState(''),
     [target, setTarget] = useState('project');
   const [saving, setSaving] = useState(false);
+  const [duplicateChoice, setDuplicateChoice] = useState<Person | null>(null);
+  const allowSeparate = useRef(false);
+  const historicLink = useRef<string | null>(null);
   const [error, setError] = useState(''),
     [filter, setFilter] = useState('');
   const journal = useEditorJournal(
@@ -107,6 +112,8 @@ export function PeoplePanel({
   });
   const add = (name = '') => {
     setError('');
+    allowSeparate.current = false;
+    historicLink.current = null;
     setEditing({ id: id(), name, role: '施工人员', trade: '', notes: '', active: true });
   };
   async function save(e: FormEvent) {
@@ -115,9 +122,20 @@ export function PeoplePanel({
     setSaving(true);
     try {
       const p = personSchema.parse(editing);
+      if (
+        !people.some((x) => x.id === p.id) &&
+        !allowSeparate.current &&
+        duplicatePeople(people, p).length
+      ) {
+        setDuplicateChoice(p);
+        return;
+      }
+      allowSeparate.current = false;
       const existing = people.find((x) => x.id === p.id);
       if (existing?.deleted && !p.deleted)
         throw Error('此档案已删除，旧输入不能将其重新启用；请通过历史恢复核对。');
+      const sourceLink = historicLink.current;
+      historicLink.current = null;
       onChange((d) => ({
         ...d,
         dictionaries: [
@@ -129,7 +147,20 @@ export function PeoplePanel({
         ],
         people: (d.people ?? []).some((x) => x.id === p.id)
           ? d.people!.map((x) => (x.id === p.id ? p : x))
-          : [...(d.people ?? []), p],
+          : [
+              ...(d.people ?? []).map((x) =>
+                x.id === sourceLink
+                  ? {
+                      ...x,
+                      identityLink: {
+                        personId: p.id,
+                        reason: '新增时人工核实历史档案属于同一人员',
+                      },
+                    }
+                  : x,
+              ),
+              p,
+            ],
         nameHistory: [...new Set([...(d.nameHistory ?? usedNames(d)), p.name])].slice(-2000),
       }));
       await journal.clear();
@@ -165,7 +196,11 @@ export function PeoplePanel({
     }
   }
   const registered = people.filter(
-    (p) => !p.deleted && `${p.name}${categoryName(data, p)}${tradeNames(data, p)}`.includes(filter),
+    (p) =>
+      !p.deleted &&
+      !p.identityLink &&
+      !p.hiddenFromSelectors &&
+      `${p.name}${categoryName(data, p)}${tradeNames(data, p)}`.includes(filter),
   );
   useReorderMotion(grid, '.person-card[data-person-id]', registered.map((p) => p.id).join('|'));
   const tradesFor = (person: Person) =>
@@ -208,6 +243,7 @@ export function PeoplePanel({
     <section className="panel people-panel">
       <AssessmentPanel data={data} isCloud={isCloud} />
       <section className="personnel-directory" aria-label="人员档案">
+        <PersonIdentityReview data={data} onChange={onChange} />
         <div className="section-heading">
           <h2>人员档案</h2>
           <label className="people-search">
@@ -620,6 +656,42 @@ export function PeoplePanel({
                 </button>
               </footer>
             </form>
+          </Modal>
+        )}
+        {duplicateChoice && (
+          <Modal title="检测到同名同工种的历史人员" onClose={() => setDuplicateChoice(null)}>
+            <div className="modal-body">
+              <p>是否关联至已有档案？同名不能证明是同一个人，请核对备注与工地历史。</p>
+              {duplicatePeople(people, duplicateChoice).map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    if (p.deleted || !p.active) {
+                      historicLink.current = p.id;
+                      setEditing(duplicateChoice);
+                    } else
+                      setEditing({
+                        ...duplicateChoice,
+                        identityLink: { personId: p.id, reason: '新增时人工确认同一真实人员' },
+                      });
+                    allowSeparate.current = true;
+                    setDuplicateChoice(null);
+                  }}
+                >
+                  关联已有档案：{p.name} · {p.notes || p.trade || '无备注'}
+                  {p.deleted ? '（历史）' : ''}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  allowSeparate.current = true;
+                  setDuplicateChoice(null);
+                }}
+              >
+                确认为不同人员，继续后点保存
+              </button>
+              <button onClick={() => setDuplicateChoice(null)}>取消</button>
+            </div>
           </Modal>
         )}
         {deleting && (

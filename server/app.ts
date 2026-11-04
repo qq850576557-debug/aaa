@@ -73,6 +73,28 @@ const displayNameSchema = z
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
+  app.use('/api', (req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = ((value: unknown) => {
+      if (!['GET', 'HEAD'].includes(req.method) && res.statusCode < 400) {
+        const result = value as {
+          updatedAt?: string;
+          records?: { updatedAt?: string }[];
+          history?: { records?: { at: string }[] };
+        };
+        const times = [
+          result?.updatedAt,
+          ...(result?.records ?? []).map((r) => r.updatedAt),
+          ...(result?.history?.records ?? []).map((r) => r.at),
+        ]
+          .filter((at): at is string => !!at && Number.isFinite(Date.parse(at)))
+          .sort();
+        if (times.length) res.setHeader('X-Chunmo-Confirmed-At', times.at(-1)!);
+      }
+      return json(value);
+    }) as typeof res.json;
+    next();
+  });
   // Only the local Nginx is trusted; it replaces incoming X-Forwarded-For.
   app.set('trust proxy', 'loopback');
   let hashing = 0;

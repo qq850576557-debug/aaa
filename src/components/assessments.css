@@ -413,3 +413,110 @@ button.assessment-person-name {
     font-size: 9px;
   }
 }
+/* Compact independent cards; summaries are overlays and never reserve a grid column. */
+.assessment-sites {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-start;
+}
+.assessment-site-pair {
+  display: block;
+  position: relative;
+  flex: 0 1 420px;
+  width: 420px;
+  max-width: 100%;
+}
+.assessment-site-pair:has(.assessment-summary) {
+  z-index: 35;
+}
+.assessment-site-pair .assessment-summary {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 10px);
+  width: 400px;
+  max-height: 70vh;
+  overflow: auto;
+  box-shadow: 0 12px 32px #244e352a;
+  z-index: 40;
+}
+.assessment-site-pair:nth-child(even) .assessment-summary {
+  left: auto;
+  right: 0;
+  top: 45px;
+}
+.assessment-filters {
+  grid-template-columns: repeat(2, minmax(180px, 280px));
+}
+.assessment-site-card > header .date-field {
+  width: 148px;
+  margin-top: 4px;
+}
+.assessment-site-card > header label {
+  font-size: 0;
+}
+.assessment-site-card > header input {
+  font-size: 12px;
+  height: 29px;
+  min-height: 29px;
+}
+.assessment-hint {
+  min-height: 21px;
+}
+.daily-assessment button.assessment-check {
+  border-radius: 50%;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  opacity: 0.38;
+  display: grid;
+  place-items: center;
+}
+.daily-assessment button.assessment-check.check-yes {
+  --button-soft: #53966b;
+  --button-soft-hover: #377d50;
+  color: white !important;
+}
+.daily-assessment button.assessment-check.check-no {
+  --button-soft: #c47369;
+  --button-soft-hover: #ae5b51;
+  color: white !important;
+}
+.daily-assessment button.assessment-check[aria-pressed='true'] {
+  opacity: 1;
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  border-color: transparent;
+}
+.daily-assessment button.assessment-check.check-yes[aria-pressed='true'] {
+  background-color: #53966b !important;
+}
+.daily-assessment button.assessment-check.check-no[aria-pressed='true'] {
+  background-color: #c47369 !important;
+}
+.daily-assessment button.assessment-check.check-pending[aria-pressed='true'] {
+  color: #687665 !important;
+}
+.assessment-check:focus-visible {
+  outline: 2px solid #245346;
+  outline-offset: 3px;
+  opacity: 1;
+}
+.daily-assessment button.assessment-history-link {
+  font-size: 10px;
+  padding: 1px 4px;
+  --button-soft: transparent;
+}
+@media (max-width: 1100px) {
+  .assessment-site-pair .assessment-summary {
+    left: 0;
+    right: auto;
+    top: 45px;
+    width: min(400px, 100%);
+  }
+}
+.assessment-site-card,
+.assessment-site-card button {
+  scroll-margin-block: 110px 40px;
+}

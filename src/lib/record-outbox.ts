@@ -109,7 +109,7 @@ function deliver(entry: Entry): Promise<any> {
         }
         if (current?.id === entry.owner.id && current.workspaceId === entry.owner.workspaceId) {
           const remaining = await pendingRecords(entry.owner);
-          if (!assessment) {
+          {
             const cache = await db();
             let draftPending = false;
             try {

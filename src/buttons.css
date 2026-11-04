@@ -179,3 +179,35 @@ button[aria-busy='true'] {
     min-height: 40px;
   }
 }
+/* Shared text-bearing controls use tokenized breathing room; icon geometry stays compact. */
+.app-shell
+  :where(
+    .sidebar-bottom > button,
+    .sidebar nav button,
+    .agenda-item-actions button,
+    .agenda-category,
+    .agenda-project-footer,
+    .agenda-add,
+    .agenda-all
+  ) {
+  padding-inline: var(--control-inset);
+  gap: 6px;
+  line-height: 1.5;
+}
+.sidebar-save-status {
+  min-height: 54px;
+  padding: 8px 0;
+  font-size: 11px;
+}
+.sidebar-save-status > button {
+  width: 100%;
+  text-align: left;
+  padding: 8px var(--control-inset);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: normal;
+}
+.sidebar-save-status p {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}

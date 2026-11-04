@@ -1027,6 +1027,25 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             数据与备份
             <ArrowRight size={15} />
           </button>
+          <SaveFeedback status={status} cloud={isCloud} onRetry={() => void retry()}>
+            {undo && (
+              <button
+                className="undo-quiet"
+                title={undo.label}
+                onClick={() => {
+                  const reverted = mergeWorkspace(undo.after, undo.before, data);
+                  if (reverted.conflicts.length) {
+                    notify('该工序已有新的修改，未执行撤销。请核对当前日期后再调整。');
+                    return;
+                  }
+                  update(() => parseBackup(reverted.data));
+                  setUndo(null);
+                }}
+              >
+                撤销
+              </button>
+            )}
+          </SaveFeedback>
           <p>
             {isCloud ? '云端工作空间' : '本地工作空间'} <i />
           </p>
@@ -1065,25 +1084,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           <div className="save-state sr-only" role="status">
             <span>{status}</span>
           </div>
-          <SaveFeedback status={status} cloud={isCloud}>
-            {undo && (
-              <button
-                className="undo-quiet"
-                title={undo.label}
-                onClick={() => {
-                  const reverted = mergeWorkspace(undo.after, undo.before, data);
-                  if (reverted.conflicts.length) {
-                    notify('该工序已有新的修改，未执行撤销。请核对当前日期后再调整。');
-                    return;
-                  }
-                  update(() => parseBackup(reverted.data));
-                  setUndo(null);
-                }}
-              >
-                撤销
-              </button>
-            )}
-          </SaveFeedback>
           <CollaborationBar user={cloudUser} isCloud={isCloud} />
         </header>
         <main className="workspace-content">

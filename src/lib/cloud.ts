@@ -1,5 +1,5 @@
 import { confirmEditorSnapshots } from './useEditorJournal';
-import { durableRecord, startRecordSync, queueRecord } from './record-outbox';
+import { durableRecord, startRecordSync, queueRecord, verifiedOwner } from './record-outbox';
 import type { Data } from './model';
 import type { History } from './history';
 export type CloudUser = {
@@ -42,6 +42,7 @@ async function sendApi<T = Record<string, unknown>>(
   method = 'GET',
   body?: unknown,
 ): Promise<T> {
+  const requestOwner = verifiedOwner();
   const saving =
     (path === '/workspace' && method === 'PUT') ||
     (path === '/assessments/batch' && method === 'POST') ||
@@ -96,6 +97,14 @@ async function sendApi<T = Record<string, unknown>>(
       );
     if (path === '/workspace' && method === 'PUT' && value.data)
       void confirmEditorSnapshots(value.data).catch(() => {});
+    if (saving || (path === '/workspace' && method === 'GET')) {
+      const at = r.headers.get('X-Chunmo-Confirmed-At');
+      if (at && Number.isFinite(Date.parse(at))) {
+        window.dispatchEvent(
+          new CustomEvent('chunmo-cloud-confirmed-time', { detail: { at, owner: requestOwner } }),
+        );
+      }
+    }
     return value;
   } catch (error) {
     if (controller?.signal.aborted)

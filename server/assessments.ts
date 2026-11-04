@@ -1,3 +1,4 @@
+import { primaryPerson } from '../src/lib/person-links';
 import type { Express } from 'express';
 import type { PoolClient } from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -209,10 +210,23 @@ export function assessmentRoutes(app: Express) {
           ).rows[0]?.payload as Assessment | undefined;
           if ((old?.version ?? 0) !== edit.version)
             throw new ApiError(409, '考核记录已被他人修改，请刷新后重试；本次未保存');
+          if (edit.changes.withdrawn !== undefined && (!old || !edit.changes.correctionReason))
+            throw new ApiError(400, '撤回需要已有记录和更正原因');
           if (!old) {
             const duplicate = await c.query(
-              'SELECT 1 FROM daily_assessment WHERE workspace_id=$1 AND work_date=$2 AND person_id=$3 AND project_id=$4',
-              params.slice(0, 4),
+              `SELECT 1 FROM daily_assessment WHERE workspace_id=$1 AND work_date=$2 AND person_id=ANY($3::text[]) AND project_id=$4 AND coalesce((payload->>'withdrawn')::boolean,false)=false`,
+              [
+                a.workspaceId,
+                edit.date,
+                (data.people ?? [])
+                  .filter(
+                    (p) =>
+                      primaryPerson(data.people ?? [], p.id) ===
+                      primaryPerson(data.people ?? [], edit.personId),
+                  )
+                  .map((p) => p.id),
+                edit.projectId,
+              ],
             );
             if (duplicate.rowCount)
               throw new ApiError(409, '该师傅在此工地当天已有记录，请读取后修改；本次未保存');

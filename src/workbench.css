@@ -3566,3 +3566,45 @@ textarea::placeholder {
 .reminder-record-grid .agenda-item-actions > button {
   flex-shrink: 0;
 }
+/* One continuous daily reminder surface, including its action state. */
+.app-shell .workspace-brief.agenda-brief .agenda-item {
+  background: #edf4ef;
+  padding: 10px;
+  height: auto;
+  min-height: 128px;
+  gap: 6px;
+}
+.app-shell .workspace-brief.agenda-brief .agenda-item-main {
+  --button-soft: transparent;
+  --button-soft-hover: #e2ece5;
+  padding: 3px;
+}
+.app-shell .workspace-brief.agenda-brief .agenda-item-actions {
+  align-self: stretch;
+  padding: 0 3px 3px;
+}
+.app-shell .workspace-brief.agenda-brief .agenda-item-actions button {
+  padding: 4px var(--tag-inset);
+  line-height: 1.5;
+}
+.app-shell
+  .workspace-brief.agenda-brief
+  .agenda-item:has(.category-purchase).done
+  .agenda-complete {
+  background: #f4e5d3 !important;
+  color: #855e36 !important;
+  border-color: #e3cdb0;
+}
+.app-shell .workspace-brief.agenda-brief .brief-panel > footer button {
+  padding: 6px var(--control-inset);
+}
+.person-identity-review {
+  font-size: 12px;
+  margin-bottom: 12px;
+  line-height: 1.7;
+}
+.person-identity-review label {
+  display: inline-grid;
+  gap: 4px;
+  margin: 8px;
+}

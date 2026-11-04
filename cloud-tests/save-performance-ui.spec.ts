@@ -104,7 +104,7 @@ for (const width of [1280, 1440])
     const rendered = (await groups.nth(0).locator('.purchase-card').boundingBox())!;
     expect(Math.abs(rendered.width - rendered.height)).toBeLessThan(2);
   });
-test('workspace save sends only the changed signed resource, local feedback is nonblocking and success expires', async ({
+test('workspace save sends only the changed signed resource, local feedback is nonblocking and success remains in sidebar', async ({
   page,
 }) => {
   const f = await fixtureAccounts();
@@ -134,13 +134,14 @@ test('workspace save sends only the changed signed resource, local feedback is n
     expect(body.changes[0].collection).toBe('projects');
     expect(body.data).toBeUndefined();
     expect(JSON.stringify(body)).not.toContain('t-water');
-    await expect(page.locator('.save-feedback')).toContainText('本地已保存');
-    await expect(page.locator('.save-feedback')).not.toContainText('云端已保存');
+    await expect(page.locator('.sidebar-save-status')).toContainText('正在同步');
+    await expect(page.locator('.sidebar-save-status')).not.toContainText('最新保存：');
     await page.getByRole('button', { name: '提醒中心', exact: true }).click();
     release();
     await expect(page.locator('.save-state')).toContainText('已保存');
-    await expect(page.locator('.save-feedback')).toContainText('云端已保存');
-    await expect(page.locator('.save-feedback')).toHaveCount(0, { timeout: 7000 });
+    await expect(page.locator('.sidebar-save-status')).toContainText('最新保存：');
+    await expect(page.locator('.sidebar-save-status')).toBeVisible();
+    await expect(page.locator('.save-feedback')).toHaveCount(0);
     expect((await api(page)).value.data.projects[0].notes).toBe('增量同步的真实备注');
   } finally {
     release();
@@ -175,8 +176,8 @@ test('record editor returns after durable local commit while the server response
     await drawer.getByRole('button', { name: '保存记录', exact: true }).click();
     await expect(drawer).toHaveCount(0);
     await expect.poll(() => pending).toBe(true);
-    await expect(page.locator('.save-feedback')).toContainText('本地已保存');
-    await expect(page.locator('.save-feedback')).not.toContainText('云端已保存');
+    await expect(page.locator('.sidebar-save-status')).toContainText('正在同步');
+    await expect(page.locator('.sidebar-save-status')).not.toContainText('最新保存：');
     await page.getByRole('button', { name: '采购管理', exact: true }).click();
     release();
     await expect
@@ -220,7 +221,7 @@ test('same-account re-login resumes an unauthorized pending record with the iden
   await drawer.getByLabel('任务事项', { exact: true }).fill('重新登录后的续传');
   await drawer.getByLabel('记录节点日期', { exact: true }).fill(today());
   await drawer.getByRole('button', { name: '保存记录', exact: true }).click();
-  await expect(page.locator('.save-feedback')).toContainText('同步失败');
+  await expect(page.locator('.sidebar-save-status')).toContainText('同步异常');
   await page.context().clearCookies();
   await enter(page, f.login, f.password);
   await expect
@@ -339,11 +340,11 @@ test('one record acknowledgement cannot announce cloud saved while an unrelated 
     await expect.poll(() => sentWorkspace).toBe(true);
     releaseRecord();
     await expect.poll(async () => (await api(page, '/records')).value.records.length).toBe(1);
-    await expect(page.locator('.save-feedback')).not.toContainText('云端已保存');
-    await expect(page.locator('.save-feedback')).toContainText('云端同步中');
+    await expect(page.locator('.sidebar-save-status')).not.toContainText('最新保存：');
+    await expect(page.locator('.sidebar-save-status')).toContainText('正在同步');
     releaseWorkspace();
     await expect(page.locator('.save-state')).toContainText('已保存');
-    await expect(page.locator('.save-feedback')).toContainText('云端已保存');
+    await expect(page.locator('.sidebar-save-status')).toContainText('最新保存：');
   } finally {
     releaseRecord();
     releaseWorkspace();

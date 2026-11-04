@@ -669,3 +669,26 @@
     transition: none;
   }
 }
+.homepage .agenda-item {
+  background: #edf4ef;
+  padding: 10px;
+  border-radius: 11px;
+}
+.homepage .agenda-item .agenda-item-main {
+  --button-soft: transparent;
+  --button-soft-hover: #e1ece4;
+  padding: 5px;
+}
+.homepage .agenda-item .agenda-item-actions {
+  padding: 5px;
+  border-top: 0;
+}
+.homepage .agenda-item:has(.category-purchase).done .agenda-complete {
+  background: #f5e6d4 !important;
+  color: #8a623d;
+  border-color: #e5cfb5;
+}
+.homepage .agenda-item:not(.done) .agenda-complete {
+  background: #eef0eb !important;
+  color: #687464;
+}

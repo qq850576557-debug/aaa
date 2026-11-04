@@ -101,7 +101,7 @@ test('record outbox survives failure and refresh then reconnects with the exact 
   await drawer.getByLabel('任务事项', { exact: true }).fill('断网自动续传事项');
   await drawer.getByLabel('记录节点日期', { exact: true }).fill(today());
   await drawer.getByRole('button', { name: '保存记录', exact: true }).click();
-  await expect(page.locator('.save-feedback')).toContainText('同步失败');
+  await expect(page.locator('.sidebar-save-status')).toContainText('同步异常');
   await page.reload();
   await expect(page.locator('.save-state')).toContainText('已保存');
   offline = false;
@@ -237,7 +237,7 @@ test('a definitive record conflict remains visible after reload and is included 
   await drawer.getByRole('button', { name: '保存记录', exact: true }).click();
   await expect(page.locator('.record-board .error-banner')).toContainText('版本冲突');
   await page.reload();
-  await expect(page.locator('.save-feedback')).toContainText('同步失败');
+  await expect(page.locator('.sidebar-save-status')).toContainText('同步异常');
   await page.getByRole('button', { name: '事项管理', exact: true }).click();
   expect(attempts).toBe(1);
   const download = page.waitForEvent('download');

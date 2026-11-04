@@ -41,6 +41,7 @@ const card = (p: Page, project = 'p-home') =>
 const row = (p: Page, id: string, project = 'p-home') =>
   card(p, project).locator(`.assessment-day-row[data-person-id="${id}"]`);
 async function choose(p: Page, id: string, project = 'p-home') {
+  await card(p, project).evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await card(p, project).locator('.assessment-choose-person').first().click();
   await p
     .getByRole('listbox', { name: '已有师傅档案' })
@@ -73,7 +74,7 @@ for (const width of [1280, 1440])
       await p.reload();
       await enter(p);
       const panel = p.getByRole('region', { name: '师傅每日考核', exact: true });
-      await expect(panel.getByLabel('打卡日期', { exact: true })).toHaveValue(assessmentToday());
+      await expect(card(p).locator('header input')).toHaveValue(assessmentToday());
       expect((await panel.boundingBox())!.y).toBeLessThan(
         (await p.locator('.personnel-directory').boundingBox())!.y,
       );
@@ -89,11 +90,11 @@ for (const width of [1280, 1440])
       await expect(card(p).locator('.assessment-day-row')).toHaveCount(3);
       expect(await records(c)).toHaveLength(0);
 
-      await panel.getByLabel('打卡日期', { exact: true }).fill(plus(assessmentToday(), 1));
+      await card(p).locator('header input').fill(plus(assessmentToday(), 1));
       await expect(panel.getByRole('alert')).toContainText('不能记录未来日期');
       await expect(card(p).locator('.assessment-choose-person').first()).toBeDisabled();
       const date = plus(assessmentToday(), -2);
-      await panel.getByLabel('打卡日期', { exact: true }).fill(date);
+      await card(p).locator('header input').fill(date);
       await card(p).locator('.assessment-choose-person').first().click();
       const menu = p.getByRole('listbox', { name: '已有师傅档案' });
       await expect(menu.getByRole('option').first()).toContainText('已分配');
@@ -124,7 +125,8 @@ for (const width of [1280, 1440])
         side = (await summary.boundingBox())!;
       expect(after.x).toBe(before.x);
       expect(after.y).toBe(before.y);
-      expect(side.x).toBeGreaterThanOrEqual(after.x + after.width);
+      expect(side.x).toBeGreaterThanOrEqual(after.x);
+
       await expect(summary.locator('tbody tr')).toHaveCount(2);
       await expect(summary.locator('[data-person-id="worker-a"] td')).toHaveText([
         '1天',
@@ -136,6 +138,8 @@ for (const width of [1280, 1440])
       await choose(p, 'worker-d');
       await expect.poll(async () => (await records(c, date)).length).toBe(4);
       await expect(card(p).locator('.assessment-day-row')).toHaveCount(4);
+      await summary.getByRole('button').click();
+      await card(p, 'second-site').locator('header input').fill(date);
       await choose(p, 'worker-a', 'second-site');
       await row(p, 'worker-a', 'second-site')
         .getByRole('button', { name: '王师傅签到已完成', exact: true })
@@ -156,10 +160,11 @@ for (const width of [1280, 1440])
       await expect(stats.locator('.assessment-person-projects > article')).toHaveCount(2);
       await stats.getByText('每日明细 · 1天', { exact: true }).first().click();
       await expect(stats.locator('table').first()).toContainText(date);
-      await panel.getByLabel('打卡日期', { exact: true }).fill(plus(date, -1));
+      await card(p).getByRole('button', { name: '数据小结', exact: true }).click();
+      await card(p).locator('header input').fill(plus(date, -1));
       await expect(card(p).locator('.assessment-day-row')).toHaveCount(3);
       await expect(card(p).locator('.assessment-day-row[data-person-id]')).toHaveCount(0);
-      await panel.getByLabel('打卡日期', { exact: true }).fill(date);
+      await card(p).locator('header input').fill(date);
       await row(p, 'worker-a')
         .getByRole('button', { name: '王师傅卫生已完成', exact: true })
         .click();
@@ -203,13 +208,15 @@ for (const width of [1280, 1440])
         '0天',
         '1天',
       ]);
-      await expect(row(p, 'worker-a').locator('.assessment-remove-empty')).toHaveCount(0);
+      await expect(row(p, 'worker-a').locator('.assessment-remove-empty')).toHaveCount(1);
       const saved = (await records(c, date)).find(
         (r: any) => r.personId === 'worker-a' && r.projectId === 'p-home',
       );
       expect(saved.date).toBe(date);
       expect(Math.abs(Date.now() - Date.parse(saved.createdAt))).toBeLessThan(90000);
-      await row(p, 'worker-a').getByRole('button', { name: '王师傅', exact: true }).click();
+      await row(p, 'worker-a')
+        .getByRole('button', { name: '查看王师傅打卡历史', exact: true })
+        .click();
       await expect(p.getByRole('dialog', { name: '考核历史 · 王师傅', exact: true })).toContainText(
         '实际首次录入',
       );
@@ -218,7 +225,7 @@ for (const width of [1280, 1440])
       await p.screenshot({ path: `/tmp/daily-assessment-${width}.png`, fullPage: true });
       await p.reload();
       await enter(p);
-      await p.getByLabel('打卡日期', { exact: true }).fill(date);
+      await card(p).locator('header input').fill(date);
       await expect(
         row(p, 'worker-a').getByRole('button', { name: '王师傅卫生已完成', exact: true }),
       ).toHaveAttribute('aria-pressed', 'true');
@@ -320,7 +327,7 @@ test('daily collaboration: separate sites, exact conflict review, offline refres
     await expect
       .poll(async () => (await records(ca)).find((r: any) => r.projectId === 'p-home').cleaning)
       .toBe('yes');
-    await expect(a.locator('.assessment-sync-status')).toHaveCount(0);
+    await expect(a.locator('.assessment-sync-status')).toContainText('统计以云端确认记录为准');
     expect(new Set(receipts)).toEqual(new Set([receipt]));
     const saved = await records(ca);
     expect(saved).toHaveLength(2);
@@ -399,5 +406,146 @@ test('assessment recorder authorization is explicit, scoped, live-revocable and 
   } finally {
     await owner.close();
     await monitor.close();
+  }
+});
+
+test('safe correction retains original audit, independent dates, stable nodes and confirmed identity statistics', async ({
+  browser,
+}) => {
+  test.setTimeout(90000);
+  const f = await fixtureAccounts(),
+    c = await browser.newContext();
+  try {
+    const p = await c.newPage();
+    await login(p, f.login, f.password);
+    const d = dataset();
+    d.people!.push({
+      ...d.people![0],
+      id: 'old-worker',
+      deleted: true,
+      active: false,
+      identityLink: { personId: 'worker-a', reason: '隔离测试人工核对' },
+    });
+    expect((await api(c, '/workspace', 'PUT', { revision: 0, data: d })).status()).toBe(200);
+    const date = assessmentToday(),
+      historical = plus(date, -3);
+    const old = {
+      requestId: crypto.randomUUID(),
+      confirmed: true,
+      edits: [
+        {
+          date: historical,
+          personId: 'worker-a',
+          projectId: 'p-home',
+          tradeId: 'daily',
+          version: 0,
+          changes: { attendance: 'yes' },
+        },
+      ],
+    };
+    expect((await api(c, '/assessments/batch', 'POST', old)).status()).toBe(200);
+    await p.reload();
+    await enter(p);
+    await card(p, 'second-site').locator('header input').fill(historical);
+    await choose(p, 'worker-a');
+    await expect.poll(async () => (await records(c)).length).toBe(1);
+    await row(p, 'worker-a').evaluate((el) => ((window as any).__stableAssessmentRow = el));
+    await row(p, 'worker-a').getByRole('button', { name: '王师傅签到已完成', exact: true }).click();
+    await expect.poll(async () => (await records(c))[0]?.attendance).toBe('yes');
+    expect(
+      await row(p, 'worker-a').evaluate((el) => el === (window as any).__stableAssessmentRow),
+    ).toBe(true);
+    await expect(card(p, 'second-site').locator('header input')).toHaveValue(historical);
+    await expect(p.locator('.sidebar-save-status')).toContainText('最新保存：');
+    await row(p, 'worker-a').getByRole('button', { name: '移除王师傅当天打卡' }).click();
+    await p.getByRole('dialog').getByRole('button', { name: '确认仅移除当天人员' }).click();
+    await expect(row(p, 'worker-a')).toHaveCount(0);
+    const retained = (await records(c))[0];
+    expect(retained.withdrawn).toBe(true);
+    expect(retained.attendance).toBe('yes');
+    expect((await records(c, historical))[0].attendance).toBe('yes');
+    const history = await (await api(c, `/assessments/${retained.id}/history`)).json();
+    expect(history.events.some((e: any) => e.after.withdrawn)).toBe(true);
+    await choose(p, 'worker-b');
+    await expect.poll(async () => (await records(c)).length).toBe(2);
+    await row(p, 'worker-b').getByRole('button', { name: '重新选择师傅（保留原始历史）' }).count();
+    await row(p, 'worker-b').locator('.assessment-person-name').click();
+    await p.getByRole('dialog').getByRole('button', { name: '更正为其他师傅' }).click();
+    await p.getByRole('listbox').locator('[data-person-id="worker-c"]').click();
+    await expect(row(p, 'worker-c')).toBeVisible();
+    await expect
+      .poll(async () =>
+        (await records(c)).filter((r: any) => !r.withdrawn).map((r: any) => r.personId),
+      )
+      .toEqual(['worker-c']);
+    await choose(p, 'worker-a'); // restores the original person's own record, never copies another's result
+    await expect
+      .poll(async () => (await records(c)).find((r: any) => r.personId === 'worker-a')?.withdrawn)
+      .toBe(false);
+    await p.reload();
+    await enter(p);
+    await expect(row(p, 'worker-a')).toBeVisible();
+    expect((await records(c)).find((r: any) => r.personId === 'worker-b')?.withdrawn).toBe(true);
+  } finally {
+    await c.close();
+  }
+});
+
+test('explicit same-person link combines saved days while preserving source records and assignments', async ({
+  browser,
+}) => {
+  const f = await fixtureAccounts(),
+    c = await browser.newContext();
+  try {
+    const p = await c.newPage();
+    await login(p, f.login, f.password);
+    const d = dataset();
+    expect((await api(c, '/workspace', 'PUT', { revision: 0, data: d })).status()).toBe(200);
+    for (const personId of ['worker-a', 'worker-b'])
+      expect(
+        (
+          await api(c, '/assessments/batch', 'POST', {
+            requestId: crypto.randomUUID(),
+            confirmed: true,
+            edits: [
+              {
+                date: assessmentToday(),
+                projectId: 'p-home',
+                personId,
+                tradeId: 'daily',
+                version: 0,
+                changes: { attendance: 'yes' },
+              },
+            ],
+          })
+        ).status(),
+      ).toBe(200);
+    const before = await records(c);
+    await p.reload();
+    await enter(p);
+    await p.locator('.person-identity-review > summary').click();
+    await p.getByLabel('原档案', { exact: true }).selectOption('worker-b');
+    await p.getByLabel('当前有效主档案', { exact: true }).selectOption('worker-a');
+    await p.getByRole('button', { name: '核对关联影响' }).click();
+    await p.getByRole('dialog').getByRole('button', { name: '确认', exact: true }).click();
+    await expect
+      .poll(
+        async () =>
+          (await (await api(c, '/workspace')).json()).data.people.find(
+            (p: any) => p.id === 'worker-b',
+          ).identityLink?.personId,
+      )
+      .toBe('worker-a');
+    await expect(card(p).locator('.assessment-day-row[data-person-id]')).toHaveCount(1);
+    await card(p).getByRole('button', { name: '数据小结', exact: true }).click();
+    await expect(p.locator('.assessment-summary tbody tr')).toHaveCount(1);
+    await expect(p.locator('.assessment-summary tbody td').first()).toHaveText('1天');
+    expect(await records(c)).toEqual(before);
+    expect((await (await api(c, '/workspace')).json()).data.trades[0].staffIds).toEqual([
+      'worker-a',
+      'worker-b',
+    ]);
+  } finally {
+    await c.close();
   }
 });

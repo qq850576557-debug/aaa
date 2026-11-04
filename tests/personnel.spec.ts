@@ -193,3 +193,39 @@ test('V4 new personnel can select standard trades without a dictionary managemen
   expect(d.people![0].trade).toBe('旧水电');
   await expect(page.locator(`[data-person-id="${p.id}"]`)).toContainText('水电工');
 });
+
+test('duplicate-person confirmation links a removed historical profile to the new active primary without deleting history', async ({
+  page,
+}) => {
+  await boot(page);
+  const d = fixture();
+  d.people = [
+    {
+      id: 'historical-worker',
+      name: '重复测试师傅',
+      role: '施工人员',
+      trade: '',
+      notes: '已核实为同一人',
+      active: false,
+      deleted: true,
+    },
+  ];
+  await restore(page, d);
+  await page.getByRole('button', { name: '人员管理', exact: true }).click();
+  await page.getByRole('button', { name: '新增人员', exact: true }).click();
+  await page.getByRole('dialog').getByLabel('姓名', { exact: true }).fill('重复测试师傅');
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
+  const prompt = page.getByRole('dialog', { name: '检测到同名同工种的历史人员', exact: true });
+  await expect(prompt).toBeVisible();
+  expect((await state(page)).people).toHaveLength(1);
+  await prompt.getByRole('button', { name: /关联已有档案/ }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '保存', exact: true }).click();
+  await expect.poll(async () => (await state(page)).people?.length).toBe(2);
+  const people = (await state(page)).people!;
+  const master = people.find((p) => !p.deleted)!;
+  expect(people.find((p) => p.id === 'historical-worker')!.identityLink?.personId).toBe(master.id);
+  expect(people.find((p) => p.id === 'historical-worker')!.notes).toBe('已核实为同一人');
+  await page.reload();
+  await page.getByRole('button', { name: '人员管理', exact: true }).click();
+  await expect(page.locator('.person-card')).toHaveCount(1);
+});

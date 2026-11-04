@@ -177,6 +177,11 @@ export const personSchema = z
     notes: text,
     active: z.boolean(),
     deleted: z.boolean().optional(),
+    identityLink: z
+      .object({ personId: uid, reason: z.string().min(1).max(300) })
+      .strict()
+      .optional(),
+    hiddenFromSelectors: z.boolean().optional(),
   })
   .strict();
 export type Person = z.infer<typeof personSchema>;
@@ -203,6 +208,20 @@ export const dataSchema = z
     if (new Set(dictionaries.map((x) => x.id)).size !== dictionaries.length)
       ctx.addIssue({ code: 'custom', message: '字典ID重复' });
     for (const person of d.people ?? []) {
+      if (person.identityLink) {
+        const seen = new Set([person.id]);
+        let target: string | undefined = person.identityLink.personId;
+        while (target) {
+          const linked = d.people?.find((p) => p.id === target);
+          if (!linked || seen.has(target)) {
+            ctx.addIssue({ code: 'custom', message: '人员主档案关联缺失或循环，请核对后重试' });
+            break;
+          }
+          seen.add(target);
+          target = linked.identityLink?.personId;
+        }
+      }
+
       if (
         person.categoryId &&
         !dictionaries.some((x) => x.id === person.categoryId && x.kind === 'category')

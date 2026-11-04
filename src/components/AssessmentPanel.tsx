@@ -1,12 +1,13 @@
+import { primaryPerson, linkedAssessmentView, linkedDailyView } from '../lib/person-links';
+import { Check, X, Minus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { cloudApi, CloudError } from '../lib/cloud';
-import { verifiedOwner } from '../lib/record-outbox';
+import { cloudApi, queueCloudRecord, CloudError } from '../lib/cloud';
+import { verifiedOwner, pendingRecords, finishSupersededRecord } from '../lib/record-outbox';
 import {
   assessmentCandidates,
   assessmentToday,
   checkFields,
   checkLabels,
-  dailyAssessments,
   dailyKey,
   statusLabel,
   type Assessment,
@@ -51,14 +52,13 @@ type HistoryEvent = {
 };
 export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolean }) {
   const [now, setNow] = useState(assessmentToday),
-    [date, setDate] = useState(assessmentToday);
+    [dates, setDates] = useState<Record<string, string>>({});
   const [project, setProject] = useState(''),
     [person, setPerson] = useState('');
   const [access, setAccess] = useState<AssessmentAccess | null>(null),
     [records, setRecords] = useState<Assessment[]>([]),
     [storedDrafts, setDrafts] = useState<AssessmentDraft[]>([]);
-  const [error, setError] = useState(''),
-    [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [slots, setSlots] = useState<Record<string, number>>({}),
     [reserved, setReserved] = useState<AssessmentTarget[]>([]),
     [expanded, setExpanded] = useState<string[]>([]);
@@ -88,7 +88,8 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
     setPerson('');
     setProject('');
   }, [ownerKey]);
-  const validDate = dateOK(date) && date <= now;
+  const [correcting, setCorrecting] = useState<DailyAssessment | null>(null);
+  const [correctionBusy, setCorrectionBusy] = useState(false);
   const report = useCallback(
     (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
     [],
@@ -97,7 +98,9 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
     const update = () => {
       const next = assessmentToday();
       if (next !== now) {
-        setDate((d) => (d === now ? next : d));
+        setDates((old) =>
+          Object.fromEntries(Object.entries(old).map(([id, d]) => [id, d === now ? next : d])),
+        );
         setNow(next);
       }
     };
@@ -123,7 +126,7 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
     const run = { scope: ownerKey, again: false };
     loadGuard.current = run;
     const token = ++sequence.current;
-    setLoading(true);
+
     try {
       const permission = await cloudApi<AssessmentAccess>('/assessments/access');
       if (token !== sequence.current) return;
@@ -150,7 +153,6 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
         setVerifiedScope(ownerKey);
       }
     } finally {
-      if (token === sequence.current) setLoading(false);
       if (loadGuard.current === run) {
         loadGuard.current = null;
         const live = verifiedOwner();
@@ -208,15 +210,31 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       ),
     [records, drafts],
   );
-  const daily = useMemo(() => dailyAssessments(confirmedRows), [confirmedRows]);
-  const candidates = useMemo(() => assessmentCandidates(data, date), [data, date]);
-  const people = (data.people ?? []).filter((p) => p.role === '施工人员' && p.active && !p.deleted);
+  const statisticsRows = linkedAssessmentView(confirmedRows, data).filter(
+    (r) => !data.people?.find((p) => p.id === r.personId)?.hiddenFromSelectors,
+  );
+  const daily = useMemo(
+    () =>
+      linkedDailyView(confirmedRows, data).filter(
+        (r) => !data.people?.find((p) => p.id === r.personId)?.hiddenFromSelectors,
+      ),
+    [confirmedRows, data],
+  );
+
+  const people = (data.people ?? []).filter(
+    (p) =>
+      p.role === '施工人员' && p.active && !p.deleted && !p.identityLink && !p.hiddenFromSelectors,
+  );
   const personNames = new Map([
-    ...confirmedRows.map((r) => [r.personId, r.personName] as const),
-    ...(data.people ?? []).filter((p) => p.role === '施工人员').map((p) => [p.id, p.name] as const),
+    ...statisticsRows.map((r) => [r.personId, r.personName] as const),
+    ...(data.people ?? [])
+      .filter((p) => p.role === '施工人员' && !p.identityLink && !p.hiddenFromSelectors)
+      .map((p) => [p.id, p.name] as const),
   ]);
+  for (const p of data.people ?? [])
+    if (p.hiddenFromSelectors || p.identityLink) personNames.delete(p.id);
   const projectNames = new Map([
-    ...confirmedRows.map((r) => [r.projectId, r.projectName] as const),
+    ...statisticsRows.map((r) => [r.projectId, r.projectName] as const),
     ...data.projects.map((p) => [p.id, p.name] as const),
   ]);
   const sites = [...projectNames].filter(
@@ -224,8 +242,8 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       (!project || id === project) &&
       (project ||
         data.projects.some((p) => p.id === id && !isHistorical(p)) ||
-        daily.some((r) => r.projectId === id && r.date === date) ||
-        drafts.some((d) => d.target.projectId === id && d.target.date === date)),
+        daily.some((r) => r.projectId === id && r.date === (dates[id] ?? now)) ||
+        drafts.some((d) => d.target.projectId === id && d.target.date === (dates[id] ?? now))),
   );
   async function change(
     target: AssessmentTarget,
@@ -280,6 +298,75 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       report(e);
     }
   }
+  async function correctRow(replacement?: string) {
+    if (!correcting || correctionBusy) return;
+    setCorrectionBusy(true);
+    try {
+      const edits = correcting.sources.map((r) => ({
+        date: r.date,
+        personId: r.personId,
+        projectId: r.projectId,
+        tradeId: r.tradeId,
+        version: r.version,
+        changes: {
+          withdrawn: true,
+          correctionReason: replacement ? '误选人员，另行选择师傅' : '误选人员，移除当天行',
+        },
+      }));
+      const pending = await pendingRecords(verifiedOwner()!);
+      const sameCorrection = (body: any) =>
+        body?.edits?.length === edits.length &&
+        edits.every((e) =>
+          body.edits.some(
+            (x: any) =>
+              x.date === e.date &&
+              x.personId === e.personId &&
+              x.projectId === e.projectId &&
+              x.tradeId === e.tradeId &&
+              x.changes?.withdrawn === true,
+          ),
+        );
+      const previous = pending.find(
+        (e) => e.path === '/assessments/batch' && !e.blocked && sameCorrection(e.body),
+      );
+      const queued = await queueCloudRecord(
+        '/assessments/batch',
+        'POST',
+        previous?.body ?? { requestId: crypto.randomUUID(), confirmed: true, edits },
+      );
+      const result = await queued.completion;
+      setRecords((old) => mergeRecords(old, result.records));
+      setReserved((old) => old.filter((r) => dailyKey(r) !== dailyKey(correcting)));
+      if (replacement) {
+        const p = people.find((p) => p.id === replacement)!;
+        await change(
+          {
+            date: correcting.date,
+            projectId: correcting.projectId,
+            personId: p.id,
+            personName: p.name,
+            projectName: correcting.projectName,
+            sources: [],
+          },
+          { attendance: 'pending', photo: 'pending', cleaning: 'pending' },
+        );
+      }
+      for (const entry of pending.filter((e) => e.blocked && sameCorrection(e.body)))
+        await finishSupersededRecord(entry.body.requestId);
+      setCorrecting(null);
+    } catch (e) {
+      if (e instanceof CloudError && e.status === 409) {
+        const latest = await readAllAssessments(now);
+        setRecords(latest);
+        setCorrecting(
+          linkedDailyView(latest, data).find((r) => dailyKey(r) === dailyKey(correcting)) ?? null,
+        );
+      }
+      report(e);
+    } finally {
+      setCorrectionBusy(false);
+    }
+  }
   function exportPending() {
     const url = URL.createObjectURL(
       new Blob([JSON.stringify({ savedAt: new Date().toISOString(), drafts }, null, 2)], {
@@ -331,7 +418,6 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
         </div>
       </div>
       <div className="assessment-filters">
-        <DateField label="打卡日期" value={date} max={now} required onChange={setDate} />
         <label>
           工地
           <select
@@ -375,35 +461,45 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       </div>
       <p className="assessment-hint">
         按北京时间打卡，可补录历史日期。✓ 已完成　× 未完成　— 未记录（不计失败）。
-        {loading ? ' 正在读取云端记录…' : ''}
       </p>
-      {(!validDate || error) && (
+      {error && (
         <p className="error" role="alert">
-          {!validDate ? '请选择有效的今天或历史日期，不能记录未来日期。' : error}
+          {error}
         </p>
       )}
-      {drafts.length > 0 && (
+      {
         <p className="assessment-sync-status" role="status">
-          {drafts.some((d) => d.blocked)
-            ? '存在待核对考核，完整本地选择已保留。'
-            : '本地已保存，后台同步中。'}{' '}
-          统计以云端确认的记录为准。
+          {!drafts.length
+            ? '统计以云端确认记录为准。'
+            : drafts.some((d) => d.blocked)
+              ? '存在待核对考核，完整本地选择已保留。'
+              : '本地已保存，后台同步中。'}{' '}
         </p>
-      )}
+      }
       {person && (
         <PersonAssessmentStats
           personId={person}
           name={personNames.get(person) || '历史师傅'}
-          records={confirmedRows}
+          records={statisticsRows}
         />
       )}
       <div className="assessment-sites">
         {sites.map(([projectId, projectName]) => {
+          const date = dates[projectId] ?? now;
+          const validDate = dateOK(date) && date <= now;
+          const candidates = assessmentCandidates(data, date);
+          const withdrawn = confirmedRows.filter(
+            (r) => r.withdrawn && r.projectId === projectId && r.date === date,
+          );
           const selected = daily
             .filter((r) => r.projectId === projectId && r.date === date)
             .sort(
               (a, b) =>
-                a.createdAt.localeCompare(b.createdAt) || a.personId.localeCompare(b.personId),
+                [...a.sources]
+                  .map((r) => r.createdAt)
+                  .sort()[0]
+                  .localeCompare([...b.sources].map((r) => r.createdAt).sort()[0]) ||
+                a.personId.localeCompare(b.personId),
             );
           const local = drafts.filter(
             (d) => d.target.projectId === projectId && d.target.date === date,
@@ -428,7 +524,13 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                 <header>
                   <div>
                     <h3>{projectName}</h3>
-                    <time dateTime={date}>{date}</time>
+                    <DateField
+                      label={`${projectName}打卡日期`}
+                      value={date}
+                      max={now}
+                      required
+                      onChange={(value) => setDates((old) => ({ ...old, [projectId]: value }))}
+                    />
                   </div>
                   <button
                     type="button"
@@ -444,6 +546,11 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                     数据小结
                   </button>
                 </header>
+                {!validDate && (
+                  <p role="alert" className="error">
+                    不能记录未来日期，请选择今天或历史日期。
+                  </p>
+                )}
                 <div role="table" aria-label={`${projectName}每日打卡`}>
                   <div className="assessment-four-column assessment-row-head" role="row">
                     <span role="columnheader">姓名</span>
@@ -496,12 +603,31 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                                 <button
                                   type="button"
                                   className="assessment-person-name"
-                                  title={saved ? '查看实际录入时间及修改历史' : '本地待同步'}
-                                  disabled={!saved}
-                                  onClick={() => saved && void showHistory(saved)}
+                                  title="重新选择师傅（保留原始历史）"
+                                  disabled={!saved || !!draft}
+                                  onClick={() => saved && setCorrecting(saved)}
                                 >
-                                  {name}
+                                  {name} ⌄
                                 </button>
+                                {saved && (
+                                  <button
+                                    className="assessment-remove-empty"
+                                    disabled={!!draft}
+                                    aria-label={`移除${name}当天打卡`}
+                                    onClick={() => setCorrecting(saved)}
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                                {saved && (
+                                  <button
+                                    className="assessment-history-link"
+                                    aria-label={`查看${name}打卡历史`}
+                                    onClick={() => void showHistory(saved)}
+                                  >
+                                    历史
+                                  </button>
+                                )}
                                 <small>
                                   {draft?.blocked
                                     ? '待核对'
@@ -525,7 +651,11 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                                 <AssessmentPersonPicker
                                   people={people}
                                   assigned={preferred}
-                                  excluded={new Set(chosen)}
+                                  excluded={
+                                    new Set(
+                                      chosen.map((id) => primaryPerson(data.people ?? [], id)),
+                                    )
+                                  }
                                   label={`${projectName}第${index + 1}行选择师傅`}
                                   disabled={!canCreate}
                                   onSelect={(id) => {
@@ -538,6 +668,30 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                                       projectName,
                                       sources: [],
                                     };
+                                    const oldSources = withdrawn.filter((r) => r.personId === id);
+                                    if (oldSources.length) {
+                                      void queueCloudRecord('/assessments/batch', 'POST', {
+                                        requestId: crypto.randomUUID(),
+                                        confirmed: true,
+                                        edits: oldSources.map((r) => ({
+                                          date: r.date,
+                                          personId: r.personId,
+                                          projectId: r.projectId,
+                                          tradeId: r.tradeId,
+                                          version: r.version,
+                                          changes: {
+                                            withdrawn: false,
+                                            correctionReason: '确认恢复当天人员',
+                                          },
+                                        })),
+                                      })
+                                        .then((q) => q.completion)
+                                        .then((result) =>
+                                          setRecords((old) => mergeRecords(old, result.records)),
+                                        )
+                                        .catch(report);
+                                      return;
+                                    }
                                     setReserved((old) => [...old, next]);
                                     void change(next, {
                                       attendance: 'pending',
@@ -583,7 +737,13 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                                       void change(target, { [f]: s.value });
                                   }}
                                 >
-                                  {s.glyph}
+                                  {s.value === 'yes' ? (
+                                    <Check size={15} strokeWidth={3} />
+                                  ) : s.value === 'no' ? (
+                                    <X size={15} strokeWidth={3} />
+                                  ) : (
+                                    <Minus size={15} />
+                                  )}
                                 </button>
                               ))}
                             </div>
@@ -631,6 +791,21 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                     );
                   })}
                 </div>
+                {!!withdrawn.length && (
+                  <details className="assessment-source-detail">
+                    <summary>已撤回的当天来源（{withdrawn.length}）</summary>
+                    {withdrawn.map((r) => (
+                      <p key={r.id}>
+                        {r.personName} · {r.correctionReason} · {r.updatedName}
+                        <button
+                          onClick={() => void showHistory({ ...r, sources: [r], differences: [] })}
+                        >
+                          查看保留历史
+                        </button>
+                      </p>
+                    ))}
+                  </details>
+                )}
                 <footer>
                   <button
                     type="button"
@@ -639,14 +814,14 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                   >
                     ＋ 添加人员
                   </button>
-                  <small>空白行不统计；已有打卡不直接删除</small>
+                  <small>移除仅撤回当天记录，历史可追溯</small>
                 </footer>
               </ProjectSurface>
               {expanded.includes(projectId) && (
                 <ProjectAssessmentSummary
                   projectId={projectId}
                   projectName={projectName}
-                  records={confirmedRows}
+                  records={statisticsRows}
                   onClose={() => setExpanded((old) => old.filter((id) => id !== projectId))}
                 />
               )}
@@ -656,6 +831,39 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
       </div>
       {!sites.length && (
         <p className="assessment-empty">暂无符合条件的工地。可从筛选中选择历史工地。</p>
+      )}
+      {correcting && (
+        <Modal title="更正当天人员" onClose={() => !correctionBusy && setCorrecting(null)}>
+          <div className="modal-body">
+            <p>
+              将撤回「{correcting.personName}」在 {correcting.date}、{correcting.projectName}{' '}
+              的本日记录，保留原始状态和操作历史。其他日期及工地不受影响。
+            </p>
+            <p>重新选择后，新师傅从未记录开始，不转记原师傅成绩。待同步完成后可更正。</p>
+            <AssessmentPersonPicker
+              people={people}
+              assigned={new Set()}
+              excluded={
+                new Set(
+                  daily
+                    .filter(
+                      (r) => r.projectId === correcting.projectId && r.date === correcting.date,
+                    )
+                    .map((r) => r.personId),
+                )
+              }
+              label="更正为其他师傅"
+              disabled={correctionBusy}
+              onSelect={(id) => void correctRow(id)}
+            />
+            <button disabled={correctionBusy} className="danger" onClick={() => void correctRow()}>
+              确认仅移除当天人员
+            </button>
+            <button disabled={correctionBusy} onClick={() => setCorrecting(null)}>
+              取消
+            </button>
+          </div>
+        </Modal>
       )}
       {history && (
         <Modal title={`考核历史 · ${history.name}`} onClose={() => setHistory(null)}>
