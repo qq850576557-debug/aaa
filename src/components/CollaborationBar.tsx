@@ -91,10 +91,7 @@ export function CollaborationBar({ user, isCloud }: { user: CloudUser | null; is
             aria-label="打开我的个人名片"
             onClick={() => setCard(true)}
           >
-            <Avatar
-              account={user}
-              presence={online.find((a) => a.id === user.id)?.status ?? 'offline'}
-            />
+            <Avatar account={user} />
           </button>
         )}
         {user ? (

@@ -140,6 +140,7 @@ test('presence: visibility/focus signals, idle clock, interaction recovery, mult
       (await api(a, '/presence')).value.accounts.find((x: any) => x.login === f.employee)?.status;
     await expect.poll(state).toBe('active');
     const member = a.getByRole('button', { name: `查看${f.employee}的在线名片`, exact: true });
+    await expect(a.locator('.current-account .presence-dot')).toHaveCount(0);
     await expect(member.locator('.presence-active')).toHaveCount(1);
     const signal = async (visible: boolean, focused: boolean) =>
       b.evaluate(
