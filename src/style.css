@@ -4399,7 +4399,7 @@ nav button {
 .modal.floating-panel,
 .modal.blocking-panel {
   max-height: 75dvh;
-  width: min(400px, calc(100vw - 24px));
+  width: min(380px, calc(100vw - 24px));
 }
 .modal.wide,
 .modal.anchored.wide {
@@ -5805,4 +5805,128 @@ nav button {
   min-height: 42px;
   height: 42px;
   margin: 0;
+}
+
+/* Compact purchase editor and date-change history. */
+dialog.modal.purchase-editor {
+  width: min(380px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+}
+.purchase-editor .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.purchase-editor .form-grid > * {
+  min-width: 0;
+}
+.purchase-editor .form-grid > .span2 {
+  grid-column: 1 / -1;
+}
+.purchase-editor textarea {
+  min-height: 58px;
+  height: 58px;
+}
+.purchase-editor .modal-body {
+  padding: 12px 16px;
+}
+.purchase-editor .form-grid {
+  gap: 10px 12px;
+}
+@media (max-width: 480px) {
+  .purchase-editor .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .purchase-editor .form-grid > * {
+    grid-column: 1;
+  }
+}
+.purchase-editor .modal-foot {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.purchase-editor .modal-foot .destructive {
+  padding: 7px 13px;
+  margin-inline: 4px;
+}
+.purchase-date-editor {
+  position: relative;
+}
+.purchase-date-editor > .purchase-date-history {
+  position: absolute;
+  top: 0;
+  left: 100px;
+}
+.purchase-date-history {
+  display: inline-flex;
+  position: relative;
+  vertical-align: middle;
+}
+.purchase-date-history > button {
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #a67738;
+  min-height: 20px;
+}
+.purchase-date-tooltip {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  right: 0;
+  width: max-content;
+  max-width: min(300px, 75vw);
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid #e6dac1;
+  border-radius: 10px;
+  background: #fffdf7;
+  box-shadow: 0 6px 20px #263e2e20;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.18s ease,
+    visibility 0.18s;
+  font-size: 12px;
+}
+.purchase-date-editor .purchase-date-tooltip {
+  left: -100px;
+  right: auto;
+}
+.purchase-date-tooltip > span {
+  display: block;
+  line-height: 1.8;
+}
+.purchase-date-history:hover .purchase-date-tooltip,
+.purchase-date-history:focus-within .purchase-date-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+.purchase-editor .modal-head {
+  padding: 14px 16px;
+}
+.purchase-editor .modal-head h2 {
+  font-size: 17px;
+}
+.purchase-editor .purchase-date-help {
+  font-size: 12px;
+  color: #71816e;
+  margin: 0;
+}
+.purchase-editor .form-field {
+  gap: 4px;
+}
+dialog.modal.purchase-editor input:not([type='checkbox']):not([type='radio']),
+dialog.modal.purchase-editor select {
+  height: 32px;
+  min-height: 32px;
+  padding-block: 4px;
+}
+.purchase-editor .mention-control {
+  padding: 4px 6px;
+}
+.purchase-editor .owner-picker input {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }

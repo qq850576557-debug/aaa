@@ -9,7 +9,7 @@ import {
   type Purchase,
 } from './model';
 
-/** A normal edit may never replace its own deadline ceiling or confirmation history. */
+/** Manual date changes append history while retaining the original baseline. */
 export function savePurchase(data: Data, value: Purchase): Data {
   const base = prepareWorkspace(data),
     old = base.purchases.find((p) => p.id === value.id);
@@ -21,14 +21,24 @@ export function savePurchase(data: Data, value: Purchase): Data {
     const ceiling = purchaseCeiling(old, base);
     // If an unchanged linked record is saved, preserve automatic early-date calculation.
     const changedDate = deadline !== purchaseDue(old, base);
-    if (changedDate && deadline > ceiling)
-      throw new Error(`采购截止不能晚于原定或已确认期限 ${ceiling}，请使用“变更原定期限”`);
+
     next = {
       ...old,
       ...value,
       originalDue: old.originalDue,
-      approvedDue: old.approvedDue,
-      deadlineHistory: old.deadlineHistory,
+      approvedDue: changedDate ? deadline : old.approvedDue,
+      deadlineHistory: changedDate
+        ? [
+            ...(old.deadlineHistory ?? []),
+            {
+              from: ceiling,
+              actualFrom: purchaseDue(old, base),
+              to: deadline,
+              reason: '手动调整采购日期',
+              at: new Date().toISOString(),
+            },
+          ]
+        : old.deadlineHistory,
       deadlineMode: changedDate || movedProject ? 'fixed' : old.deadlineMode,
       due: changedDate || movedProject || old.deadlineMode === 'fixed' ? deadline : old.due,
       taskId: movedProject ? '' : old.taskId,

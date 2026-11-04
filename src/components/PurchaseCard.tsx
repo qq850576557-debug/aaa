@@ -1,3 +1,4 @@
+import { PurchaseDateHistory } from './PurchaseDateHistory';
 import { projectThemeStyle, useProjectTheme } from './ProjectThemes';
 import { Pencil, Trash2 } from 'lucide-react';
 import {
@@ -61,7 +62,9 @@ export function PurchaseCard({
           <strong>{p.name}</strong>
         </div>
         <div className="purchase-meta">
-          <small>{due} 前采购</small>
+          <small>
+            {due} 前采购 <PurchaseDateHistory purchase={p} />
+          </small>
           <span className={`deadline-countdown ${!done && due < now ? 'red' : ''}`}>
             {done ? '采购已完成' : remainingTime(due, now)}
           </span>

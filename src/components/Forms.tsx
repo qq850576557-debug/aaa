@@ -1,3 +1,5 @@
+import { inCloud } from '../lib/cloud';
+import { PurchaseDateHistory } from './PurchaseDateHistory';
 import { useEditorJournal } from '../lib/useEditorJournal';
 import { useId, useRef, useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
@@ -12,7 +14,6 @@ import {
   duration,
   plus,
   purchaseDue,
-  purchaseCeiling,
   projectStatus,
   projectSchema,
   tradeSchema,
@@ -124,11 +125,6 @@ export function Editor({
         onChange={(date) => dateChange(key, date)}
         rangeStart={String(v.start ?? '')}
         rangeEnd={String(v.end ?? '')}
-        max={
-          edit.kind === 'purchase' && data.purchases.some((p) => p.id === v.id)
-            ? purchaseCeiling(edit.value as Purchase, data)
-            : undefined
-        }
       />
     ) : (
       <div className="form-field" key={key}>
@@ -371,33 +367,24 @@ export function Editor({
           data.projects.map((p) => [p.id, p.name]),
         )}
         {input('specification', '规格型号')}
-        {input('owner', '采购负责人')}
-        <MentionPicker
-          value={(v.mentionIds as string[] | undefined) ?? []}
-          onChange={(ids) => change('mentionIds', ids)}
-        />
-        {input('due', '采购截止日期', 'date', true)}
+        {inCloud() ? (
+          <MentionPicker
+            owner={String(v.owner ?? '')}
+            onOwnerChange={(text) => change('owner', text)}
+            value={(v.mentionIds as string[] | undefined) ?? []}
+            onChange={(ids) => change('mentionIds', ids)}
+          />
+        ) : (
+          input('owner', '采购负责人')
+        )}
+        <div className="purchase-date-editor">
+          {input('due', '采购截止日期', 'date', true)}
+          <PurchaseDateHistory purchase={edit.value as Purchase} />
+        </div>
         {select('status', '采购状态', ['待采购', '已下单', '已到货', '已完成'])}
         {area('notes', '详细备注（可选）')}
         {!isNew && (
-          <div className="form-info span2">
-            原始截止：
-            {(edit.value as Purchase).originalDue ?? purchaseDue(edit.value as Purchase, data)}
-            ；普通编辑最晚：{purchaseCeiling(edit.value as Purchase, data)}。
-            {(edit.value as Purchase).taskId && (
-              <span>已有关联保留。手动修改截止日后采用固定采购计划，施工日期不会因此顺延。</span>
-            )}
-            {!!(edit.value as Purchase).deadlineHistory?.length && (
-              <details>
-                <summary>期限变更记录</summary>
-                {(edit.value as Purchase).deadlineHistory!.map((h, i) => (
-                  <p key={i}>
-                    {h.from} → {h.to} · {h.reason} · {h.at}
-                  </p>
-                ))}
-              </details>
-            )}
-          </div>
+          <p className="purchase-date-help span2">日期可提前或延期，保存后逐次保留记录。</p>
         )}
       </>
     );
@@ -411,7 +398,15 @@ export function Editor({
         onClose={close}
         anchor={edit.anchor}
         wide={kind !== 'trade' && kind !== 'project'}
-        className={kind === 'trade' ? 'trade-editor' : kind === 'project' ? 'project-editor' : ''}
+        className={
+          kind === 'trade'
+            ? 'trade-editor'
+            : kind === 'project'
+              ? 'project-editor'
+              : kind === 'purchase'
+                ? 'purchase-editor'
+                : ''
+        }
       >
         <form onSubmit={submit}>
           <div className="modal-body">

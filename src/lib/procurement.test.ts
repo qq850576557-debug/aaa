@@ -83,7 +83,7 @@ describe('phase 4 procurement deadlines and shared projections', () => {
     expect(next.tasks).toEqual(d.tasks);
     expect(procurementView(next, 'one', now).today).toHaveLength(1);
   });
-  it('allows advancing and restoring within the original deadline, blocks overruns and forged ceilings', () => {
+  it('allows manual earlier/later dates with append-only records and retains original baselines', () => {
     const d = savePurchase(setup(), purchase('a', '2027-01-03')),
       p = d.purchases[0];
     const early = savePurchase(d, { ...p, due: now });
@@ -92,14 +92,21 @@ describe('phase 4 procurement deadlines and shared projections', () => {
     expect(savePurchase(early, { ...early.purchases[0], due: '2027-01-02' }).purchases[0].due).toBe(
       '2027-01-02',
     );
-    expect(() =>
-      savePurchase(early, {
-        ...early.purchases[0],
-        due: '2027-01-04',
-        originalDue: '2099-01-01',
-        approvedDue: '2099-01-01',
-      }),
-    ).toThrow('不能晚于');
+    const later = savePurchase(early, {
+      ...early.purchases[0],
+      due: '2027-01-04',
+      originalDue: '2099-01-01',
+      approvedDue: '2099-01-01',
+    });
+    expect(later.purchases[0].originalDue).toBe('2027-01-03');
+    expect(later.purchases[0].deadlineHistory).toHaveLength(2);
+    expect(later.purchases[0].deadlineHistory?.at(-1)).toMatchObject({
+      actualFrom: now,
+      to: '2027-01-04',
+    });
+    expect(purchaseDue(later.purchases[0], later)).toBe('2027-01-04');
+    expect(savePurchase(later, later.purchases[0]).purchases[0].deadlineHistory).toHaveLength(2);
+    expect(parseBackup(JSON.parse(JSON.stringify(later)))).toEqual(later);
     expect(d.purchases[0].due).toBe('2027-01-03');
   });
   it('retains original deadlines through explicit confirmation chains and JSON restore', () => {
@@ -120,7 +127,9 @@ describe('phase 4 procurement deadlines and shared projections', () => {
       ['2027-01-05', '2027-01-07'],
     ]);
     expect(parseBackup(JSON.parse(JSON.stringify(confirmedTwice)))).toEqual(confirmedTwice);
-    expect(() => savePurchase(confirmedTwice, { ...p, due: '2027-01-08' })).toThrow();
+    expect(
+      savePurchase(confirmedTwice, { ...p, due: '2027-01-08' }).purchases[0].deadlineHistory,
+    ).toHaveLength(3);
   });
   it('captures the effective legacy linked deadline once, without overwriting its stored fallback or source', () => {
     const d = setup();

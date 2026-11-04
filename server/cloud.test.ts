@@ -734,7 +734,7 @@ test('imported fake actor/diff text is not trusted, and retention never rewrites
   assert.equal(JSON.stringify(after.data), before);
 });
 
-test('server protects immutable purchase deadlines and approval history; owner-only explicit extension preserves original baseline', async () => {
+test('server protects original purchase deadline and history; explicit owner confirmation preserves original baseline', async () => {
   const { a, b } = await setup();
   const first = await request('/workspace', 'PUT', { revision: 0, data: data() }, a);
   assert.equal(first.status, 200);
@@ -745,12 +745,6 @@ test('server protects immutable purchase deadlines and approval history; owner-o
   forged.purchases[0].originalDue = '2099-01-01';
   assert.equal(
     (await request('/workspace', 'PUT', { revision: state.revision, data: forged }, b)).status,
-    403,
-  );
-  const late = structuredClone(state.data);
-  late.purchases[0].due = '2099-01-01';
-  assert.equal(
-    (await request('/workspace', 'PUT', { revision: state.revision, data: late }, a)).status,
     403,
   );
   const path = `/purchases/${id}/deadline`;
@@ -5552,4 +5546,69 @@ test('busy activity transitions notify SSE even when the prior active lease has 
     controller.abort();
     await reader.cancel().catch(() => {});
   }
+});
+
+test('purchase manual earlier/later dates retain every offline edit, original deadline and protected history', async () => {
+  const { savePurchase } = await import('../src/lib/procurement');
+  const { a, b } = await setup();
+  const initial = await request('/workspace', 'PUT', { revision: 0, data: data() }, a);
+  assert.equal(initial.status, 200);
+  const state = await initial.json();
+  const original = state.data.purchases[0].originalDue;
+  let edited = state.data;
+  for (const due of ['2027-03-20', '2027-03-10', '2027-03-25']) {
+    edited = savePurchase(edited, { ...edited.purchases[0], due });
+  }
+  const saved = await request('/workspace', 'PUT', { revision: state.revision, data: edited }, b);
+  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
+  const result = await saved.json();
+  assert.equal(result.data.purchases[0].originalDue, original);
+  assert.equal(result.data.purchases[0].due, '2027-03-25');
+  assert.equal(result.data.purchases[0].deadlineHistory.length, 3);
+  assert.deepEqual(result.data.purchases[0].deadlineHistory, edited.purchases[0].deadlineHistory);
+  const reread = await (await request('/workspace', 'GET', undefined, a)).json();
+  assert.deepEqual(reread.data.purchases[0].deadlineHistory, edited.purchases[0].deadlineHistory);
+  const oldClientEdit = structuredClone(result.data);
+  oldClientEdit.purchases[0].due = '2027-03-24';
+  const oldClientSave = await request(
+    '/workspace',
+    'PUT',
+    { revision: result.revision, data: oldClientEdit },
+    b,
+  );
+  assert.equal(oldClientSave.status, 200);
+  const oldClientResult = await oldClientSave.json();
+  assert.equal(oldClientResult.data.purchases[0].deadlineHistory.length, 4);
+  assert.equal(oldClientResult.data.purchases[0].deadlineHistory.at(-1).actualFrom, '2027-03-25');
+  const forged = structuredClone(result.data);
+  forged.purchases[0].deadlineHistory[0].reason = '篡改已有历史';
+  assert.equal(
+    (
+      await request(
+        '/workspace',
+        'PUT',
+        {
+          revision: oldClientResult.revision,
+          data: {
+            ...oldClientResult.data,
+            purchases: [
+              {
+                ...oldClientResult.data.purchases[0],
+                deadlineHistory: [
+                  ...forged.purchases[0].deadlineHistory,
+                  oldClientResult.data.purchases[0].deadlineHistory.at(-1),
+                ],
+              },
+            ],
+          },
+        },
+        b,
+      )
+    ).status,
+    403,
+  );
+  assert.equal(
+    (await request('/workspace', 'PUT', { revision: state.revision, data: edited }, b)).status,
+    409,
+  );
 });

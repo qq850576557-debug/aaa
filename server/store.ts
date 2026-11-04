@@ -285,13 +285,51 @@ export async function commit(
       const old = prior.data.purchases.find((x) => x.id === p.id);
       if (old) {
         if (
-          old.originalDue !== p.originalDue ||
-          old.approvedDue !== p.approvedDue ||
-          canonical(old.deadlineHistory ?? []) !== canonical(p.deadlineHistory ?? [])
+          p.due === old.due &&
+          p.originalDue === old.originalDue &&
+          p.approvedDue === old.approvedDue &&
+          canonical(p.deadlineHistory ?? []) === canonical(old.deadlineHistory ?? [])
         )
-          throw new ApiError(403, '普通保存不得修改采购原定期限或审批历史');
-        if (p.due !== old.due && p.due > purchaseCeiling(old, prior.data))
-          throw new ApiError(403, '采购延期必须由负责人明确确认');
+          continue;
+        const untouched =
+          old.originalDue === p.originalDue &&
+          old.approvedDue === p.approvedDue &&
+          canonical(old.deadlineHistory ?? []) === canonical(p.deadlineHistory ?? []);
+        if (untouched) {
+          if (p.due !== purchaseDue(old, prior.data)) {
+            p.approvedDue = p.due;
+            p.deadlineMode = 'fixed';
+            p.deadlineHistory = [
+              ...(old.deadlineHistory ?? []),
+              {
+                from: purchaseCeiling(old, prior.data),
+                actualFrom: purchaseDue(old, prior.data),
+                to: p.due,
+                reason: '手动调整采购日期',
+                at: new Date().toISOString(),
+              },
+            ];
+          }
+        } else {
+          const before = old.deadlineHistory ?? [];
+          const history = p.deadlineHistory ?? [];
+          const added = history.slice(before.length);
+          const valid =
+            p.originalDue === old.originalDue &&
+            p.approvedDue === p.due &&
+            p.deadlineMode === 'fixed' &&
+            added.length > 0 &&
+            canonical(history.slice(0, before.length)) === canonical(before) &&
+            added.every(
+              (h, i) =>
+                h.reason === '手动调整采购日期' &&
+                h.from === (i ? added[i - 1].to : purchaseCeiling(old, prior.data)) &&
+                h.actualFrom === (i ? added[i - 1].to : purchaseDue(old, prior.data)) &&
+                h.to !== h.actualFrom,
+            ) &&
+            added.at(-1)?.to === p.due;
+          if (!valid) throw new ApiError(403, '不得修改采购原定期限或已有变更历史');
+        }
       } else {
         if (p.approvedDue || p.deadlineHistory?.length || p.originalDue !== rawPurchaseDue(p, d))
           throw new ApiError(400, '新采购的原定期限必须与实际计划一致，不能伪造审批');

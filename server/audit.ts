@@ -260,6 +260,7 @@ function safeSnapshot(
       const v = entry as Record<string, unknown>;
       return {
         from: scalar('due', v.from),
+        ...(v.actualFrom === undefined ? {} : { actualFrom: scalar('due', v.actualFrom) }),
         to: scalar('due', v.to),
         at: scalar('updatedAt', v.at),
       };

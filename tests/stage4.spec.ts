@@ -101,7 +101,7 @@ test('stage 4: compact procurement updates statistics and calendar independently
   expect(data.tasks).toEqual(initial.tasks);
 });
 
-test('stage 4: ordinary edits cannot move deadline past original; explicit local confirmation keeps original and backup history', async ({
+test('stage 4: manual dates are selectable and explicit confirmation plus further edits preserve original and backup history', async ({
   page,
 }) => {
   await boot(page);
@@ -114,22 +114,8 @@ test('stage 4: ordinary edits cannot move deadline past original; explicit local
     page
       .getByRole('dialog', { name: '采购截止日期日历', exact: true })
       .getByRole('button', { name: '选择 2026-10-27', exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await page.keyboard.press('Escape');
-  await form.getByLabel('采购截止日期', { exact: true }).fill('2026-10-27');
-  await form.getByRole('button', { name: '保存', exact: true }).click();
-  expect(
-    await form
-      .getByLabel('采购截止日期', { exact: true })
-      .evaluate((e) => (e as HTMLInputElement).checkValidity()),
-  ).toBe(false);
-  expect((await state(page)).purchases.find((p) => p.name === '定制柜五金')?.due).toBe(
-    '2026-10-26',
-  );
-  await form.getByRole('button', { name: '取消', exact: true }).click();
-  await page.getByRole('button', { name: '确认操作', exact: true }).click();
-  await purchaseList(page).getByRole('button', { name: '编辑采购定制柜五金', exact: true }).click();
-  form = page.getByRole('dialog');
   await form.getByRole('button', { name: '变更原定期限', exact: true }).click();
   const confirm = page.getByRole('dialog', { name: '确认变更原定采购期限', exact: true });
   await expect(confirm).toHaveAttribute('aria-modal', 'true');
@@ -167,11 +153,11 @@ test('stage 4: ordinary edits cannot move deadline past original; explicit local
   form = page.getByRole('dialog');
   await form.getByLabel('采购截止日期', { exact: true }).fill('2026-10-31');
   await form.getByRole('button', { name: '保存', exact: true }).click();
-  expect(
-    await form
-      .getByLabel('采购截止日期', { exact: true })
-      .evaluate((e) => (e as HTMLInputElement).checkValidity()),
-  ).toBe(false);
+  await expect(form).toHaveCount(0);
+  const manual = (await state(page)).purchases.find((p) => p.name === '定制柜五金')!;
+  expect(manual.originalDue).toBe('2026-10-26');
+  expect(manual.due).toBe('2026-10-31');
+  expect(manual.deadlineHistory).toHaveLength(2);
 });
 
 test('stage 4: overdue/completed compatibility, inclusive future boundary and project isolation remain intact', async ({

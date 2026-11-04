@@ -141,6 +141,7 @@ export const purchaseSchema = z
         z
           .object({
             from: date,
+            actualFrom: date.optional(),
             to: date,
             at: z.string().datetime(),
             reason: z.string().trim().min(1).max(4000),
