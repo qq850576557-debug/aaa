@@ -91,7 +91,7 @@ export function ConflictPanel({
       {pending && <p>本地待同步排班预览；请以云端确认后的排班为准。</p>}
       {issues.map((x, i) => (
         <p key={i}>
-          待确认：{x.sourceName}（{x.sourceId}） · 人员ID {x.personId} · {x.reason}
+          待确认：{x.sourceName} · {x.reason.replaceAll('人员ID', '人员关联')}
           。原始关联保留，不自动合并。
         </p>
       ))}

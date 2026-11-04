@@ -40,10 +40,7 @@ export function StaffPicker({
                   .map((p) => (
                     <option key={p.id} value={p.id} disabled={!p.active || p.deleted}>
                       {p.name}
-                      {data.people?.filter((x) => x.name === p.name).length! > 1
-                        ? `（ID：${p.id}）`
-                        : ''}
-                      {!p.active || p.deleted ? '（已停用）' : ''}
+                      {p.deleted ? '（已删除）' : !p.active ? '（已停用）' : ''}
                     </option>
                   ))}
               </select>
@@ -60,18 +57,18 @@ export function StaffPicker({
             <label key={p.id} className="check">
               <input
                 type="checkbox"
-                aria-label={`分配施工人员${p.name}${(data.people?.filter((x) => x.name === p.name).length ?? 0) > 1 ? `（ID：${p.id}）` : ''}`}
+                aria-label={`分配施工人员${p.name}`}
                 checked={value.includes(p.id)}
                 onChange={(e) =>
                   onChange(e.target.checked ? [...value, p.id] : value.filter((id) => id !== p.id))
                 }
               />
               {p.name}
-              {data.people?.filter((x) => x.name === p.name).length! > 1 ? `（ID：${p.id}）` : ''}
+              {p.deleted ? '（已删除）' : !p.active ? '（已停用）' : ''}
             </label>
           ))}
       </div>
-      <small>档案新增与资料维护请到左侧「人员管理」。已有文字登记保留在原记录中。</small>
+      <small>档案新增与资料维护请到左侧「人员管理」。</small>
     </fieldset>
   );
 }

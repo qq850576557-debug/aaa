@@ -120,7 +120,7 @@ test('phase 3: workspace stays unified, project cards drag with insertion line a
   await expect(page.locator('.current-project-name')).toContainText(original.name);
 });
 
-test('personnel: old project registration and name candidates survive central profile setup and JSON restore', async ({
+test('personnel: removed legacy module preserves stored names and registrations through new profiles and JSON restore', async ({
   page,
 }) => {
   const d = fixture();
@@ -129,11 +129,10 @@ test('personnel: old project registration and name candidates survive central pr
   await boot(page);
   await restore(page, d);
   await page.getByRole('button', { name: '人员管理', exact: true }).click();
-  await page.locator('.legacy-people summary').click();
-  await expect(page.locator('.legacy-people')).toContainText('李师傅');
-  await page.getByRole('button', { name: '用「李师傅」建档', exact: true }).click();
+  await expect(page.locator('.legacy-people')).toHaveCount(0);
+  await page.getByRole('button', { name: '新增人员', exact: true }).click();
   const panel = page.getByRole('dialog');
-  await expect(panel.getByLabel('姓名', { exact: true })).toHaveValue('李师傅');
+  await panel.getByLabel('姓名', { exact: true }).fill('李师傅');
   await panel.getByRole('button', { name: '保存', exact: true }).click();
   await expect.poll(async () => (await state(page)).people?.length).toBe(1);
   expect((await state(page)).projects[0].personnel).toEqual(d.projects[0].personnel);
@@ -194,7 +193,7 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
   await boot(page);
   await restore(page);
   await timeline(page);
-  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '84px');
+  await expect(page.locator('.trade-row').first()).toHaveCSS('height', '96px');
   await expect(page.getByTestId('task-bar').first()).toHaveCSS('font-size', '14px');
   const font = await page.evaluate(async () => {
     await document.fonts.load('28px ChunmoBrand', '春茉空间设计');

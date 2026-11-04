@@ -4224,9 +4224,6 @@ nav button {
 .person-card .toolbar {
   flex-wrap: wrap;
 }
-.legacy-people button {
-  margin: 6px;
-}
 .staff-picker {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

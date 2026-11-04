@@ -1,4 +1,3 @@
-import { duplicatePerson } from '../lib/person-identity';
 import { useEditorJournal } from '../lib/useEditorJournal';
 import { AssessmentPanel } from './AssessmentPanel';
 import { ConflictPanel } from './ConflictPanel';
@@ -47,12 +46,25 @@ export function PeoplePanel({
   const [assigning, setAssigning] = useState<Person | null>(null),
     [project, setProject] = useState(''),
     [target, setTarget] = useState('project');
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState(''),
     [filter, setFilter] = useState('');
   const journal = useEditorJournal(
     `editor:person:${editing && data.people?.some((p) => p.id === editing.id) ? editing.id : 'new'}`,
     editing,
-    setEditing,
+    (saved) =>
+      setEditing((current) => {
+        // A recovered old "new profile" draft must not turn an explicit new
+        // operation into editing or reactivating a previously submitted identity.
+        if (
+          saved &&
+          current &&
+          !data.people?.some((p) => p.id === current.id) &&
+          data.people?.some((p) => p.id === saved.id)
+        )
+          return { ...saved, id: current.id, deleted: false };
+        return saved;
+      }),
     !!editing,
   );
   const [removeAssignment, setRemoveAssignment] = useState(false);
@@ -82,7 +94,6 @@ export function PeoplePanel({
   const now = useCurrentDate();
   const people = data.people ?? [];
   const assignmentIssues = staffAssignmentIssues(data);
-  const names = data.nameHistory ?? usedNames(data);
   const [manageTrades, setManageTrades] = useState(false);
   const tradeOptions = workerTradeChoices(data);
   const grid = useRef<HTMLDivElement>(null);
@@ -98,17 +109,15 @@ export function PeoplePanel({
     setError('');
     setEditing({ id: id(), name, role: '施工人员', trade: '', notes: '', active: true });
   };
-  function save(e: FormEvent) {
+  async function save(e: FormEvent) {
     e.preventDefault();
+    if (saving) return;
+    setSaving(true);
     try {
       const p = personSchema.parse(editing);
       const existing = people.find((x) => x.id === p.id);
       if (existing?.deleted && !p.deleted)
         throw Error('此档案已删除，旧输入不能将其重新启用；请通过历史恢复核对。');
-      if (!existing && duplicatePerson(people, p))
-        throw Error(
-          '已有相同姓名和资料的在用或已删除档案，未重复创建；请核对原档案，不同人员请补充区分信息。',
-        );
       onChange((d) => ({
         ...d,
         dictionaries: [
@@ -123,9 +132,12 @@ export function PeoplePanel({
           : [...(d.people ?? []), p],
         nameHistory: [...new Set([...(d.nameHistory ?? usedNames(d)), p.name])].slice(-2000),
       }));
+      await journal.clear();
       setEditing(null);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setSaving(false);
     }
   }
   function assign(e: FormEvent) {
@@ -166,7 +178,10 @@ export function PeoplePanel({
                 group?.id || key,
                 {
                   key: 'id:' + (group?.id || key),
-                  label: group?.label || data.dictionaries?.find((x) => x.id === key)?.label || key,
+                  label:
+                    group?.label ||
+                    data.dictionaries?.find((x) => x.id === key)?.label ||
+                    '未设置工种',
                 },
               ];
             }),
@@ -228,7 +243,7 @@ export function PeoplePanel({
           <summary>历史人员关联待核对 · {assignmentIssues.length}</summary>
           {assignmentIssues.map((issue, index) => (
             <p key={index}>
-              {issue.sourceName} · {issue.reason}（人员ID：{issue.personId}）
+              {issue.sourceName} · {issue.reason.replaceAll('人员ID', '人员关联')}
             </p>
           ))}
         </details>
@@ -379,29 +394,6 @@ export function PeoplePanel({
         })}
       </div>
       {!registered.length && <p>暂无符合条件的人员档案。</p>}
-      <details className="legacy-people">
-        <summary>原有登记与历史姓名 · {names.length}</summary>
-        <p>旧文字登记不会自动改写。可按原姓名建立正式档案，再分配到项目。</p>
-        {names.map((name) => (
-          <button
-            key={name}
-            onClick={() => add(name)}
-            disabled={people.some((p) => p.name === name && !p.deleted)}
-          >
-            用「{name}」建档
-          </button>
-        ))}
-        {[...data.projects, ...data.trades, ...data.tasks]
-          .filter((x) => x.personnel || ('owner' in x && x.owner))
-          .map((x) => (
-            <p key={x.id}>
-              {x.name}：
-              {Object.values(x.personnel ?? {})
-                .filter(Boolean)
-                .join('、') || ('owner' in x ? x.owner : '')}
-            </p>
-          ))}
-      </details>
       {coloring && (
         <Modal
           title="工种卡片配色"
@@ -555,7 +547,7 @@ export function PeoplePanel({
               <button type="button" onClick={() => setEditing(null)}>
                 取消
               </button>
-              <button className="primary" type="submit">
+              <button className="primary" type="submit" disabled={saving}>
                 保存
               </button>
             </footer>

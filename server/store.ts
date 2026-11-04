@@ -1,4 +1,3 @@
-import { personProfile } from '../src/lib/person-identity';
 import type { PoolClient } from 'pg';
 import { trackPurchases } from './purchase-tracking';
 import { syncMentions, validateMentionAccounts } from './mention-delivery';
@@ -410,37 +409,6 @@ export async function commit(
         throw e;
       }
     }
-  if (!opts?.restoreId) {
-    const priorIds = new Set((prior.data.people ?? []).map((p) => p.id));
-    const profiles = new Map<string, NonNullable<Data['people']>>();
-    for (const person of result.data.people ?? []) {
-      const fingerprint = personProfile(person);
-      const rows = profiles.get(fingerprint) ?? [];
-      rows.push(person);
-      profiles.set(fingerprint, rows);
-    }
-    for (const person of result.data.people ?? []) {
-      if (priorIds.has(person.id)) continue; // Existing same-name records are retained verbatim.
-      const duplicate = profiles.get(personProfile(person))?.find((x) => x.id !== person.id);
-      if (duplicate) {
-        const error = new ApiError(
-          400,
-          duplicate.deleted
-            ? '相同资料的人员档案已删除，不能作为新档案自动重新创建；请核对历史，或为确属不同的人员补充区分信息。'
-            : '已有相同姓名和资料的人员档案，未重复创建；请使用原档案，确属不同人员时请补充区分信息。',
-        );
-        error.validationIssues = [
-          {
-            path: ['data', 'people'],
-            code: 'custom',
-            message: error.message,
-            resource: { collection: 'people', id: person.id },
-          },
-        ];
-        throw error;
-      }
-    }
-  }
   // Ordinary saves/imports must never act as an implicit restore. Audit history is
   // append-only and outlives the UI history retention; no new table or data migration.
   if (!opts?.restoreId) {

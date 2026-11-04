@@ -5403,32 +5403,74 @@ test('deleted identities cannot reappear through before-null deltas, full saves 
   assert.equal(created.status, 200, await created.clone().text());
   assert.deepEqual((await created.json()).data.people, deleted.data.people);
 });
-test('concurrent new ids cannot duplicate an identical personnel profile; distinct same-name people and unrelated edits remain intact', async () => {
+test('manual same-profile personnel creation is allowed across IDs, retries stay idempotent and deletion preserves attendance', async () => {
   testClientIp = '203.0.113.175';
   const { a } = await seededWorkspace();
   const get = async () => (await request('/workspace', 'GET', undefined, a)).json();
   const { makeWorkspaceDelta } = await import('../src/lib/workspace-delta');
-  const before = await get();
-  const next = structuredClone(before.data);
-  const person = { ...next.people[0], id: randomUUID() };
-  next.people.push(person);
-  const rejected = await request(
-    '/workspace',
-    'PUT',
-    makeWorkspaceDelta(before.data, next, before.revision, randomUUID(), before.resourceProofs),
+  let before = await get();
+  const old = before.data.people[0];
+  const assessed = await request(
+    '/assessments/batch',
+    'POST',
+    {
+      requestId: randomUUID(),
+      confirmed: true,
+      edits: [
+        {
+          date: today(),
+          personId: old.id,
+          projectId: before.data.projects[0].id,
+          tradeId: before.data.trades[0].id,
+          version: 0,
+          changes: { attendance: 'yes', photo: 'yes' },
+        },
+      ],
+    },
     a,
   );
-  assert.equal(rejected.status, 400);
-  assert.deepEqual(await get(), before);
-  person.notes = '同名的另一位人员，有独立资料';
-  const accepted = await request(
-    '/workspace',
-    'PUT',
-    makeWorkspaceDelta(before.data, next, before.revision, randomUUID(), before.resourceProofs),
-    a,
+  assert.equal(assessed.status, 200, await assessed.clone().text());
+  const record = (await assessed.json()).records[0];
+  const historical = await (
+    await request('/assessments/' + record.id + '/history', 'GET', undefined, a)
+  ).json();
+  const commit = async (next: Data) => {
+    const body = makeWorkspaceDelta(
+      before.data,
+      next,
+      before.revision,
+      randomUUID(),
+      before.resourceProofs,
+    );
+    const response = await request('/workspace', 'PUT', body, a);
+    assert.equal(response.status, 200, await response.clone().text());
+    const replay = await request('/workspace', 'PUT', body, a);
+    assert.equal(replay.status, 200);
+    before = await get();
+  };
+  let next = structuredClone(before.data);
+  next.people.find((p: any) => p.id === old.id).deleted = true;
+  next.people.find((p: any) => p.id === old.id).active = false;
+  await commit(next);
+  for (let i = 0; i < 2; i++) {
+    next = structuredClone(before.data);
+    next.people.push({ ...old, id: randomUUID() });
+    await commit(next);
+  }
+  assert.equal(before.data.people.filter((p: any) => p.name === old.name && !p.deleted).length, 2);
+  assert.equal(before.data.people.find((p: any) => p.id === old.id).deleted, true);
+  const records = (
+    await (
+      await request('/assessments?from=' + today() + '&to=' + today(), 'GET', undefined, a)
+    ).json()
+  ).records;
+  const retained = records.find((r: any) => r.id === record.id);
+  assert.equal(retained.personId, old.id);
+  assert.equal(retained.attendance, record.attendance);
+  assert.deepEqual(
+    await (await request('/assessments/' + record.id + '/history', 'GET', undefined, a)).json(),
+    historical,
   );
-  assert.equal(accepted.status, 200, await accepted.clone().text());
-  assert.equal((await accepted.json()).data.people.length, before.data.people.length + 1);
 });
 test('presence heartbeat is stream/session scoped, aggregates devices, preserves idle status and revokes on logout', async () => {
   const f = await fixtureAccounts();
