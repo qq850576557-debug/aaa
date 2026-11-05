@@ -816,9 +816,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
               ? x.date >= now
               : x.date <= now)),
     );
-    const records = items.filter(
-      (x) =>
-        x.kind === 'record' && !x.done && (!x.date || x.date <= now || x.status === '持续跟进'),
+    const records = data.projects.flatMap((project) =>
+      categorizedAgenda(agendaData, recordSource.records, project.id, now).items.filter(
+        (x) => x.kind === 'record',
+      ),
     );
     const legacy = items.filter((x) => x.kind === 'legacy' && !x.done && x.date <= now);
     return (
@@ -843,11 +844,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
               <ClipboardList size={18} />
               事项管理
             </h2>
-            <span>{records.length} 项 · 待办与持续跟进</span>
+            <span>{records.length} 项 · 全部事项（不限日期）</span>
           </div>
           <div className="reminder-record-grid">{records.map(agendaItem)}</div>
           {!records.length && (
-            <Empty small title="暂无待处理事项" text="新增事项后，与事项管理同步显示。" />
+            <Empty small title="暂无事项" text="全部事项与事项管理同步显示，不限日期。" />
           )}
         </section>
         <section
