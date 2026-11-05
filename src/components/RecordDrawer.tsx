@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
 import { cloudApi, queueCloudRecord } from '../lib/cloud';
 import {
-  recordStatuses,
+  editableRecordStatuses,
   recordValue,
   recordFields,
   recordData,
@@ -24,7 +24,7 @@ const blank = (projectId = '', date = ''): RecordValue => ({
   projectId,
   title: '',
   nodeDate: date,
-  status: '待执行',
+  status: '持续跟进',
   notes: '',
   followUp: '',
   owner: '',
@@ -277,7 +277,12 @@ export function RecordDrawer({
                   disabled={busy}
                   onChange={(e) => change('status', e.target.value)}
                 >
-                  {recordStatuses.map((s) => (
+                  {!editableRecordStatuses.some((s) => s === value.status) && (
+                    <option value={value.status} hidden disabled>
+                      {value.status}（历史状态）
+                    </option>
+                  )}
+                  {editableRecordStatuses.map((s) => (
                     <option key={s}>{s}</option>
                   ))}
                 </select>

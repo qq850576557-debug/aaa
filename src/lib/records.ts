@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { dateOK } from './model';
 
+export const editableRecordStatuses = ['持续跟进', '已完成'] as const;
+// Legacy statuses remain readable for audit, undo and existing records.
 export const recordStatuses = [
   '待执行',
   '进行中',

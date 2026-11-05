@@ -15,7 +15,12 @@ import {
 } from 'lucide-react';
 import { RecordDrawer } from './RecordDrawer';
 import type { RecordSource } from '../lib/useWorkRecords';
-import { recordStatuses, visibleRecords, type WorkRecord } from '../lib/records';
+import {
+  editableRecordStatuses,
+  recordStatuses,
+  visibleRecords,
+  type WorkRecord,
+} from '../lib/records';
 import type { Project } from '../lib/model';
 import { Confirm } from './Modal';
 import './record-board.css';
@@ -150,7 +155,7 @@ export function RecordBoard({
               onChange={(e) => setStatus(e.target.value)}
             >
               <option value="">全部状态</option>
-              {recordStatuses.map((s) => (
+              {editableRecordStatuses.map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </select>

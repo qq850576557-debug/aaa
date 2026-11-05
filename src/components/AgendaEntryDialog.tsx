@@ -56,7 +56,7 @@ export function AgendaEntryDialog({
             owner: p.owner,
             mentionIds: p.mentionIds,
             followUp: drafts.current.record?.followUp ?? '',
-            status: drafts.current.record?.status ?? '待执行',
+            status: drafts.current.record?.status ?? '持续跟进',
           };
         }
         if (next === 'purchase' && drafts.current.record) {
