@@ -48,6 +48,7 @@ async function sendApi<T = Record<string, unknown>>(
   const saving =
     (path === '/workspace' && method === 'PUT') ||
     (path === '/assessments/batch' && method === 'POST') ||
+    (path.startsWith('/site-photos') && method !== 'GET') ||
     (/^\/records(?:\/[^/]+)?$/.test(path) && method !== 'GET');
   const controller = saving ? new AbortController() : undefined;
   const timeout = controller

@@ -1,3 +1,5 @@
+import { useShanghaiDay } from './mobile/useShanghaiDay';
+import { MobileAssistant } from './mobile/MobileAssistant';
 import { PeoplePanel } from './components/PeoplePanel';
 import { UndoControls } from './components/UndoControls';
 import { businessUndo } from './lib/undo-manager';
@@ -175,6 +177,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     });
   }
   const now = useCurrentDate();
+  const mobileNow = useShanghaiDay();
   const [deadlineChange, setDeadlineChange] = useState<string | null>(null);
   const [scheduleProposal, setScheduleProposal] = useState<ScheduleProposal | null>(null);
 
@@ -193,6 +196,18 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       pendingScroll.current = null;
     }
   }, [selected]);
+  const [mobile, setMobile] = useState(
+    () =>
+      matchMedia('(max-width:700px)').matches ||
+      new URLSearchParams(location.search).get('mobile') === '1',
+  );
+  useEffect(() => {
+    const mq = matchMedia('(max-width:700px)');
+    const change = () =>
+      setMobile(mq.matches || new URLSearchParams(location.search).get('mobile') === '1');
+    mq.addEventListener('change', change);
+    return () => mq.removeEventListener('change', change);
+  }, []);
   const [view, setView] = useState<View>('overview');
   const [edit, setEdit] = useState<Edit | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
@@ -206,7 +221,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const recordSource = useWorkRecords(
     isCloud &&
       ready &&
-      ['overview', 'schedule', 'completed', 'records', 'reminders'].includes(view),
+      (mobile || ['overview', 'schedule', 'completed', 'records', 'reminders'].includes(view)),
   );
   const [metricFilter, setMetricFilter] = useState('');
   const [projectStatusFilter, setProjectStatusFilter] = useState(false);
@@ -909,606 +924,675 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       projects={data.projects}
       scope={cloudUser?.workspaceId || 'local'}
       projectId={p?.id}
-      className={`app-shell${view === 'overview' ? ' homepage' : ''}`}
+      className={`app-shell${mobile ? ' mobile-mode' : view === 'overview' ? ' homepage' : ''}`}
       data-view={view}
     >
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            go('overview');
+      {mobile ? (
+        <MobileAssistant
+          key={cloudUser ? cloudUser.workspaceId + ':' + cloudUser.id : 'local'}
+          initialProject={selected}
+          data={agendaData}
+          records={recordSource.records}
+          user={cloudUser}
+          now={mobileNow}
+          status={status}
+          error={error || recordSource.error}
+          loading={!ready}
+          onRetry={() => {
+            void retry();
+            void recordSource.load();
           }}
-        >
-          {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉空间设计 Logo" />}
-          <div>
-            <strong className="brand-name">{BRAND_NAME}</strong>
-            <span className="brand-slogan">{BRAND_SLOGAN}</span>
-          </div>
-        </a>
-        <div className="sidebar-section">
-          工作空间 <span>WORKSPACE</span>
-        </div>
-        <nav>
-          <div className="workspace-nav-heading">
-            <button className={view === 'overview' ? 'active' : ''} onClick={() => go('overview')}>
-              <LayoutDashboard size={19} />
-              <span>项目工作空间</span>
-            </button>
-            <button
-              aria-label="展开或收起项目菜单"
-              aria-expanded={navExpanded}
-              aria-controls="workspace-subnav"
-              onClick={toggleNavigation}
+          onNew={(date, projectId) => setAgendaEntry({ id: id(), date, projectId })}
+          onOpen={(item) => {
+            if (item.kind === 'purchase') purchaseEditor(item.value);
+            else if (item.kind === 'record') {
+              recordDirty.current = false;
+              setFocusedRecord(item.value);
+            }
+          }}
+          onToggle={(item) => {
+            if (item.kind === 'record') void recordSource.toggle(item.value);
+          }}
+          onDelete={(item) => {
+            if (item.kind === 'purchase') deleteEntity({ kind: 'purchase', value: item.value });
+            else if (item.kind === 'record')
+              setConfirmation({
+                title: '删除事项？',
+                message: '删除后仍保留操作历史，请确认这条事项不再需要。',
+                run: () => {
+                  void recordSource.remove(item.value);
+                  setConfirmation(null);
+                },
+              });
+          }}
+          onPurchaseStatus={(purchase, status) =>
+            save('purchase', { ...purchase, due: purchaseDue(purchase, data), status })
+          }
+        />
+      ) : (
+        <>
+          <aside className="sidebar">
+            <a
+              className="brand"
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                go('overview');
+              }}
             >
-              <ChevronDown size={16} />
-            </button>
-          </div>
-          <div
-            id="workspace-subnav"
-            className={`workspace-subnav ${navExpanded ? 'expanded' : ''}`}
-            inert={!navExpanded}
-          >
-            <div>
-              {navigation
-                .filter(([key]) => key !== 'overview' && key !== 'people')
-                .map(([key, label, icon]) => (
-                  <button
-                    key={key}
-                    aria-label={label}
-                    className={view === key ? 'active' : ''}
-                    onClick={() => go(key)}
-                  >
-                    {icon}
-                    <span>{label}</span>
-                    {key === 'reminders' && count.overduePurchases + count.overdueTasks > 0 && (
-                      <b>{count.overduePurchases + count.overdueTasks}</b>
-                    )}
-                  </button>
-                ))}
-            </div>
-          </div>
-          <button className={view === 'people' ? 'active' : ''} onClick={() => go('people')}>
-            <Users size={19} />
-            <span>人员管理</span>
-          </button>
-        </nav>
-        <section
-          className={`sidebar-projects ${projectPickerOpen ? 'picker-open' : ''}`}
-          aria-label="项目选择器"
-        >
-          <button
-            className="mobile-project-toggle"
-            aria-expanded={projectPickerOpen}
-            onClick={() => setProjectPickerOpen(!projectPickerOpen)}
-          >
-            {p?.name || '选择项目'} <ChevronDown size={15} />
-          </button>
-          <div className="sidebar-project-list">
+              {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉空间设计 Logo" />}
+              <div>
+                <strong className="brand-name">{BRAND_NAME}</strong>
+                <span className="brand-slogan">{BRAND_SLOGAN}</span>
+              </div>
+            </a>
             <div className="sidebar-section">
-              {archived ? '已完工项目' : '当前项目'} <span>{projects.length}</span>
+              工作空间 <span>WORKSPACE</span>
             </div>
-            <ProjectCards
-              data={data}
-              projects={projects}
-              selected={p?.id ?? ''}
-              onSelect={selectProject}
-              onEdit={(project) => setEdit({ kind: 'project', value: project })}
-              onReorder={(source, before) =>
-                commitSchedule(
-                  reorderProjects(
-                    data,
-                    source,
-                    before,
-                    projects.map((x) => x.id),
-                  ),
-                  data,
-                  '项目顺序已保存，可撤销。',
-                )
-              }
-            />
-            {!projects.length && <p className="muted">暂无项目</p>}
-          </div>
-        </section>
-        <div className="sidebar-bottom">
-          <button
-            disabled={!ready}
-            onClick={() =>
-              setHistoryOpen({
-                scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE),
-              })
-            }
-          >
-            版本历史 · 15天
-          </button>
-          <button onClick={() => setBackup(true)}>
-            <ShieldCheck size={17} />
-            数据与备份
-            <ArrowRight size={15} />
-          </button>
-          <SaveFeedback status={status} cloud={isCloud} onRetry={() => void retry()} />
-          <p>
-            {isCloud ? '云端工作空间' : '本地工作空间'} <i />
-          </p>
-        </div>
-      </aside>
-      <div className="main-shell">
-        <header className="topbar">
-          <UndoControls
-            scope={isCloud ? `${cloudUser?.workspaceId}:${cloudUser?.id}` : 'local-session'}
-          />
-          <DeferredPanel>
-            <CloudControl isCloud={isCloud} dirty={hasUnsavedChanges} initialUser={cloudUser} />
-          </DeferredPanel>
-          <button
-            className="mobile-history"
-            aria-label="版本历史 · 15天"
-            title="版本历史 · 15天"
-            disabled={!ready}
-            onClick={() =>
-              setHistoryOpen({
-                scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE),
-              })
-            }
-          >
-            <HistoryIcon size={17} />
-          </button>
-          <div className="mobile-brand">
-            <strong className="brand-name">{BRAND_NAME}</strong>
-          </div>
-          <button
-            className="icon-btn workspace-backup"
-            aria-label="下载数据"
-            title="下载数据"
-            onClick={() => setBackup(true)}
-            disabled={!ready}
-          >
-            <ArrowDownToLine size={17} />
-          </button>
-          <div className="save-state sr-only" role="status">
-            <span>{status}</span>
-          </div>
-          <CollaborationBar user={cloudUser} isCloud={isCloud} />
-        </header>
-        <main className="workspace-content">
-          {draftRecoveryNotice && (
-            <div className="error-banner" role="status">
-              <span>{draftRecoveryNotice}</span>
-              <button
-                onClick={() =>
-                  void draftRecoveryPackage()
-                    .then((value) =>
-                      downloadBlob(
-                        new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' }),
-                        '春茉-旧草稿恢复包.json',
-                      ),
-                    )
-                    .catch((e) => notify(String(e)))
-                }
-              >
-                下载旧草稿恢复包
-              </button>
-            </div>
-          )}
-          {error && (
-            <div className="error-banner" role="alert">
-              <TriangleAlert size={18} />
-              <span>{error}</span>
-              {ready ? (
-                <>
-                  <button onClick={() => void retry()}>重试保存</button>
-                  {isCloud && (
-                    <button onClick={() => void reloadCloud().catch((e) => notify(String(e)))}>
-                      重新读取云端
-                    </button>
-                  )}
-                  <button
-                    onClick={() => (isCloud ? void downloadLocalRecovery() : backupJSON(data))}
-                  >
-                    紧急备份
-                  </button>
-                </>
-              ) : (
-                <button onClick={() => window.location.reload()}>重新读取</button>
-              )}
-            </div>
-          )}
-          <div
-            className={`page-heading workbench-page-heading ${view === 'records' ? 'board-page-heading' : ''}`}
-          >
-            <div>
-              <div className="eyebrow">RENOVATION WORKSPACE</div>
-              <h1>
-                {view === 'records'
-                  ? '事项管理'
-                  : view === 'overview'
-                    ? '项目工作空间'
-                    : view === 'schedule'
-                      ? '施工计划'
-                      : view === 'purchases'
-                        ? '材料采购管理'
-                        : view === 'completed'
-                          ? '已完工项目'
-                          : view === 'people'
-                            ? '人员管理'
-                            : '项目提醒中心'}
-              </h1>
-              <p>
-                {view === 'records'
-                  ? '围绕项目，记录节点、现场进展与每一次跟进。'
-                  : view === 'overview'
-                    ? '工期有序，细节有据。从设计到落地，悉心照料每一个家。'
-                    : view === 'schedule'
-                      ? '以清晰的时间线，串联每一道施工工序。'
-                      : view === 'purchases'
-                        ? '把材料安排在施工之前，让进度从容向前。'
-                        : view === 'people'
-                          ? '统一管理人员档案与项目分配。'
-                          : '及时关注待办与风险，让计划保持在轨道上。'}
-              </p>
-            </div>
-            <div className="heading-actions">
-              {(view === 'overview' || view === 'completed') && (
+            <nav>
+              <div className="workspace-nav-heading">
                 <button
-                  className="primary"
-                  onClick={() => setEdit({ kind: 'project', value: newProject() })}
-                  disabled={!ready}
+                  className={view === 'overview' ? 'active' : ''}
+                  onClick={() => go('overview')}
                 >
-                  <Plus size={17} />
-                  新建项目
+                  <LayoutDashboard size={19} />
+                  <span>项目工作空间</span>
                 </button>
-              )}
-              {view === 'overview' && isCloud && (
                 <button
-                  aria-label="历史版本"
-                  title="云端历史版本"
-                  disabled={!ready}
-                  onClick={(e) =>
-                    setCloudHistoryAnchor({ x: e.clientX, y: e.clientY, element: e.currentTarget })
-                  }
+                  aria-label="展开或收起项目菜单"
+                  aria-expanded={navExpanded}
+                  aria-controls="workspace-subnav"
+                  onClick={toggleNavigation}
                 >
-                  <CloudUpload size={17} />
-                  历史版本
+                  <ChevronDown size={16} />
                 </button>
-              )}
-            </div>
-          </div>
-          <div
-            className="stats-grid ui-module-group"
-            hidden={view === 'people' || view === 'records'}
-          >
-            {(
-              [
-                {
-                  label: '项目总数',
-                  value: count.total,
-                  unit: '个项目',
-                  icon: <FolderOpen />,
-                  target: 'overview',
-                },
-                {
-                  label: '施工中的项目',
-                  value: count.ongoing,
-                  unit: '正在推进',
-                  icon: <CalendarDays />,
-                  target: 'overview',
-                },
-                {
-                  label: '今日待办',
-                  value: count.todos,
-                  unit: '条待处理',
-                  icon: <ClipboardList />,
-                  target: 'reminders',
-                },
-                {
-                  label: '未来 15 天采购',
-                  value: count.upcoming,
-                  unit: '项需提前准备',
-                  icon: <Package />,
-                  target: 'reminders',
-                },
-                {
-                  label: '已逾期采购',
-                  value: count.overduePurchases,
-                  unit: '项需要关注',
-                  icon: <TriangleAlert />,
-                  target: 'reminders',
-                },
-              ] as const
-            ).map((s, i) => (
-              <button
-                key={s.label}
-                className={`stat-card ${i >= 4 && s.value > 0 ? 'attention' : ''}`}
-                onClick={() => {
-                  go(s.target);
-                  if (s.label === '项目总数') setShowAllProjects(true);
-                  if (s.label === '施工中的项目') setProjectStatusFilter(true);
-                  else setProjectStatusFilter(false);
-                  if (s.target === 'reminders') setMetricFilter(s.label);
-                }}
+              </div>
+              <div
+                id="workspace-subnav"
+                className={`workspace-subnav ${navExpanded ? 'expanded' : ''}`}
+                inert={!navExpanded}
               >
                 <div>
-                  <span>{s.label}</span>
-                  {s.icon}
+                  {navigation
+                    .filter(([key]) => key !== 'overview' && key !== 'people')
+                    .map(([key, label, icon]) => (
+                      <button
+                        key={key}
+                        aria-label={label}
+                        className={view === key ? 'active' : ''}
+                        onClick={() => go(key)}
+                      >
+                        {icon}
+                        <span>{label}</span>
+                        {key === 'reminders' && count.overduePurchases + count.overdueTasks > 0 && (
+                          <b>{count.overduePurchases + count.overdueTasks}</b>
+                        )}
+                      </button>
+                    ))}
                 </div>
-                <strong>{s.value > 0 ? s.value : '暂无'}</strong>
-                <small>{s.unit}</small>
+              </div>
+              <button className={view === 'people' ? 'active' : ''} onClick={() => go('people')}>
+                <Users size={19} />
+                <span>人员管理</span>
               </button>
-            ))}
-          </div>
-          {!ready && !error ? (
-            <div className="loading">
-              <Loader2 className="spin" />
-              正在读取你的工作空间…
+            </nav>
+            <section
+              className={`sidebar-projects ${projectPickerOpen ? 'picker-open' : ''}`}
+              aria-label="项目选择器"
+            >
+              <button
+                className="mobile-project-toggle"
+                aria-expanded={projectPickerOpen}
+                onClick={() => setProjectPickerOpen(!projectPickerOpen)}
+              >
+                {p?.name || '选择项目'} <ChevronDown size={15} />
+              </button>
+              <div className="sidebar-project-list">
+                <div className="sidebar-section">
+                  {archived ? '已完工项目' : '当前项目'} <span>{projects.length}</span>
+                </div>
+                <ProjectCards
+                  data={data}
+                  projects={projects}
+                  selected={p?.id ?? ''}
+                  onSelect={selectProject}
+                  onEdit={(project) => setEdit({ kind: 'project', value: project })}
+                  onReorder={(source, before) =>
+                    commitSchedule(
+                      reorderProjects(
+                        data,
+                        source,
+                        before,
+                        projects.map((x) => x.id),
+                      ),
+                      data,
+                      '项目顺序已保存，可撤销。',
+                    )
+                  }
+                />
+                {!projects.length && <p className="muted">暂无项目</p>}
+              </div>
+            </section>
+            <div className="sidebar-bottom">
+              <button
+                disabled={!ready}
+                onClick={() =>
+                  setHistoryOpen({
+                    scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE),
+                  })
+                }
+              >
+                版本历史 · 15天
+              </button>
+              <button onClick={() => setBackup(true)}>
+                <ShieldCheck size={17} />
+                数据与备份
+                <ArrowRight size={15} />
+              </button>
+              <SaveFeedback status={status} cloud={isCloud} onRetry={() => void retry()} />
+              <p>
+                {isCloud ? '云端工作空间' : '本地工作空间'} <i />
+              </p>
             </div>
-          ) : view === 'records' ? (
-            <>
-              <DeferredPanel>
-                {isCloud && <button onClick={() => setLegacyOpen(true)}>历史数据分类与兼容</button>}
-                <RecordBoard projects={data.projects} isCloud={isCloud} source={recordSource} />
-              </DeferredPanel>
-            </>
-          ) : view === 'reminders' ? (
-            <>{reminderItems()}</>
-          ) : view === 'people' ? (
-            <DeferredPanel key="people">
-              <PeoplePanel
-                onTask={taskEditor}
-                pending={isCloud && hasUnsavedChanges}
-                isCloud={isCloud}
-                data={data}
-                onChange={(fn) => mutate(fn)}
+          </aside>
+          <div className="main-shell">
+            <header className="topbar">
+              <UndoControls
+                scope={isCloud ? `${cloudUser?.workspaceId}:${cloudUser?.id}` : 'local-session'}
               />
-            </DeferredPanel>
-          ) : (
-            <>
-              {projectStatusFilter && (
-                <div className="project-filter">
-                  仅显示施工中的项目
-                  <button className="text-btn" onClick={() => setProjectStatusFilter(false)}>
-                    查看全部项目
+              <DeferredPanel>
+                <CloudControl isCloud={isCloud} dirty={hasUnsavedChanges} initialUser={cloudUser} />
+              </DeferredPanel>
+              <button
+                className="mobile-history"
+                aria-label="版本历史 · 15天"
+                title="版本历史 · 15天"
+                disabled={!ready}
+                onClick={() =>
+                  setHistoryOpen({
+                    scope: view === 'people' ? GLOBAL_SCOPE : (p?.id ?? GLOBAL_SCOPE),
+                  })
+                }
+              >
+                <HistoryIcon size={17} />
+              </button>
+              <div className="mobile-brand">
+                <strong className="brand-name">{BRAND_NAME}</strong>
+              </div>
+              <button
+                className="icon-btn workspace-backup"
+                aria-label="下载数据"
+                title="下载数据"
+                onClick={() => setBackup(true)}
+                disabled={!ready}
+              >
+                <ArrowDownToLine size={17} />
+              </button>
+              <div className="save-state sr-only" role="status">
+                <span>{status}</span>
+              </div>
+              <CollaborationBar user={cloudUser} isCloud={isCloud} />
+            </header>
+            <main className="workspace-content">
+              {draftRecoveryNotice && (
+                <div className="error-banner" role="status">
+                  <span>{draftRecoveryNotice}</span>
+                  <button
+                    onClick={() =>
+                      void draftRecoveryPackage()
+                        .then((value) =>
+                          downloadBlob(
+                            new Blob([JSON.stringify(value, null, 2)], {
+                              type: 'application/json',
+                            }),
+                            '春茉-旧草稿恢复包.json',
+                          ),
+                        )
+                        .catch((e) => notify(String(e)))
+                    }
+                  >
+                    下载旧草稿恢复包
                   </button>
                 </div>
               )}
-              {view !== 'purchases' && (
-                <div className="project-toolbar">
-                  {p ? (
-                    <ProjectContext project={p} />
-                  ) : (
-                    <strong className="current-project-name">暂无项目</strong>
-                  )}
-                  <div className="toolbar">
-                    {p && (
-                      <>
-                        <button onClick={archiveProject}>
-                          <Archive size={15} />
-                          {isHistorical(p) ? '恢复施工中' : '标记完工'}
+              {error && (
+                <div className="error-banner" role="alert">
+                  <TriangleAlert size={18} />
+                  <span>{error}</span>
+                  {ready ? (
+                    <>
+                      <button onClick={() => void retry()}>重试保存</button>
+                      {isCloud && (
+                        <button onClick={() => void reloadCloud().catch((e) => notify(String(e)))}>
+                          重新读取云端
                         </button>
-                      </>
-                    )}
-                  </div>
+                      )}
+                      <button
+                        onClick={() => (isCloud ? void downloadLocalRecovery() : backupJSON(data))}
+                      >
+                        紧急备份
+                      </button>
+                    </>
+                  ) : (
+                    <button onClick={() => window.location.reload()}>重新读取</button>
+                  )}
                 </div>
               )}
-              {!p ? (
-                <Empty
-                  title={archived ? '暂无已完工项目' : '一个理想的家，从一份好计划开始。'}
-                  text={
-                    archived
-                      ? '完成后的项目会完整保留，也可随时恢复为施工中。'
-                      : '新建第一个项目，安排工期、记录事项，让每个施工细节井然有序。'
-                  }
-                  action={
-                    !archived ? (
-                      <button
-                        className="primary"
-                        onClick={() => setEdit({ kind: 'project', value: newProject() })}
-                      >
-                        <Plus size={17} />
-                        创建第一个项目
-                      </button>
-                    ) : undefined
-                  }
-                />
+              <div
+                className={`page-heading workbench-page-heading ${view === 'records' ? 'board-page-heading' : ''}`}
+              >
+                <div>
+                  <div className="eyebrow">RENOVATION WORKSPACE</div>
+                  <h1>
+                    {view === 'records'
+                      ? '事项管理'
+                      : view === 'overview'
+                        ? '项目工作空间'
+                        : view === 'schedule'
+                          ? '施工计划'
+                          : view === 'purchases'
+                            ? '材料采购管理'
+                            : view === 'completed'
+                              ? '已完工项目'
+                              : view === 'people'
+                                ? '人员管理'
+                                : '项目提醒中心'}
+                  </h1>
+                  <p>
+                    {view === 'records'
+                      ? '围绕项目，记录节点、现场进展与每一次跟进。'
+                      : view === 'overview'
+                        ? '工期有序，细节有据。从设计到落地，悉心照料每一个家。'
+                        : view === 'schedule'
+                          ? '以清晰的时间线，串联每一道施工工序。'
+                          : view === 'purchases'
+                            ? '把材料安排在施工之前，让进度从容向前。'
+                            : view === 'people'
+                              ? '统一管理人员档案与项目分配。'
+                              : '及时关注待办与风险，让计划保持在轨道上。'}
+                  </p>
+                </div>
+                <div className="heading-actions">
+                  {(view === 'overview' || view === 'completed') && (
+                    <button
+                      className="primary"
+                      onClick={() => setEdit({ kind: 'project', value: newProject() })}
+                      disabled={!ready}
+                    >
+                      <Plus size={17} />
+                      新建项目
+                    </button>
+                  )}
+                  {view === 'overview' && isCloud && (
+                    <button
+                      aria-label="历史版本"
+                      title="云端历史版本"
+                      disabled={!ready}
+                      onClick={(e) =>
+                        setCloudHistoryAnchor({
+                          x: e.clientX,
+                          y: e.clientY,
+                          element: e.currentTarget,
+                        })
+                      }
+                    >
+                      <CloudUpload size={17} />
+                      历史版本
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div
+                className="stats-grid ui-module-group"
+                hidden={view === 'people' || view === 'records'}
+              >
+                {(
+                  [
+                    {
+                      label: '项目总数',
+                      value: count.total,
+                      unit: '个项目',
+                      icon: <FolderOpen />,
+                      target: 'overview',
+                    },
+                    {
+                      label: '施工中的项目',
+                      value: count.ongoing,
+                      unit: '正在推进',
+                      icon: <CalendarDays />,
+                      target: 'overview',
+                    },
+                    {
+                      label: '今日待办',
+                      value: count.todos,
+                      unit: '条待处理',
+                      icon: <ClipboardList />,
+                      target: 'reminders',
+                    },
+                    {
+                      label: '未来 15 天采购',
+                      value: count.upcoming,
+                      unit: '项需提前准备',
+                      icon: <Package />,
+                      target: 'reminders',
+                    },
+                    {
+                      label: '已逾期采购',
+                      value: count.overduePurchases,
+                      unit: '项需要关注',
+                      icon: <TriangleAlert />,
+                      target: 'reminders',
+                    },
+                  ] as const
+                ).map((s, i) => (
+                  <button
+                    key={s.label}
+                    className={`stat-card ${i >= 4 && s.value > 0 ? 'attention' : ''}`}
+                    onClick={() => {
+                      go(s.target);
+                      if (s.label === '项目总数') setShowAllProjects(true);
+                      if (s.label === '施工中的项目') setProjectStatusFilter(true);
+                      else setProjectStatusFilter(false);
+                      if (s.target === 'reminders') setMetricFilter(s.label);
+                    }}
+                  >
+                    <div>
+                      <span>{s.label}</span>
+                      {s.icon}
+                    </div>
+                    <strong>{s.value > 0 ? s.value : '暂无'}</strong>
+                    <small>{s.unit}</small>
+                  </button>
+                ))}
+              </div>
+              {!ready && !error ? (
+                <div className="loading">
+                  <Loader2 className="spin" />
+                  正在读取你的工作空间…
+                </div>
+              ) : view === 'records' ? (
+                <>
+                  <DeferredPanel>
+                    {isCloud && (
+                      <button onClick={() => setLegacyOpen(true)}>历史数据分类与兼容</button>
+                    )}
+                    <RecordBoard projects={data.projects} isCloud={isCloud} source={recordSource} />
+                  </DeferredPanel>
+                </>
+              ) : view === 'reminders' ? (
+                <>{reminderItems()}</>
+              ) : view === 'people' ? (
+                <DeferredPanel key="people">
+                  <PeoplePanel
+                    onTask={taskEditor}
+                    pending={isCloud && hasUnsavedChanges}
+                    isCloud={isCloud}
+                    data={data}
+                    onChange={(fn) => mutate(fn)}
+                  />
+                </DeferredPanel>
               ) : (
                 <>
-                  {recordSource.error && (
-                    <div className="error-banner" role="alert">
-                      <span>事项读取或保存失败：{recordSource.error}</span>
-                      <button onClick={() => void recordSource.load()}>重新读取事项</button>
+                  {projectStatusFilter && (
+                    <div className="project-filter">
+                      仅显示施工中的项目
+                      <button className="text-btn" onClick={() => setProjectStatusFilter(false)}>
+                        查看全部项目
+                      </button>
                     </div>
                   )}
-                  {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <div
-                      className="workspace-brief agenda-brief ui-module-group"
-                      aria-label="当前工地事项安排"
-                    >
-                      <BriefPanel
-                        key={'today' + p.id}
-                        title="今日事项"
-                        testId="today-panel"
-                        id="project-today"
-                        className="today-panel"
-                        emptyText={
-                          recordSource.loading
-                            ? '正在读取事项…'
-                            : recordSource.error
-                              ? '事项读取失败，请重试'
-                              : '今日暂无待办事项'
-                        }
-                        date={agenda.date}
-                        items={agenda.today.map(agendaItem)}
-                        actions={
+                  {view !== 'purchases' && (
+                    <div className="project-toolbar">
+                      {p ? (
+                        <ProjectContext project={p} />
+                      ) : (
+                        <strong className="current-project-name">暂无项目</strong>
+                      )}
+                      <div className="toolbar">
+                        {p && (
                           <>
-                            <button className="text-btn" onClick={() => noteEditor()}>
-                              <Plus size={14} />
-                              添加今日事项
-                            </button>
-                            <button className="text-btn" onClick={() => go('records')}>
-                              全部事项
-                              <ArrowRight size={14} />
+                            <button onClick={archiveProject}>
+                              <Archive size={15} />
+                              {isHistorical(p) ? '恢复施工中' : '标记完工'}
                             </button>
                           </>
-                        }
-                      />
-                      <BriefPanel
-                        key={'tomorrow' + p.id}
-                        title="明日提醒"
-                        testId="tomorrow-panel"
-                        id="project-tomorrow"
-                        className="tomorrow-panel"
-                        emptyText={
-                          recordSource.loading
-                            ? '正在读取事项…'
-                            : recordSource.error
-                              ? '事项读取失败，请重试'
-                              : '明日暂无安排'
-                        }
-                        date={agenda.tomorrowDate}
-                        items={agenda.tomorrow.map(agendaItem)}
-                        actions={
-                          <button
-                            className="text-btn"
-                            onClick={() => noteEditor(undefined, agenda.tomorrowDate)}
-                          >
-                            <Plus size={14} />
-                            添加明日事项
-                          </button>
-                        }
-                      />
-                    </div>
-                  )}
-                  {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <p className="schedule-forecast" role="status">
-                      {scheduleForecast(data, p).label} · 工期按自然日计算
-                    </p>
-                  )}
-                  {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                    <Gantt
-                      pending={isCloud && hasUnsavedChanges}
-                      data={agendaData}
-                      records={recordSource.records}
-                      project={p}
-                      onTask={taskEditor}
-                      onDeleteTask={(t) => deleteEntity({ kind: 'task', value: t })}
-                      onQuickCreate={(g, date) => {
-                        try {
-                          changeTask({
-                            id: id(),
-                            projectId: p.id,
-                            tradeId: g.id,
-                            name: g.name,
-                            start: date,
-                            end: date,
-                            owner: '',
-                            status: '未开始',
-                            notes: '',
-                            // Inherit the current stage assignment; do not freeze a copied personnel list.
-                            staffIds: undefined,
-                          });
-                        } catch (e) {
-                          notify(`无法创建施工任务：${e instanceof Error ? e.message : String(e)}`);
-                        }
-                      }}
-                      onExport={() => setExporting(true)}
-                      onDay={setDay}
-                      onTrade={tradeEditor}
-                      onOrder={order}
-                      onReorder={(source, before) => {
-                        if (!p) return;
-                        commitSchedule(
-                          reorderTrades(data, p.id, source, before),
-                          data,
-                          '工种顺序已保存，任务日期保持不变。',
-                        );
-                      }}
-                      onColor={(g, anchor) => setColorEdit({ id: g.id, anchor })}
-                      onMove={(t) => {
-                        try {
-                          const plan = proposeTaskChanges(data, t);
-                          if (plan.affected.length) setScheduleProposal(plan);
-                          else commitSchedule(plan.current, plan.base, '工期已保存，可撤销。');
-                        } catch (e) {
-                          notify(`工期调整失败：${e instanceof Error ? e.message : String(e)}`);
-                        }
-                      }}
-                    />
-                  )}
-                  {view === 'purchases' && (
-                    <section className="records-section procurement-workspace">
-                      <div className="purchase-toolbar" role="toolbar" aria-label="采购清单工具栏">
-                        <h2>
-                          采购清单 <span className="count">{projectPurchases.length} 条记录</span>
-                        </h2>
-                        <PurchaseProjectPicker
-                          projects={data.projects}
-                          value={purchaseProject}
-                          onChange={setPurchaseProject}
-                        />
-                        <div className="search-field">
-                          <Search size={16} />
-                          <input
-                            placeholder="搜索材料、规格或负责人…"
-                            aria-label="搜索采购记录"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                          />
-                        </div>
-                        <button
-                          className="purchase-open-toggle"
-                          aria-pressed={onlyOpen}
-                          onClick={() => setOnlyOpen((v) => !v)}
-                        >
-                          <Check size={14} aria-hidden="true" />
-                          只看未完成
-                        </button>
-                        <button className="primary purchase-add" onClick={() => purchaseEditor()}>
-                          <Plus size={15} />
-                          新增采购
-                        </button>
-                      </div>
-                      <div className="purchase-project-groups">
-                        {data.projects.map((project) => {
-                          const items = projectPurchases.filter((x) => x.projectId === project.id);
-                          return items.length ? (
-                            <ProjectSurface
-                              key={project.id}
-                              projectId={project.id}
-                              className="purchase-project-group"
-                              role="region"
-                              aria-label={`采购工地：${project.name}`}
-                            >
-                              <h3>
-                                {project.name}
-                                <small>{items.length}条</small>
-                              </h3>
-                              <div className="purchase-list">{items.map(purchaseCard)}</div>
-                            </ProjectSurface>
-                          ) : null;
-                        })}
-                        {!projectPurchases.length && (
-                          <div className="purchase-list">
-                            <Empty
-                              small
-                              title="采购清单还是空的"
-                              text="添加材料并关联施工任务，提前安排到货时间。"
-                            />
-                          </div>
                         )}
                       </div>
-                    </section>
+                    </div>
+                  )}
+                  {!p ? (
+                    <Empty
+                      title={archived ? '暂无已完工项目' : '一个理想的家，从一份好计划开始。'}
+                      text={
+                        archived
+                          ? '完成后的项目会完整保留，也可随时恢复为施工中。'
+                          : '新建第一个项目，安排工期、记录事项，让每个施工细节井然有序。'
+                      }
+                      action={
+                        !archived ? (
+                          <button
+                            className="primary"
+                            onClick={() => setEdit({ kind: 'project', value: newProject() })}
+                          >
+                            <Plus size={17} />
+                            创建第一个项目
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  ) : (
+                    <>
+                      {recordSource.error && (
+                        <div className="error-banner" role="alert">
+                          <span>事项读取或保存失败：{recordSource.error}</span>
+                          <button onClick={() => void recordSource.load()}>重新读取事项</button>
+                        </div>
+                      )}
+                      {(view === 'overview' || view === 'schedule' || view === 'completed') && (
+                        <div
+                          className="workspace-brief agenda-brief ui-module-group"
+                          aria-label="当前工地事项安排"
+                        >
+                          <BriefPanel
+                            key={'today' + p.id}
+                            title="今日事项"
+                            testId="today-panel"
+                            id="project-today"
+                            className="today-panel"
+                            emptyText={
+                              recordSource.loading
+                                ? '正在读取事项…'
+                                : recordSource.error
+                                  ? '事项读取失败，请重试'
+                                  : '今日暂无待办事项'
+                            }
+                            date={agenda.date}
+                            items={agenda.today.map(agendaItem)}
+                            actions={
+                              <>
+                                <button className="text-btn" onClick={() => noteEditor()}>
+                                  <Plus size={14} />
+                                  添加今日事项
+                                </button>
+                                <button className="text-btn" onClick={() => go('records')}>
+                                  全部事项
+                                  <ArrowRight size={14} />
+                                </button>
+                              </>
+                            }
+                          />
+                          <BriefPanel
+                            key={'tomorrow' + p.id}
+                            title="明日提醒"
+                            testId="tomorrow-panel"
+                            id="project-tomorrow"
+                            className="tomorrow-panel"
+                            emptyText={
+                              recordSource.loading
+                                ? '正在读取事项…'
+                                : recordSource.error
+                                  ? '事项读取失败，请重试'
+                                  : '明日暂无安排'
+                            }
+                            date={agenda.tomorrowDate}
+                            items={agenda.tomorrow.map(agendaItem)}
+                            actions={
+                              <button
+                                className="text-btn"
+                                onClick={() => noteEditor(undefined, agenda.tomorrowDate)}
+                              >
+                                <Plus size={14} />
+                                添加明日事项
+                              </button>
+                            }
+                          />
+                        </div>
+                      )}
+                      {(view === 'overview' || view === 'schedule' || view === 'completed') && (
+                        <p className="schedule-forecast" role="status">
+                          {scheduleForecast(data, p).label} · 工期按自然日计算
+                        </p>
+                      )}
+                      {(view === 'overview' || view === 'schedule' || view === 'completed') && (
+                        <Gantt
+                          pending={isCloud && hasUnsavedChanges}
+                          data={agendaData}
+                          records={recordSource.records}
+                          project={p}
+                          onTask={taskEditor}
+                          onDeleteTask={(t) => deleteEntity({ kind: 'task', value: t })}
+                          onQuickCreate={(g, date) => {
+                            try {
+                              changeTask({
+                                id: id(),
+                                projectId: p.id,
+                                tradeId: g.id,
+                                name: g.name,
+                                start: date,
+                                end: date,
+                                owner: '',
+                                status: '未开始',
+                                notes: '',
+                                // Inherit the current stage assignment; do not freeze a copied personnel list.
+                                staffIds: undefined,
+                              });
+                            } catch (e) {
+                              notify(
+                                `无法创建施工任务：${e instanceof Error ? e.message : String(e)}`,
+                              );
+                            }
+                          }}
+                          onExport={() => setExporting(true)}
+                          onDay={setDay}
+                          onTrade={tradeEditor}
+                          onOrder={order}
+                          onReorder={(source, before) => {
+                            if (!p) return;
+                            commitSchedule(
+                              reorderTrades(data, p.id, source, before),
+                              data,
+                              '工种顺序已保存，任务日期保持不变。',
+                            );
+                          }}
+                          onColor={(g, anchor) => setColorEdit({ id: g.id, anchor })}
+                          onMove={(t) => {
+                            try {
+                              const plan = proposeTaskChanges(data, t);
+                              if (plan.affected.length) setScheduleProposal(plan);
+                              else commitSchedule(plan.current, plan.base, '工期已保存，可撤销。');
+                            } catch (e) {
+                              notify(`工期调整失败：${e instanceof Error ? e.message : String(e)}`);
+                            }
+                          }}
+                        />
+                      )}
+                      {view === 'purchases' && (
+                        <section className="records-section procurement-workspace">
+                          <div
+                            className="purchase-toolbar"
+                            role="toolbar"
+                            aria-label="采购清单工具栏"
+                          >
+                            <h2>
+                              采购清单{' '}
+                              <span className="count">{projectPurchases.length} 条记录</span>
+                            </h2>
+                            <PurchaseProjectPicker
+                              projects={data.projects}
+                              value={purchaseProject}
+                              onChange={setPurchaseProject}
+                            />
+                            <div className="search-field">
+                              <Search size={16} />
+                              <input
+                                placeholder="搜索材料、规格或负责人…"
+                                aria-label="搜索采购记录"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                              />
+                            </div>
+                            <button
+                              className="purchase-open-toggle"
+                              aria-pressed={onlyOpen}
+                              onClick={() => setOnlyOpen((v) => !v)}
+                            >
+                              <Check size={14} aria-hidden="true" />
+                              只看未完成
+                            </button>
+                            <button
+                              className="primary purchase-add"
+                              onClick={() => purchaseEditor()}
+                            >
+                              <Plus size={15} />
+                              新增采购
+                            </button>
+                          </div>
+                          <div className="purchase-project-groups">
+                            {data.projects.map((project) => {
+                              const items = projectPurchases.filter(
+                                (x) => x.projectId === project.id,
+                              );
+                              return items.length ? (
+                                <ProjectSurface
+                                  key={project.id}
+                                  projectId={project.id}
+                                  className="purchase-project-group"
+                                  role="region"
+                                  aria-label={`采购工地：${project.name}`}
+                                >
+                                  <h3>
+                                    {project.name}
+                                    <small>{items.length}条</small>
+                                  </h3>
+                                  <div className="purchase-list">{items.map(purchaseCard)}</div>
+                                </ProjectSurface>
+                              ) : null;
+                            })}
+                            {!projectPurchases.length && (
+                              <div className="purchase-list">
+                                <Empty
+                                  small
+                                  title="采购清单还是空的"
+                                  text="添加材料并关联施工任务，提前安排到货时间。"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </section>
+                      )}
+                    </>
                   )}
                 </>
               )}
-            </>
-          )}
-          <footer className="page-footer">
-            <span>SJD · 春茉空间设计</span>
+              <footer className="page-footer">
+                <span>SJD · 春茉空间设计</span>
 
-            <span>{isCloud ? '本地优先 · 云端自动同步' : '本地存储 · 不自动同步'}</span>
-          </footer>
-        </main>
-      </div>
+                <span>{isCloud ? '本地优先 · 云端自动同步' : '本地存储 · 不自动同步'}</span>
+              </footer>
+            </main>
+          </div>
+        </>
+      )}
       <Notifications notices={notices} onDismiss={dismiss} />
       {saveConflict && (
         <WorkspaceSaveConflict

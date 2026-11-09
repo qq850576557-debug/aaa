@@ -1,3 +1,4 @@
+import { sitePhotoRoutes } from './site-photos';
 import {
   aggregatePresence,
   leaseStatus,
@@ -79,11 +80,13 @@ export function createApp() {
       if (!['GET', 'HEAD'].includes(req.method) && res.statusCode < 400) {
         const result = value as {
           updatedAt?: string;
+          uploadedAt?: string;
           records?: { updatedAt?: string }[];
           history?: { records?: { at: string }[] };
         };
         const times = [
           result?.updatedAt,
+          result?.uploadedAt,
           ...(result?.records ?? []).map((r) => r.updatedAt),
           ...(result?.history?.records ?? []).map((r) => r.at),
         ]
@@ -174,6 +177,7 @@ export function createApp() {
   });
   purchaseRoutes(app);
   recordRoutes(app);
+  sitePhotoRoutes(app);
   mentionRoutes(app);
   upgradePreviewRoutes(app);
   legacyRoutes(app);
@@ -443,6 +447,7 @@ export function createApp() {
               'workspace',
               'record',
               'person_private',
+              'site-photo',
             ])
             .optional(),
           operation: z.enum(['create', 'update', 'delete']).optional(),

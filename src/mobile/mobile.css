@@ -1,0 +1,262 @@
+.app-shell.mobile-mode {
+  display: block;
+  min-height: 100dvh;
+  background: #f5f6f1;
+  color: #294d3e;
+}
+.mobile-assistant {
+  max-width: 700px;
+  margin: auto;
+  min-width: 0;
+}
+.assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #fcfcf7;
+  border-bottom: 1px solid #dce6db;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.assistant-header button {
+  min-height: 40px;
+  padding: 6px;
+  border-radius: 10px;
+}
+.assistant-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.assistant-brand img {
+  width: 38px;
+  height: 38px;
+  object-fit: contain;
+  border-radius: 50%;
+}
+.assistant-brand strong {
+  font-size: 17px;
+  white-space: nowrap;
+}
+.assistant-header .account-avatar {
+  width: 32px;
+  height: 32px;
+}
+.assistant-content {
+  padding: 12px 12px calc(90px + env(safe-area-inset-bottom));
+}
+.assistant-content h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.assistant-content h3 {
+  font-size: 15px;
+}
+.assistant-content p {
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.assistant-content .sidebar-save-status {
+  min-height: 0;
+  padding: 0;
+  margin: 0 0 10px;
+}
+.assistant-content .sidebar-save-status > button {
+  height: auto;
+  min-height: 0;
+  padding: 6px 9px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 7px;
+  border: 0;
+  background: #eaf1e8;
+}
+.assistant-content .sidebar-save-status .save-current-state {
+  grid-column: 1/-1;
+}
+.assistant-day-nav,
+.assistant-entry-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.assistant-day {
+  padding: 12px;
+  background: #fffefa;
+  border: 1px solid #dce6db;
+  border-radius: 14px;
+  margin-bottom: 12px;
+  scroll-margin-top: 78px;
+}
+.assistant-day > header,
+.assistant-list-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.assistant-day > header time {
+  font-size: 11px;
+  color: #73816f;
+}
+.assistant-day > header > button,
+.assistant-list-heading > button {
+  margin-left: auto;
+}
+.assistant-content button,
+.assistant-content select {
+  font-size: 13px;
+  min-height: 38px;
+  padding: 7px 10px;
+}
+.mobile-work-row {
+  background: #eaf3ec;
+  border: 1px solid #d8e5db;
+  border-radius: 11px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.mobile-work-row.done {
+  background: #f0eee6;
+  color: #7c8175;
+}
+.assistant-content .mobile-work-main {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  width: 100%;
+  text-align: left;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+}
+.mobile-work-main strong {
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.mobile-work-main span {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.mobile-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+  align-items: center;
+}
+.mobile-actions > * {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+.assistant-filters {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.assistant-filters select {
+  flex: 1;
+  min-width: 0;
+}
+.assistant-filters label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.assistant-filters input {
+  width: 17px;
+  height: 17px;
+}
+.assistant-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 7px 8px calc(7px + env(safe-area-inset-bottom));
+  background: #fbfcf7;
+  border-top: 1px solid #d9e3d7;
+  z-index: 40;
+  gap: 6px;
+}
+.assistant-nav button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px;
+  border: 0;
+  font-size: 12px;
+  min-height: 48px;
+}
+.assistant-nav [aria-current='page'],
+.assistant-nav .assistant-camera {
+  background: #285441;
+  color: #fffdf4;
+}
+.mobile-photo label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  margin-top: 14px;
+}
+.photo-preview img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin-top: 12px;
+}
+.mobile-photo-row {
+  padding: 10px;
+  border: 1px solid #dce6db;
+  border-radius: 10px;
+  margin-top: 10px;
+  background: #fffefa;
+}
+.mobile-photo-row [role='alert'] {
+  color: #a74535;
+}
+.pwa-help {
+  font-size: 12px;
+  margin-top: 18px;
+}
+.mobile-mode dialog {
+  max-width: calc(100vw - 16px);
+}
+.mobile-mode .modal-body {
+  padding-inline: 14px;
+}
+/* Override desktop fixed-toolbar offsets and shared button palette only inside the assistant. */
+.app-shell.mobile-mode .assistant-content {
+  padding: 12px 12px calc(90px + env(safe-area-inset-bottom));
+  max-width: 700px;
+}
+.app-shell.mobile-mode .assistant-brand,
+.app-shell.mobile-mode .mobile-work-main {
+  --button-soft: transparent;
+  --button-soft-hover: transparent;
+}
+.app-shell.mobile-mode .assistant-nav button[aria-current='page'],
+.app-shell.mobile-mode .assistant-nav .assistant-camera {
+  --button-soft: #285441;
+  --button-soft-hover: #32614c;
+  --button-ink: #fffdf4;
+}

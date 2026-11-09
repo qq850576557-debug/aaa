@@ -25,6 +25,7 @@ const entities: Record<string, string> = {
   dictionary: '标准字典',
   account: '账号',
   record: '看板记录',
+  'site-photo': '工地照片',
 };
 const operations: Record<string, string> = { create: '新增', update: '修改', delete: '删除' };
 const devices: Record<string, string> = { desktop: '电脑', mobile: '手机', tablet: '平板' };
@@ -80,6 +81,17 @@ const fields: Record<string, string> = {
   loginChangedAt: '登录账号修改时间',
   nodeDate: '节点日期',
   followUp: '跟进',
+  original: '原图',
+  watermarked: '水印图',
+  capture: '拍摄信息',
+  capturedAt: '设备拍摄时间',
+  captureSource: '时间来源',
+  originalWidth: '原图宽度',
+  originalHeight: '原图高度',
+  outputWidth: '输出宽度',
+  outputHeight: '输出高度',
+  originalHash: '原图校验',
+  watermarkedHash: '水印图校验',
 };
 function safeValue(value: unknown): string {
   if (value === null || value === undefined) return '无';

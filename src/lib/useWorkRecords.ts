@@ -153,7 +153,7 @@ export function useWorkRecords(enabled: boolean) {
       : {
           value: {
             ...recordData(record),
-            status: record.status === '已完成' ? '待执行' : '已完成',
+            status: record.status === '已完成' ? '持续跟进' : '已完成',
           },
           version: record.version,
         };

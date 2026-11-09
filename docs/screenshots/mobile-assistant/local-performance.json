@@ -1,0 +1,6 @@
+{
+  "environment": "localhost production preview; Chromium touch emulation; not real phone or cellular network",
+  "domContentLoadedMs": 81,
+  "responseMs": 10,
+  "transferredHtmlBytes": 1557
+}

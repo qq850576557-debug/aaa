@@ -13,3 +13,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <CloudGate />
   </React.StrictMode>,
 );
+
+// Register on secure production origins only; API responses are never cached.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch(() => {});
+  });
+}
