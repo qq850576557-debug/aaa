@@ -1,4 +1,4 @@
-import { test, before, after } from 'node:test';
+import { test, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -222,4 +222,169 @@ test('orientation is corrected without modifying stored original; invalid enlarg
   assert.equal(m.height, 1200);
   assert.ok(!m.orientation || m.orientation === 1);
   assert.equal((await upload(1600, 2400)).r.status, 400);
+});
+
+test('V1.1 fresh reverse location receipt, optional project, authenticated watermark and CAS archive retain bytes', async () => {
+  process.env.CHUNMO_PHOTO_DIR = dir;
+  const f = await fixtureAccounts(),
+    c = await login(f.login, f.password),
+    staff = await login(f.employee, f.password),
+    d = fixture();
+  await req('/workspace', 'PUT', { revision: 0, data: d }, c);
+  const loc = {
+    latitude: 30.12345,
+    longitude: 120.12345,
+    accuracy: 12,
+    obtainedAt: new Date().toISOString(),
+  };
+  delete process.env.CHUNMO_AMAP_KEY;
+  delete process.env.CHUNMO_AMAP_ENABLED;
+  assert.equal((await req('/site-photos/location', 'POST', { location: loc }, c)).status, 503);
+  process.env.CHUNMO_AMAP_KEY = 'test-placeholder-not-a-real-key';
+  process.env.CHUNMO_AMAP_ENABLED = '1';
+  const realFetch = globalThis.fetch;
+  let remoteUrl = '';
+  const intercepted = mock.method(
+    globalThis,
+    'fetch',
+    async (...args: Parameters<typeof fetch>) => {
+      if (String(args[0]).startsWith('https://restapi.amap.com/')) {
+        remoteUrl = String(args[0]);
+        return Response.json({
+          status: '1',
+          regeocode: { aois: [{ name: '宝嘉誉府', type: '120302', distance: '12' }] },
+        });
+      }
+      return realFetch(...args);
+    },
+  );
+  try {
+    const located = await req('/site-photos/location', 'POST', { location: loc }, c);
+    assert.equal(located.status, 200, await located.clone().text());
+    const place = await located.json();
+    assert.equal(place.placeName, '宝嘉誉府');
+    assert.equal(place.nearby, true);
+    assert.notEqual(
+      new URL(remoteUrl).searchParams.get('location'),
+      `${loc.longitude},${loc.latitude}`,
+    );
+    assert.equal(
+      (await req('/site-photos/location', 'POST', { location: { ...loc, accuracy: 200 } }, c))
+        .status,
+      400,
+    );
+    const original = await sharp({
+      create: { width: 800, height: 600, channels: 3, background: '#d4dcca' },
+    })
+      .jpeg()
+      .toBuffer();
+    const input = {
+      requestId: crypto.randomUUID(),
+      projectId: '',
+      captureSource: 'live-camera',
+      capturedAt: new Date().toISOString(),
+      location: loc,
+      placeToken: place.token,
+      originalName: 'camera.jpg',
+      originalSize: original.length,
+      outputWidth: 800,
+      outputHeight: 600,
+    };
+    assert.equal(
+      (
+        await req(
+          '/site-photos',
+          'POST',
+          { ...input, requestId: crypto.randomUUID(), placeToken: place.token + 'tampered' },
+          c,
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (await req('/site-photos', 'POST', { ...input, requestId: crypto.randomUUID() }, staff))
+        .status,
+      403,
+    );
+    assert.equal(
+      (
+        await req(
+          '/site-photos',
+          'POST',
+          {
+            ...input,
+            requestId: crypto.randomUUID(),
+            capturedAt: new Date(Date.parse(place.expiresAt) + 1).toISOString(),
+          },
+          c,
+        )
+      ).status,
+      409,
+    );
+    const created = await req('/site-photos', 'POST', input, c);
+    assert.equal(created.status, 200, await created.clone().text());
+    assert.equal((await created.json()).placeName, '宝嘉誉府');
+    await req(
+      `/site-photos/${input.requestId}/chunks/0`,
+      'PUT',
+      { data: original.toString('base64') },
+      c,
+    );
+    const done = await req(`/site-photos/${input.requestId}/complete`, 'POST', {}, c);
+    assert.equal(done.status, 200, await done.clone().text());
+    assert.equal(
+      (await req(`/site-photos/${c.user.id}/${input.requestId}/original`, 'GET', undefined, staff))
+        .status,
+      403,
+    );
+    const before = Buffer.from(
+      await (
+        await req(`/site-photos/${c.user.id}/${input.requestId}/watermarked`, 'GET', undefined, c)
+      ).arrayBuffer(),
+    );
+    const archive = { requestId: crypto.randomUUID(), version: 0, projectId: d.projects[0].id };
+    const r = await req(`/site-photos/${input.requestId}/project`, 'POST', archive, c);
+    assert.equal(r.status, 200, await r.clone().text());
+    assert.equal((await r.json()).associationVersion, 1);
+    assert.equal(
+      (await req(`/site-photos/${input.requestId}/project`, 'POST', archive, c)).status,
+      200,
+    );
+    assert.equal(
+      (
+        await req(
+          `/site-photos/${input.requestId}/project`,
+          'POST',
+          { ...archive, requestId: crypto.randomUUID() },
+          c,
+        )
+      ).status,
+      409,
+    );
+    assert.equal(
+      (await req(`/site-photos/${input.requestId}/project`, 'POST', archive, staff)).status,
+      404,
+    );
+    assert.deepEqual(
+      Buffer.from(
+        await (
+          await req(`/site-photos/${c.user.id}/${input.requestId}/watermarked`, 'GET', undefined, c)
+        ).arrayBuffer(),
+      ),
+      before,
+    );
+    assert.equal(
+      (
+        await fixtureQuery(
+          "SELECT count(*)::int AS n FROM audit_event WHERE workspace_id=$1 AND entity_type='site-photo' AND entity_id=$2 AND action='photo.associate'",
+          [f.workspaceId, input.requestId],
+        )
+      ).rows[0].n,
+      1,
+    );
+  } finally {
+    intercepted.mock.restore();
+    delete process.env.CHUNMO_AMAP_KEY;
+    delete process.env.CHUNMO_AMAP_ENABLED;
+  }
 });

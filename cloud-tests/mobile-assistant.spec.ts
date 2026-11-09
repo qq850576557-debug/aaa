@@ -192,116 +192,81 @@ test('mobile daily reminders and shared record/purchase edits with multiple ment
   await page.screenshot({ path: '/tmp/chunmo-mobile-records-390.png', fullPage: true });
 });
 
-test('photo native inputs, exact original, full pixel watermark, offline recovery, positioning denied and isolated accounts', async ({
+test('legacy local Blob photos remain readable offline without top-level blob navigation', async ({
   page,
   context,
 }) => {
   const f = await enter(page),
     d = await seed(page);
-  await page.evaluate(async () => {
-    await navigator.serviceWorker.ready;
-  });
-  await page.reload();
-  await expect(page.locator('.assistant-header')).toBeVisible();
-  await page.getByRole('button', { name: '拍照', exact: true }).click();
-  await expect(page.getByRole('button', { name: '拍摄照片', exact: true })).toBeDisabled();
-  await page.getByLabel('拍照所属工地').selectOption(d.projects[0].id);
-  await expect(page.getByLabel('拍摄照片文件')).toHaveAttribute('capture', 'environment');
-  await page.evaluate(() =>
-    Object.defineProperty(navigator, 'geolocation', {
-      value: { getCurrentPosition: (_: unknown, fail: Function) => fail({ code: 1 }) },
-      configurable: true,
-    }),
-  );
-  await page.getByRole('button', { name: '授权获取本次定位' }).click();
-  await expect(page.locator('.mobile-photo')).toContainText('定位未获取');
-  await page.evaluate(() =>
-    Object.defineProperty(navigator, 'geolocation', {
-      value: {
-        getCurrentPosition: (ok: Function) =>
-          ok({
-            coords: { latitude: 30.12345, longitude: 120.12345, accuracy: 25 },
-            timestamp: Date.now(),
-          }),
-      },
-      configurable: true,
-    }),
-  );
-  await page.getByRole('button', { name: '授权获取本次定位' }).click();
-  await expect(page.locator('.mobile-photo')).toContainText('GPS 30.12345, 120.12345 · 约±25米');
-  await page.getByRole('button', { name: '不使用定位' }).click();
-  const portrait = await sharp({
-    create: { width: 1200, height: 800, channels: 3, background: '#dcdecd' },
+  const original = await sharp({
+    create: { width: 1200, height: 800, channels: 3, background: '#b7c7ae' },
   })
     .jpeg()
-    .withMetadata({ orientation: 6 })
     .toBuffer();
-  await page
-    .getByLabel('相册原图文件')
-    .setInputFiles({ name: '方向原图.jpg', mimeType: 'image/jpeg', buffer: portrait });
-  await expect(page.locator('.photo-preview')).toContainText('原图 800×1200 · 水印图 800×1200');
-  const original = await sharp({
-    create: { width: 4000, height: 3000, channels: 3, background: '#d3ded2' },
-  })
-    .jpeg({ quality: 98 })
-    .toBuffer();
+  await page.getByRole('button', { name: '拍照', exact: true }).click();
+  await expect(page.locator('.mobile-photo')).toBeVisible();
   await context.setOffline(true);
+  const id = crypto.randomUUID();
+  await page.evaluate(
+    async ({ bytes, owner, id, projectId }) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const r = indexedDB.open('chunmo-site-photos', 1);
+        r.onupgradeneeded = () => {
+          if (!r.result.objectStoreNames.contains('photos')) r.result.createObjectStore('photos');
+        };
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = reject;
+      });
+      const blob = new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }),
+        input = {
+          requestId: id,
+          projectId,
+          capturedAt: new Date().toISOString(),
+          captureSource: 'file-selection',
+          originalName: '旧照片.jpg',
+          originalSize: blob.size,
+          outputWidth: 1200,
+          outputHeight: 800,
+          location: null,
+        };
+      await new Promise<void>((resolve, reject) => {
+        const t = db.transaction('photos', 'readwrite');
+        t.objectStore('photos').put(
+          {
+            owner,
+            input,
+            meta: { ...input, actorId: owner.id, actorName: '旧账号', projectName: '历史工地' },
+            original: blob,
+            watermarked: blob,
+            state: 'pending',
+          },
+          JSON.stringify([owner.workspaceId, owner.id, id]),
+        );
+        t.oncomplete = () => resolve();
+        t.onerror = reject;
+      });
+      db.close();
+      window.dispatchEvent(new Event('chunmo-photos-local'));
+    },
+    {
+      bytes: Array.from(original),
+      owner: { id: f.id, workspaceId: f.workspaceId },
+      id,
+      projectId: d.projects[0].id,
+    },
+  );
+  await expect(page.locator('.mobile-photo-row')).toHaveCount(1);
   await page
-    .getByLabel('相册原图文件')
-    .setInputFiles({ name: '现场原图.jpg', mimeType: 'image/jpeg', buffer: original });
-  await expect(page.getByAltText('原图比例水印预览')).toBeVisible();
-  await expect(page.locator('.photo-preview')).toContainText('原图 4000×3000 · 水印图 4000×3000');
-  await expect(page.locator('.photo-preview')).toContainText('选图时间');
-  await page.screenshot({ path: '/tmp/chunmo-mobile-watermark-390.png', fullPage: true });
-  await page.getByRole('button', { name: '确认保存', exact: true }).click();
-  await expect(page.locator('.mobile-photo-row')).toContainText('待同步');
-  const check = await page.evaluate(async () => {
-    const d = await new Promise<IDBDatabase>((resolve, reject) => {
-      const r = indexedDB.open('chunmo-site-photos');
-      r.onsuccess = () => resolve(r.result);
-      r.onerror = reject;
-    });
-    const rows: any[] = await new Promise((resolve, reject) => {
-      const r = d.transaction('photos').objectStore('photos').getAll();
-      r.onsuccess = () => resolve(r.result);
-      r.onerror = reject;
-    });
-    d.close();
-    const p = rows[0];
-    const image = await createImageBitmap(p.watermarked);
-    return {
-      originalBytes: Array.from(new Uint8Array(await p.original.arrayBuffer())),
-      width: image.width,
-      height: image.height,
-      id: p.input.requestId,
-    };
-  });
-  expect(Buffer.from(check.originalBytes)).toEqual(original);
-  expect([check.width, check.height]).toEqual([4000, 3000]);
-  await context.setOffline(false);
-  await page.getByRole('button', { name: '重试上传', exact: true }).click();
-  await expect(page.locator('.mobile-photo-row')).toContainText('云端已确认', { timeout: 60000 });
-  const cloud = await (await api(page, `/site-photos/${check.id}`)).json();
-  expect(cloud.actorId).toBe(f.id);
-  expect(cloud.location).toBeNull();
-  expect(cloud.outputWidth).toBe(4000);
-  const r = await page.request.get(`/api/site-photos/${f.id}/${check.id}/original`);
-  expect(await r.body()).toEqual(original);
-  const marked = await page.request.get(`/api/site-photos/${f.id}/${check.id}/watermarked`);
-  await writeFile('/tmp/chunmo-watermark-4000x3000.jpg', await marked.body());
-  await page.reload();
-  await page.getByRole('button', { name: '拍照', exact: true }).click();
-  await expect(page.locator('.mobile-photo-row')).toContainText('云端已确认');
-  await page.setViewportSize({ width: 430, height: 932 });
-  await page.screenshot({ path: '/tmp/chunmo-mobile-photo-430.png', fullPage: true });
-  const second = await fixtureAccounts();
-  await api(page, '/auth/logout', 'POST', {});
-  await page.reload();
-  await page.getByLabel('登录账号', { exact: true }).fill(second.login);
-  await page.getByLabel('登录密码', { exact: true }).fill(second.password);
-  await page.getByRole('button', { name: '登录', exact: true }).click();
-  await page.getByRole('button', { name: '拍照', exact: true }).click();
-  await expect(page.locator('.mobile-photo-row')).toHaveCount(0);
+    .locator('.mobile-photo-row')
+    .getByRole('button', { name: '原图', exact: true })
+    .click();
+  await expect(page.getByAltText('应用内原图预览')).toBeVisible();
+  expect(await page.getByAltText('应用内原图预览').getAttribute('src')).toMatch(
+    /^data:image\/jpeg/,
+  );
+  expect(page.url()).not.toContain('blob:');
+  await page.getByRole('button', { name: '存入相册', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('长按');
 });
 
 test('install manifest, static-only service worker cache and desktop retains full navigation', async ({
@@ -314,7 +279,7 @@ test('install manifest, static-only service worker cache and desktop retains ful
   await page.reload();
   await expect(page.locator('.assistant-header')).toBeVisible();
   const manifest = await (await page.request.get('/manifest.webmanifest')).json();
-  expect(manifest.name).toBe('春茉工地助手');
+  expect(manifest.name).toBe('春茉后台管理（手机版）');
   expect(manifest.display).toBe('standalone');
   expect(manifest.start_url).toBe('/?mobile=1');
   expect(manifest.icons.some((i: any) => i.sizes === '512x512' && i.purpose === 'maskable')).toBe(

@@ -1,3 +1,4 @@
+import { MOBILE_QUERY, mobileRequested } from './mobile/mode';
 import { useShanghaiDay } from './mobile/useShanghaiDay';
 import { MobileAssistant } from './mobile/MobileAssistant';
 import { PeoplePanel } from './components/PeoplePanel';
@@ -196,15 +197,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       pendingScroll.current = null;
     }
   }, [selected]);
-  const [mobile, setMobile] = useState(
-    () =>
-      matchMedia('(max-width:700px)').matches ||
-      new URLSearchParams(location.search).get('mobile') === '1',
-  );
+  const [mobile, setMobile] = useState(mobileRequested);
   useEffect(() => {
-    const mq = matchMedia('(max-width:700px)');
-    const change = () =>
-      setMobile(mq.matches || new URLSearchParams(location.search).get('mobile') === '1');
+    const mq = matchMedia(MOBILE_QUERY);
+    const change = () => setMobile(mobileRequested());
     mq.addEventListener('change', change);
     return () => mq.removeEventListener('change', change);
   }, []);

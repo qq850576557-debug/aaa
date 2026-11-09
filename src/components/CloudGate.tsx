@@ -1,3 +1,4 @@
+import { MOBILE_QUERY, mobileRequested } from '../mobile/mode';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import App from '../App';
 import { cloudApi, cloudSession, CloudError, type CloudUser } from '../lib/cloud';
@@ -16,6 +17,15 @@ export function CloudGate() {
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const media = matchMedia(MOBILE_QUERY);
+    const title = () => {
+      if (mobileRequested()) document.title = '春茉后台管理（手机版）';
+    };
+    title();
+    media.addEventListener('change', title);
+    return () => media.removeEventListener('change', title);
+  }, []);
   const prior = useRef<CloudUser | null>(null);
   const authorized = useRef(false),
     generation = useRef(0);

@@ -1,3 +1,4 @@
+import { photoGeocodeRoutes } from './photo-geocode';
 import { sitePhotoRoutes } from './site-photos';
 import {
   aggregatePresence,
@@ -178,6 +179,7 @@ export function createApp() {
   purchaseRoutes(app);
   recordRoutes(app);
   sitePhotoRoutes(app);
+  photoGeocodeRoutes(app);
   mentionRoutes(app);
   upgradePreviewRoutes(app);
   legacyRoutes(app);

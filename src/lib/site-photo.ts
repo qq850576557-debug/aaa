@@ -4,9 +4,16 @@ export const PHOTO_MAX = 50 * 1024 * 1024;
 export const photoInput = z
   .object({
     requestId: z.uuid(),
-    projectId: z.string().min(1).max(100),
+    projectId: z.string().max(100),
     capturedAt: z.iso.datetime(),
-    captureSource: z.enum(['exif', 'camera-request', 'file-selection']),
+    captureSource: z.enum([
+      'exif',
+      'camera-request',
+      'file-selection',
+      'live-camera',
+      'native-camera',
+    ]),
+    placeToken: z.string().max(8000).optional(),
     originalName: z.string().max(240),
     originalSize: z.number().int().min(1).max(PHOTO_MAX),
     outputWidth: z.number().int().min(1).max(12000),
@@ -24,6 +31,11 @@ export const photoInput = z
   .strict();
 export type PhotoInput = z.infer<typeof photoInput>;
 export type PhotoMeta = PhotoInput & {
+  placeName?: string;
+  placeSource?: string;
+  nearby?: boolean;
+  legacyLocationUnverified?: boolean;
+  associationVersion?: number;
   actorId: string;
   actorName: string;
   projectName: string;
@@ -57,19 +69,20 @@ export function watermarkSvg(width: number, height: number, m: PhotoMeta, logo: 
     gap = 35 * scale,
     pad = 22 * scale;
   const maxChars = 26;
-  const lines = [m.projectName];
-  const projectLines = [];
-  for (let i = 0; i < lines[0].length; i += maxChars)
-    projectLines.push(lines[0].slice(i, i + maxChars));
-  const details = [
-    ...projectLines,
-    photoTime(m.capturedAt) + (m.captureSource === 'file-selection' ? '（选图时间）' : ''),
-    `拍摄人：${m.actorName}`,
-    m.location
-      ? `定位：${m.location.latitude.toFixed(5)}, ${m.location.longitude.toFixed(5)}`
-      : '定位：未获取',
-    ...(m.location ? [`GPS精度：约±${Math.round(m.location.accuracy)}米`] : []),
-  ];
+  const projectLines: string[] = [];
+  const details = m.placeName
+    ? [
+        `工地定位：${m.nearby ? '附近：' : ''}${m.placeName}`,
+        `拍摄时间：${photoTime(m.capturedAt)}`,
+        `拍摄人员：${m.actorName}`,
+      ]
+    : [
+        ...(m.legacyLocationUnverified ? ['历史照片 · 未核实现场定位'] : []),
+        m.projectName,
+        photoTime(m.capturedAt) + (m.captureSource === 'file-selection' ? '（选图时间）' : ''),
+        `拍摄人：${m.actorName}`,
+        '定位：未获取',
+      ];
   const wrapped = details.flatMap((text) => {
     const out: string[] = [];
     for (let i = 0; i < text.length; i += maxChars) out.push(text.slice(i, i + maxChars));

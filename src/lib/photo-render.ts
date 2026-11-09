@@ -1,3 +1,4 @@
+import { imageDataUrl } from './photo-image';
 import { encodedDimensions } from './photo-dimensions';
 import { watermarkSvg, PHOTO_MAX, type PhotoMeta } from './site-photo';
 import { exifCapture } from './photo-exif';
@@ -14,13 +15,13 @@ export async function renderPhoto(file: File, meta: PhotoMeta) {
   const dimensions = encodedDimensions(header);
   if (dimensions && dimensions.width * dimensions.height > 48_000_000)
     throw Error('原图超过48MP安全处理上限，请保留原图并在电脑处理；未裁切或放大。');
-  const url = URL.createObjectURL(file);
+
   let source: ImageBitmap | HTMLImageElement | undefined;
   try {
     try {
       source = await createImageBitmap(file, { imageOrientation: 'from-image' });
     } catch {
-      source = await image(url);
+      source = await image(await imageDataUrl(file));
     }
     const w = source instanceof HTMLImageElement ? source.naturalWidth : source.width,
       h = source instanceof HTMLImageElement ? source.naturalHeight : source.height;
@@ -39,7 +40,9 @@ export async function renderPhoto(file: File, meta: PhotoMeta) {
     const exif = exifCapture(header);
     const actual = {
       ...meta,
-      ...(exif ? { capturedAt: exif.at, captureSource: 'exif' as const } : {}),
+      ...(exif && !['live-camera', 'native-camera'].includes(meta.captureSource)
+        ? { capturedAt: exif.at, captureSource: 'exif' as const }
+        : {}),
       outputWidth: width,
       outputHeight: height,
     };
@@ -57,14 +60,10 @@ export async function renderPhoto(file: File, meta: PhotoMeta) {
       actual.outputWidth = width;
       actual.outputHeight = height;
       const ctx = draw();
-      const overlayUrl = URL.createObjectURL(
-        new Blob([watermarkSvg(width, height, actual, logoData)], { type: 'image/svg+xml' }),
-      );
-      try {
-        ctx.drawImage(await image(overlayUrl), 0, 0);
-      } finally {
-        URL.revokeObjectURL(overlayUrl);
-      }
+      const overlay = new Blob([watermarkSvg(width, height, actual, logoData)], {
+        type: 'image/svg+xml',
+      });
+      ctx.drawImage(await image(await imageDataUrl(overlay, 'image/svg+xml')), 0, 0);
       return new Promise<Blob>((resolve, reject) =>
         canvas.toBlob(
           (b) => (b ? resolve(b) : reject(Error('设备内存不足，无法生成水印，请保留原图'))),
@@ -96,6 +95,5 @@ export async function renderPhoto(file: File, meta: PhotoMeta) {
     };
   } finally {
     if (source && 'close' in source) source.close();
-    URL.revokeObjectURL(url);
   }
 }

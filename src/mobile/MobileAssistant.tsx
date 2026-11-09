@@ -1,3 +1,4 @@
+import { mobileRequested } from './mode';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Camera, ClipboardList, ShoppingCart, Home } from 'lucide-react';
 import type { Data, Purchase } from '../lib/model';
@@ -49,10 +50,12 @@ export function MobileAssistant({
     ),
     [onlyOpen, setOnlyOpen] = useState(false),
     [profile, setProfile] = useState(false);
+  const [cameraRequest, setCameraRequest] = useState(0),
+    [cameraActive, setCameraActive] = useState(false);
   const [install, setInstall] = useState<any>(null),
     [update, setUpdate] = useState<ServiceWorker | null>(null);
   useEffect(() => {
-    document.title = '春茉工地助手';
+    document.title = '春茉后台管理（手机版）';
     const prompt = (e: Event) => {
       e.preventDefault();
       setInstall(e);
@@ -73,7 +76,9 @@ export function MobileAssistant({
       });
     return () => {
       active = false;
-      document.title = '春茉空间设计｜装修项目管理系统';
+      document.title = mobileRequested()
+        ? '春茉后台管理（手机版）'
+        : '春茉空间设计｜装修项目管理系统';
       window.removeEventListener('beforeinstallprompt', prompt);
     };
   }, []);
@@ -154,10 +159,10 @@ export function MobileAssistant({
         <button
           className="assistant-brand"
           onClick={() => setTab('home')}
-          aria-label="春茉工地助手首页"
+          aria-label="春茉后台管理（手机版）首页"
         >
           <img src="/brand/source/chunmo-original.jpg" alt="春茉原始Logo" />
-          <strong>春茉工地助手</strong>
+          <strong>春茉后台管理（手机版）</strong>
         </button>
         {user && (
           <>
@@ -195,7 +200,9 @@ export function MobileAssistant({
             新版本已就绪，点击更新
           </button>
         )}
-        {install && <button onClick={() => void install.prompt()}>安装春茉工地助手</button>}
+        {install && (
+          <button onClick={() => void install.prompt()}>安装春茉后台管理（手机版）</button>
+        )}
         <SaveFeedback cloud={!!user} status={status} onRetry={onRetry} />
         {tab === 'home' ? (
           <>
@@ -253,6 +260,8 @@ export function MobileAssistant({
                 user={user}
                 projectId={project}
                 onProject={setProject}
+                startRequest={cameraRequest}
+                onSessionChange={setCameraActive}
               />
             </Suspense>
           ) : (
@@ -291,7 +300,7 @@ export function MobileAssistant({
           </section>
         )}
       </main>
-      <nav className="assistant-nav" aria-label="手机主要入口">
+      <nav hidden={cameraActive} className="assistant-nav" aria-label="手机主要入口">
         <button
           onClick={() => setTab('home')}
           aria-label="首页"
@@ -316,7 +325,10 @@ export function MobileAssistant({
         </button>
         <button
           className="assistant-camera"
-          onClick={() => setTab('photo')}
+          onClick={() => {
+            setTab('photo');
+            setCameraRequest((n) => n + 1);
+          }}
           aria-current={tab === 'photo' ? 'page' : undefined}
         >
           <Camera size={22} />

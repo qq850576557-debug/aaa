@@ -1,0 +1,5 @@
+{
+  "testDevice": "Chromium fake media device; NOT physical iPhone",
+  "original": [3840, 2160],
+  "watermarked": [3840, 2160]
+}

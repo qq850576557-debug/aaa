@@ -1,7 +1,7 @@
 {
   "id": "/?mobile=1",
-  "name": "春茉工地助手",
-  "short_name": "春茉工地助手",
+  "name": "春茉后台管理（手机版）",
+  "short_name": "春茉后台",
   "lang": "zh-CN",
   "start_url": "/?mobile=1",
   "scope": "/",

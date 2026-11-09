@@ -260,3 +260,114 @@
   --button-soft-hover: #32614c;
   --button-ink: #fffdf4;
 }
+/* V1.1 camera and safe-area layout; retain the original brand asset. */
+.app-shell.mobile-mode .assistant-header {
+  padding: calc(8px + env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) 8px
+    max(10px, env(safe-area-inset-left));
+}
+.app-shell.mobile-mode .assistant-header .assistant-brand {
+  justify-content: flex-start;
+  text-align: left;
+  padding: 0;
+  gap: 6px;
+}
+.assistant-header .assistant-brand img {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+}
+.assistant-header .assistant-brand strong {
+  white-space: normal;
+  font-size: clamp(13px, 3.7vw, 16px);
+  line-height: 1.3;
+}
+.assistant-nav[hidden] {
+  display: none;
+}
+.photo-v11 video {
+  width: 100%;
+  max-height: calc(100dvh - 220px);
+  background: #17261e;
+  border-radius: 12px;
+  object-fit: contain;
+}
+.camera-place {
+  display: block;
+  margin-bottom: 8px;
+}
+.camera-status {
+  color: #805f3d;
+}
+.camera-pixels {
+  font-size: 11px;
+  color: #6f7e6c;
+}
+.photo-storage-status {
+  font-size: 11px !important;
+  color: #7d755f;
+}
+.camera-controls {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  background: #f8faf3;
+  border-top: 1px solid #dce6db;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+}
+.camera-controls > span {
+  font-size: 12px;
+}
+.app-shell.mobile-mode .camera-shutter {
+  --button-soft: #285441;
+  --button-soft-hover: #285441;
+  --button-ink: #fff;
+  min-width: 76px;
+  min-height: 60px;
+  border-radius: 50%;
+  font-size: 16px;
+}
+.app-shell.mobile-mode .camera-shutter:disabled {
+  --button-soft: #d6ded2;
+  --button-ink: #7a8677;
+}
+.photo-gallery-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 16px;
+}
+.photo-row-body {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.photo-thumbnail {
+  width: 76px;
+  height: 62px;
+  object-fit: cover;
+  display: block;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.photo-row-body p {
+  margin: 3px 0;
+  font-size: 11px;
+}
+.photo-project-optional {
+  font-size: 11px !important;
+}
+.photo-viewer img {
+  max-width: 100%;
+  height: auto;
+  -webkit-touch-callout: default;
+  -webkit-user-select: auto;
+  user-select: auto;
+  touch-action: pan-x pan-y pinch-zoom;
+}

@@ -1,3 +1,4 @@
+import { geocodeEnabled, verifyPlace } from './photo-geocode';
 import { exifCapture } from '../src/lib/photo-exif';
 import type { Express } from 'express';
 import type { AuthRequest } from './auth';
@@ -5,12 +6,24 @@ import { ApiError, getState, hash, audit } from './store';
 import { transaction } from './db';
 import { photoInput, PHOTO_CHUNK, type PhotoMeta } from '../src/lib/site-photo';
 import { watermarkSvg } from '../src/lib/site-photo';
-import { readFile, writeFile, mkdir, rename, readdir, stat, unlink, open } from 'node:fs/promises';
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  rename,
+  readdir,
+  stat,
+  unlink,
+  open,
+  access,
+  statfs,
+} from 'node:fs/promises';
 import { join, isAbsolute, resolve, dirname } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 const byteHash = (b: Buffer) => createHash('sha256').update(b).digest('hex');
 import sharp from 'sharp';
 import { z } from 'zod';
+import { constants } from 'node:fs';
 const locks = new Map<string, Promise<unknown>>();
 async function lock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prior = locks.get(key) ?? Promise.resolve();
@@ -80,11 +93,25 @@ async function capacity(workspace: string, additional: number) {
 }
 let rendering = false;
 export function sitePhotoRoutes(app: Express) {
-  app.get('/api/site-photos/config', (req: AuthRequest, res) => {
+  app.get('/api/site-photos/config', async (req: AuthRequest, res) => {
+    let storageStatus = 'disabled';
+    if (process.env.CHUNMO_PHOTO_DIR) {
+      try {
+        const r = root();
+        await access(r, constants.R_OK | constants.W_OK);
+        const fs = await statfs(r);
+        storageStatus =
+          Number(fs.bavail) * Number(fs.bsize) > 100 * 1024 ** 2 ? 'ready' : 'low-space';
+      } catch {
+        storageStatus = 'unprepared-or-unwritable';
+      }
+    }
     res.json({
-      enabled: !!process.env.CHUNMO_PHOTO_DIR,
+      enabled: storageStatus === 'ready',
+      storageStatus,
       actorId: req.actor!.id,
       actorName: req.actor!.displayName || req.actor!.login,
+      geocodingEnabled: geocodeEnabled(),
       maxBytes: 50 * 1024 ** 2,
     });
   });
@@ -97,7 +124,7 @@ export function sitePhotoRoutes(app: Express) {
       const result = await lock(workspace, async () => {
         const state = await transaction((c) => getState(c, a.workspaceId));
         const project = state.data.projects.find((p) => p.id === input.projectId);
-        if (!project) throw new ApiError(403, '工地不存在或无权访问');
+        if (input.projectId && !project) throw new ApiError(403, '工地不存在或无权访问');
         await mkdir(dir, { recursive: true, mode: 0o700 });
         const digest = hash(JSON.stringify(input));
         let old: Stored | null = null;
@@ -110,11 +137,18 @@ export function sitePhotoRoutes(app: Express) {
           if (old.bodyHash !== digest) throw new ApiError(409, '照片请求编号已用于其他内容');
           return old;
         }
+        const modern = ['live-camera', 'native-camera'].includes(input.captureSource);
+        const place = modern ? verifyPlace(input.placeToken || '', a, input.capturedAt) : null;
+        if (place && JSON.stringify(place.location) !== JSON.stringify(input.location))
+          throw new ApiError(400, '定位与地点凭据不一致');
         const meta: Stored = {
           ...input,
           actorId: a.id,
           actorName: a.displayName || a.login,
-          projectName: project.name,
+          projectName: project?.name || '',
+          ...(place
+            ? { placeName: place.placeName, placeSource: place.placeSource, nearby: true }
+            : { legacyLocationUnverified: true }),
           bodyHash: digest,
           hashes: {},
           complete: false,
@@ -273,12 +307,76 @@ export function sitePhotoRoutes(app: Express) {
       next(e);
     }
   });
-  // Workspace-wide collaboration is the existing project permission model. No public file serving.
+  app.post('/api/site-photos/:id/project', async (req: AuthRequest, res, next) => {
+    try {
+      const body = z
+        .object({
+          requestId: z.uuid(),
+          projectId: z.string().max(100),
+          version: z.number().int().nonnegative(),
+        })
+        .strict()
+        .parse(req.body);
+      const { dir, workspace } = paths(req);
+      const a = req.actor!;
+      const result = await lock(workspace, async () => {
+        const m = await manifest(dir);
+        if (!m.complete) throw new ApiError(409, '照片尚未上传确认，关联意图已保留');
+        const digest = hash(JSON.stringify(body));
+        const target = await transaction(async (c) => {
+          const state = await getState(c, a.workspaceId);
+          const prior = (
+            await c.query(
+              "SELECT after_value FROM audit_event WHERE workspace_id=$1 AND actor_id=$2 AND entity_type='site-photo' AND entity_id=$3 AND action='photo.associate' AND after_value->>'requestId'=$4 ORDER BY created_at LIMIT 1",
+              [a.workspaceId, a.id, m.requestId, body.requestId],
+            )
+          ).rows[0]?.after_value;
+          if (prior) {
+            if (prior.bodyHash !== digest) throw new ApiError(409, '工地关联请求编号内容冲突');
+            return prior;
+          }
+          if ((m.associationVersion || 0) !== body.version)
+            throw new ApiError(409, '照片工地已由其他操作更新，请核对后重新选择');
+          const p = state.data.projects.find((p) => p.id === body.projectId);
+          if (body.projectId && !p) throw new ApiError(403, '工地不存在或无权访问');
+          const after = {
+            requestId: body.requestId,
+            bodyHash: digest,
+            projectId: body.projectId,
+            projectName: p?.name || '',
+            version: body.version + 1,
+          };
+          await audit(c, a, 'photo.associate', undefined, {
+            entityType: 'site-photo',
+            entityId: m.requestId,
+            operation: 'update',
+            before: { projectId: m.projectId },
+            after,
+            changedFields: ['projectId'],
+          });
+          return after;
+        });
+        if ((m.associationVersion || 0) < target.version) {
+          m.projectId = target.projectId;
+          m.projectName = target.projectName;
+          m.associationVersion = target.version;
+          await atomic(join(dir, 'metadata.json'), JSON.stringify(m));
+        }
+        return m;
+      });
+      res.json(result);
+    } catch (e) {
+      next(e);
+    }
+  });
+  // Private photo bytes: uploader or the authenticated studio owner only; never public.
   app.get('/api/site-photos/:actor/:id/:kind', async (req: AuthRequest, res, next) => {
     try {
       const actor = z.string().min(1).max(100).parse(req.params.actor),
         id = uuid.parse(req.params.id);
       const kind = z.enum(['original', 'watermarked']).parse(req.params.kind);
+      if (!req.actor!.owner && actor !== req.actor!.id)
+        throw new ApiError(403, '无权读取他人的私密工地照片');
       const dir = join(root(), hash(req.actor!.workspaceId), hash(actor), id);
       const m = await manifest(dir);
       if (!m.complete) throw new ApiError(409, '照片尚未确认保存');
