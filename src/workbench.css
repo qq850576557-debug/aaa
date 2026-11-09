@@ -3608,3 +3608,60 @@ textarea::placeholder {
   gap: 4px;
   margin: 8px;
 }
+
+/* Compact reminder record: left content and site footer, vertical actions on right. */
+.app-shell .reminder-record-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+  gap: 10px;
+}
+.app-shell .reminder-record-grid .agenda-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 62px;
+  grid-template-rows: minmax(30px, auto) minmax(30px, auto) minmax(30px, auto);
+  gap: 6px 8px;
+  padding: 8px;
+}
+.app-shell .reminder-record-grid .agenda-item-main {
+  grid-column: 1;
+  grid-row: 1 / 3;
+  text-align: left;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 8px;
+  min-width: 0;
+}
+.app-shell .reminder-record-grid .agenda-item-main strong {
+  text-align: left;
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+.app-shell .reminder-record-grid .agenda-item-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.app-shell .reminder-record-grid .agenda-item-actions {
+  display: contents;
+}
+.app-shell .reminder-record-grid .agenda-project-footer {
+  grid-column: 1;
+  grid-row: 3;
+  align-self: end;
+}
+.app-shell .reminder-record-grid .agenda-item-actions > button {
+  grid-column: 2;
+  min-height: 30px;
+  padding: 4px 6px;
+  width: 62px;
+  font-size: 12px;
+  margin: 0;
+}
+.app-shell .reminder-record-grid .agenda-complete {
+  grid-row: 1;
+}
+.app-shell .reminder-record-grid .agenda-item-actions > button:nth-of-type(2) {
+  grid-row: 2;
+}
+.app-shell .reminder-record-grid .agenda-item-actions > button:nth-of-type(3) {
+  grid-row: 3;
+}

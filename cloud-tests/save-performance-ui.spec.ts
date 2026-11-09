@@ -350,3 +350,47 @@ test('one record acknowledgement cannot announce cloud saved while an unrelated 
     releaseWorkspace();
   }
 });
+
+test('compact reminder preview: left content, bottom site, vertical actions', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const f = await fixtureAccounts();
+  await enter(page, f.login, f.password);
+  const d = await seed(page);
+  for (const title of [
+    '二楼房间木地板铺设',
+    '全屋定制安装进度',
+    '墙面油漆修复',
+    '油漆墙面修补',
+    '儿童房水暖',
+    '木工之前安装吊顶单杠',
+  ]) {
+    expect(
+      (
+        await api(page, '/records', 'POST', {
+          requestId: crypto.randomUUID(),
+          value: {
+            projectId: d.projects[0].id,
+            title,
+            nodeDate: today(),
+            status: '持续跟进',
+            notes: '',
+            followUp: '',
+            owner: '',
+          },
+        })
+      ).status,
+    ).toBe(200);
+  }
+  await page.getByRole('button', { name: '提醒中心', exact: true }).click();
+  const cards = page.locator('.reminder-record-grid .agenda-item');
+  await expect(cards).toHaveCount(6);
+  const card = cards.first();
+  const buttons = card.locator('.agenda-item-actions > button');
+  const bounds = await Promise.all([0, 1, 2].map((i) => buttons.nth(i).boundingBox()));
+  expect(bounds[0]!.x).toBe(bounds[1]!.x);
+  expect(bounds[1]!.x).toBe(bounds[2]!.x);
+  expect(bounds[0]!.y).toBeLessThan(bounds[1]!.y);
+  expect(bounds[1]!.y).toBeLessThan(bounds[2]!.y);
+  expect((await card.boundingBox())!.width).toBeLessThan(360);
+  await page.screenshot({ path: '/tmp/reminder-compact-preview.png', fullPage: true });
+});
