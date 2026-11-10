@@ -75,7 +75,7 @@ async function photos(p: Page) {
   });
 }
 
-test('V1.1 name and left header; denied location or missing geocoder never opens camera', async ({
+test('V1.2 name and left header; denied location or missing geocoder never permits a new shot', async ({
   page,
 }) => {
   await enter(page);
@@ -102,7 +102,8 @@ test('V1.1 name and left header; denied location or missing geocoder never opens
   });
   await page.getByRole('button', { name: '拍照', exact: true }).click();
   await expect(page.locator('.mobile-photo')).toContainText('定位被拒绝');
-  expect(await page.evaluate(() => (window as any).cameraCalls)).toBe(0);
+  await expect(page.locator('.camera-shutter')).toHaveCount(0);
+  await expect(page.locator('.camera-controls')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '从相册选择原图' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '不使用定位' })).toHaveCount(0);
   await expect(page.getByRole('combobox', { name: '拍照所属工地' })).toHaveCount(0);
@@ -120,7 +121,7 @@ test('V1.1 name and left header; denied location or missing geocoder never opens
   );
   await page.getByRole('button', { name: '重试定位并拍照' }).click();
   await expect(page.locator('.mobile-photo')).toContainText('地点识别尚未配置');
-  expect(await page.evaluate(() => (window as any).cameraCalls)).toBe(0);
+  await expect(page.locator('.camera-shutter')).toHaveCount(0);
 });
 
 test('V1.1 continuous live camera: three automatic byte-backed local saves, offline retry, share, optional archive and fresh next session', async ({
@@ -152,6 +153,9 @@ test('V1.1 continuous live camera: three automatic byte-backed local saves, offl
     await expect(page.locator('.camera-shutter')).toBeEnabled();
   }
   await expect(page.locator('.camera-controls')).toContainText('本次已拍 3 张');
+  await expect
+    .poll(async () => (await photos(page)).filter((p) => p.watermarkedBytes.length > 100).length)
+    .toBe(3);
   const rows = await photos(page);
   expect(rows).toHaveLength(3);
   for (const row of rows) {
@@ -210,6 +214,21 @@ test('V1.1 continuous live camera: three automatic byte-backed local saves, offl
       timeout: 60000,
     })
     .toBe(3);
+  await writeFile(
+    '/tmp/chunmo-v12-upload-timings.json',
+    JSON.stringify(
+      {
+        environment: 'Local isolated API and fake camera; NOT real Aliyun upload or mobile network',
+        measures: await page.evaluate(() =>
+          performance
+            .getEntriesByName('chunmo-photo:cloud-upload', 'measure')
+            .map((e) => ({ duration: e.duration, detail: (e as PerformanceMeasure).detail })),
+        ),
+      },
+      null,
+      2,
+    ),
+  );
   const first = (await photos(page))[0];
   await page.getByLabel(`照片归档工地${first.input.requestId}`).selectOption(d.projects[0].id);
   await expect
@@ -280,6 +299,9 @@ test('V1.1 failed watermark retains durable original; local-store failure blocks
   context,
 }) => {
   const { f } = await enter(page);
+  await page.evaluate(() =>
+    Object.defineProperty(window, 'Worker', { value: undefined, configurable: true }),
+  );
   await context.grantPermissions(['camera', 'geolocation']);
   await context.setGeolocation({ latitude: 30.12345, longitude: 120.12345, accuracy: 12 });
   await mockPlace(page, f);

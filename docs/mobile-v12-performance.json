@@ -1,0 +1,117 @@
+{
+  "environment": "Linux Chromium fake camera; camera and geolocation pre-granted; GPS callback injected +250ms, mocked signed AMap result +250ms. Not real iPhone Safari, installed iOS PWA, real GPS, real AMap or Aliyun network.",
+  "before": {
+    "photoCount": 10,
+    "originalPixels": [3840, 2160],
+    "watermarkPixels": [3840, 2160],
+    "cameraInitializations": 1,
+    "gpsCalls": 11,
+    "geocodeCalls": 1,
+    "shutterToLocalCommitMedianMs": 353.1,
+    "uiLongTasksOver50ms": 0,
+    "maxAnimationFrameGapMs": 16.8,
+    "stages": {
+      "chunmo-photo:click-preview": {
+        "count": 1,
+        "medianMs": 622.2
+      },
+      "chunmo-photo:click-ready": {
+        "count": 1,
+        "medianMs": 622.3
+      },
+      "chunmo-photo:gps": {
+        "count": 11,
+        "medianMs": 251.3
+      },
+      "chunmo-photo:place-lookup": {
+        "count": 1,
+        "medianMs": 258.6
+      },
+      "chunmo-photo:camera-initialize": {
+        "count": 1,
+        "medianMs": 42.7
+      },
+      "chunmo-photo:shutter-ready": {
+        "count": 10,
+        "medianMs": 485.8
+      },
+      "chunmo-photo:local-captured": {
+        "count": 10,
+        "medianMs": 2.6
+      },
+      "chunmo-photo:watermark": {
+        "count": 10,
+        "medianMs": 126.1
+      },
+      "chunmo-photo:local-pending": {
+        "count": 10,
+        "medianMs": 3.3
+      }
+    }
+  },
+  "after": {
+    "photoCount": 10,
+    "originalPixels": [3840, 2160],
+    "watermarkPixels": [3840, 2160],
+    "cameraInitializations": 1,
+    "gpsCalls": 1,
+    "geocodeCalls": 1,
+    "shutterToLocalCommitMedianMs": 116.5,
+    "uiLongTasksOver50ms": 0,
+    "maxAnimationFrameGapMs": 16.8,
+    "stages": {
+      "chunmo-photo:click-preview": {
+        "count": 1,
+        "medianMs": 171.8
+      },
+      "chunmo-photo:click-ready": {
+        "count": 1,
+        "medianMs": 513.1
+      },
+      "chunmo-photo:camera-permission-check": {
+        "count": 1,
+        "medianMs": 11.1
+      },
+      "chunmo-photo:gps": {
+        "count": 1,
+        "medianMs": 251.9
+      },
+      "chunmo-photo:camera-initialize": {
+        "count": 1,
+        "medianMs": 50
+      },
+      "chunmo-photo:place-lookup": {
+        "count": 1,
+        "medianMs": 259.4
+      },
+      "chunmo-photo:shutter-local": {
+        "count": 10,
+        "medianMs": 116.4
+      },
+      "chunmo-photo:shutter-ready": {
+        "count": 10,
+        "medianMs": 116.4
+      },
+      "chunmo-photo:local-captured": {
+        "count": 10,
+        "medianMs": 3.6
+      },
+      "chunmo-photo:watermark": {
+        "count": 10,
+        "medianMs": 83
+      },
+      "chunmo-photo:local-pending": {
+        "count": 10,
+        "medianMs": 4.7
+      }
+    }
+  },
+  "physicalIPhoneVerified": false,
+  "twelveMegapixels": {
+    "source": "synthetic JPEG, NOT physical iPhone capture",
+    "original": [4000, 3000],
+    "exif": 6,
+    "watermarked": [3000, 4000],
+    "originalBytesUnchanged": true
+  }
+}

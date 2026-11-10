@@ -23,6 +23,16 @@ export function freshLocation(location: PhotoLocation | null, now = Date.now()) 
   const age = now - Date.parse(location.obtainedAt);
   return age >= -5000 && age <= LOCATION_TTL && location.accuracy <= 100;
 }
+/** Only reuse this session's verified place briefly; signed expiry and GPS lease still apply. */
+export function freshPlace(place: PlaceReceipt | null, now = Date.now(), cacheMs = LOCATION_TTL) {
+  return (
+    !!place?.token &&
+    !!place.placeName &&
+    freshLocation(place.location, now) &&
+    now <= Date.parse(place.expiresAt) &&
+    now - Date.parse(place.location.obtainedAt) <= cacheMs
+  );
+}
 /** Standard WGS84 -> GCJ02 transform, used only for the provider lookup, never replacing raw GPS. */
 export function wgsToGcj(latitude: number, longitude: number) {
   if (longitude < 72.004 || longitude > 137.8347 || latitude < 0.8293 || latitude > 55.8271)

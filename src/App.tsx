@@ -988,7 +988,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             void retry();
             void recordSource.load();
           }}
-          onNew={(date, projectId) => setAgendaEntry({ id: id(), date, projectId })}
+          onNew={(date, projectId, category) =>
+            setAgendaEntry({ id: id(), date, projectId, category })
+          }
           onOpen={(item) => {
             if (item.kind === 'purchase') purchaseEditor(item.value);
             else if (item.kind === 'record') {

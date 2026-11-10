@@ -6,32 +6,42 @@ export const savedFeedback = (
   kind: 'workspace' | 'record' | 'restore' = 'workspace',
 ) => window.dispatchEvent(new CustomEvent('chunmo-save-confirmed', { detail: { key, kind } }));
 export const failedFeedback = () => window.dispatchEvent(new Event('chunmo-save-failed'));
+export const confirmedTime = (value: string | null | undefined) =>
+  value && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : '';
 export function SaveFeedback({
   children,
   status,
   cloud = true,
   onRetry,
+  compact = false,
 }: {
   children?: ReactNode;
   status: string;
   cloud?: boolean;
   onRetry?: () => void;
+  compact?: boolean;
 }) {
   const owner = verifiedOwner();
   const key = `chunmo-confirmed:${owner?.workspaceId ?? ''}:${owner?.id ?? ''}`;
-  const [at, setAt] = useState(() => sessionStorage.getItem(key) || '');
+  const [at, setAt] = useState(() => confirmedTime(sessionStorage.getItem(key)));
   const [recordState, setRecordState] = useState('');
   const [details, setDetails] = useState(false);
   useEffect(() => {
-    setAt(sessionStorage.getItem(key) || '');
+    const retained = confirmedTime(sessionStorage.getItem(key));
+    setAt(retained);
+    if (retained) sessionStorage.setItem(key, retained);
     setRecordState('');
     const confirmed = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail.owner?.id !== owner?.id || detail.owner?.workspaceId !== owner?.workspaceId)
         return;
-      const value = detail.at;
+      const value = confirmedTime(detail.at);
+      if (!value) return;
       setAt((old) => (old > value ? old : value));
-      sessionStorage.setItem(key, [sessionStorage.getItem(key) || '', value].sort().at(-1)!);
+      sessionStorage.setItem(
+        key,
+        [confirmedTime(sessionStorage.getItem(key)), value].sort().at(-1)!,
+      );
     };
     const outbox = (e: Event) => setRecordState(String((e as CustomEvent).detail));
     const failed = () => setRecordState('同步失败，请保留本地内容并核对');
@@ -64,33 +74,58 @@ export function SaveFeedback({
     : [];
   const part = (type: string) => formatted.find((p) => p.type === type)?.value;
   const message = failed
-    ? '同步异常·点击核对'
+    ? compact
+      ? '同步失败·点击重试'
+      : '同步异常·点击核对'
     : pending
       ? navigator.onLine && /正在|上传|同步中/.test(status + ' ' + recordState)
         ? '正在同步'
         : '本地已保存·待同步'
       : at && cloud
-        ? `最新保存：${part('year')}年${part('month')}月${part('day')}日 ${part('hour')}点${part('minute')}分`
+        ? compact
+          ? `最新保存：${part('year')}-${part('month')}-${part('day')} ${part('hour')}:${part('minute')}`
+          : `最新保存：${part('year')}年${part('month')}月${part('day')}日 ${part('hour')}点${part('minute')}分`
         : cloud
           ? '尚无云端保存确认'
           : '本地工作空间';
   return (
-    <div className="sidebar-save-status" role="status">
+    <div
+      className={`sidebar-save-status${compact ? ' mobile-save-status' : ''}`}
+      data-save-state={failed ? 'failed' : pending ? 'pending' : 'confirmed'}
+      role="status"
+    >
       <button onClick={() => setDetails(!details)} aria-expanded={details} aria-label={message}>
-        <span className="save-label">最新保存：</span>
-        <time className="save-confirmed-time" dateTime={at || undefined}>
-          {at && cloud
-            ? `${part('year')}年${part('month')}月${part('day')}日 ${part('hour')}点${part('minute')}分`
-            : cloud
-              ? '尚无云端确认'
-              : '本地工作空间'}
-        </time>
-        <span
-          className="save-current-state"
-          style={{ visibility: failed || pending ? 'visible' : 'hidden' }}
-        >
-          {failed || pending ? message : '\u00a0'}
-        </span>
+        {compact ? (
+          <span className="mobile-save-line">
+            {failed || pending || !at || !cloud ? (
+              message
+            ) : (
+              <>
+                <span>最新保存：</span>
+                <time dateTime={at}>
+                  {part('year')}-{part('month')}-{part('day')} {part('hour')}:{part('minute')}
+                </time>
+              </>
+            )}
+          </span>
+        ) : (
+          <>
+            <span className="save-label">最新保存：</span>
+            <time className="save-confirmed-time" dateTime={at || undefined}>
+              {at && cloud
+                ? `${part('year')}年${part('month')}月${part('day')}日 ${part('hour')}点${part('minute')}分`
+                : cloud
+                  ? '尚无云端确认'
+                  : '本地工作空间'}
+            </time>
+            <span
+              className="save-current-state"
+              style={{ visibility: failed || pending ? 'visible' : 'hidden' }}
+            >
+              {failed || pending ? message : '\u00a0'}
+            </span>
+          </>
+        )}
       </button>
       {details && (
         <div>

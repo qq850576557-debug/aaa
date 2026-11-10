@@ -14,7 +14,7 @@ export default defineConfig({
         const sw = await readFile('public/sw.js', 'utf8');
         await writeFile(
           'dist/sw.js',
-          sw.replace('chunmo-assistant-shell-v1', `chunmo-assistant-shell-${version}`),
+          sw.replace(/chunmo-assistant-shell-v\d+/, `chunmo-assistant-shell-${version}`),
         );
       },
     },

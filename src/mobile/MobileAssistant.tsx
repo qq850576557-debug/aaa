@@ -1,6 +1,6 @@
 import { mobileRequested } from './mode';
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Camera, ClipboardList, ShoppingCart, Home } from 'lucide-react';
+import { Camera, ClipboardList, ShoppingCart, Home, Plus } from 'lucide-react';
 import type { Data, Purchase } from '../lib/model';
 import { plus, purchaseStatuses } from '../lib/model';
 import type { WorkRecord } from '../lib/records';
@@ -13,7 +13,8 @@ import { SaveFeedback } from '../components/SaveFeedback';
 import { syncPhotos } from '../lib/photo-queue';
 import './mobile.css';
 import '../components/purchase-status.css';
-const Photos = lazy(() => import('./PhotoAssistant').then((m) => ({ default: m.PhotoAssistant })));
+const loadPhotos = () => import('./PhotoAssistant').then((m) => ({ default: m.PhotoAssistant }));
+const Photos = lazy(loadPhotos);
 export function MobileAssistant({
   data,
   records,
@@ -39,7 +40,7 @@ export function MobileAssistant({
   error: string;
   loading: boolean;
   onRetry: () => void;
-  onNew: (date: string, projectId: string) => void;
+  onNew: (date: string, projectId: string, category?: 'record' | 'purchase') => void;
   onOpen: (item: AgendaItem) => void;
   onToggle: (item: AgendaItem) => void;
   onDelete: (item: AgendaItem) => void;
@@ -55,6 +56,10 @@ export function MobileAssistant({
     [cameraActive, setCameraActive] = useState(false);
   const [install, setInstall] = useState<any>(null),
     [update, setUpdate] = useState<ServiceWorker | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => void loadPhotos().catch(() => {}), 400);
+    return () => clearTimeout(timer);
+  }, []);
   useEffect(() => {
     document.title = '春茉后台管理（手机版）';
     const prompt = (e: Event) => {
@@ -210,7 +215,7 @@ export function MobileAssistant({
         {install && (
           <button onClick={() => void install.prompt()}>安装春茉后台管理（手机版）</button>
         )}
-        <SaveFeedback cloud={!!user} status={status} onRetry={onRetry} />
+        <SaveFeedback compact cloud={!!user} status={status} onRetry={onRetry} />
         {tab === 'home' ? (
           <>
             <div className="assistant-day-nav">
@@ -257,6 +262,12 @@ export function MobileAssistant({
               <p>
                 iPhone Safari：分享 → 添加到主屏幕。安卓 Chrome：菜单 → 安装应用。需通过HTTPS打开。
               </p>
+              <p>
+                iPhone已有图标由系统缓存管理，打开网页不一定刷新。需要重新添加时，先核对本机照片已上传、云端可打开，并保留原图及待同步内容的独立备份。
+              </p>
+              <p>
+                保留原应用和网站数据，从Safari重新添加到主屏幕；核对完成前不要删除原PWA、清除Safari网站数据或重置本地存储。
+              </p>
             </details>
           </>
         ) : tab === 'photo' ? (
@@ -278,7 +289,6 @@ export function MobileAssistant({
           <section>
             <header className="assistant-list-heading">
               <h2>{tab === 'records' ? '事项管理' : '采购管理'}</h2>
-              <button onClick={() => onNew(now, project)}>＋新增</button>
             </header>
             <div className="assistant-filters">
               <select
@@ -307,6 +317,16 @@ export function MobileAssistant({
           </section>
         )}
       </main>
+      {(tab === 'records' || tab === 'purchases') && (
+        <button
+          className="assistant-fab"
+          aria-label={tab === 'records' ? '新增事项' : '新增采购'}
+          title={tab === 'records' ? '新增事项' : '新增采购'}
+          onClick={() => onNew(now, project, tab === 'records' ? 'record' : 'purchase')}
+        >
+          <Plus size={26} aria-hidden="true" />
+        </button>
+      )}
       <nav hidden={cameraActive} className="assistant-nav" aria-label="手机主要入口">
         <button
           onClick={() => setTab('home')}

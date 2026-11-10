@@ -1,5 +1,6 @@
 /** Safari-safe: keep image bytes inside <img>; never navigate or download a blob: URL. */
 export async function imageBlob(value: unknown, mime = 'image/jpeg'): Promise<Blob> {
+  if (value instanceof Blob) return value;
   if (value instanceof ArrayBuffer) return new Blob([value], { type: mime });
   if (ArrayBuffer.isView(value))
     return new Blob(

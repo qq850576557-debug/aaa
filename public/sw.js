@@ -1,10 +1,12 @@
 /* Static app shell only. Authenticated API, images and user records NEVER enter CacheStorage. */
-const CACHE = 'chunmo-assistant-shell-v1';
+const CACHE = 'chunmo-assistant-shell-v12';
 const STATIC = [
   '/',
   '/manifest.webmanifest',
-  '/brand/pwa-192.png',
-  '/brand/pwa-512.png',
+  '/brand/apple-touch-icon-v12.png',
+  '/brand/pwa-192-v12.png',
+  '/brand/pwa-512-v12.png',
+  '/brand/pwa-maskable-v12.png',
   '/brand/source/chunmo-original.jpg',
 ];
 self.addEventListener('install', (event) =>

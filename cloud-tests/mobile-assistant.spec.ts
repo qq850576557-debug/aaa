@@ -150,7 +150,7 @@ test('mobile daily reminders and shared record/purchase edits with multiple ment
       return ws.data.purchases[0].status;
     })
     .toBe('已下单');
-  await page.getByRole('button', { name: '＋新增', exact: true }).click();
+  await page.getByRole('button', { name: '新增采购', exact: true }).click();
   await page.getByRole('radio', { name: '采购清单', exact: true }).check();
   await page.getByLabel('采购内容 / 事项标题', { exact: true }).fill('手机新增材料');
   await page.getByLabel('事项负责人', { exact: true }).fill('@' + f.employees[0].login);
@@ -296,6 +296,27 @@ test('install manifest, static-only service worker cache and desktop retains ful
   });
   expect(info.scope).toContain('5181');
   expect(info.urls.some((u) => u.includes('/api/'))).toBe(false);
+  expect(info.urls.some((u) => u.includes('/brand/apple-touch-icon-v12.png'))).toBe(true);
+  expect(manifest.icons.every((i: any) => i.src.includes('-v12.png'))).toBe(true);
+  const photoSentinel = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      const r = indexedDB.open('chunmo-site-photos', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('photos');
+      r.onsuccess = () => resolve(r.result);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('photos', 'readwrite');
+      tx.objectStore('photos').put(
+        { originalBytes: new Uint8Array([1, 2, 3]).buffer, pending: true },
+        'update-retained',
+      );
+      tx.oncomplete = () => resolve();
+      tx.onerror = reject;
+    });
+    db.close();
+    return true;
+  });
+  expect(photoSentinel).toBe(true);
   const originalWorker = await readFile('dist/sw.js', 'utf8');
   try {
     await writeFile(
@@ -316,6 +337,20 @@ test('install manifest, static-only service worker cache and desktop retains ful
       page.waitForEvent('framenavigated', (frame) => frame === page.mainFrame()),
       page.getByRole('button', { name: '新版本已就绪，点击更新' }).click(),
     ]);
+    expect(
+      await page.evaluate(async () => {
+        const db = await new Promise<IDBDatabase>((resolve) => {
+          const r = indexedDB.open('chunmo-site-photos');
+          r.onsuccess = () => resolve(r.result);
+        });
+        const value: any = await new Promise((resolve) => {
+          const r = db.transaction('photos').objectStore('photos').get('update-retained');
+          r.onsuccess = () => resolve(r.result);
+        });
+        db.close();
+        return value?.pending && Array.from(new Uint8Array(value.originalBytes)).join(',');
+      }),
+    ).toBe('1,2,3');
     await page.waitForLoadState('domcontentloaded');
     await expect
       .poll(async () =>

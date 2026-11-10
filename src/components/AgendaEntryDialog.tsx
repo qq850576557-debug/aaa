@@ -4,7 +4,12 @@ import { Editor, type Edit, type Entity } from './Forms';
 import { RecordDrawer } from './RecordDrawer';
 import { id, type Data, type Purchase } from '../lib/model';
 import type { WorkRecord, RecordValue } from '../lib/records';
-export type AgendaEntryRequest = { projectId: string; date: string; id: string };
+export type AgendaEntryRequest = {
+  projectId: string;
+  date: string;
+  id: string;
+  category?: 'purchase' | 'record';
+};
 export function AgendaEntryDialog({
   request,
   data,
@@ -21,7 +26,7 @@ export function AgendaEntryDialog({
   onRecord: (record: WorkRecord) => void;
 }) {
   const [saving, setSaving] = useState(false);
-  const [category, setCategory] = useState<'' | 'purchase' | 'record'>('');
+  const [category, setCategory] = useState<'' | 'purchase' | 'record'>(request.category || '');
   const [confirmation, setConfirmation] = useState<null | (() => void)>(null);
   const dirty = useRef(false);
   const drafts = useRef<{ purchase?: Purchase; record?: RecordValue }>({});

@@ -1,5 +1,34 @@
 import { expect, it } from 'vitest';
-import { freshLocation, nearbyPlace, wgsToGcj } from './photo-location';
+import {
+  freshLocation,
+  freshPlace,
+  nearbyPlace,
+  wgsToGcj,
+  type PlaceReceipt,
+} from './photo-location';
+it('session place cache respects GPS age, signed expiry and the short reuse window', () => {
+  const now = Date.now();
+  const p: PlaceReceipt = {
+    location: {
+      latitude: 30,
+      longitude: 120,
+      accuracy: 12,
+      obtainedAt: new Date(now).toISOString(),
+    },
+    token: 'signed',
+    placeName: '附近小区',
+    placeSource: 'amap',
+    nearby: true,
+    resolvedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + 90000).toISOString(),
+  };
+  expect(freshPlace(p, now + 25000, 30000)).toBe(true);
+  expect(freshPlace(p, now + 31000, 30000)).toBe(false);
+  expect(freshPlace(p, now + 91000)).toBe(false);
+  expect(freshPlace({ ...p, expiresAt: new Date(now - 1).toISOString() }, now)).toBe(false);
+  expect(freshPlace({ ...p, token: '' }, now)).toBe(false);
+  expect(freshPlace({ ...p, location: { ...p.location, accuracy: 101 } }, now)).toBe(false);
+});
 it('WGS84 is retained separately and translated correctly for AMap', () => {
   const p = wgsToGcj(39.908823, 116.39747);
   expect(p.latitude).toBeCloseTo(39.910226, 4);

@@ -371,3 +371,61 @@
   user-select: auto;
   touch-action: pan-x pan-y pinch-zoom;
 }
+.app-shell.mobile-mode .assistant-fab {
+  --button-soft: #285441;
+  --button-soft-hover: #32614c;
+  --button-ink: #fff;
+  position: fixed;
+  z-index: 42;
+  right: max(16px, env(safe-area-inset-right), calc((100vw - 700px) / 2 + 16px));
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  width: 54px;
+  height: 54px;
+  min-height: 54px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: #285441;
+  box-shadow: 0 3px 10px #173b3424;
+}
+body:has(dialog[open]) .assistant-fab {
+  visibility: hidden;
+  pointer-events: none;
+}
+.app-shell.mobile-mode .assistant-content .mobile-save-status {
+  min-height: 28px;
+  margin: 0 0 8px;
+  max-width: 100%;
+}
+.app-shell.mobile-mode .assistant-content .mobile-save-status > button {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 26px;
+  height: 26px;
+  padding: 3px 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 6px;
+  background: #edf2eb;
+  color: #6c7c6a;
+  font-size: 11px;
+  line-height: 20px;
+  text-align: left;
+}
+.mobile-save-line {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell.mobile-mode .mobile-save-status > div {
+  height: auto;
+  max-height: 200px;
+  padding: 6px 0;
+}
+.app-shell.mobile-mode .mobile-save-status[data-save-state='failed'] > button {
+  color: #984c39;
+  background: #faf0e9;
+}

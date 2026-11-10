@@ -1,0 +1,23 @@
+{
+  "environment": "Local isolated API and fake camera; NOT real Aliyun upload or mobile network",
+  "measures": [
+    {
+      "duration": 1581,
+      "detail": {
+        "result": "confirmed"
+      }
+    },
+    {
+      "duration": 861.4000000059605,
+      "detail": {
+        "result": "confirmed"
+      }
+    },
+    {
+      "duration": 2212.0999999940395,
+      "detail": {
+        "result": "confirmed"
+      }
+    }
+  ]
+}

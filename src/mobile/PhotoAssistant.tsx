@@ -3,40 +3,58 @@ import { useEffect, useRef, useState } from 'react';
 import type { Project } from '../lib/model';
 import { cloudApi, type CloudUser } from '../lib/cloud';
 import { photoTime, type PhotoMeta, type PhotoInput } from '../lib/site-photo';
-import { freshLocation, type PlaceReceipt, type PhotoLocation } from '../lib/photo-location';
-import { renderPhoto } from '../lib/photo-render';
+import {
+  freshLocation,
+  freshPlace,
+  type PlaceReceipt,
+  type PhotoLocation,
+} from '../lib/photo-location';
+import { preparePhotoRenderer, renderPhoto } from '../lib/photo-render';
 import { imageBlob, imageDataUrl, sharePhoto } from '../lib/photo-image';
-import { localPhotos, saveLocalPhoto, syncPhotos, type LocalPhoto } from '../lib/photo-queue';
+import {
+  localPhotos,
+  localPhoto,
+  updateLocalPhoto,
+  saveLocalPhoto,
+  syncPhotos,
+  type LocalPhoto,
+} from '../lib/photo-queue';
 import { Modal } from '../components/Modal';
+import { photoStage, photoTiming } from '../lib/photo-performance';
+const watermarkJobs = new Map<string, Promise<void>>();
 function locationNow() {
-  return new Promise<PhotoLocation>((resolve, reject) => {
-    if (!navigator.geolocation)
-      return reject(Error('此浏览器不支持定位，请使用HTTPS的Safari或Chrome'));
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        const loc = {
-          latitude: p.coords.latitude,
-          longitude: p.coords.longitude,
-          accuracy: p.coords.accuracy,
-          obtainedAt: new Date(p.timestamp).toISOString(),
-        };
-        freshLocation(loc)
-          ? resolve(loc)
-          : reject(Error('定位精度不足或位置已过期，请到开阔处重新定位'));
-      },
-      (e) =>
-        reject(
-          Error(
-            e.code === 1
-              ? '定位被拒绝。请在iPhone设置→隐私与安全性→定位服务→Safari网站中允许定位，并在Safari网站设置中允许本网站定位。'
-              : e.code === 3
-                ? '定位超时，请到开阔处重试'
-                : '定位失败，请检查系统定位后重试',
-          ),
-        ),
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
-    );
-  });
+  return photoStage(
+    'gps',
+    () =>
+      new Promise<PhotoLocation>((resolve, reject) => {
+        if (!navigator.geolocation)
+          return reject(Error('此浏览器不支持定位，请使用HTTPS的Safari或Chrome'));
+        navigator.geolocation.getCurrentPosition(
+          (p) => {
+            const loc = {
+              latitude: p.coords.latitude,
+              longitude: p.coords.longitude,
+              accuracy: p.coords.accuracy,
+              obtainedAt: new Date(p.timestamp).toISOString(),
+            };
+            freshLocation(loc)
+              ? resolve(loc)
+              : reject(Error('定位精度不足或位置已过期，请到开阔处重新定位'));
+          },
+          (e) =>
+            reject(
+              Error(
+                e.code === 1
+                  ? '定位被拒绝。请在iPhone设置→隐私与安全性→定位服务→Safari网站中允许定位，并在Safari网站设置中允许本网站定位。'
+                  : e.code === 3
+                    ? '定位超时，请到开阔处重试'
+                    : '定位失败，请检查系统定位后重试',
+              ),
+            ),
+          { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
+        );
+      }),
+  );
 }
 function request(meta: PhotoMeta): PhotoInput {
   const {
@@ -68,7 +86,10 @@ function Thumbnail({ photo }: { photo: LocalPhoto }) {
   const [src, setSrc] = useState('');
   useEffect(() => {
     let alive = true;
-    void imageDataUrl(photo.watermarked?.size ? photo.watermarked : photo.original)
+    if (photo.state === 'captured' && !photo.thumbnail) return;
+    void imageDataUrl(
+      photo.thumbnail || (photo.watermarked?.size ? photo.watermarked : photo.original),
+    )
       .then((s) => {
         if (alive) setSrc(s);
       })
@@ -76,7 +97,10 @@ function Thumbnail({ photo }: { photo: LocalPhoto }) {
     return () => {
       alive = false;
     };
-  }, [photo.input.requestId, photo.state]);
+  }, [
+    photo.input.requestId,
+    photo.thumbnail?.size ? 'thumb' : photo.watermarked?.size ? 'watermark' : 'original',
+  ]);
   return src ? (
     <img loading="lazy" className="photo-thumbnail" src={src} alt="本机照片缩略图" />
   ) : (
@@ -122,7 +146,8 @@ export function PhotoAssistant({
     [visible, setVisible] = useState(20),
     [pixels, setPixels] = useState(''),
     [unsaved, setUnsaved] = useState<LocalPhoto | null>(null),
-    [locationValid, setLocationValid] = useState(false);
+    [locationValid, setLocationValid] = useState(false),
+    [previewReady, setPreviewReady] = useState(false);
   const video = useRef<HTMLVideoElement>(null),
     native = useRef<HTMLInputElement>(null),
     stream = useRef<MediaStream | null>(null),
@@ -132,6 +157,9 @@ export function PhotoAssistant({
     shutterBusy = useRef(false),
     functions = useRef({ start: async () => {} }),
     nativeReceipt = useRef<PlaceReceipt | null>(null);
+  const startedAt = useRef(0);
+  const placeFlight = useRef<Promise<PlaceReceipt> | null>(null);
+  const readyMeasured = useRef(false);
   const refresh = () =>
     void localPhotos(user)
       .then((rows) => {
@@ -153,20 +181,55 @@ export function PhotoAssistant({
   };
   useEffect(() => {
     active.current = true;
-    refresh();
+    void localPhotos(user)
+      .then((rows) => {
+        if (!active.current) return;
+        setQueue(
+          rows.sort((a, b) =>
+            (b.localSavedAt || b.input.capturedAt).localeCompare(
+              a.localSavedAt || a.input.capturedAt,
+            ),
+          ),
+        );
+        for (const p of rows)
+          if (p.state === 'captured' && p.meta.placeToken) void backgroundWatermark(p);
+      })
+      .catch(() => setStatus('本地照片读取异常，请保留网站数据后重试'));
     void cloudApi<NonNullable<typeof config>>('/site-photos/config')
       .then((c) => {
         if (active.current) setConfig(c);
       })
       .catch(() => {});
-    const update = () => refresh();
+    const update = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (!detail?.id) {
+        refresh();
+        return;
+      }
+      if (detail.owner?.id !== user.id || detail.owner?.workspaceId !== user.workspaceId) return;
+      void localPhoto(user, detail.id)
+        .then((p) => {
+          if (!p || !active.current) return;
+          setQueue((old) =>
+            [p, ...old.filter((row) => row.input.requestId !== p.input.requestId)].sort((a, b) =>
+              (b.localSavedAt || b.input.capturedAt).localeCompare(
+                a.localSavedAt || a.input.capturedAt,
+              ),
+            ),
+          );
+        })
+        .catch(() => setStatus('本地照片读取异常，原记录保留'));
+    };
     window.addEventListener('chunmo-photos-local', update);
+    const storageError = () => setStatus('本地照片状态写入失败，原图保留；请保留网站数据并重试');
+    window.addEventListener('chunmo-photos-storage-error', storageError);
     return () => {
       active.current = false;
       generation.current++;
       stop();
       onSessionChange?.(false);
       window.removeEventListener('chunmo-photos-local', update);
+      window.removeEventListener('chunmo-photos-storage-error', storageError);
     };
   }, [user.id]);
   useEffect(() => {
@@ -175,13 +238,33 @@ export function PhotoAssistant({
   useEffect(() => {
     if (phase === 'camera' && video.current && stream.current) {
       video.current.srcObject = stream.current;
-      void video.current.play().catch(() => {
-        stop();
-        setStatus('网页相机预览不可用，可打开系统相机');
-        setPhase('native');
-      });
+      setPreviewReady(false);
+      const v = video.current;
+      void v
+        .play()
+        .then(() => {
+          const firstFrame = () => {
+            if (!active.current || video.current !== v || !stream.current) return;
+            setPreviewReady(true);
+            photoTiming('click-preview', startedAt.current);
+          };
+          if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(firstFrame);
+          else requestAnimationFrame(firstFrame);
+        })
+        .catch(() => {
+          if (!active.current || video.current !== v) return;
+          stop();
+          setStatus('网页相机预览不可用，可打开系统相机');
+          setPhase('native');
+        });
     }
   }, [phase]);
+  useEffect(() => {
+    if (previewReady && locationValid && !readyMeasured.current) {
+      readyMeasured.current = true;
+      photoTiming('click-ready', startedAt.current);
+    }
+  }, [previewReady, locationValid]);
   useEffect(() => {
     if (!startRequest) return;
     const timer = setTimeout(() => void functions.current.start(), 0);
@@ -223,61 +306,88 @@ export function PhotoAssistant({
     };
   }, [unsaved]);
   async function ensurePlace() {
-    const loc = await locationNow();
-    if (!active.current) throw Error('拍摄已结束');
-    const old = receipt.current;
-    const moved = old
-      ? Math.hypot(
-          (loc.latitude - old.location.latitude) * 111320,
-          (loc.longitude - old.location.longitude) *
-            111320 *
-            Math.cos((loc.latitude * Math.PI) / 180),
-        )
-      : Infinity;
-    if (
-      old &&
-      freshLocation(old.location) &&
-      Date.now() - Date.parse(old.location.obtainedAt) < 30000 &&
-      moved <= 25
-    )
-      return old;
-    const p = await cloudApi<PlaceReceipt>('/site-photos/location', 'POST', { location: loc });
-    if (!freshLocation(p.location) || !p.placeName || !p.token)
-      throw Error('地点识别未确认，请重试');
-    if (active.current) {
+    if (freshPlace(receipt.current, Date.now(), 30000)) return receipt.current!;
+    if (placeFlight.current) return placeFlight.current;
+    const session = generation.current;
+    const work = (async () => {
+      const loc = await locationNow();
+      if (!active.current || session !== generation.current) throw Error('拍摄已结束');
+      const p = await photoStage('place-lookup', () =>
+        cloudApi<PlaceReceipt>('/site-photos/location', 'POST', { location: loc }),
+      );
+      if (!freshPlace(p)) throw Error('地点识别未确认，请重试');
+      if (!active.current || session !== generation.current) throw Error('拍摄已结束');
       receipt.current = p;
       setPlace(p);
+      setLocationValid(true);
+      return p;
+    })();
+    placeFlight.current = work;
+    try {
+      return await work;
+    } catch (e) {
+      if (active.current && session === generation.current) {
+        receipt.current = null;
+        setLocationValid(false);
+      }
+      throw e;
+    } finally {
+      if (placeFlight.current === work) placeFlight.current = null;
     }
-    return p;
   }
   async function start() {
-    if (shutterBusy.current) return;
+    if (shutterBusy.current || stream.current?.active) return;
     const token = ++generation.current;
+    startedAt.current = performance.now();
+    readyMeasured.current = false;
     stop();
     receipt.current = null;
+    placeFlight.current = null;
     setPlace(null);
+    setLocationValid(false);
+    setPreviewReady(false);
     setCount(0);
     setPhase('starting');
     setStatus('正在定位并识别小区…');
-    try {
-      const p = await ensurePlace();
-      if (!active.current || token !== generation.current) return;
-      setStatus('');
-      setPlace(p);
+    preparePhotoRenderer();
+    if (navigator.permissions?.query)
+      void photoStage('camera-permission-check', async () => {
+        try {
+          await navigator.permissions.query({ name: 'camera' as PermissionName });
+        } catch {
+          /* Safari may not expose camera permission querying. */
+        }
+      });
+    const live = () => active.current && token === generation.current;
+    const located = ensurePlace()
+      .then(() => {
+        if (live()) setStatus('');
+      })
+      .catch((e) => {
+        if (live()) {
+          generation.current++;
+          stop();
+          setPhase('error');
+          setStatus(e instanceof Error ? e.message : String(e));
+        }
+      });
+    const opened = (async () => {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setPhase('native');
+        if (live()) setPhase('native');
         return;
       }
       try {
-        const camera = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: { ideal: 'environment' },
-            width: { ideal: 4096 },
-            height: { ideal: 3072 },
-          },
-        });
-        if (!active.current || token !== generation.current) {
+        const camera = await photoStage('camera-initialize', () =>
+          navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              facingMode: { ideal: 'environment' },
+              width: { ideal: 4096 },
+              height: { ideal: 3072 },
+            },
+          }),
+        );
+        if (!live()) {
           camera.getTracks().forEach((t) => t.stop());
           return;
         }
@@ -286,38 +396,64 @@ export function PhotoAssistant({
         setPixels(s.width && s.height ? `${s.width}×${s.height}` : '');
         setPhase('camera');
       } catch {
-        if (active.current) {
+        if (live()) {
           setStatus('网页相机不可用，请打开系统相机拍摄');
           setPhase('native');
         }
       }
-    } catch (e) {
-      if (active.current && token === generation.current) {
-        setPhase('error');
-        setStatus(String(e instanceof Error ? e.message : e));
-      }
-    }
+    })();
+    await Promise.all([located, opened]);
   }
   useEffect(() => {
     if (phase !== 'camera' && phase !== 'native') return;
-    const tick = () => setLocationValid(freshLocation(receipt.current?.location || null));
+    const tick = () => setLocationValid(freshPlace(receipt.current));
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
   }, [phase, place]);
   functions.current.start = start;
-  async function finishWatermark(p: LocalPhoto) {
+  function finishWatermark(p: LocalPhoto): Promise<void> {
+    const old = watermarkJobs.get(p.input.requestId);
+    if (old) return old;
+    const work = renderSavedPhoto(p).finally(() => watermarkJobs.delete(p.input.requestId));
+    watermarkJobs.set(p.input.requestId, work);
+    return work;
+  }
+  async function backgroundWatermark(p: LocalPhoto) {
+    try {
+      await finishWatermark(p);
+    } catch (e) {
+      try {
+        await updateLocalPhoto(p.owner, p.input.requestId, {
+          message: `原图已保留，水印待重试：${String(e)}`,
+        });
+      } catch {
+        /* Raw original already committed; never remove it. */
+      }
+      if (active.current) setStatus('水印生成失败，原图已保存到应用本地，可重试');
+    }
+  }
+  async function renderSavedPhoto(p: LocalPhoto) {
+    const current = await localPhoto(p.owner, p.input.requestId);
+    if (!current || current.state !== 'captured') return;
     if (['live-camera', 'native-camera'].includes(p.meta.captureSource) && !p.meta.placeToken)
       throw Error('本次拍摄缺少有效定位，原图保留，请重新拍摄');
     const file = new File([await imageBlob(p.original)], p.input.originalName, {
       type: p.original.type || 'image/jpeg',
     });
     const result = await renderPhoto(file, p.meta);
-    await saveLocalPhoto({
-      ...p,
-      meta: result.meta,
-      input: request(result.meta),
+    const latest = await localPhoto(p.owner, p.input.requestId);
+    // A project association may have changed while this image was processing.
+    const meta = {
+      ...result.meta,
+      projectId: latest?.meta.projectId ?? result.meta.projectId,
+      projectName: latest?.meta.projectName ?? result.meta.projectName,
+    };
+    await updateLocalPhoto(p.owner, p.input.requestId, {
+      meta,
+      input: request(meta),
       watermarked: result.blob,
+      thumbnail: result.thumbnail,
       state: 'pending',
       message:
         result.width !== result.originalWidth || result.height !== result.originalHeight
@@ -367,20 +503,16 @@ export function PhotoAssistant({
         setUnsaved(photo);
         setStatus('原图尚未写入应用本地，请保留页面，预览存图或重试本地保存');
       }
-      return;
+      return false;
     }
-    try {
-      await finishWatermark(photo);
-      if (active.current) setStatus('');
-    } catch (e) {
-      await saveLocalPhoto({ ...photo, message: `原图已保留，水印待重试：${String(e)}` });
-      if (active.current) setStatus('水印生成失败，原图已保存到应用本地');
-    }
+    void backgroundWatermark(photo);
+    return true;
   }
   async function capture() {
-    if (shutterBusy.current || unsaved) return;
+    if (shutterBusy.current || unsaved || !previewReady) return;
     shutterBusy.current = true;
     setBusy(true);
+    const shotAt = performance.now();
     try {
       const p = await ensurePlace();
       if (!active.current || phase !== 'camera' || !stream.current) throw Error('相机会话已结束');
@@ -409,7 +541,10 @@ export function PhotoAssistant({
         );
         c.width = c.height = 0;
       }
-      await persist(blob, p, 'live-camera', at);
+      if (await persist(blob, p, 'live-camera', at)) {
+        photoTiming('shutter-local', shotAt);
+        photoTiming('shutter-ready', shotAt);
+      }
     } catch (e) {
       if (active.current) setStatus(String(e instanceof Error ? e.message : e));
     } finally {
@@ -425,7 +560,7 @@ export function PhotoAssistant({
       const exif = exifCapture(new Uint8Array(await file.slice(0, 256 * 1024).arrayBuffer()));
       const at = exif?.at || new Date().toISOString();
       if (
-        !freshLocation(p.location, Math.max(Date.parse(at), Date.parse(p.location.obtainedAt))) ||
+        !freshPlace(p, Math.max(Date.parse(at), Date.parse(p.location.obtainedAt))) ||
         Date.parse(at) < Date.parse(p.location.obtainedAt) - 5000
       ) {
         // Keep the original even if native camera stayed open past the location lease.
@@ -510,8 +645,7 @@ export function PhotoAssistant({
   }
   async function associate(p: LocalPhoto, id: string) {
     onProject(id);
-    await saveLocalPhoto({
-      ...p,
+    await updateLocalPhoto(p.owner, p.input.requestId, {
       association: {
         requestId: crypto.randomUUID(),
         projectId: id,
@@ -548,7 +682,7 @@ export function PhotoAssistant({
           拍照
         </button>
       )}
-      {phase === 'camera' && !locationValid && (
+      {(phase === 'camera' || phase === 'native') && !locationValid && (
         <button
           onClick={() =>
             void ensurePlace()
@@ -577,8 +711,9 @@ export function PhotoAssistant({
       {phase === 'native' && (
         <button
           className="camera-start"
+          disabled={!locationValid || busy || !!unsaved}
           onClick={() => {
-            if (receipt.current && freshLocation(receipt.current.location)) {
+            if (freshPlace(receipt.current)) {
               nativeReceipt.current = receipt.current;
               native.current?.click();
             } else
@@ -607,7 +742,7 @@ export function PhotoAssistant({
           <span>本次已拍 {count} 张</span>
           <button
             className="camera-shutter"
-            disabled={phase !== 'camera' || busy || !!unsaved || !locationValid}
+            disabled={phase !== 'camera' || busy || !!unsaved || !locationValid || !previewReady}
             onClick={() => void capture()}
           >
             拍照
@@ -633,7 +768,7 @@ export function PhotoAssistant({
                 .then(() => {
                   setUnsaved(null);
                   setCount((n) => n + 1);
-                  return finishWatermark(unsaved);
+                  void backgroundWatermark(unsaved);
                 })
                 .catch((e) => setStatus(String(e)))
             }

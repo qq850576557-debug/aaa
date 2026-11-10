@@ -1,0 +1,35 @@
+{
+  "version": "20261110-v12",
+  "source": "public/brand/source/chunmo-original.jpg",
+  "sourceSha256": "611a63cc6e1e5f8e4271f94e55b449e1f48f074648c7996fa5d1878afcffb831",
+  "transparentSource": "public/brand/source/chunmo-original-circle.png",
+  "transparentSourceSha256": "d38d4aa01d40c02d3c86e8d1264e943bc93847ade4eee6ea43ec6ed8c69e6de1",
+  "background": "#9db67f",
+  "outputs": [
+    [
+      "apple-touch-icon-v12.png",
+      180,
+      1
+    ],
+    [
+      "pwa-192-v12.png",
+      192,
+      1
+    ],
+    [
+      "pwa-512-v12.png",
+      512,
+      1
+    ],
+    [
+      "pwa-maskable-v12.png",
+      512,
+      0.84
+    ],
+    [
+      "favicon-32-v12.png",
+      32,
+      1
+    ]
+  ]
+}
