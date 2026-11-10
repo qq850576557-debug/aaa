@@ -9,6 +9,7 @@ export function BriefPanel({
   date,
   id,
   caption,
+  previewLimit = 3,
 }: {
   title: string;
   items: ReactNode[];
@@ -19,6 +20,7 @@ export function BriefPanel({
   date?: string;
   id?: string;
   caption?: string;
+  previewLimit?: number;
 }) {
   const content = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -54,7 +56,7 @@ export function BriefPanel({
           expanded ? (
             items
           ) : (
-            items.slice(0, 3)
+            items.slice(0, previewLimit)
           )
         ) : (
           <p className="brief-empty">{emptyText}</p>
@@ -62,7 +64,9 @@ export function BriefPanel({
       </div>
       <footer className="brief-actions">
         {actions}
-        {items.length > 3 && !expanded && <small>另有 {items.length - 3} 条</small>}
+        {items.length > previewLimit && !expanded && (
+          <small>另有 {items.length - previewLimit} 条</small>
+        )}
       </footer>
     </section>
   );

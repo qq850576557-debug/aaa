@@ -7,6 +7,7 @@ import './homepage.css';
 import './v11.css';
 import './workbench.css';
 import './buttons.css';
+import './overview.css';
 import './components/photo-editor.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

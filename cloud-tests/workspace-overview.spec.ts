@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { fixtureAccounts } from '../server/test-fixtures';
 import { fixture } from '../tests/helpers';
-import { plus } from '../src/lib/model';
+import { isHistorical, plus, projectStatus } from '../src/lib/model';
 import { workspaceAgenda } from '../src/lib/agenda';
 import { workspaceStats } from '../src/lib/workspace-stats';
 
@@ -92,9 +92,30 @@ async function setup(page: Page) {
 }
 async function choose(page: Page, id: string) {
   await page.locator(`.project-card[data-project-id="${id}"] .project-select`).click();
+  await expectDetail(page, id);
   await expect(page.locator('.project-card.chosen')).toHaveCount(1);
   await expect(page.locator(`.project-card[data-project-id="${id}"]`)).toHaveClass(/chosen/);
   await expect(page.locator('#project-timeline')).toBeVisible();
+}
+async function expectDetail(page: Page, id: string) {
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-view', 'project-detail');
+  await expect(page.getByRole('button', { name: '项目工作空间', exact: true })).not.toHaveClass(
+    /active/,
+  );
+  await expect(page.locator('.sidebar nav button.active')).toHaveCount(0);
+  await expect(page.locator('.sidebar nav [aria-current="page"]')).toHaveCount(0);
+  await expect(page.locator('.project-card.chosen')).toHaveAttribute('data-project-id', id);
+}
+async function expectOverview(page: Page) {
+  await expect(page.locator('.app-shell')).toHaveAttribute('data-view', 'overview');
+  await expect(page.getByRole('button', { name: '项目工作空间', exact: true })).toHaveClass(
+    /active/,
+  );
+  await expect(page.getByRole('button', { name: '项目工作空间', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(page.locator('.project-card.chosen')).toHaveCount(0);
 }
 async function expand(page: Page) {
   for (const id of ['today-panel', 'tomorrow-panel']) {
@@ -103,10 +124,11 @@ async function expand(page: Page) {
   }
 }
 test.use({ timezoneId: 'America/Los_Angeles' });
-for (const width of [1280, 1440])
+for (const width of [1280, 1440, 1920])
   test(`all-site default and scoped project layout ${width}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     const { d, records } = await setup(page);
+    await expectOverview(page);
     await expect(page.locator('.project-card.chosen')).toHaveCount(0);
     await expect(page.locator('#project-timeline, .project-toolbar')).toHaveCount(0);
     await expect(page.locator('.sidebar > .sidebar-section')).toHaveCount(0);
@@ -135,6 +157,50 @@ for (const width of [1280, 1440])
     );
     expect(new Set(rects.map((r) => r.y)).size).toBe(1);
     expect(rects.every((r) => r.height >= 64 && r.height <= 90)).toBe(true);
+    const shortcuts = page.locator('.ongoing-project-card');
+    const ongoing = d.projects.filter(
+      (p) => !isHistorical(p) && projectStatus(p.status) === '施工中',
+    );
+    await expect(shortcuts).toHaveCount(ongoing.length);
+    expect(
+      await shortcuts.evaluateAll((nodes) =>
+        nodes.map((node) => node.getAttribute('data-project-id')),
+      ),
+    ).toEqual(ongoing.map((p) => p.id));
+    for (const project of ongoing) {
+      const shortcut = page.locator(`.ongoing-project-card[data-project-id="${project.id}"]`);
+      const sidebar = page.locator(`.project-card[data-project-id="${project.id}"]`);
+      expect(await shortcut.getAttribute('data-project-hue')).toBe(
+        await sidebar.getAttribute('data-project-hue'),
+      );
+      await expect(shortcut.locator('button')).toHaveCount(1);
+      await expect(shortcut).toContainText(project.name);
+      await expect(shortcut).toContainText('施工中');
+      expect(await shortcut.locator('.ongoing-project-progress > :last-child').textContent()).toBe(
+        await sidebar.locator('.project-select > small').first().textContent(),
+      );
+    }
+    const statsBox = await page.locator('.overview-stats').boundingBox();
+    const sitesBox = await page.locator('.ongoing-projects').boundingBox();
+    await expect(page.getByTestId('today-panel').locator('.agenda-item')).toHaveCount(4);
+    const todayBox = await page.getByTestId('today-panel').boundingBox();
+    const tomorrowBox = await page.getByTestId('tomorrow-panel').boundingBox();
+    expect(sitesBox!.y).toBeGreaterThan(statsBox!.y + statsBox!.height);
+    expect(todayBox!.y).toBeGreaterThan(sitesBox!.y + sitesBox!.height);
+    expect(Math.abs(todayBox!.y - tomorrowBox!.y)).toBeLessThan(1);
+    expect(Math.abs(todayBox!.height - tomorrowBox!.height)).toBeLessThan(1);
+    expect(todayBox!.height).toBeGreaterThanOrEqual(354);
+    const firstTile = page.getByTestId('today-panel').locator('.agenda-item').first();
+    const tileBox = await firstTile.boundingBox();
+    expect(tileBox!.width).toBeGreaterThanOrEqual(200);
+    expect(tileBox!.width).toBeLessThanOrEqual(340);
+    expect(
+      await firstTile.locator('strong').evaluate((node) => getComputedStyle(node).fontSize),
+    ).toBe('15px');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    await page.screenshot({ path: `/tmp/chunmo-overview-home-${width}.png`, fullPage: true });
     await expect(page.getByTestId('today-panel').locator('time').first()).toHaveText(businessDay);
     await expand(page);
     const agenda = workspaceAgenda(d, records, undefined, businessDay);
@@ -161,7 +227,9 @@ for (const width of [1280, 1440])
     }
     await expect(page.locator('.agenda-item')).not.toContainText(['完工测试事项', '暂停测试事项']);
     await page.screenshot({ path: `/tmp/chunmo-overview-all-${width}.png`, fullPage: true });
-    await choose(page, 'nav-b');
+    await page.locator('.ongoing-project-card[data-project-id="nav-b"] button').click();
+    await expectDetail(page, 'nav-b');
+    await expect(page.locator('.ongoing-projects')).toHaveCount(0);
     await expect(page.locator('.overview-stats')).toHaveCount(0);
     await expect(page.locator('.page-heading .compact-stat')).toHaveCount(5);
     await expect(
@@ -179,7 +247,7 @@ for (const width of [1280, 1440])
     await page.screenshot({ path: `/tmp/chunmo-overview-site-${width}.png`, fullPage: true });
     await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
     await expect(page.locator('.overview-stats')).toBeVisible();
-    await expect(page.locator('.project-card.chosen')).toHaveCount(0);
+    await expectOverview(page);
     expect((await api(page)).data).toEqual(d);
     expect((await api(page, '/records')).records).toEqual(records);
   });
@@ -215,16 +283,82 @@ test('every main page uses ID navigation; history, scroll, direct links and miss
   await expect(page.locator('.project-card.chosen')).toHaveCount(0);
   await page.goForward();
   await expect(page.locator('.project-card.chosen')).toHaveAttribute('data-project-id', 'nav-b');
+  await expectDetail(page, 'nav-b');
   await page.goto('/?project=nav-b');
+  await expectDetail(page, 'nav-b');
   await expect(page.locator('.project-card.chosen')).toHaveAttribute('data-project-id', 'nav-b');
   await page.reload();
-  await expect(page.locator('.project-card.chosen')).toHaveAttribute('data-project-id', 'nav-b');
+  await expectDetail(page, 'nav-b');
+  await page.goto('/?view=project-detail&project=nav-b');
+  await expectDetail(page, 'nav-b');
   await page.goto('/?project=missing-test-site');
   await expect(page.locator('.overview-stats')).toBeVisible();
   await expect(page).not.toHaveURL(/missing-test-site/);
   await expect(page.locator('.project-card.chosen')).toHaveCount(0);
   expect((await api(page)).data).toEqual(d);
   expect((await api(page, '/records')).records).toEqual(records);
+});
+
+test('ongoing shortcuts follow shared project updates, support keyboard navigation and handle an empty overview', async ({
+  page,
+}) => {
+  await setup(page);
+  const state = await api(page);
+  const added = { ...state.data.projects[0], id: 'nav-new', name: '新增入口测试工地' };
+  const next = {
+    ...state.data,
+    projects: [
+      ...state.data.projects,
+      added,
+      ...Array.from({ length: 6 }, (_, index) => ({
+        ...added,
+        id: 'nav-extra-' + index,
+        name: '换行布局测试工地' + index,
+      })),
+      { ...added, id: 'nav-archived', name: '归档测试工地', archived: true },
+    ],
+  };
+  await api(page, '/workspace', 'PUT', { revision: state.revision, data: next });
+  await expect(page.locator('.ongoing-project-card')).toHaveCount(9);
+  const bounds = await page.locator('.ongoing-project-card').evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    }),
+  );
+  expect(new Set(bounds.map((box) => box.y)).size).toBeGreaterThan(1);
+  expect(bounds.every((box) => box.width >= 220 && box.width <= 340)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect(page.locator('.ongoing-project-card[data-project-id="nav-archived"]')).toHaveCount(
+    0,
+  );
+  const link = page.locator('.ongoing-project-card[data-project-id="nav-new"] button');
+  await link.focus();
+  await page.keyboard.press('Enter');
+  await expectDetail(page, 'nav-new');
+  await page.goBack();
+  await expectOverview(page);
+  await expect(link).toBeVisible();
+  const latest = await api(page);
+  await api(page, '/workspace', 'PUT', {
+    revision: latest.revision,
+    data: {
+      ...latest.data,
+      projects: latest.data.projects.map((project: any) =>
+        !isHistorical(project) ? { ...project, status: '暂停' } : project,
+      ),
+    },
+  });
+  await expect(page.locator('.ongoing-project-empty')).toHaveText('暂无在施工工地');
+  await expect(page.locator('.ongoing-project-card')).toHaveCount(0);
+  await expect(page.locator('.agenda-item')).toHaveCount(0);
+  await expect(page.getByTestId('today-panel')).toContainText('今日暂无待办事项');
+  await expect(page.getByTestId('tomorrow-panel')).toContainText('明日暂无安排');
+  const today = await page.getByTestId('today-panel').boundingBox();
+  const tomorrow = await page.getByTestId('tomorrow-panel').boundingBox();
+  expect(today!.height).toBeLessThan(400);
+  expect(Math.abs(today!.height - tomorrow!.height)).toBeLessThan(1);
+  expect((await api(page, '/records')).records).toHaveLength(6);
 });
 
 test('browser navigation respects an unsubmitted record draft and preserves saved business data', async ({

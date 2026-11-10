@@ -13,6 +13,7 @@ export function ProjectCards({
   onSelect,
   onEdit,
   onReorder,
+  businessDate,
 }: {
   data: Data;
   projects: Project[];
@@ -20,8 +21,10 @@ export function ProjectCards({
   onSelect: (id: string) => void;
   onEdit: (project: Project) => void;
   onReorder: (source: string, before: string | null) => void;
+  businessDate?: string;
 }) {
-  const now = useCurrentDate();
+  const currentDate = useCurrentDate();
+  const now = businessDate ?? currentDate;
   const [drag, setDrag] = useState<string | null>(null);
   const [before, setBefore] = useState<string | null>(null);
   const root = useRef<HTMLDivElement>(null);

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   sameWorkspaceRoute,
+  normalizeWorkspaceRoute,
   workspaceHref,
   workspaceRoute,
   type WorkspaceRoute,
@@ -90,7 +91,8 @@ export function useWorkspaceNavigation(
       scroll.current = null;
     }
   }, [route]);
-  function navigate(next: WorkspaceRoute, options: { replace?: boolean; guard?: boolean } = {}) {
+  function navigate(input: WorkspaceRoute, options: { replace?: boolean; guard?: boolean } = {}) {
+    const next = normalizeWorkspaceRoute(input);
     if (sameWorkspaceRoute(next, current.current.route)) return;
     const run = () => {
       const targetEntry = {

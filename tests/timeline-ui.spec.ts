@@ -164,8 +164,8 @@ for (const width of [1440, 390])
     await expect(page.getByRole('button', { name: '记录状态看板', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '事项管理', exact: true })).toBeVisible();
     if (width < 700) await page.locator('.mobile-project-toggle').click();
-    const first = page.locator('[data-project-id="p-home"]'),
-      second = page.locator('[data-project-id="theme-other"]');
+    const first = page.locator('.sidebar-project-list .project-card[data-project-id="p-home"]'),
+      second = page.locator('.sidebar-project-list .project-card[data-project-id="theme-other"]');
     const hue = await first.getAttribute('data-project-hue');
     expect(await second.getAttribute('data-project-hue')).not.toBe(hue);
     if (width >= 700) {
@@ -215,9 +215,11 @@ for (const width of [1440, 390])
     });
     expect(await state(page)).toEqual(original);
     await page.reload();
-    expect(await page.locator('[data-project-id="p-home"]').getAttribute('data-project-hue')).toBe(
-      hue,
-    );
+    expect(
+      await page
+        .locator('.sidebar-project-list .project-card[data-project-id="p-home"]')
+        .getAttribute('data-project-hue'),
+    ).toBe(hue);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
