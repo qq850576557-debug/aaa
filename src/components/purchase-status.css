@@ -1,0 +1,76 @@
+/* The stored purchase status controls every status surface, including reminders. */
+[data-purchase-status='待采购'] {
+  --purchase-status-bg: #f6ecda;
+  --purchase-status-ink: #795d32;
+  --purchase-status-border: #e5d4b4;
+}
+[data-purchase-status='已下单'] {
+  --purchase-status-bg: #e5eff7;
+  --purchase-status-ink: #3e627e;
+  --purchase-status-border: #bfd2e1;
+}
+[data-purchase-status='已到货'] {
+  --purchase-status-bg: #e3efe5;
+  --purchase-status-ink: #3b6550;
+  --purchase-status-border: #b7d1bf;
+}
+[data-purchase-status='已完成'] {
+  --purchase-status-bg: #e9ece9;
+  --purchase-status-ink: #5e6761;
+  --purchase-status-border: #cdd3ce;
+}
+.app-shell .purchase-card[data-purchase-status] .purchase-actions select,
+.mobile-work-row[data-purchase-status] .mobile-actions select,
+select[data-purchase-status],
+.agenda-item[data-purchase-status] .status-tag,
+.app-shell .workspace-brief.agenda-brief .agenda-item[data-purchase-status] .agenda-complete,
+.app-shell
+  .workspace-brief.agenda-brief
+  .agenda-item.done[data-purchase-status]
+  .agenda-item-actions
+  > .agenda-complete {
+  background-color: var(--purchase-status-bg) !important;
+  color: var(--purchase-status-ink) !important;
+  border-color: var(--purchase-status-border);
+}
+.agenda-item[data-purchase-status] .status-tag {
+  border: 1px solid var(--purchase-status-border);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+/* Arrived remains distinct from completed without changing completion business rules. */
+.app-shell .purchase-card[data-purchase-status='已完成'],
+.mobile-work-row[data-purchase-status='已完成'],
+.app-shell .agenda-item[data-purchase-status='已完成'] {
+  background: #f0f2ef !important;
+  border-color: #d1d7d1 !important;
+  box-shadow: inset 3px 0 #bbc3bc;
+  color: #657067;
+  opacity: 1;
+}
+.app-shell
+  .purchase-card[data-purchase-status='已完成']
+  .purchase-main
+  :is(strong, small, p, .deadline-countdown),
+.app-shell .agenda-item[data-purchase-status='已完成'] .agenda-item-main strong,
+.app-shell
+  .workspace-brief.agenda-brief
+  .agenda-item[data-purchase-status='已完成']
+  .agenda-item-main
+  strong,
+.mobile-work-row[data-purchase-status='已完成'] .mobile-work-main {
+  color: #657067;
+}
+.app-shell .purchase-card[data-purchase-status='已完成'] .purchase-project-tag {
+  background: #e4e8e3;
+  color: #5d685f;
+}
+.app-shell
+  .workspace-brief.agenda-brief
+  .agenda-item[data-purchase-status='已完成']
+  .agenda-item-main {
+  --button-soft: #f0f2ef;
+  --button-soft-hover: #e7ebe6;
+  background: #f0f2ef;
+}

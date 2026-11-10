@@ -1,9 +1,11 @@
 import { PurchaseDateHistory } from './PurchaseDateHistory';
 import { projectThemeStyle, useProjectTheme } from './ProjectThemes';
 import { Pencil, Trash2 } from 'lucide-react';
+import './purchase-status.css';
 import {
   purchaseDue,
   purchaseComplete,
+  purchaseStatuses,
   remainingTime,
   type Data,
   type Purchase,
@@ -33,6 +35,7 @@ export function PurchaseCard({
     <article
       className={`purchase-row purchase-card ${done ? 'done' : ''}`}
       data-purchase-id={p.id}
+      data-purchase-status={p.status}
       style={projectThemeStyle(useProjectTheme(p.projectId))}
     >
       <div className="purchase-actions" role="group" aria-label={`采购操作：${p.name}`}>
@@ -41,10 +44,15 @@ export function PurchaseCard({
           value={p.status}
           onChange={(e) => onStatus(e.target.value as Purchase['status'])}
         >
-          <option disabled={done && !canReopen}>待采购</option>
-          <option disabled={done && !canReopen}>已下单</option>
-          <option>已完成</option>
-          {p.status === '已到货' && <option>已到货</option>}
+          {purchaseStatuses.map((status) => (
+            <option
+              key={status}
+              value={status}
+              disabled={done && !canReopen && (status === '待采购' || status === '已下单')}
+            >
+              {status}
+            </option>
+          ))}
         </select>
         <button className="purchase-edit" onClick={onEdit} aria-label={`编辑采购${p.name}`}>
           <Pencil size={14} />
@@ -66,7 +74,7 @@ export function PurchaseCard({
             {due} 前采购 <PurchaseDateHistory purchase={p} />
           </small>
           <span className={`deadline-countdown ${!done && due < now ? 'red' : ''}`}>
-            {done ? '采购已完成' : remainingTime(due, now)}
+            {p.status === '已到货' ? '采购已到货' : done ? '采购已完成' : remainingTime(due, now)}
           </span>
         </div>
         {p.owner && <small className="purchase-responsible">负责人：{p.owner}</small>}

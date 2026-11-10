@@ -117,6 +117,7 @@ export const noteSchema = z
     message: '每日事项需要指定日期',
     path: ['date'],
   });
+export const purchaseStatuses = ['待采购', '已下单', '已到货', '已完成'] as const;
 export const purchaseSchema = z
   .object({
     mentionIds: z
@@ -132,7 +133,7 @@ export const purchaseSchema = z
     leadDays: z.number().int().min(0).max(365),
     quantity: z.string().max(100).optional(),
     specification: text.optional(),
-    status: z.enum(['待采购', '已下单', '已到货', '已完成']),
+    status: z.enum(purchaseStatuses),
     originalDue: date.optional(),
     deadlineMode: z.enum(['fixed', 'linked']).optional(),
     approvedDue: date.optional(),

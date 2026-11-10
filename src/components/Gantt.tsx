@@ -406,16 +406,24 @@ export function Gantt({
   return (
     <section className="schedule-section" id="project-timeline">
       <div className="section-heading">
-        <div>
+        <div className="schedule-title-legend">
           <h2>
             <CalendarDays size={20} />
-            施工工期{' '}
-            <span className="count">
-              {trades.length} 个工种 · {data.tasks.filter((t) => t.projectId === project.id).length}{' '}
-              段任务
-            </span>
+            施工工期
           </h2>
-          <p>双击空白日期直接新增施工任务 · 拖选创建施工任务 · 拖动时间条调整</p>
+          <div className="legend" role="group" aria-label="施工工种颜色">
+            {trades.map((g) => (
+              <button
+                key={g.id}
+                onClick={(e) =>
+                  onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget })
+                }
+              >
+                <i style={{ background: tradeColor(g) }} />
+                {g.name}
+              </button>
+            ))}
+          </div>
         </div>
         <ConflictPanel
           data={data}
@@ -450,30 +458,6 @@ export function Gantt({
             施工任务
           </button>
         </div>
-      </div>
-      <p className="today-construction">
-        今日施工：
-        {data.tasks
-          .filter(
-            (t) =>
-              t.projectId === project.id &&
-              t.status !== '已完成' &&
-              t.start <= today() &&
-              t.end >= today(),
-          )
-          .map((t) => `${trades.find((g) => g.id === t.tradeId)?.name ?? ''} · ${t.name}`)
-          .join('；') || '暂无排期'}
-      </p>
-      <div className="legend">
-        {trades.map((g) => (
-          <button
-            key={g.id}
-            onClick={(e) => onColor(g, { x: e.clientX, y: e.clientY, element: e.currentTarget })}
-          >
-            <i style={{ background: tradeColor(g) }} />
-            {g.name}
-          </button>
-        ))}
       </div>
       <div
         className="gantt-scroll"
@@ -816,7 +800,6 @@ export function Gantt({
               <Plus size={17} />
               在列表末尾新增工种
             </button>
-            <span>拖动左侧手柄排序 · 触屏拖动或 Alt + 方向键调整</span>
           </div>
         </div>
       </div>
@@ -825,7 +808,6 @@ export function Gantt({
           项目日期：{shortDate(project.start)} — {shortDate(project.end)} ·
           超出计划的任务也会完整展示
         </span>
-        <span>拖动时间条及两端调整 · 右键操作 · 手机 / 键盘可使用下方任务详情入口</span>
       </div>
       <details className="task-details-list">
         <summary>任务详情与多段管理</summary>

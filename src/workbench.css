@@ -3587,14 +3587,6 @@ textarea::placeholder {
   padding: 4px var(--tag-inset);
   line-height: 1.5;
 }
-.app-shell
-  .workspace-brief.agenda-brief
-  .agenda-item:has(.category-purchase).done
-  .agenda-complete {
-  background: #f4e5d3 !important;
-  color: #855e36 !important;
-  border-color: #e3cdb0;
-}
 .app-shell .workspace-brief.agenda-brief .brief-panel > footer button {
   padding: 6px var(--control-inset);
 }
@@ -3664,4 +3656,110 @@ textarea::placeholder {
 }
 .app-shell .reminder-record-grid .agenda-item-actions > button:nth-of-type(3) {
   grid-row: 3;
+}
+.app-shell .workspace-content > .compact-page-heading {
+  min-height: 42px;
+  margin-bottom: 14px;
+  align-items: flex-start;
+  gap: 12px 18px;
+}
+.app-shell .page-heading.workbench-page-heading.compact-page-heading > div:first-child {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  min-width: 0;
+}
+.compact-page-heading h1 {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.compact-page-heading .heading-actions {
+  flex: 0 0 auto;
+  margin-top: 0;
+}
+.app-shell .compact-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 7px;
+  min-width: 0;
+}
+.app-shell .compact-stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 8px;
+  min-height: 30px;
+  border: 1px solid #dee7de;
+  border-radius: 7px;
+  background: #f2f6f1;
+  color: #617365;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+.app-shell .compact-stat strong {
+  color: #305a49;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell .compact-stat.attention {
+  border-color: #e9d1b6;
+  background: #fbf1e5;
+  color: #926237;
+}
+.app-shell .compact-stat.attention strong {
+  color: #985d32;
+}
+.app-shell .schedule-section > .section-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 10px;
+}
+.app-shell .schedule-section > .section-heading > .schedule-title-legend {
+  display: flex;
+  flex: 1 1 390px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  min-width: 0;
+}
+.app-shell .schedule-title-legend h2 {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.app-shell .schedule-title-legend .legend {
+  flex: 1 1 240px;
+  align-items: center;
+  gap: 2px 10px;
+  margin: 0;
+}
+.app-shell .schedule-title-legend .legend button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 24px;
+  padding: 2px 0;
+  line-height: 20px;
+  background: transparent;
+  border: 0;
+}
+.app-shell .schedule-title-legend .legend i {
+  flex: 0 0 9px;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.app-shell .schedule-section > .section-heading > .toolbar {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+  min-width: 0;
 }

@@ -20,6 +20,7 @@ import {
   taskSchema,
   noteSchema,
   purchaseSchema,
+  purchaseStatuses,
   type Data,
   type Personnel,
   type Project,
@@ -144,6 +145,9 @@ export function Editor({
       <label htmlFor={`${uid}-${key}`}>{label}</label>
       <select
         id={`${uid}-${key}`}
+        data-purchase-status={
+          kind === 'purchase' && key === 'status' ? String(v.status) : undefined
+        }
         required={key === 'projectId'}
         value={
           key === 'dependency'
@@ -381,7 +385,7 @@ export function Editor({
           {input('due', '采购截止日期', 'date', true)}
           <PurchaseDateHistory purchase={edit.value as Purchase} />
         </div>
-        {select('status', '采购状态', ['待采购', '已下单', '已到货', '已完成'])}
+        {select('status', '采购状态', [...purchaseStatuses])}
         {area('notes', '详细备注（可选）')}
         {!isNew && (
           <p className="purchase-date-help span2">日期可提前或延期，保存后逐次保留记录。</p>

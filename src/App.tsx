@@ -58,6 +58,7 @@ import {
   Users,
 } from 'lucide-react';
 import { PurchaseCard } from './components/PurchaseCard';
+import { CompactStats } from './components/CompactStats';
 import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
 import { HistoryPanel } from './components/HistoryPanel';
 import { GLOBAL_SCOPE, workspaceContent, parseArchive, type History } from './lib/history';
@@ -302,6 +303,55 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           data.projects.some((project) => project.id === r.projectId && !isHistorical(project)),
       ).length,
   };
+  const workspaceMetrics = [
+    {
+      label: '项目总数',
+      name: '项目',
+      value: count.total,
+      unit: '个项目',
+      icon: <FolderOpen />,
+      target: 'overview',
+    },
+    {
+      label: '施工中的项目',
+      name: '施工中',
+      value: count.ongoing,
+      unit: '正在推进',
+      icon: <CalendarDays />,
+      target: 'overview',
+    },
+    {
+      label: '今日待办',
+      name: '今日待办',
+      value: count.todos,
+      unit: '条待处理',
+      icon: <ClipboardList />,
+      target: 'reminders',
+    },
+    {
+      label: '未来 15 天采购',
+      name: '15天采购',
+      value: count.upcoming,
+      unit: '项需提前准备',
+      icon: <Package />,
+      target: 'reminders',
+    },
+    {
+      label: '已逾期采购',
+      name: '逾期采购',
+      value: count.overduePurchases,
+      unit: '项需要关注',
+      icon: <TriangleAlert />,
+      target: 'reminders',
+    },
+  ] as const;
+  function selectMetric(s: (typeof workspaceMetrics)[number]) {
+    go(s.target);
+    if (s.label === '项目总数') setShowAllProjects(true);
+    setProjectStatusFilter(s.label === '施工中的项目');
+    if (s.target === 'reminders') setMetricFilter(s.label);
+  }
+  const compactPage = view === 'overview' || view === 'purchases';
   const procurement = procurementView(data, view === 'purchases' ? undefined : p?.id, now);
   const agenda = categorizedAgenda(agendaData, recordSource.records, p?.id, now);
   useLayoutEffect(() => {
@@ -1175,10 +1225,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 </div>
               )}
               <div
-                className={`page-heading workbench-page-heading ${view === 'records' ? 'board-page-heading' : ''}`}
+                className={`page-heading workbench-page-heading ${view === 'records' ? 'board-page-heading' : ''} ${compactPage ? 'compact-page-heading' : ''}`}
               >
                 <div>
-                  <div className="eyebrow">RENOVATION WORKSPACE</div>
+                  {!compactPage && <div className="eyebrow">RENOVATION WORKSPACE</div>}
                   <h1>
                     {view === 'records'
                       ? '事项管理'
@@ -1194,19 +1244,25 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                                 ? '人员管理'
                                 : '项目提醒中心'}
                   </h1>
-                  <p>
-                    {view === 'records'
-                      ? '围绕项目，记录节点、现场进展与每一次跟进。'
-                      : view === 'overview'
-                        ? '工期有序，细节有据。从设计到落地，悉心照料每一个家。'
+                  {compactPage ? (
+                    <CompactStats
+                      items={workspaceMetrics.map((s) => ({
+                        ...s,
+                        attention: s.label === '已逾期采购' && s.value > 0,
+                        onClick: () => selectMetric(s),
+                      }))}
+                    />
+                  ) : (
+                    <p>
+                      {view === 'records'
+                        ? '围绕项目，记录节点、现场进展与每一次跟进。'
                         : view === 'schedule'
                           ? '以清晰的时间线，串联每一道施工工序。'
-                          : view === 'purchases'
-                            ? '把材料安排在施工之前，让进度从容向前。'
-                            : view === 'people'
-                              ? '统一管理人员档案与项目分配。'
-                              : '及时关注待办与风险，让计划保持在轨道上。'}
-                  </p>
+                          : view === 'people'
+                            ? '统一管理人员档案与项目分配。'
+                            : '及时关注待办与风险，让计划保持在轨道上。'}
+                    </p>
+                  )}
                 </div>
                 <div className="heading-actions">
                   {(view === 'overview' || view === 'completed') && (
@@ -1238,69 +1294,24 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                   )}
                 </div>
               </div>
-              <div
-                className="stats-grid ui-module-group"
-                hidden={view === 'people' || view === 'records'}
-              >
-                {(
-                  [
-                    {
-                      label: '项目总数',
-                      value: count.total,
-                      unit: '个项目',
-                      icon: <FolderOpen />,
-                      target: 'overview',
-                    },
-                    {
-                      label: '施工中的项目',
-                      value: count.ongoing,
-                      unit: '正在推进',
-                      icon: <CalendarDays />,
-                      target: 'overview',
-                    },
-                    {
-                      label: '今日待办',
-                      value: count.todos,
-                      unit: '条待处理',
-                      icon: <ClipboardList />,
-                      target: 'reminders',
-                    },
-                    {
-                      label: '未来 15 天采购',
-                      value: count.upcoming,
-                      unit: '项需提前准备',
-                      icon: <Package />,
-                      target: 'reminders',
-                    },
-                    {
-                      label: '已逾期采购',
-                      value: count.overduePurchases,
-                      unit: '项需要关注',
-                      icon: <TriangleAlert />,
-                      target: 'reminders',
-                    },
-                  ] as const
-                ).map((s, i) => (
-                  <button
-                    key={s.label}
-                    className={`stat-card ${i >= 4 && s.value > 0 ? 'attention' : ''}`}
-                    onClick={() => {
-                      go(s.target);
-                      if (s.label === '项目总数') setShowAllProjects(true);
-                      if (s.label === '施工中的项目') setProjectStatusFilter(true);
-                      else setProjectStatusFilter(false);
-                      if (s.target === 'reminders') setMetricFilter(s.label);
-                    }}
-                  >
-                    <div>
-                      <span>{s.label}</span>
-                      {s.icon}
-                    </div>
-                    <strong>{s.value > 0 ? s.value : '暂无'}</strong>
-                    <small>{s.unit}</small>
-                  </button>
-                ))}
-              </div>
+              {!compactPage && view !== 'people' && view !== 'records' && (
+                <div className="stats-grid ui-module-group">
+                  {workspaceMetrics.map((s, i) => (
+                    <button
+                      key={s.label}
+                      className={`stat-card ${i >= 4 && s.value > 0 ? 'attention' : ''}`}
+                      onClick={() => selectMetric(s)}
+                    >
+                      <div>
+                        <span>{s.label}</span>
+                        {s.icon}
+                      </div>
+                      <strong>{s.value > 0 ? s.value : '暂无'}</strong>
+                      <small>{s.unit}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
               {!ready && !error ? (
                 <div className="loading">
                   <Loader2 className="spin" />

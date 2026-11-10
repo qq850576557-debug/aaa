@@ -2,7 +2,7 @@ import { mobileRequested } from './mode';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Camera, ClipboardList, ShoppingCart, Home } from 'lucide-react';
 import type { Data, Purchase } from '../lib/model';
-import { plus } from '../lib/model';
+import { plus, purchaseStatuses } from '../lib/model';
 import type { WorkRecord } from '../lib/records';
 import { cloudApi, type CloudUser } from '../lib/cloud';
 import { categorizedAgenda, type AgendaItem } from '../lib/agenda';
@@ -12,6 +12,7 @@ import { Modal } from '../components/Modal';
 import { SaveFeedback } from '../components/SaveFeedback';
 import { syncPhotos } from '../lib/photo-queue';
 import './mobile.css';
+import '../components/purchase-status.css';
 const Photos = lazy(() => import('./PhotoAssistant').then((m) => ({ default: m.PhotoAssistant })));
 export function MobileAssistant({
   data,
@@ -118,7 +119,11 @@ export function MobileAssistant({
   };
   const name = (id: string) => data.projects.find((p) => p.id === id)?.name || '历史工地';
   const row = (i: AgendaItem) => (
-    <article key={i.kind + ':' + i.id} className={`mobile-work-row ${i.done ? 'done' : ''}`}>
+    <article
+      key={i.kind + ':' + i.id}
+      className={`mobile-work-row ${i.done ? 'done' : ''}`}
+      data-purchase-status={i.kind === 'purchase' ? i.status : undefined}
+    >
       <button className="mobile-work-main" onClick={() => handleOpen(i)}>
         <strong>{i.title}</strong>
         <span>{name(i.projectId)}</span>
@@ -137,8 +142,10 @@ export function MobileAssistant({
               onPurchaseStatus(i.value as Purchase, e.target.value as Purchase['status'])
             }
           >
-            {['待采购', '已下单', '已到货', '已完成'].map((s) => (
-              <option key={s}>{s}</option>
+            {purchaseStatuses.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
             ))}
           </select>
         ) : (

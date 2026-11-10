@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react';
 import type { AgendaItem as Item } from '../lib/agenda';
 import { ProjectSurface } from './ProjectThemes';
+import './purchase-status.css';
 export function AgendaItem({
   item,
   projectName,
@@ -24,7 +25,11 @@ export function AgendaItem({
 }) {
   const category = item.kind === 'purchase' ? '采购' : '事项';
   return (
-    <ProjectSurface projectId={item.projectId} className={`agenda-item ${item.done ? 'done' : ''}`}>
+    <ProjectSurface
+      projectId={item.projectId}
+      className={`agenda-item ${item.done ? 'done' : ''}`}
+      data-purchase-status={item.kind === 'purchase' ? item.status : undefined}
+    >
       <button
         className="agenda-item-main"
         disabled={busy}
