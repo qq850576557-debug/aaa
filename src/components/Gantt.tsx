@@ -35,6 +35,7 @@ interface Props {
   records?: WorkRecord[];
   pending?: boolean;
   project: Project;
+  businessDate?: string;
   onTask: (task?: Task, trade?: Trade, start?: string, end?: string, anchor?: Anchor) => void;
   onDay: (date: string) => void;
   onQuickCreate: (trade: Trade, date: string) => void;
@@ -59,6 +60,7 @@ export function Gantt({
   records = [],
   pending = false,
   project,
+  businessDate = today(),
   onTask,
   onQuickCreate,
   onDay,
@@ -70,7 +72,7 @@ export function Gantt({
   onReorder,
   onColor,
 }: Props) {
-  const entries = categorizedAgenda(data, records, project.id, today()).items;
+  const entries = categorizedAgenda(data, records, project.id, businessDate).items;
   const [hover, setHover] = useState<{ date: string; x: number; y: number; open: boolean } | null>(
     null,
   );
@@ -108,7 +110,7 @@ export function Gantt({
     return () => media.removeEventListener('change', update);
   }, []);
   const laneHeight = touchLayout ? 48 : LANE;
-  const [locateDate, setLocateDate] = useState(today());
+  const [locateDate, setLocateDate] = useState(businessDate);
   const [start, end] = timelineRange(data, project);
   const total = duration(start, end);
   const [visible, setVisible] = useState({ first: 0, last: 30 });
@@ -152,7 +154,7 @@ export function Gantt({
       const target =
         viewedDate.current && viewedDate.current >= start && viewedDate.current <= end
           ? viewedDate.current
-          : today();
+          : businessDate;
       el.scrollLeft = Math.max(0, distance(start, target) * CELL - (viewedDate.current ? 0 : CELL));
       rangeKey.current = key;
     }
@@ -393,7 +395,7 @@ export function Gantt({
     }
   }
   function jumpToday() {
-    const i = distance(start, today());
+    const i = distance(start, businessDate);
     if (i >= 0 && i < total)
       scroller.current?.scrollTo({ left: Math.max(0, i * CELL - 200), behavior: 'smooth' });
   }
@@ -450,7 +452,7 @@ export function Gantt({
             }}
           />
           <button onClick={onExport}>导出施工工期长图</button>
-          <button onClick={jumpToday} disabled={today() < start || today() > end}>
+          <button onClick={jumpToday} disabled={businessDate < start || businessDate > end}>
             今天
           </button>
           <button className="primary" onClick={() => onTask()} disabled={!trades.length}>
@@ -496,7 +498,7 @@ export function Gantt({
                   <button
                     key={date}
                     aria-label={`查看 ${date} 事项`}
-                    className={`date-cell ${['六', '日'].includes(weekday(date)) ? 'weekend' : ''} ${date === today() ? 'today' : ''}`}
+                    className={`date-cell ${['六', '日'].includes(weekday(date)) ? 'weekend' : ''} ${date === businessDate ? 'today' : ''}`}
                     onClick={() => {
                       setHover(null);
                       onDay(date);
@@ -674,7 +676,7 @@ export function Gantt({
                         key={date}
                         data-date={date}
                         data-index={i + first}
-                        className={`track-cell ${['六', '日'].includes(weekday(date)) ? 'weekend' : ''} ${date === today() ? 'today' : ''}`}
+                        className={`track-cell ${['六', '日'].includes(weekday(date)) ? 'weekend' : ''} ${date === businessDate ? 'today' : ''}`}
                         onClick={() => pendingDay(date)}
                         onDoubleClick={() => {
                           clearClick();
@@ -711,7 +713,7 @@ export function Gantt({
                             data-resizing={drag?.task.id === t.id ? drag.mode : undefined}
                             title={`${original.members.length > 1 ? `合并显示 ${original.members.length} 段（原始记录见任务详情） · ` : ''}${t.name} · ${t.start} — ${t.end}${data.tasks.filter((x) => (x.groupId ?? x.id) === (t.groupId ?? t.id)).length > 1 ? ' · 同任务多段' : ''}`}
                             aria-label={`${t.name}，${t.start} 至 ${t.end}，${duration(t.start, t.end)} 天`}
-                            className={`task-bar ${drag?.task.id === t.id ? 'dragging' : ''} ${t.status === '已完成' ? 'completed' : ''} ${t.start <= today() && t.end >= today() && t.status !== '已完成' ? 'working-today' : ''}`}
+                            className={`task-bar ${drag?.task.id === t.id ? 'dragging' : ''} ${t.status === '已完成' ? 'completed' : ''} ${t.start <= businessDate && t.end >= businessDate && t.status !== '已完成' ? 'working-today' : ''}`}
                             style={{
                               left: distance(start, t.start) * CELL + 4,
                               width: duration(t.start, t.end) * CELL - 8,

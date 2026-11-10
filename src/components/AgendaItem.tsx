@@ -28,6 +28,9 @@ export function AgendaItem({
     <ProjectSurface
       projectId={item.projectId}
       className={`agenda-item ${item.done ? 'done' : ''}`}
+      data-agenda-id={item.id}
+      data-agenda-kind={item.kind}
+      data-agenda-project={item.projectId}
       data-purchase-status={item.kind === 'purchase' ? item.status : undefined}
     >
       <button

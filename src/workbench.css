@@ -3763,3 +3763,46 @@ textarea::placeholder {
   margin-left: auto;
   min-width: 0;
 }
+.app-shell .overview-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px;
+  margin: 0 0 14px;
+}
+.app-shell .overview-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 74px;
+  padding: 9px 13px;
+  border: 1px solid #dce5dc;
+  border-radius: 10px;
+  background: #f7f9f5;
+  color: #5c7262;
+  font-size: 13px;
+  line-height: 20px;
+}
+.app-shell .overview-stat strong {
+  color: #315b49;
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.app-shell .overview-stat.attention {
+  border-color: #e6cfb7;
+  background: #fcf3e8;
+  color: #946637;
+}
+.app-shell .overview-stat.attention strong {
+  color: #985d32;
+}
+@media (max-width: 1000px) {
+  .app-shell .overview-stats {
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  }
+}

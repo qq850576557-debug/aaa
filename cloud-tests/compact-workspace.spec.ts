@@ -47,6 +47,7 @@ async function setup(page: Page) {
   }));
   await api(page, '/workspace', 'PUT', { revision: 0, data });
   await page.reload();
+  await page.locator('.project-card[data-project-id="p-home"] .project-select').click();
   await expect(page.locator('.compact-stats')).toBeVisible();
   return data;
 }

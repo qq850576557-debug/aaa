@@ -29,6 +29,7 @@ async function seed(p: Page) {
   const d = fixture();
   expect((await api(p, '/workspace', 'PUT', { revision: 0, data: d })).status).toBe(200);
   await p.reload();
+  await p.locator('.project-card[data-project-id="p-home"] .project-select').click();
   await expect(p.locator('.task-bar').first()).toBeVisible();
   return d;
 }
@@ -328,6 +329,7 @@ test('one record acknowledgement cannot announce cloud saved while an unrelated 
     await page.getByRole('button', { name: '保存记录', exact: true }).click();
     await expect(page.locator('.record-drawer')).toHaveCount(0);
     await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
+    await page.locator('.project-card[data-project-id="p-home"] .project-select').click();
     await page.getByRole('button', { name: '编辑当前项目', exact: true }).click();
     await page
       .getByRole('dialog', { name: '编辑项目', exact: true })

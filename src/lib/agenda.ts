@@ -1,4 +1,4 @@
-import { noteDue, plus, type Data, type Note } from './model';
+import { noteDue, plus, isHistorical, projectStatus, type Data, type Note } from './model';
 
 /** Views of the same saved notes: changing the calendar never duplicates a record. */
 export function projectAgenda(data: Data, projectId: string | undefined, date: string) {
@@ -83,18 +83,36 @@ export function categorizedAgenda(
         value: n,
       })),
   ];
-  const order = (a: AgendaItem, b: AgendaItem) =>
-    Number(a.done) - Number(b.done) ||
-    Number(b.kind === 'legacy' && b.value.pinned) - Number(a.kind === 'legacy' && a.value.pinned) ||
-    a.date.localeCompare(b.date) ||
-    a.kind.localeCompare(b.kind) ||
-    a.id.localeCompare(b.id);
+  return dailyAgenda(items, date);
+}
+const agendaOrder = (a: AgendaItem, b: AgendaItem) =>
+  Number(a.done) - Number(b.done) ||
+  Number(b.kind === 'legacy' && b.value.pinned) - Number(a.kind === 'legacy' && a.value.pinned) ||
+  a.date.localeCompare(b.date) ||
+  a.kind.localeCompare(b.kind) ||
+  a.id.localeCompare(b.id);
+function dailyAgenda(items: AgendaItem[], date: string) {
   const tomorrowDate = plus(date, 1);
   return {
-    items: items.sort(order),
+    items: items.sort(agendaOrder),
     date,
     tomorrowDate,
-    today: items.filter((x) => x.date && (x.done ? x.date === date : x.date <= date)).sort(order),
-    tomorrow: items.filter((x) => x.date === tomorrowDate).sort(order),
+    today: items
+      .filter((x) => x.date && (x.done ? x.date === date : x.date <= date))
+      .sort(agendaOrder),
+    tomorrow: items.filter((x) => x.date === tomorrowDate).sort(agendaOrder),
   };
+}
+/** A projection of the same saved records: only ongoing sites enter the default home. */
+export function workspaceAgenda(
+  data: Data,
+  records: WorkRecord[],
+  projectId: string | undefined,
+  date: string,
+) {
+  if (projectId) return categorizedAgenda(data, records, projectId, date);
+  const items = data.projects
+    .filter((p) => !isHistorical(p) && projectStatus(p.status) === '施工中')
+    .flatMap((p) => categorizedAgenda(data, records, p.id, date).items);
+  return dailyAgenda(items, date);
 }

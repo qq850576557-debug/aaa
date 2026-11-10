@@ -154,6 +154,11 @@ export async function restore(page: Page, d = fixture()) {
   await expect(page.getByRole('heading', { name: '覆盖当前全部项目数据？' })).toBeVisible();
   await page.getByRole('button', { name: '确认操作', exact: true }).click();
   await expect.poll(async () => (await state(page))?.projects.length).toBe(d.projects.length);
+  // Timeline cases enter a site explicitly; the product's default remains all-site overview.
+  if (d.projects[0] && (await page.locator('.sidebar').isVisible()))
+    await page
+      .locator(`.project-card[data-project-id="${d.projects[0].id}"] .project-select`)
+      .click();
 }
 export async function closeToast(page: Page) {
   for (const b of await page.getByRole('button', { name: '关闭提示' }).all())

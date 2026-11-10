@@ -15,7 +15,10 @@ import { WorkspaceSaveConflict } from './components/WorkspaceSaveConflict';
 import { DeferredPanel } from './components/ModuleBoundary';
 import { BriefPanel } from './components/BriefPanel';
 import { ProjectContext } from './components/ProjectContext';
-import { categorizedAgenda, type AgendaItem as AgendaEntry } from './lib/agenda';
+import { categorizedAgenda, workspaceAgenda, type AgendaItem as AgendaEntry } from './lib/agenda';
+import { workspaceStats } from './lib/workspace-stats';
+import { useWorkspaceNavigation } from './lib/useWorkspaceNavigation';
+import type { WorkspaceView } from './lib/workspace-navigation';
 import { AgendaItem } from './components/AgendaItem';
 import { useWorkRecords } from './lib/useWorkRecords';
 import type { WorkRecord } from './lib/records';
@@ -62,7 +65,6 @@ import { CompactStats } from './components/CompactStats';
 import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
 import { HistoryPanel } from './components/HistoryPanel';
 import { GLOBAL_SCOPE, workspaceContent, parseArchive, type History } from './lib/history';
-import { useCurrentDate } from './lib/useCurrentDate';
 import { savePurchase, confirmPurchaseDeadline } from './lib/procurement';
 import { Gantt } from './components/Gantt';
 import { ProjectCards } from './components/ProjectCards';
@@ -99,7 +101,6 @@ import {
   noteDue,
   remainingTime,
   removeProject,
-  stats,
   type Data,
   type Project,
   type Trade,
@@ -108,8 +109,7 @@ import {
   type Purchase,
 } from './lib/model';
 
-type View =
-  'overview' | 'schedule' | 'purchases' | 'reminders' | 'completed' | 'people' | 'records';
+type View = WorkspaceView;
 type Confirmation = { title: string; message: string; run: () => void; danger?: boolean };
 const navigation: [View, string, ReactNode][] = [
   ['overview', '项目工作空间', <LayoutDashboard size={19} />],
@@ -178,26 +178,16 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       return !v;
     });
   }
-  const now = useCurrentDate();
-  const mobileNow = useShanghaiDay();
+  const now = useShanghaiDay();
+  const mobileNow = now;
   const [deadlineChange, setDeadlineChange] = useState<string | null>(null);
   const [scheduleProposal, setScheduleProposal] = useState<ScheduleProposal | null>(null);
 
   const [colorEdit, setColorEdit] = useState<{ id: string; anchor: Anchor } | null>(null);
-  const [selected, setSelected] = useState('');
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
-  const pendingScroll = useRef<number | null>(null);
   function selectProject(id: string) {
-    pendingScroll.current = window.scrollY;
-    setSelected(id);
-    setProjectPickerOpen(false);
+    if (data.projects.some((p) => p.id === id)) navigate({ view: 'overview', projectId: id });
   }
-  useLayoutEffect(() => {
-    if (pendingScroll.current !== null) {
-      window.scrollTo(0, pendingScroll.current);
-      pendingScroll.current = null;
-    }
-  }, [selected]);
   const [mobile, setMobile] = useState(mobileRequested);
   useEffect(() => {
     const mq = matchMedia(MOBILE_QUERY);
@@ -205,11 +195,38 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     mq.addEventListener('change', change);
     return () => mq.removeEventListener('change', change);
   }, []);
-  const [view, setView] = useState<View>('overview');
+  const { route, navigate } = useWorkspaceNavigation(
+    !mobile,
+    (resume) => {
+      if (
+        !window.dispatchEvent(
+          new CustomEvent('chunmo-before-navigation', { cancelable: true, detail: { resume } }),
+        )
+      )
+        return false;
+      if (edit || agendaEntry || focusedRecord || document.querySelector('dialog[open]')) {
+        notify('请先保存或关闭当前编辑窗口，再切换页面');
+        return false;
+      }
+      return true;
+    },
+    (next) => {
+      setArchived(next.view === 'completed');
+      setSearch('');
+      setOnlyOpen(false);
+      setDay(null);
+      setMetricFilter(next.metric || '');
+      setShowAllProjects(next.projects === 'all');
+      setProjectStatusFilter(next.projects === 'ongoing');
+      setProjectPickerOpen(false);
+    },
+  );
+  const view = route.view,
+    selected = route.projectId;
   const [edit, setEdit] = useState<Edit | null>(null);
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [day, setDay] = useState<string | null>(null);
-  const [archived, setArchived] = useState(false);
+  const [archived, setArchived] = useState(route.view === 'completed');
   const [search, setSearch] = useState('');
   const [agendaEntry, setAgendaEntry] = useState<AgendaEntryRequest | null>(null);
   const [legacyOpen, setLegacyOpen] = useState(false);
@@ -220,9 +237,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       ready &&
       (mobile || ['overview', 'schedule', 'completed', 'records', 'reminders'].includes(view)),
   );
-  const [metricFilter, setMetricFilter] = useState('');
-  const [projectStatusFilter, setProjectStatusFilter] = useState(false);
-  const [showAllProjects, setShowAllProjects] = useState(false);
+  const [metricFilter, setMetricFilter] = useState(route.metric || '');
+  const [projectStatusFilter, setProjectStatusFilter] = useState(route.projects === 'ongoing');
+  const [showAllProjects, setShowAllProjects] = useState(route.projects === 'all');
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [purchaseProject, setPurchaseProject] = useState('');
   const { notices, notify, dismiss } = useNotices();
@@ -252,12 +269,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       const target = (
         event as CustomEvent<{ kind: 'purchase' | 'record'; value: Purchase | WorkRecord }>
       ).detail;
-      setSelected(target.value.projectId);
       if (target.kind === 'purchase') {
-        setView('purchases');
+        navigate({ view: 'purchases', projectId: '' }, { guard: false });
         setEdit({ kind: 'purchase', value: target.value as Purchase });
       } else {
-        setView('records');
+        navigate({ view: 'records', projectId: '' }, { guard: false });
         recordSource.accept(target.value as WorkRecord);
         recordDirty.current = false;
         setFocusedRecord(target.value as WorkRecord);
@@ -272,15 +288,20 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [restoreVersions, setRestoreVersions] = useState<History | undefined>(undefined);
   const [restoreError, setRestoreError] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const explicitProject = data.projects.find((project) => project.id === selected);
+  const projectsArchived =
+    view === 'overview' && explicitProject ? isHistorical(explicitProject) : archived;
   const projects = data.projects.filter(
     (p) =>
-      (view === 'purchases' ||
-        view === 'records' ||
-        showAllProjects ||
-        isHistorical(p) === archived) &&
+      (showAllProjects || isHistorical(p) === projectsArchived) &&
       (!projectStatusFilter || projectStatus(p.status) === '施工中'),
   );
-  const p = projects.find((p) => p.id === selected) ?? projects[0];
+  const p = explicitProject ?? (view === 'overview' && !mobile ? undefined : projects[0]);
+  const allSitesOverview = view === 'overview' && !selected;
+  useLayoutEffect(() => {
+    if (ready && view === 'overview' && selected && !explicitProject)
+      navigate({ view: 'overview', projectId: '' }, { replace: true, guard: false });
+  }, [ready, view, selected, !!explicitProject]);
   const noteSignature = JSON.stringify(savedData.notes);
   useEffect(() => {
     if (isCloud) window.dispatchEvent(new Event('chunmo-records-changed'));
@@ -289,20 +310,12 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     ...data,
     notes: visibleLegacyNotes(data.notes, savedData.notes, recordSource.legacyLinks),
   };
-  const baseCount = stats(agendaData, now);
-  const count = {
-    ...baseCount,
-    todos:
-      baseCount.todos +
-      recordSource.records.filter(
-        (r) =>
-          !r.deleted &&
-          r.nodeDate &&
-          r.nodeDate <= now &&
-          !['已完成', '已取消'].includes(r.status) &&
-          data.projects.some((project) => project.id === r.projectId && !isHistorical(project)),
-      ).length,
-  };
+  const count = workspaceStats(
+    agendaData,
+    recordSource.records,
+    now,
+    view === 'overview' ? p?.id : undefined,
+  );
   const workspaceMetrics = [
     {
       label: '项目总数',
@@ -346,17 +359,22 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     },
   ] as const;
   function selectMetric(s: (typeof workspaceMetrics)[number]) {
-    go(s.target);
-    if (s.label === '项目总数') setShowAllProjects(true);
-    setProjectStatusFilter(s.label === '施工中的项目');
-    if (s.target === 'reminders') setMetricFilter(s.label);
+    navigate({
+      view: s.target,
+      projectId: s.target === 'reminders' && view === 'overview' ? p?.id || '' : '',
+      ...(s.target === 'reminders' ? { metric: s.label } : {}),
+      ...(s.label === '项目总数'
+        ? { projects: 'all' as const }
+        : s.label === '施工中的项目'
+          ? { projects: 'ongoing' as const }
+          : {}),
+    });
   }
   const compactPage = view === 'overview' || view === 'purchases';
   const procurement = procurementView(data, view === 'purchases' ? undefined : p?.id, now);
-  const agenda = categorizedAgenda(agendaData, recordSource.records, p?.id, now);
-  useLayoutEffect(() => {
-    window.scrollTo(0, 0);
-  }, [view]);
+  const agenda = allSitesOverview
+    ? workspaceAgenda(agendaData, recordSource.records, undefined, now)
+    : categorizedAgenda(agendaData, recordSource.records, p?.id, now);
   const projectTasks = data.tasks.filter((t) => t.projectId === p?.id);
   const projectTrades = data.trades
     .filter((t) => t.projectId === p?.id)
@@ -482,9 +500,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         : next;
     }, pid);
     if (kind === 'project') {
-      setSelected(pid);
-      setArchived(isHistorical(value as Project));
-      setView('overview');
+      navigate({ view: 'overview', projectId: pid }, { guard: false });
     }
   }
   function taskEditor(t?: Task, g?: Trade, start = now, end = start, anchor?: Anchor) {
@@ -526,18 +542,18 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     });
   }
   function noteEditor(n?: Note, date = day ?? now, memo = false) {
-    if (!p) return;
     if (!n && !memo) {
       setDay(null);
-      setAgendaEntry({ projectId: p.id, date, id: id() });
+      setAgendaEntry({ projectId: p?.id || '', date, id: id() });
       return;
     }
+    if (!n && !p) return;
     setDay(null);
     setEdit({
       kind: 'note',
       value: n ?? {
         id: id(),
-        projectId: p.id,
+        projectId: p!.id,
         title: '',
         kind: memo ? '项目备忘' : '施工安排',
         date: memo ? '' : date,
@@ -554,8 +570,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     if (v) {
       const project = data.projects.find((x) => x.id === v.projectId);
       if (!project) return;
-      setSelected(project.id);
-      setArchived(isHistorical(project));
       setProjectStatusFilter(false);
     }
     setDay(null);
@@ -658,7 +672,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       const source = edit.value;
       update((d) => {
         const result = copyProject(d, source);
-        setSelected(result.project.id);
+        navigate({ view: 'overview', projectId: result.project.id }, { guard: false });
         return result.data;
       });
       setEdit(null);
@@ -689,8 +703,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             x.id === p.id ? { ...x, status: historical ? '施工中' : '已完工', archived: false } : x,
           ),
         }));
-        setArchived(!historical);
-        setView(historical ? 'overview' : 'completed');
+        navigate(
+          { view: historical ? 'overview' : 'completed', projectId: p.id },
+          { guard: false },
+        );
         setConfirmation(null);
       },
     });
@@ -760,28 +776,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       />
     );
   }
-  function go(v: View, confirmed = false) {
-    if (
-      !confirmed &&
-      !window.dispatchEvent(
-        new CustomEvent('chunmo-before-navigation', {
-          cancelable: true,
-          detail: { resume: () => go(v, true) },
-        }),
-      )
-    )
-      return;
-    setView(v);
-    if (v === 'completed') {
-      setArchived(true);
-    } else {
-      setArchived(false);
-    }
-    setSearch('');
-    setOnlyOpen(false);
-    setMetricFilter('');
-    setShowAllProjects(false);
-    setProjectStatusFilter(false);
+  function go(v: View) {
+    navigate({ view: v, projectId: '' });
   }
   function agendaItem(item: AgendaEntry) {
     if (item.kind === 'legacy' && ['overview', 'schedule', 'completed'].includes(view))
@@ -860,8 +856,69 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       />
     );
   }
+  function dailyPanels() {
+    return (
+      <div
+        className="workspace-brief agenda-brief ui-module-group"
+        aria-label={allSitesOverview ? '全部在施工工地事项安排' : '当前工地事项安排'}
+      >
+        <BriefPanel
+          key={'today:' + (p?.id || 'all')}
+          title="今日事项"
+          testId="today-panel"
+          id="project-today"
+          className="today-panel"
+          emptyText={
+            recordSource.loading
+              ? '正在读取事项…'
+              : recordSource.error
+                ? '事项读取失败，请重试'
+                : '今日暂无待办事项'
+          }
+          date={agenda.date}
+          items={agenda.today.map(agendaItem)}
+          actions={
+            <>
+              <button className="text-btn" onClick={() => noteEditor()}>
+                <Plus size={14} />
+                添加今日事项
+              </button>
+              <button className="text-btn" onClick={() => go('records')}>
+                全部事项
+                <ArrowRight size={14} />
+              </button>
+            </>
+          }
+        />
+        <BriefPanel
+          key={'tomorrow:' + (p?.id || 'all')}
+          title="明日提醒"
+          testId="tomorrow-panel"
+          id="project-tomorrow"
+          className="tomorrow-panel"
+          emptyText={
+            recordSource.loading
+              ? '正在读取事项…'
+              : recordSource.error
+                ? '事项读取失败，请重试'
+                : '明日暂无安排'
+          }
+          date={agenda.tomorrowDate}
+          items={agenda.tomorrow.map(agendaItem)}
+          actions={
+            <button className="text-btn" onClick={() => noteEditor(undefined, agenda.tomorrowDate)}>
+              <Plus size={14} />
+              添加明日事项
+            </button>
+          }
+        />
+      </div>
+    );
+  }
   function reminderItems() {
-    const active = data.projects.filter((p) => !isHistorical(p));
+    const active = data.projects.filter(
+      (p) => !isHistorical(p) && (!metricFilter || !selected || p.id === selected),
+    );
     const items = active.flatMap(
       (project) => categorizedAgenda(agendaData, recordSource.records, project.id, now).items,
     );
@@ -877,7 +934,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
               ? x.date >= now
               : x.date <= now)),
     );
-    const records = data.projects.flatMap((project) =>
+    const records = (metricFilter && selected ? active : data.projects).flatMap((project) =>
       categorizedAgenda(agendaData, recordSource.records, project.id, now).items.filter(
         (x) => x.kind === 'record' && !x.done && !!x.date && x.date <= plus(now, 15),
       ),
@@ -1034,9 +1091,6 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 <span className="brand-slogan">{BRAND_SLOGAN}</span>
               </div>
             </a>
-            <div className="sidebar-section">
-              工作空间 <span>WORKSPACE</span>
-            </div>
             <nav>
               <div className="workspace-nav-heading">
                 <button
@@ -1097,12 +1151,16 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
               </button>
               <div className="sidebar-project-list">
                 <div className="sidebar-section">
-                  {archived ? '已完工项目' : '当前项目'} <span>{projects.length}</span>
+                  {projectsArchived ? '已完工项目' : '当前项目'} <span>{projects.length}</span>
                 </div>
                 <ProjectCards
                   data={data}
                   projects={projects}
-                  selected={p?.id ?? ''}
+                  selected={
+                    view === 'overview' || view === 'completed' || view === 'schedule'
+                      ? explicitProject?.id || ''
+                      : ''
+                  }
                   onSelect={selectProject}
                   onEdit={(project) => setEdit({ kind: 'project', value: project })}
                   onReorder={(source, before) =>
@@ -1247,13 +1305,16 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                                 : '项目提醒中心'}
                   </h1>
                   {compactPage ? (
-                    <CompactStats
-                      items={workspaceMetrics.map((s) => ({
-                        ...s,
-                        attention: s.label === '已逾期采购' && s.value > 0,
-                        onClick: () => selectMetric(s),
-                      }))}
-                    />
+                    !allSitesOverview && (
+                      <CompactStats
+                        scope={view === 'overview' ? '当前工地统计' : '工作空间统计'}
+                        items={workspaceMetrics.map((s) => ({
+                          ...s,
+                          attention: s.label === '已逾期采购' && s.value > 0,
+                          onClick: () => selectMetric(s),
+                        }))}
+                      />
+                    )
                   ) : (
                     <p>
                       {view === 'records'
@@ -1296,6 +1357,17 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                   )}
                 </div>
               </div>
+              {allSitesOverview && (
+                <CompactStats
+                  layout="cards"
+                  scope="全部工地统计"
+                  items={workspaceMetrics.map((s) => ({
+                    ...s,
+                    attention: s.label === '已逾期采购' && s.value > 0,
+                    onClick: () => selectMetric(s),
+                  }))}
+                />
+              )}
               {!compactPage && view !== 'people' && view !== 'records' && (
                 <div className="stats-grid ui-module-group">
                   {workspaceMetrics.map((s, i) => (
@@ -1340,6 +1412,16 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                     onChange={(fn) => mutate(fn)}
                   />
                 </DeferredPanel>
+              ) : allSitesOverview ? (
+                <>
+                  {recordSource.error && (
+                    <div className="error-banner" role="alert">
+                      事项读取或保存失败：{recordSource.error}
+                      <button onClick={() => void recordSource.load()}>重新读取事项</button>
+                    </div>
+                  )}
+                  {dailyPanels()}
+                </>
               ) : (
                 <>
                   {projectStatusFilter && (
@@ -1397,66 +1479,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                           <button onClick={() => void recordSource.load()}>重新读取事项</button>
                         </div>
                       )}
-                      {(view === 'overview' || view === 'schedule' || view === 'completed') && (
-                        <div
-                          className="workspace-brief agenda-brief ui-module-group"
-                          aria-label="当前工地事项安排"
-                        >
-                          <BriefPanel
-                            key={'today' + p.id}
-                            title="今日事项"
-                            testId="today-panel"
-                            id="project-today"
-                            className="today-panel"
-                            emptyText={
-                              recordSource.loading
-                                ? '正在读取事项…'
-                                : recordSource.error
-                                  ? '事项读取失败，请重试'
-                                  : '今日暂无待办事项'
-                            }
-                            date={agenda.date}
-                            items={agenda.today.map(agendaItem)}
-                            actions={
-                              <>
-                                <button className="text-btn" onClick={() => noteEditor()}>
-                                  <Plus size={14} />
-                                  添加今日事项
-                                </button>
-                                <button className="text-btn" onClick={() => go('records')}>
-                                  全部事项
-                                  <ArrowRight size={14} />
-                                </button>
-                              </>
-                            }
-                          />
-                          <BriefPanel
-                            key={'tomorrow' + p.id}
-                            title="明日提醒"
-                            testId="tomorrow-panel"
-                            id="project-tomorrow"
-                            className="tomorrow-panel"
-                            emptyText={
-                              recordSource.loading
-                                ? '正在读取事项…'
-                                : recordSource.error
-                                  ? '事项读取失败，请重试'
-                                  : '明日暂无安排'
-                            }
-                            date={agenda.tomorrowDate}
-                            items={agenda.tomorrow.map(agendaItem)}
-                            actions={
-                              <button
-                                className="text-btn"
-                                onClick={() => noteEditor(undefined, agenda.tomorrowDate)}
-                              >
-                                <Plus size={14} />
-                                添加明日事项
-                              </button>
-                            }
-                          />
-                        </div>
-                      )}
+                      {(view === 'overview' || view === 'schedule' || view === 'completed') &&
+                        dailyPanels()}
                       {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                         <p className="schedule-forecast" role="status">
                           {scheduleForecast(data, p).label} · 工期按自然日计算
@@ -1464,6 +1488,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                       )}
                       {(view === 'overview' || view === 'schedule' || view === 'completed') && (
                         <Gantt
+                          businessDate={now}
                           pending={isCloud && hasUnsavedChanges}
                           data={agendaData}
                           records={recordSource.records}
@@ -1895,9 +1920,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             update(() => restore, { history: restoreVersions, source: 'JSON备份恢复' });
             setRestore(null);
             setBackup(false);
-            setSelected('');
+            navigate({ view: 'overview', projectId: '' }, { guard: false });
             setArchived(false);
-            setView('overview');
             businessUndo.reset();
             notify('备份已载入，正在保存到当前浏览器。');
           }}
