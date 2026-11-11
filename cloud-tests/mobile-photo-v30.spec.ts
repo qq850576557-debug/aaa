@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { writeFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
+import { readFile, writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 import { fixtureAccounts } from '../server/test-fixtures';
 import { signPlace } from '../server/photo-geocode';
@@ -84,13 +83,15 @@ async function data(page: Page, bytes = false) {
       r.onsuccess = () => resolve(r.result);
     });
     d.close();
-    return rows.map((r) => ({
-      meta: r.meta,
-      ready: !!r.output,
-      original: !!r.original,
-      error: r.error,
-      bytes: want && r.output ? Array.from(new Uint8Array(r.output)) : [],
-    }));
+    return rows
+      .sort((a, b) => a.meta.capturedAt.localeCompare(b.meta.capturedAt))
+      .map((r) => ({
+        meta: r.meta,
+        ready: !!r.output,
+        original: !!r.original,
+        error: r.error,
+        bytes: want && r.output ? Array.from(new Uint8Array(r.output)) : [],
+      }));
   }, bytes);
 }
 async function still(page: Page, valid = true) {
@@ -159,7 +160,7 @@ test('12MP output preserves full pixels; prepared save invokes active multi-file
   expect(await page.evaluate(() => (window as any).shares.length)).toBe(0);
   await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
   await expect(page.locator('.photo-immersive')).toHaveCount(0);
-  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+  await page.getByRole('button', { name: /^保存选中照片（\d+张）$/ }).click();
   const shares = await page.evaluate(() => (window as any).shares);
   expect(shares[0].active).toBe(true);
   expect(shares[0].files.length).toBe(2);
@@ -180,7 +181,9 @@ test('12MP output preserves full pixels; prepared save invokes active multi-file
   expect(rows[0].meta.captureMethod).toBe('image-capture');
   expect(Buffer.from(rows[0].bytes).toString()).toContain('amap-poi-selected');
   expect(uploads).toEqual([]);
-  await page.getByRole('button', { name: '已确认导出，清理副本' }).click();
+  expect((await data(page)).length).toBe(2);
+  page.once('dialog', (d) => void d.accept());
+  await page.getByRole('button', { name: '删除选中照片' }).click();
   expect((await data(page)).length).toBe(0);
 });
 for (const count of [10, 20])
@@ -247,8 +250,18 @@ for (const count of [10, 20])
       ),
     ).toBe(true);
     await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
-    await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+    await expect(page.locator('.photo-review-tile')).toHaveCount(count);
+    await page.getByRole('button', { name: '选择第2张照片', exact: true }).click();
+    await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toHaveText(
+      `保存选中照片（${count - 1}张）`,
+    );
+    await page.getByRole('button', { name: /^保存选中照片（\d+张）$/ }).click();
     await expect(page.locator('.quick-photo')).toContainText('已取消');
+    expect(await page.evaluate(() => (window as any).shares[0].files.length)).toBe(count - 1);
+    await expect(page.getByRole('button', { name: '选择第2张照片', exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
     expect((await data(page)).length).toBe(count);
     const timing = await page.evaluate(() =>
       performance
@@ -257,7 +270,7 @@ for (const count of [10, 20])
         .map((e) => ({ name: e.name, ms: e.duration, detail: (e as PerformanceMeasure).detail })),
     );
     await writeFile(
-      `/tmp/chunmo-v30-performance-${count}.json`,
+      `/tmp/chunmo-v32-performance-${count}.json`,
       JSON.stringify(
         {
           environment: 'Linux Chromium fake camera/GPS and share stub; not real iPhone',
@@ -291,7 +304,7 @@ test('rendering failure keeps unique original, blocks unsafe finish and offers r
   const row = (await data(page))[0];
   expect(row.original).toBe(true);
   expect(row.meta.placeSource).toBe('amap-poi-selected');
-  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeDisabled();
 });
 test('GPS denial never initializes a camera', async ({ page, context }) => {
   await setup(page, context);
@@ -332,10 +345,12 @@ test('quota failure retains bytes, retries durable save, unsupported share expor
   await page.evaluate(() =>
     Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false }),
   );
-  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
-  await expect(page.locator('.quick-photo')).toContainText('不支持此批图片分享');
-  await page.getByRole('button', { name: '分享不可用，逐张导出' }).click();
-  await expect(page.getByAltText('本次照片导出')).toBeVisible();
+  await page.getByRole('button', { name: /^保存选中照片（\d+张）$/ }).click();
+  await expect(page.locator('.quick-photo')).toContainText('当前浏览器不支持批量保存，请逐张保存');
+  const saved = page.waitForEvent('download');
+  await page.getByRole('button', { name: '保存第1张照片' }).click();
+  const download = await saved;
+  expect((await sharp((await download.path())!).metadata()).width).toBe(4000);
   expect(page.url()).not.toContain('blob:');
   expect((await data(page)).length).toBe(1);
 });
@@ -410,7 +425,7 @@ for (const code of ['NotAllowedError', 'DataError', 'TypeError', 'AbortError'])
     await open(page);
     await page.locator('.camera-shutter').click();
     await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
-    await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled();
+    await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeEnabled();
     await page.evaluate(
       (name) =>
         Object.defineProperty(navigator, 'share', {
@@ -422,56 +437,68 @@ for (const code of ['NotAllowedError', 'DataError', 'TypeError', 'AbortError'])
         }),
       code,
     );
-    await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+    await page.getByRole('button', { name: /^保存选中照片（\d+张）$/ }).click();
     await expect(page.locator('.quick-photo')).toContainText(code);
     expect(await page.evaluate(() => (window as any).shareActive)).toBe(true);
     expect((await data(page)).length).toBe(1);
     await expect(page.getByRole('button', { name: '已确认导出，清理副本' })).toHaveCount(0);
+    await expect(page.getByLabel('全选照片')).toBeChecked();
   });
-test('Android unsupported multi-file share builds one complete ZIP, downloads once and retains photos until explicit confirmation', async ({
+test('three-column watermarked thumbnails support select all, multi-select and full-size single download without ZIP', async ({
   page,
   context,
 }) => {
   await setup(page, context);
   await still(page);
   await open(page);
-  for (let i = 1; i <= 2; i++) {
+  for (let i = 1; i <= 4; i++) {
     await page.locator('.camera-shutter').click();
     await expect(page.locator('.quick-camera-controls')).toContainText(`已拍 ${i} 张`);
     await expect(page.locator('.camera-shutter')).toBeEnabled();
   }
   await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
-  await context.setOffline(true);
+  const save = page.getByRole('button', { name: /^保存选中照片（\d+张）$/ });
+  await expect(save).toBeEnabled();
+  await expect(page.getByLabel('全选照片')).toBeChecked();
+  await expect(page.locator('.photo-review-tile')).toHaveCount(4);
+  const columns = await page
+    .locator('.photo-review-grid')
+    .evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').length);
+  expect(columns).toBe(3);
+  const thumb = page.getByAltText('第1张水印照片');
+  await expect(thumb).toBeVisible();
+  expect(
+    await thumb.evaluate((img: HTMLImageElement) => Math.max(img.naturalWidth, img.naturalHeight)),
+  ).toBeLessThanOrEqual(320);
+  await page.getByRole('button', { name: '选择第2张照片', exact: true }).click();
+  await expect(save).toHaveText('保存选中照片（3张）');
+  await save.click();
+  expect(await page.evaluate(() => (window as any).shares[0].files.length)).toBe(3);
+  await page.getByLabel('全选照片').check();
+  await page.getByLabel('全选照片').uncheck();
+  await expect(save).toHaveText('保存选中照片（0张）');
+  await expect(save).toBeDisabled();
+  await page.getByLabel('全选照片').check();
+  await expect(save).toBeEnabled();
   await page.evaluate(() =>
     Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false }),
   );
-  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
-  const link = page.getByRole('link', { name: /下载 .*\.zip/ });
-  await expect(link).toBeVisible({ timeout: 15000 });
-  await expect(page.locator('.quick-photo')).toContainText('ZIP不等于存入系统相册');
-  expect((await data(page)).length).toBe(2);
+  await save.click();
+  await expect(page.locator('.quick-photo')).toContainText('当前浏览器不支持批量保存，请逐张保存');
   const saved = page.waitForEvent('download');
-  await link.click();
+  await page.getByRole('button', { name: '保存第1张照片', exact: true }).click();
   const download = await saved;
-  expect(download.suggestedFilename()).toContain('2张.zip');
-  const path = await download.path();
-  const result = spawnSync(
-    'python3',
-    [
-      '-c',
-      'import sys,zipfile,json; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps(z.namelist(),ensure_ascii=False))',
-      path!,
-    ],
-    { timeout: 10000 },
+  expect(download.suggestedFilename()).toMatch(/\.jpg$/);
+  const image = await sharp((await download.path())!).metadata();
+  expect([image.width, image.height]).toEqual([4000, 3000]);
+  expect(await readFile((await download.path())!)).toEqual(
+    Buffer.from((await data(page, true))[0].bytes),
   );
-  expect(result.status).toBe(0);
-  const names = JSON.parse(result.stdout.toString());
-  expect(names.length).toBe(2);
-  expect(names.every((n: string) => n.endsWith('.jpg'))).toBe(true);
   expect(page.url()).not.toContain('blob:');
-  expect((await data(page)).length).toBe(2);
-  await page.getByRole('button', { name: '已确认导出，清理副本' }).click();
-  expect((await data(page)).length).toBe(0);
+  await expect(page.locator('.quick-photo')).toContainText('Downloads/下载目录');
+  expect((await data(page)).length).toBe(4);
+  expect(await page.locator('.quick-photo').innerText()).not.toContain('ZIP');
+  await page.screenshot({ path: '/tmp/chunmo-v32-gallery-390.png' });
 });
 test('single-photo share remains usable when browser refuses multiple files', async ({
   page,
@@ -492,8 +519,8 @@ test('single-photo share remains usable when browser refuses multiple files', as
       value: ({ files }: any) => files.length === 1,
     }),
   );
-  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
-  await page.getByRole('button', { name: '单张分享', exact: true }).click();
+  await page.getByRole('button', { name: /^保存选中照片（\d+张）$/ }).click();
+  await page.getByRole('button', { name: '保存第1张照片', exact: true }).click();
   expect(await page.evaluate(() => (window as any).shares[0].files.length)).toBe(1);
   expect((await data(page)).length).toBe(2);
 });
@@ -522,10 +549,10 @@ test('finish during watermark processing shows progress and never shares without
   await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
   await expect(page.locator('.quick-photo')).toContainText('正在准备照片');
   expect(await page.evaluate(() => (window as any).shares.length)).toBe(0);
-  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled({
+  await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeEnabled({
     timeout: 10000,
   });
-  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+  await page.getByRole('button', { name: /^保存选中照片（\d+张）$/ }).click();
   expect(await page.evaluate(() => (window as any).shares[0].active)).toBe(true);
 });
 test('no Worker/OffscreenCanvas uses a same-pixel stable capture and watermark fallback', async ({
@@ -542,7 +569,7 @@ test('no Worker/OffscreenCanvas uses a same-pixel stable capture and watermark f
   const pixels = await page.locator('video').evaluate((v: any) => [v.videoWidth, v.videoHeight]);
   await page.locator('.camera-shutter').click();
   await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled({
+  await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeEnabled({
     timeout: 15000,
   });
   const rows = await data(page);
@@ -550,7 +577,7 @@ test('no Worker/OffscreenCanvas uses a same-pixel stable capture and watermark f
   expect(rows[0].ready).toBe(true);
 });
 
-test('a non-returning Android share shows a bounded wait notice and ZIP stays usable', async ({
+test('a non-returning Android share reports bounded wait and individual downloads stay usable', async ({
   page,
   context,
 }) => {
@@ -559,7 +586,7 @@ test('a non-returning Android share shows a bounded wait notice and ZIP stays us
   await open(page);
   await page.locator('.camera-shutter').click();
   await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeEnabled();
   await page.clock.install();
   await page.evaluate(() =>
     Object.defineProperty(navigator, 'share', {
@@ -567,15 +594,16 @@ test('a non-returning Android share shows a bounded wait notice and ZIP stays us
       value: () => new Promise(() => {}),
     }),
   );
-  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+  await page.getByRole('button', { name: /^保存选中照片（\d+张）$/ }).click();
   await page.clock.fastForward(13000);
   await expect(page.locator('.quick-photo')).toContainText('系统分享长时间未返回');
-  await page.getByRole('button', { name: '重新打包完整ZIP' }).click();
-  await expect(page.getByRole('link', { name: /下载 .*\.zip/ })).toBeVisible({ timeout: 15000 });
+  const saved = page.waitForEvent('download');
+  await page.getByRole('button', { name: '保存第1张照片' }).click();
+  expect((await saved).suggestedFilename()).toMatch(/\.jpg$/);
   expect((await data(page)).length).toBe(1);
 });
 
-test('Huawei/vivo-style missing file-share APIs still provide a single ZIP download', async ({
+test('Huawei/vivo-style missing share APIs offer actual single JPEG downloads, no ZIP and no automatic deletion', async ({
   page,
   context,
 }) => {
@@ -584,20 +612,171 @@ test('Huawei/vivo-style missing file-share APIs still provide a single ZIP downl
   await open(page);
   await page.locator('.camera-shutter').click();
   await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
-  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeEnabled();
   await page.evaluate(() => {
-    Object.defineProperty(navigator.storage, 'getDirectory', {
-      configurable: true,
-      value: undefined,
-    });
     Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
     Object.defineProperty(navigator, 'canShare', { configurable: true, value: undefined });
   });
-  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
-  const link = page.getByRole('link', { name: /下载 .*\.zip/ });
-  await expect(link).toBeVisible({ timeout: 15000 });
-  const d = page.waitForEvent('download');
-  await link.click();
-  expect((await d).suggestedFilename()).toContain('1张.zip');
+  await page.getByRole('button', { name: /^保存选中照片（\d+张）$/ }).click();
+  await expect(page.locator('.quick-photo')).toContainText('当前浏览器不支持批量保存，请逐张保存');
+  const saved = page.waitForEvent('download');
+  await page.getByRole('button', { name: '保存第1张照片' }).click();
+  const download = await saved;
+  const image = await sharp((await download.path())!).metadata();
+  expect([image.width, image.height]).toEqual([4000, 3000]);
   expect((await data(page)).length).toBe(1);
+  await expect(page.getByLabel('全选照片')).toBeChecked();
+  expect(await page.locator('.quick-photo').innerText()).not.toContain('ZIP');
+});
+
+test('iPhone-style unavailable sharing shows a same-page long-press full-resolution image, no Blob navigation', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context);
+  await still(page);
+  await open(page);
+  await page.locator('.camera-shutter').click();
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeEnabled();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'userAgent', {
+      configurable: true,
+      value:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1',
+    });
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false });
+  });
+  await page.getByRole('button', { name: '保存第1张照片' }).click();
+  const preview = page.getByRole('dialog', { name: '单张照片保存' });
+  await expect(preview).toBeVisible();
+  const img = preview.locator('img');
+  await expect(img).toBeVisible();
+  expect(await img.getAttribute('src')).toMatch(/^data:image\/jpeg;/);
+  expect(await img.evaluate((el: HTMLImageElement) => [el.naturalWidth, el.naturalHeight])).toEqual(
+    [4000, 3000],
+  );
+  expect(page.url()).not.toContain('blob:');
+  await page.getByRole('button', { name: '关闭图片预览' }).click();
+  await expect(page.getByLabel('全选照片')).toBeChecked();
+  expect((await data(page)).length).toBe(1);
+});
+
+test('continue capture keeps previous files; delete cancel retains selection and explicit deletion removes only selected ID', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context);
+  await still(page);
+  await open(page);
+  await page.locator('.camera-shutter').click();
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeEnabled();
+  await page.getByRole('button', { name: '继续拍摄', exact: true }).click();
+  await expect(page.locator('.camera-shutter')).toBeEnabled();
+  await page.locator('.camera-shutter').click();
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await expect(page.locator('.photo-review-tile')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: /^保存选中照片（2张）$/ })).toBeEnabled();
+  const ids = (await data(page)).map((r) => r.meta.requestId);
+  await page.getByRole('button', { name: '选择第2张照片', exact: true }).click();
+  page.once('dialog', (d) => void d.dismiss());
+  await page.getByRole('button', { name: '删除选中照片' }).click();
+  expect((await data(page)).map((r) => r.meta.requestId)).toEqual(ids);
+  page.once('dialog', (d) => void d.accept());
+  await page.getByRole('button', { name: '删除选中照片' }).click();
+  expect((await data(page)).map((r) => r.meta.requestId)).toEqual([ids[1]]);
+  await page.reload();
+  await page.getByRole('button', { name: '拍照', exact: true }).click();
+  await expect(page.locator('.photo-review-tile')).toHaveCount(1);
+  await expect(page.getByAltText('第1张水印照片')).toBeVisible();
+});
+
+for (const worker of [true, false])
+  test(`legacy ready photo without thumbnail recovers lazily with worker=${worker}, preserving source pixels and metadata`, async ({
+    page,
+    context,
+  }) => {
+    await setup(page, context);
+    await still(page);
+    await open(page);
+    await page.locator('.camera-shutter').click();
+    await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+    await expect(page.getByRole('button', { name: /^保存选中照片（\d+张）$/ })).toBeEnabled();
+    const before = (await data(page, true))[0];
+    // Wait for any visible preview cache request before simulating a pre-V3.2 pending record.
+    await expect(page.getByAltText('第1张水印照片')).toBeVisible();
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve) => {
+        const r = indexedDB.open('chunmo-photo-batches');
+        r.onsuccess = () => resolve(r.result);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('photos', 'readwrite'),
+          store = tx.objectStore('photos'),
+          r = store.openCursor();
+        r.onsuccess = () => {
+          const cursor = r.result;
+          if (cursor) {
+            const row = cursor.value;
+            delete row.thumbnail;
+            cursor.update(row);
+            cursor.continue();
+          }
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = reject;
+      });
+      db.close();
+    });
+    if (!worker)
+      await page.addInitScript(() => {
+        (window as any).Worker = undefined;
+        (window as any).OffscreenCanvas = undefined;
+      });
+    await page.reload();
+    await page.getByRole('button', { name: '拍照', exact: true }).click();
+    const image = page.getByAltText('第1张水印照片');
+    await expect(image).toBeVisible();
+    expect(
+      await image.evaluate((el: HTMLImageElement) => Math.max(el.naturalWidth, el.naturalHeight)),
+    ).toBeLessThanOrEqual(240);
+    const after = (await data(page, true))[0];
+    expect(after.bytes).toEqual(before.bytes);
+    expect(after.meta).toEqual(before.meta);
+    expect(
+      await page.evaluate(() => performance.getEntriesByName('chunmo-photo:watermark').length),
+    ).toBe(0);
+  });
+
+test('saving an uncached unselected image prepares a preview first and preserves a fresh gesture for single share', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context);
+  await still(page);
+  await open(page);
+  for (let i = 1; i <= 2; i++) {
+    await page.locator('.camera-shutter').click();
+    await expect(page.locator('.quick-camera-controls')).toContainText(`已拍 ${i} 张`);
+    await expect(page.locator('.camera-shutter')).toBeEnabled();
+  }
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^保存选中照片（2张）$/ })).toBeEnabled();
+  await page.getByRole('button', { name: '选择第1张照片', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^保存选中照片（1张）$/ })).toBeEnabled();
+  await page.getByRole('button', { name: '保存第1张照片', exact: true }).click();
+  const preview = page.getByRole('dialog', { name: '单张照片保存' });
+  await expect(preview).toBeVisible();
+  expect(await page.evaluate(() => (window as any).shares.length)).toBe(0);
+  await preview.getByRole('button', { name: '保存此照片', exact: true }).click();
+  const share = await page.evaluate(() => (window as any).shares[0]);
+  expect(share.active).toBe(true);
+  expect(share.files.length).toBe(1);
+  await page.getByRole('button', { name: '关闭图片预览' }).click();
+  await expect(page.getByRole('button', { name: '选择第1张照片', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  expect((await data(page)).length).toBe(2);
 });

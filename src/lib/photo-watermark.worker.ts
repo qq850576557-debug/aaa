@@ -3,6 +3,8 @@ import type { PhotoMeta } from './site-photo';
 import { watermarkLayout, watermarkOpacity } from './photo-layout';
 
 let logo: Promise<ImageBitmap> | null = null;
+let surface: OffscreenCanvas | undefined;
+let previewSurface: OffscreenCanvas | undefined;
 function originalLogo() {
   return (logo ||= fetch('/brand/source/chunmo-original.jpg')
     .then(async (r) => {
@@ -24,7 +26,6 @@ async function render(
   options: { thumbnail?: boolean; provenance?: boolean } = {},
 ) {
   const source = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  let canvas: OffscreenCanvas | undefined;
   try {
     const w = source.width,
       h = source.height;
@@ -32,10 +33,16 @@ async function render(
     const factor = Math.min(1, Math.sqrt(24_000_000 / (w * h)), 8192 / Math.max(w, h));
     const width = Math.round(w * factor),
       height = Math.round(h * factor);
-    canvas = new OffscreenCanvas(width, height);
+    surface ||= new OffscreenCanvas(width, height);
+    const canvas = surface;
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
     const ctx = canvas.getContext('2d');
     if (!ctx) throw Error('离屏绘图不可用');
     const mark = await originalLogo();
+    ctx.clearRect(0, 0, width, height);
     ctx.drawImage(source, 0, 0, width, height);
     const { scale, font, gap, pad, wrapped, boxW, boxH, x, y, logoSize, brandFont, headerH } =
       watermarkLayout(width, height, meta);
@@ -64,10 +71,13 @@ async function render(
     if (options.provenance) blob = await photoMetadata(blob, meta);
     let thumbnail: Blob | undefined;
     if (options.thumbnail !== false) {
-      const thumb = new OffscreenCanvas(240, Math.max(1, Math.round((240 * height) / width)));
+      previewSurface ||= new OffscreenCanvas(240, 1);
+      const thumb = previewSurface;
+      const factor = Math.min(1, 240 / Math.max(width, height));
+      thumb.width = Math.max(1, Math.round(width * factor));
+      thumb.height = Math.max(1, Math.round(height * factor));
       thumb.getContext('2d')!.drawImage(canvas, 0, 0, thumb.width, thumb.height);
       thumbnail = await thumb.convertToBlob({ type: 'image/jpeg', quality: 0.75 });
-      thumb.width = thumb.height = 0;
     }
     return {
       blob,
@@ -88,11 +98,36 @@ async function render(
     };
   } finally {
     source.close();
-    if (canvas) canvas.width = canvas.height = 0;
   }
 }
 self.onmessage = async (event: MessageEvent) => {
+  if (event.data.releaseSurface) {
+    if (surface) surface.width = surface.height = 0;
+    if (previewSurface) previewSurface.width = previewSurface.height = 0;
+    surface = previewSurface = undefined;
+    return;
+  }
   const { id, file, meta, options } = event.data;
+  if (event.data.thumbnailOnly) {
+    let bitmap: ImageBitmap | undefined;
+    let thumb: OffscreenCanvas | undefined;
+    try {
+      const { width, height } = event.data;
+      bitmap = await createImageBitmap(file, { resizeWidth: width, resizeHeight: height });
+      thumb = new OffscreenCanvas(width, height);
+      thumb.getContext('2d')!.drawImage(bitmap, 0, 0);
+      self.postMessage({
+        id,
+        thumbnail: await thumb.convertToBlob({ type: 'image/jpeg', quality: 0.72 }),
+      });
+    } catch (e) {
+      self.postMessage({ id, error: String(e) });
+    } finally {
+      bitmap?.close();
+      if (thumb) thumb.width = thumb.height = 0;
+    }
+    return;
+  }
   if (!file) {
     void originalLogo().catch(() => {});
     return;

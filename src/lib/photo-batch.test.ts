@@ -3,10 +3,11 @@ import { expect, it, beforeEach, vi } from 'vitest';
 import {
   batchPhotos,
   putBatch,
-  confirmBatch,
+  deleteBatch,
   type BatchPhoto,
   batchSummaries,
   getBatch,
+  cacheBatchThumbnail,
 } from './photo-batch';
 vi.mock('./record-outbox', () => ({ verifiedOwner: () => ({ id: 'a', workspaceId: 'w' }) }));
 const owner = { id: 'a', workspaceId: 'w' };
@@ -31,24 +32,24 @@ const row = (id: string, output?: ArrayBuffer): BatchPhoto => ({
 });
 beforeEach(async () => {
   const rows = await batchPhotos(owner);
-  await confirmBatch(
+  await deleteBatch(
     owner,
     rows.map((r) => r.meta.requestId),
   );
 });
-it('retains originals on failure; replaces them only after output is durably written, and confirms exact IDs', async () => {
+it('retains originals on failure; replaces them only after output is durably written, and explicit deletion targets exact IDs', async () => {
   await putBatch(row('one'));
   await putBatch(row('two', new Uint8Array([2]).buffer));
   expect(
     (await batchPhotos(owner)).find((r) => r.meta.requestId === 'one')?.original,
   ).toBeDefined();
-  await confirmBatch(owner, ['one']);
-  expect((await batchPhotos(owner)).some((r) => r.meta.requestId === 'one')).toBe(true);
+  // Merely reading/recovering a capture never clears the only original.
+  expect((await getBatch(owner, 'one'))?.original).toBeDefined();
   await putBatch(row('one', new Uint8Array([3]).buffer));
   expect(
     (await batchPhotos(owner)).find((r) => r.meta.requestId === 'one')?.original,
   ).toBeUndefined();
-  await confirmBatch(owner, ['one']);
+  await deleteBatch(owner, ['one']);
   expect((await batchPhotos(owner)).map((r) => r.meta.requestId)).toEqual(['two']);
 });
 it('rejects another account and keeps recovery data', async () => {
@@ -65,4 +66,31 @@ it('restores only summaries and fetches one photo under account isolation', asyn
   expect(info).not.toHaveProperty('original');
   expect((await getBatch(owner, 'summary'))?.output?.byteLength).toBe(2);
   await expect(getBatch({ id: 'b', workspaceId: 'w' }, 'summary')).rejects.toThrow('账号');
+});
+
+it('caches only derived thumbnails without changing output, source metadata or account boundaries', async () => {
+  const image = row('thumb', new Uint8Array([255, 216, 7]).buffer);
+  await putBatch(image);
+  await cacheBatchThumbnail(owner, 'thumb', new Blob(['small'], { type: 'image/jpeg' }));
+  const stored = await getBatch(owner, 'thumb');
+  expect(Array.from(new Uint8Array(stored!.output!))).toEqual([255, 216, 7]);
+  expect(stored!.meta).toEqual(image.meta);
+  expect(stored!.thumbnail?.size).toBe(5);
+  expect(
+    (await batchSummaries(owner)).find((r) => r.meta.requestId === 'thumb'),
+  ).not.toHaveProperty('thumbnail');
+  await expect(
+    cacheBatchThumbnail({ id: 'b', workspaceId: 'w' }, 'thumb', new Blob(['x'])),
+  ).rejects.toThrow('账号');
+  await expect(deleteBatch({ id: 'b', workspaceId: 'w' }, ['thumb'])).rejects.toThrow('账号');
+  await deleteBatch(owner, ['thumb']);
+  await cacheBatchThumbnail(owner, 'thumb', new Blob(['x']));
+  expect(await getBatch(owner, 'thumb')).toBeUndefined();
+});
+it('explicit deletion may remove a failed capture without affecting other photos', async () => {
+  await putBatch(row('failed'));
+  await putBatch(row('retained'));
+  await deleteBatch(owner, ['failed']);
+  expect(await getBatch(owner, 'failed')).toBeUndefined();
+  expect((await getBatch(owner, 'retained'))?.original).toBeDefined();
 });

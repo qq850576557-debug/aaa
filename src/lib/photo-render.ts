@@ -21,9 +21,17 @@ let unavailable = false;
 let idle: ReturnType<typeof setTimeout> | undefined;
 let sequence = 0;
 let leases = 0;
+const thumbnailPending = new Map<
+  number,
+  { resolve: (blob: Blob) => void; reject: (e: Error) => void }
+>();
 function idleClose() {
   clearTimeout(idle);
-  if (!leases && !pending.size) idle = setTimeout(closeWorker, 30000);
+  if (!leases && !pending.size && !thumbnailPending.size) {
+    // Keep the warmed logo/worker briefly, but release its full-size surface outside capture.
+    worker?.postMessage({ releaseSurface: true });
+    idle = setTimeout(closeWorker, 30000);
+  }
 }
 export function holdPhotoRenderer() {
   leases++;
@@ -49,6 +57,8 @@ function closeWorker() {
   worker = null;
   for (const p of pending.values()) p.reject(Error('图像处理线程不可用，使用兼容处理'));
   pending.clear();
+  for (const p of thumbnailPending.values()) p.reject(Error('缩略图线程不可用，使用兼容处理'));
+  thumbnailPending.clear();
 }
 export function preparePhotoRenderer() {
   if (
@@ -64,6 +74,13 @@ export function preparePhotoRenderer() {
       type: 'module',
     });
     worker.onmessage = ({ data }) => {
+      const thumb = thumbnailPending.get(data.id);
+      if (thumb) {
+        thumbnailPending.delete(data.id);
+        data.error ? thumb.reject(Error(data.error)) : thumb.resolve(data.thumbnail);
+        idleClose();
+        return;
+      }
       const p = pending.get(data.id);
       if (!p) return;
       pending.delete(data.id);
@@ -102,6 +119,67 @@ const image = (src: string) =>
   });
 const jobs = new Map<string, Promise<RenderResult>>();
 let chain: Promise<unknown> = Promise.resolve();
+/** Legacy ready photos only: one decode at a time, never regenerate their watermark. */
+export function renderOutputThumbnail(file: Blob, width: number, height: number): Promise<Blob> {
+  const work = chain.then(async () => {
+    const factor = Math.min(1, 240 / Math.max(width, height));
+    const w = Math.max(1, Math.round(width * factor)),
+      h = Math.max(1, Math.round(height * factor));
+    preparePhotoRenderer();
+    if (worker) {
+      clearTimeout(idle);
+      try {
+        return await new Promise<Blob>((resolve, reject) => {
+          const id = ++sequence;
+          const deadline = setTimeout(() => {
+            unavailable = true;
+            closeWorker();
+          }, 15000);
+          thumbnailPending.set(id, {
+            resolve: (blob) => {
+              clearTimeout(deadline);
+              resolve(blob);
+            },
+            reject: (e) => {
+              clearTimeout(deadline);
+              reject(e);
+            },
+          });
+          worker!.postMessage({ id, file, thumbnailOnly: true, width: w, height: h });
+        });
+      } catch {
+        unavailable = true;
+        closeWorker();
+      }
+    }
+    let source: ImageBitmap | HTMLImageElement | undefined;
+    const canvas = document.createElement('canvas');
+    try {
+      try {
+        source = await createImageBitmap(file, { resizeWidth: w, resizeHeight: h });
+      } catch {
+        source = await image(await imageDataUrl(file));
+      }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw Error('缩略图暂不可用，高清照片仍保留');
+      ctx.drawImage(source, 0, 0, w, h);
+      return await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(Error('缩略图生成失败，高清照片仍保留'))),
+          'image/jpeg',
+          0.72,
+        ),
+      );
+    } finally {
+      if (source && 'close' in source) source.close();
+      canvas.width = canvas.height = 0;
+    }
+  });
+  chain = work.catch(() => {});
+  return work;
+}
 export function renderPhoto(
   file: File,
   meta: PhotoMeta,
@@ -244,8 +322,9 @@ async function renderCurrentPhoto(file: File, meta: PhotoMeta, options: RenderOp
     let thumbnail: Blob | undefined;
     if (options.thumbnail !== false) {
       const preview = document.createElement('canvas');
-      preview.width = 240;
-      preview.height = Math.max(1, Math.round((240 * height) / width));
+      const factor = Math.min(1, 240 / Math.max(width, height));
+      preview.width = Math.max(1, Math.round(width * factor));
+      preview.height = Math.max(1, Math.round(height * factor));
       preview.getContext('2d')?.drawImage(canvas, 0, 0, preview.width, preview.height);
       thumbnail = await new Promise<Blob | undefined>((resolve) =>
         preview.toBlob((b) => resolve(b || undefined), 'image/jpeg', 0.75),

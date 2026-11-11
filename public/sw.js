@@ -1,5 +1,5 @@
 /* Static app shell only. Authenticated API, images and user records NEVER enter CacheStorage. */
-const CACHE = 'chunmo-assistant-shell-v13';
+const CACHE = 'chunmo-assistant-shell-v14';
 const STATIC = [
   '/',
   '/manifest.webmanifest',

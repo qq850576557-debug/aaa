@@ -10,7 +10,7 @@ export function shareFailure(error: unknown): { code: string; message: string } 
   };
   return {
     code,
-    message: `${reasons[code] || '系统分享失败'}（${code}）。照片仍保留，可重试或下载ZIP。`,
+    message: `${reasons[code] || '系统分享失败'}（${code}）。照片和选择仍保留，可重试或逐张保存。${code === 'DataError' || code === 'TypeError' ? '请减少选择，分批保存。' : ''}`,
   };
 }
 export function validPhotoFiles(files: File[]) {

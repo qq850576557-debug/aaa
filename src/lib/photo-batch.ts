@@ -6,6 +6,7 @@ export type BatchPhoto = {
   meta: PhotoMeta;
   original?: ArrayBuffer;
   output?: ArrayBuffer;
+  thumbnail?: Blob;
   mime?: string;
   error?: string;
 };
@@ -46,17 +47,15 @@ export async function putBatch(photo: BatchPhoto) {
     d.close();
   }
 }
-/** Called only after the user explicitly confirms the shared photos are visible in Photos. */
-export async function confirmBatch(owner: Owner, ids: string[]) {
+/** UI must obtain explicit deletion confirmation; sharing/downloading never calls this. */
+export async function deleteBatch(owner: Owner, ids: string[]) {
   authorize(owner);
   const d = await db();
   try {
     authorize(owner);
     const tx = d.transaction('photos', 'readwrite');
     for (const id of ids) {
-      const k = key(owner, id),
-        row = await tx.store.get(k);
-      if (row?.output) await tx.store.delete(k);
+      await tx.store.delete(key(owner, id));
     }
     await tx.done;
   } finally {
@@ -64,19 +63,34 @@ export async function confirmBatch(owner: Owner, ids: string[]) {
   }
 }
 
-export type BatchSummary = Omit<BatchPhoto, 'original' | 'output'> & {
+export type BatchSummary = Omit<BatchPhoto, 'original' | 'output' | 'thumbnail'> & {
   hasOriginal: boolean;
   hasOutput: boolean;
   outputSize: number;
 };
 export function summarizeBatch(row: BatchPhoto): BatchSummary {
-  const { original, output, ...rest } = row;
+  const { original, output, thumbnail: _thumbnail, ...rest } = row;
   return {
     ...rest,
     hasOriginal: !!original,
     hasOutput: !!output,
     outputSize: output?.byteLength || 0,
   };
+}
+/** Patch only the derived preview; never rewrite a stale original/output record during recovery. */
+export async function cacheBatchThumbnail(owner: Owner, id: string, thumbnail: Blob) {
+  authorize(owner);
+  const d = await db();
+  try {
+    authorize(owner);
+    const tx = d.transaction('photos', 'readwrite'),
+      k = key(owner, id),
+      row = await tx.store.get(k);
+    if (row?.output && !row.thumbnail) await tx.store.put({ ...row, thumbnail }, k);
+    await tx.done;
+  } finally {
+    d.close();
+  }
 }
 export async function getBatch(owner: Owner, id: string): Promise<BatchPhoto | undefined> {
   authorize(owner);
