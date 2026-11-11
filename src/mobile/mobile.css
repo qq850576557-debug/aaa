@@ -766,3 +766,17 @@ body:has(dialog[open]) .assistant-fab {
   object-fit: contain;
   flex: none;
 }
+
+.photo-zip-download {
+  display: block;
+  padding: 12px 14px;
+  background: #e2eee5;
+  border: 1px solid #b6ccbe;
+  border-radius: 9px;
+  color: #245346;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+}
+.photo-save-options > button {
+  margin: 6px 6px 0 0;
+}

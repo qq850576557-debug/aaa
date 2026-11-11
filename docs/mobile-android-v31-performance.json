@@ -1,0 +1,297 @@
+{
+  "environment": "Linux Chromium fake camera/GPS/POI and share stubs. Not Huawei/vivo hardware, real iPhone, real AMap, OS share-panel appearance or Photos verification. Not controlled before/after benchmark.",
+  "shareTimingNote": "share-invoke is synchronous API dispatch; share-return includes user/system time and does not measure menu opening or album persistence.",
+  "regressionRunWithConcurrentUnitTests": [
+    {
+      "count": 10,
+      "pixels": [3840, 2160],
+      "longTasksOver50msDuringCapture": 0,
+      "metrics": {
+        "batch-prepare": {
+          "n": 2,
+          "medianMs": 0.1,
+          "p95Ms": 0.1
+        },
+        "click-preview": {
+          "n": 1,
+          "medianMs": 143.8,
+          "p95Ms": 143.8
+        },
+        "camera-initialize": {
+          "n": 1,
+          "medianMs": 32.9,
+          "p95Ms": 32.9
+        },
+        "capture": {
+          "n": 10,
+          "medianMs": 63.9,
+          "p95Ms": 77
+        },
+        "shutter-local": {
+          "n": 10,
+          "medianMs": 69.1,
+          "p95Ms": 82.9
+        },
+        "capture-encode": {
+          "n": 10,
+          "medianMs": 40.3,
+          "p95Ms": 43.3
+        },
+        "photo-store": {
+          "n": 20,
+          "medianMs": 3.4,
+          "p95Ms": 6
+        },
+        "watermark-durable": {
+          "n": 10,
+          "medianMs": 98.7,
+          "p95Ms": 135.3
+        },
+        "watermark": {
+          "n": 10,
+          "medianMs": 91.0,
+          "p95Ms": 128.5
+        },
+        "watermark-encode": {
+          "n": 10,
+          "medianMs": 44.7,
+          "p95Ms": 58.9
+        },
+        "file-prepare": {
+          "n": 10,
+          "medianMs": 0.8,
+          "p95Ms": 1.6
+        },
+        "share-invoke": {
+          "n": 1,
+          "medianMs": 0.3,
+          "p95Ms": 0.3
+        },
+        "share-return": {
+          "n": 1,
+          "medianMs": 0.7,
+          "p95Ms": 0.7
+        }
+      }
+    },
+    {
+      "count": 20,
+      "pixels": [3840, 2160],
+      "longTasksOver50msDuringCapture": 5,
+      "metrics": {
+        "batch-prepare": {
+          "n": 2,
+          "medianMs": 0.0,
+          "p95Ms": 0.1
+        },
+        "click-preview": {
+          "n": 1,
+          "medianMs": 140.4,
+          "p95Ms": 140.4
+        },
+        "camera-initialize": {
+          "n": 1,
+          "medianMs": 29.9,
+          "p95Ms": 29.9
+        },
+        "capture": {
+          "n": 20,
+          "medianMs": 76.3,
+          "p95Ms": 273.9
+        },
+        "shutter-local": {
+          "n": 20,
+          "medianMs": 84.9,
+          "p95Ms": 284.1
+        },
+        "capture-encode": {
+          "n": 20,
+          "medianMs": 46.6,
+          "p95Ms": 83.7
+        },
+        "photo-store": {
+          "n": 40,
+          "medianMs": 3.6,
+          "p95Ms": 13.7
+        },
+        "watermark-durable": {
+          "n": 20,
+          "medianMs": 109.7,
+          "p95Ms": 304.1
+        },
+        "watermark": {
+          "n": 20,
+          "medianMs": 103.9,
+          "p95Ms": 276.2
+        },
+        "watermark-encode": {
+          "n": 20,
+          "medianMs": 50.8,
+          "p95Ms": 157.7
+        },
+        "file-prepare": {
+          "n": 20,
+          "medianMs": 0.8,
+          "p95Ms": 3.9
+        },
+        "share-invoke": {
+          "n": 1,
+          "medianMs": 0.2,
+          "p95Ms": 0.2
+        },
+        "share-return": {
+          "n": 1,
+          "medianMs": 0.6,
+          "p95Ms": 0.6
+        }
+      }
+    }
+  ],
+  "runs": [
+    {
+      "count": 10,
+      "pixels": [3840, 2160],
+      "longTasksOver50msDuringCapture": 0,
+      "metrics": {
+        "batch-prepare": {
+          "n": 2,
+          "medianMs": 0.0,
+          "p95Ms": 0
+        },
+        "click-preview": {
+          "n": 1,
+          "medianMs": 168,
+          "p95Ms": 168
+        },
+        "camera-initialize": {
+          "n": 1,
+          "medianMs": 54.8,
+          "p95Ms": 54.8
+        },
+        "capture": {
+          "n": 10,
+          "medianMs": 57.6,
+          "p95Ms": 78.4
+        },
+        "shutter-local": {
+          "n": 10,
+          "medianMs": 63.8,
+          "p95Ms": 82.7
+        },
+        "capture-encode": {
+          "n": 10,
+          "medianMs": 39.8,
+          "p95Ms": 41.0
+        },
+        "photo-store": {
+          "n": 20,
+          "medianMs": 2.2,
+          "p95Ms": 5.3
+        },
+        "watermark-durable": {
+          "n": 10,
+          "medianMs": 88.4,
+          "p95Ms": 117.8
+        },
+        "watermark": {
+          "n": 10,
+          "medianMs": 83.2,
+          "p95Ms": 111.8
+        },
+        "watermark-encode": {
+          "n": 10,
+          "medianMs": 43.9,
+          "p95Ms": 57.3
+        },
+        "file-prepare": {
+          "n": 10,
+          "medianMs": 0.6,
+          "p95Ms": 6.3
+        },
+        "share-invoke": {
+          "n": 1,
+          "medianMs": 0.4,
+          "p95Ms": 0.4
+        },
+        "share-return": {
+          "n": 1,
+          "medianMs": 0.8,
+          "p95Ms": 0.8
+        }
+      }
+    },
+    {
+      "count": 20,
+      "pixels": [3840, 2160],
+      "longTasksOver50msDuringCapture": 0,
+      "metrics": {
+        "batch-prepare": {
+          "n": 2,
+          "medianMs": 0.1,
+          "p95Ms": 0.1
+        },
+        "click-preview": {
+          "n": 1,
+          "medianMs": 146.3,
+          "p95Ms": 146.3
+        },
+        "camera-initialize": {
+          "n": 1,
+          "medianMs": 29.8,
+          "p95Ms": 29.8
+        },
+        "capture": {
+          "n": 20,
+          "medianMs": 59.6,
+          "p95Ms": 67.5
+        },
+        "shutter-local": {
+          "n": 20,
+          "medianMs": 64.4,
+          "p95Ms": 70.3
+        },
+        "capture-encode": {
+          "n": 20,
+          "medianMs": 38.5,
+          "p95Ms": 43.1
+        },
+        "photo-store": {
+          "n": 40,
+          "medianMs": 1.9,
+          "p95Ms": 4.5
+        },
+        "watermark-durable": {
+          "n": 20,
+          "medianMs": 86.5,
+          "p95Ms": 103.3
+        },
+        "watermark": {
+          "n": 20,
+          "medianMs": 83.4,
+          "p95Ms": 98.2
+        },
+        "watermark-encode": {
+          "n": 20,
+          "medianMs": 40.8,
+          "p95Ms": 47.1
+        },
+        "file-prepare": {
+          "n": 20,
+          "medianMs": 0.5,
+          "p95Ms": 0.9
+        },
+        "share-invoke": {
+          "n": 1,
+          "medianMs": 0.4,
+          "p95Ms": 0.4
+        },
+        "share-return": {
+          "n": 1,
+          "medianMs": 0.8,
+          "p95Ms": 0.8
+        }
+      }
+    }
+  ],
+  "measurementNotes": "runs measured without concurrent unit-test CPU load; the earlier full regression run is retained separately. These are synthetic observations, not a controlled before/after or hardware speed guarantee."
+}

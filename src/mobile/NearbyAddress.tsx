@@ -1,3 +1,4 @@
+import { prepareFrameEncoder } from '../lib/photo-frame';
 import { preparePhotoRenderer } from '../lib/photo-render';
 import { useEffect, useRef, useState } from 'react';
 import { cloudApi } from '../lib/cloud';
@@ -123,6 +124,7 @@ export function NearbyAddress({
   useEffect(() => {
     active.current = true;
     preparePhotoRenderer();
+    prepareFrameEncoder();
     void locate();
     return () => {
       active.current = false;

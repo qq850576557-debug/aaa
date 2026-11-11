@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
 import { fixtureAccounts } from '../server/test-fixtures';
 import { signPlace } from '../server/photo-geocode';
@@ -138,7 +139,7 @@ for (const viewport of [
     await expect(page.locator('.photo-immersive')).toHaveCount(0);
     await expect(page.locator('.assistant-header')).toBeVisible();
   });
-test('12MP output preserves full pixels; finish directly invokes active multi-file share and waits for explicit cleanup', async ({
+test('12MP output preserves full pixels; prepared save invokes active multi-file share and waits for confirmation', async ({
   page,
   context,
 }) => {
@@ -158,6 +159,7 @@ test('12MP output preserves full pixels; finish directly invokes active multi-fi
   expect(await page.evaluate(() => (window as any).shares.length)).toBe(0);
   await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
   await expect(page.locator('.photo-immersive')).toHaveCount(0);
+  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
   const shares = await page.evaluate(() => (window as any).shares);
   expect(shares[0].active).toBe(true);
   expect(shares[0].files.length).toBe(2);
@@ -178,7 +180,7 @@ test('12MP output preserves full pixels; finish directly invokes active multi-fi
   expect(rows[0].meta.captureMethod).toBe('image-capture');
   expect(Buffer.from(rows[0].bytes).toString()).toContain('amap-poi-selected');
   expect(uploads).toEqual([]);
-  await page.getByRole('button', { name: '已确认存入相册' }).click();
+  await page.getByRole('button', { name: '已确认导出，清理副本' }).click();
   expect((await data(page)).length).toBe(0);
 });
 for (const count of [10, 20])
@@ -197,6 +199,18 @@ for (const count of [10, 20])
       width: v.videoWidth,
       height: v.videoHeight,
     }));
+    await page.evaluate(() => {
+      (window as any).longTasks = [];
+      if (PerformanceObserver.supportedEntryTypes.includes('longtask')) {
+        const observer = new PerformanceObserver((list) => {
+          (window as any).longTasks.push(
+            ...list.getEntries().map((e) => ({ at: e.startTime, ms: e.duration })),
+          );
+        });
+        observer.observe({ type: 'longtask' });
+      }
+    });
+    const benchStart = await page.evaluate(() => performance.now());
     const intervals: number[] = [];
     for (let i = 1; i <= count; i++) {
       const t = Date.now();
@@ -211,6 +225,17 @@ for (const count of [10, 20])
       await page.locator('video').evaluate((v: any) => v.srcObject.getVideoTracks()[0].id),
     ).toBe(original.track);
     await expect(page.getByRole('button', { name: '完成拍摄', exact: true })).toBeEnabled();
+    await expect
+      .poll(() =>
+        page.evaluate(() => performance.getEntriesByName('chunmo-photo:watermark-durable').length),
+      )
+      .toBe(count);
+    const benchEnd = await page.evaluate(() => performance.now());
+    const longTasks = await page.evaluate(
+      ({ start, end }) =>
+        ((window as any).longTasks || []).filter((e: any) => e.at >= start && e.at <= end),
+      { start: benchStart, end: benchEnd },
+    );
     const rows = await data(page);
     expect(rows).toHaveLength(count);
     expect(
@@ -222,7 +247,8 @@ for (const count of [10, 20])
       ),
     ).toBe(true);
     await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
-    await expect(page.locator('.quick-photo')).toContainText('未确认保存');
+    await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+    await expect(page.locator('.quick-photo')).toContainText('已取消');
     expect((await data(page)).length).toBe(count);
     const timing = await page.evaluate(() =>
       performance
@@ -238,6 +264,7 @@ for (const count of [10, 20])
           count,
           original,
           intervals,
+          longTasks,
           timing,
         },
         null,
@@ -259,12 +286,12 @@ test('rendering failure keeps unique original, blocks unsafe finish and offers r
   await open(page);
   await page.locator('.camera-shutter').click();
   await expect(page.getByRole('button', { name: '有照片处理失败，前往恢复' })).toBeVisible();
-  await expect(page.getByRole('button', { name: '完成拍摄', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '完成拍摄', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '有照片处理失败，前往恢复' }).click();
   const row = (await data(page))[0];
   expect(row.original).toBe(true);
   expect(row.meta.placeSource).toBe('amap-poi-selected');
-  await expect(page.getByRole('button', { name: '保存本次照片' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeDisabled();
 });
 test('GPS denial never initializes a camera', async ({ page, context }) => {
   await setup(page, context);
@@ -305,7 +332,7 @@ test('quota failure retains bytes, retries durable save, unsupported share expor
   await page.evaluate(() =>
     Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false }),
   );
-  await page.getByRole('button', { name: '保存本次照片' }).click();
+  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
   await expect(page.locator('.quick-photo')).toContainText('不支持此批图片分享');
   await page.getByRole('button', { name: '分享不可用，逐张导出' }).click();
   await expect(page.getByAltText('本次照片导出')).toBeVisible();
@@ -371,4 +398,206 @@ test('background GPS renewal outside the selected POI radius disables new captur
   await expect(page.locator('.camera-shutter')).toBeDisabled();
   await page.getByRole('button', { name: '关闭相机' }).click();
   await expect(page.locator('.photo-immersive')).toHaveCount(0);
+});
+
+for (const code of ['NotAllowedError', 'DataError', 'TypeError', 'AbortError'])
+  test(`Android share failure ${code} is explicit and retains every photo`, async ({
+    page,
+    context,
+  }) => {
+    await setup(page, context);
+    await still(page);
+    await open(page);
+    await page.locator('.camera-shutter').click();
+    await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+    await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled();
+    await page.evaluate(
+      (name) =>
+        Object.defineProperty(navigator, 'share', {
+          configurable: true,
+          value: async () => {
+            (window as any).shareActive = navigator.userActivation.isActive;
+            throw new DOMException('test', name);
+          },
+        }),
+      code,
+    );
+    await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+    await expect(page.locator('.quick-photo')).toContainText(code);
+    expect(await page.evaluate(() => (window as any).shareActive)).toBe(true);
+    expect((await data(page)).length).toBe(1);
+    await expect(page.getByRole('button', { name: '已确认导出，清理副本' })).toHaveCount(0);
+  });
+test('Android unsupported multi-file share builds one complete ZIP, downloads once and retains photos until explicit confirmation', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context);
+  await still(page);
+  await open(page);
+  for (let i = 1; i <= 2; i++) {
+    await page.locator('.camera-shutter').click();
+    await expect(page.locator('.quick-camera-controls')).toContainText(`已拍 ${i} 张`);
+    await expect(page.locator('.camera-shutter')).toBeEnabled();
+  }
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await context.setOffline(true);
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: () => false }),
+  );
+  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+  const link = page.getByRole('link', { name: /下载 .*\.zip/ });
+  await expect(link).toBeVisible({ timeout: 15000 });
+  await expect(page.locator('.quick-photo')).toContainText('ZIP不等于存入系统相册');
+  expect((await data(page)).length).toBe(2);
+  const saved = page.waitForEvent('download');
+  await link.click();
+  const download = await saved;
+  expect(download.suggestedFilename()).toContain('2张.zip');
+  const path = await download.path();
+  const result = spawnSync(
+    'python3',
+    [
+      '-c',
+      'import sys,zipfile,json; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps(z.namelist(),ensure_ascii=False))',
+      path!,
+    ],
+    { timeout: 10000 },
+  );
+  expect(result.status).toBe(0);
+  const names = JSON.parse(result.stdout.toString());
+  expect(names.length).toBe(2);
+  expect(names.every((n: string) => n.endsWith('.jpg'))).toBe(true);
+  expect(page.url()).not.toContain('blob:');
+  expect((await data(page)).length).toBe(2);
+  await page.getByRole('button', { name: '已确认导出，清理副本' }).click();
+  expect((await data(page)).length).toBe(0);
+});
+test('single-photo share remains usable when browser refuses multiple files', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context);
+  await still(page);
+  await open(page);
+  for (let i = 1; i <= 2; i++) {
+    await page.locator('.camera-shutter').click();
+    await expect(page.locator('.quick-camera-controls')).toContainText(`已拍 ${i} 张`);
+    await expect(page.locator('.camera-shutter')).toBeEnabled();
+  }
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, 'canShare', {
+      configurable: true,
+      value: ({ files }: any) => files.length === 1,
+    }),
+  );
+  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+  await page.getByRole('button', { name: '单张分享', exact: true }).click();
+  expect(await page.evaluate(() => (window as any).shares[0].files.length)).toBe(1);
+  expect((await data(page)).length).toBe(2);
+});
+test('finish during watermark processing shows progress and never shares without a new user tap', async ({
+  page,
+  context,
+}) => {
+  await page.addInitScript(() => {
+    const Original = Worker;
+    (window as any).Worker = class {
+      constructor(url: any, options: any) {
+        const w = new Original(url, options),
+          post = w.postMessage.bind(w);
+        w.postMessage = ((d: any, ...args: any[]) => {
+          if (d.file) setTimeout(() => post(d, ...(args as [any])), 1800);
+          else post(d, ...(args as [any]));
+        }) as any;
+        return w;
+      }
+    };
+  });
+  await setup(page, context);
+  await still(page);
+  await open(page);
+  await page.locator('.camera-shutter').click();
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await expect(page.locator('.quick-photo')).toContainText('正在准备照片');
+  expect(await page.evaluate(() => (window as any).shares.length)).toBe(0);
+  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled({
+    timeout: 10000,
+  });
+  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+  expect(await page.evaluate(() => (window as any).shares[0].active)).toBe(true);
+});
+test('no Worker/OffscreenCanvas uses a same-pixel stable capture and watermark fallback', async ({
+  page,
+  context,
+}) => {
+  await page.addInitScript(() => {
+    (window as any).Worker = undefined;
+    (window as any).OffscreenCanvas = undefined;
+  });
+  await setup(page, context);
+  await page.evaluate(() => ((window as any).ImageCapture = undefined));
+  await open(page);
+  const pixels = await page.locator('video').evaluate((v: any) => [v.videoWidth, v.videoHeight]);
+  await page.locator('.camera-shutter').click();
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled({
+    timeout: 15000,
+  });
+  const rows = await data(page);
+  expect([rows[0].meta.outputWidth, rows[0].meta.outputHeight]).toEqual(pixels);
+  expect(rows[0].ready).toBe(true);
+});
+
+test('a non-returning Android share shows a bounded wait notice and ZIP stays usable', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context);
+  await still(page);
+  await open(page);
+  await page.locator('.camera-shutter').click();
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled();
+  await page.clock.install();
+  await page.evaluate(() =>
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: () => new Promise(() => {}),
+    }),
+  );
+  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+  await page.clock.fastForward(13000);
+  await expect(page.locator('.quick-photo')).toContainText('系统分享长时间未返回');
+  await page.getByRole('button', { name: '重新打包完整ZIP' }).click();
+  await expect(page.getByRole('link', { name: /下载 .*\.zip/ })).toBeVisible({ timeout: 15000 });
+  expect((await data(page)).length).toBe(1);
+});
+
+test('Huawei/vivo-style missing file-share APIs still provide a single ZIP download', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context);
+  await still(page);
+  await open(page);
+  await page.locator('.camera-shutter').click();
+  await page.getByRole('button', { name: '完成拍摄', exact: true }).click();
+  await expect(page.getByRole('button', { name: /^保存\d+张照片$/ })).toBeEnabled();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator.storage, 'getDirectory', {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
+    Object.defineProperty(navigator, 'canShare', { configurable: true, value: undefined });
+  });
+  await page.getByRole('button', { name: /^保存\d+张照片$/ }).click();
+  const link = page.getByRole('link', { name: /下载 .*\.zip/ });
+  await expect(link).toBeVisible({ timeout: 15000 });
+  const d = page.waitForEvent('download');
+  await link.click();
+  expect((await d).suggestedFilename()).toContain('1张.zip');
+  expect((await data(page)).length).toBe(1);
 });

@@ -14,6 +14,7 @@ type RenderResult = {
   originalHeight: number;
   exifRaw?: string;
   renderer?: 'worker' | 'main';
+  encodeMs?: number;
 };
 let worker: Worker | null = null;
 let unavailable = false;
@@ -160,6 +161,10 @@ async function renderOnePhoto(file: File, meta: PhotoMeta, options: RenderOption
       result = await renderCurrentPhoto(file, actual, options);
     }
   } else result = await renderCurrentPhoto(file, actual, options);
+  if (result.encodeMs !== undefined)
+    photoTiming('watermark-encode', performance.now() - result.encodeMs, {
+      renderer: result.renderer || 'main',
+    });
   photoTiming('watermark', started, {
     renderer: result.renderer || 'main',
     width: result.width,
@@ -213,13 +218,16 @@ async function renderCurrentPhoto(file: File, meta: PhotoMeta, options: RenderOp
         type: 'image/svg+xml',
       });
       ctx.drawImage(await image(await imageDataUrl(overlay, 'image/svg+xml')), 0, 0);
-      return new Promise<Blob>((resolve, reject) =>
+      const encodeStarted = performance.now();
+      const blob = await new Promise<Blob>((resolve, reject) =>
         canvas.toBlob(
           (b) => (b ? resolve(b) : reject(Error('设备内存不足，无法生成水印，请保留原图'))),
           'image/jpeg',
           0.95,
         ),
       );
+      photoTiming('watermark-encode', encodeStarted, { renderer: 'main' });
+      return blob;
     }
     let blob: Blob;
     try {

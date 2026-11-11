@@ -329,6 +329,21 @@ test('install manifest, static-only service worker cache and desktop retains ful
       tx.onerror = reject;
     });
     db.close();
+    const batch = await new Promise<IDBDatabase>((resolve) => {
+      const r = indexedDB.open('chunmo-photo-batches', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('photos');
+      r.onsuccess = () => resolve(r.result);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = batch.transaction('photos', 'readwrite');
+      tx.objectStore('photos').put(
+        { output: new Uint8Array([9, 8, 7]).buffer, pending: true },
+        'export-retained',
+      );
+      tx.oncomplete = () => resolve();
+      tx.onerror = reject;
+    });
+    batch.close();
     return true;
   });
   expect(photoSentinel).toBe(true);
@@ -366,6 +381,20 @@ test('install manifest, static-only service worker cache and desktop retains ful
         return value?.pending && Array.from(new Uint8Array(value.originalBytes)).join(',');
       }),
     ).toBe('1,2,3');
+    expect(
+      await page.evaluate(async () => {
+        const d = await new Promise<IDBDatabase>((resolve) => {
+          const r = indexedDB.open('chunmo-photo-batches');
+          r.onsuccess = () => resolve(r.result);
+        });
+        const row: any = await new Promise((resolve) => {
+          const r = d.transaction('photos').objectStore('photos').get('export-retained');
+          r.onsuccess = () => resolve(r.result);
+        });
+        d.close();
+        return Array.from(new Uint8Array(row.output));
+      }),
+    ).toEqual([9, 8, 7]);
     await page.waitForLoadState('domcontentloaded');
     await expect
       .poll(async () =>

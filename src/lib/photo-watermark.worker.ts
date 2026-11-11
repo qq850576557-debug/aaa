@@ -58,7 +58,9 @@ async function render(
     );
     ctx.font = `${font}px sans-serif`;
     wrapped.forEach((line, i) => ctx.fillText(line, x + pad, y + pad + headerH + font + gap * i));
+    const encodeStarted = performance.now();
     let blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.95 });
+    const encodeMs = performance.now() - encodeStarted;
     if (options.provenance) blob = await photoMetadata(blob, meta);
     let thumbnail: Blob | undefined;
     if (options.thumbnail !== false) {
@@ -69,6 +71,7 @@ async function render(
     }
     return {
       blob,
+      encodeMs,
       thumbnail,
       width,
       height,
