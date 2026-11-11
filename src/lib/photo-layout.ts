@@ -13,6 +13,7 @@ export function photoTime(at: string) {
     .format(new Date(at))
     .replaceAll('-', '.');
 }
+export const watermarkOpacity = 0.55;
 export function watermarkLayout(width: number, height: number, m: PhotoMeta) {
   const scale = Math.min(width / 1100, height / 800),
     font = 24 * scale,
@@ -37,9 +38,12 @@ export function watermarkLayout(width: number, height: number, m: PhotoMeta) {
     for (let i = 0; i < text.length; i += maxChars) out.push(text.slice(i, i + maxChars));
     return out;
   });
+  const logoSize = 44 * scale,
+    brandFont = 32 * scale,
+    headerH = 50 * scale;
   const boxW = Math.min(width - 32 * scale, 780 * scale),
-    boxH = pad * 2 + gap * (wrapped.length + 1),
+    boxH = pad * 2 + headerH + font + gap * Math.max(0, wrapped.length - 1),
     x = 16 * scale,
     y = height - boxH - 16 * scale;
-  return { scale, font, gap, pad, wrapped, boxW, boxH, x, y };
+  return { scale, font, gap, pad, wrapped, boxW, boxH, x, y, logoSize, brandFont, headerH };
 }

@@ -1,4 +1,4 @@
-import { watermarkLayout } from './photo-layout';
+import { watermarkLayout, watermarkOpacity } from './photo-layout';
 export { photoTime, watermarkLayout } from './photo-layout';
 import { z } from 'zod';
 export const PHOTO_CHUNK = 512 * 1024;
@@ -55,6 +55,7 @@ const esc = (v: string) =>
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[c]!,
   );
 export function watermarkSvg(width: number, height: number, m: PhotoMeta, logo: string) {
-  const { scale, font, gap, pad, wrapped, boxW, boxH, x, y } = watermarkLayout(width, height, m);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="${14 * scale}" fill="#152c23" fill-opacity=".78"/><image href="${logo}" x="${x + pad}" y="${y + pad - 5 * scale}" width="${34 * scale}" height="${34 * scale}" preserveAspectRatio="xMidYMid meet"/><text x="${x + pad + 47 * scale}" y="${y + pad + font}" fill="#fffdf1" font-family="sans-serif" font-size="${font}" font-weight="600">春茉设计</text>${wrapped.map((text, i) => `<text x="${x + pad}" y="${y + pad + gap * (i + 2)}" fill="#fffdf1" font-family="sans-serif" font-size="${font}">${esc(text)}</text>`).join('')}</svg>`;
+  const { scale, font, gap, pad, wrapped, boxW, boxH, x, y, logoSize, brandFont, headerH } =
+    watermarkLayout(width, height, m);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="${14 * scale}" fill="#152c23" fill-opacity="${watermarkOpacity}"/><defs><clipPath id="brand-circle"><circle cx="${x + pad + logoSize / 2}" cy="${y + pad + logoSize / 2}" r="${logoSize / 2}"/></clipPath></defs><image href="${logo}" x="${x + pad}" y="${y + pad}" width="${logoSize}" height="${logoSize}" clip-path="url(#brand-circle)" preserveAspectRatio="xMidYMid meet"/><text x="${x + pad + logoSize + 12 * scale}" y="${y + pad + logoSize / 2 + brandFont * 0.38}" fill="#fffdf1" font-family="sans-serif" font-size="${brandFont}" font-weight="600">春茉设计</text>${wrapped.map((text, i) => `<text x="${x + pad}" y="${y + pad + headerH + font + gap * i}" fill="#fffdf1" font-family="sans-serif" font-size="${font}">${esc(text)}</text>`).join('')}</svg>`;
 }

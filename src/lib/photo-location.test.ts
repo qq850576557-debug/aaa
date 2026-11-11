@@ -4,6 +4,7 @@ import {
   freshPlace,
   nearbyPlace,
   nearbyPois,
+  nearbyMapPlace,
   wgsToGcj,
   type PlaceReceipt,
 } from './photo-location';
@@ -80,4 +81,21 @@ it('mixed POIs include village, shop and residence, use coordinates rather than 
   );
   expect(result.map((p) => p.id)).toEqual(['s', 'r', 'v']);
   expect(result.every((p) => p.distance <= 2000)).toBe(true);
+});
+
+it('map-only capture excludes manual names and renewals beyond the 2km radius', () => {
+  const point = wgsToGcj(30, 120);
+  const p = {
+    placeName: '地图地点',
+    placeSource: 'amap-poi-selected',
+    poi: { id: 'one', ...point },
+    location: { latitude: 30, longitude: 120, accuracy: 12, obtainedAt: new Date().toISOString() },
+    token: 'signed',
+    nearby: true,
+    resolvedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 90000).toISOString(),
+  } as PlaceReceipt;
+  expect(nearbyMapPlace(p)).toBe(true);
+  expect(nearbyMapPlace({ ...p, placeSource: 'user-manual' })).toBe(false);
+  expect(nearbyMapPlace({ ...p, location: { ...p.location, longitude: 120.1 } })).toBe(false);
 });

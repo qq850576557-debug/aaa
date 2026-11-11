@@ -142,3 +142,11 @@ export function nearbyPois(raw: any, origin: { latitude: number; longitude: numb
   }
   return [...unique.values()].sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
 }
+
+/** Selection provenance/radius policy; GPS and POI distance are not a building-boundary proof. */
+export function nearbyMapPlace(place: PlaceReceipt | null) {
+  if (!place || place.placeSource !== 'amap-poi-selected' || !place.poi?.id) return false;
+  const p = place.poi;
+  if (!Number.isFinite(p.latitude) || !Number.isFinite(p.longitude)) return false;
+  return poiDistance(wgsToGcj(place.location.latitude, place.location.longitude), p) <= 2000;
+}

@@ -1,7 +1,9 @@
+import { preparePhotoRenderer } from '../lib/photo-render';
 import { useEffect, useRef, useState } from 'react';
 import { cloudApi } from '../lib/cloud';
 import {
   freshLocation,
+  nearbyMapPlace,
   freshPlace,
   type PhotoLocation,
   type PlaceReceipt,
@@ -50,7 +52,6 @@ export function NearbyAddress({
     [places, setPlaces] = useState<NearbyPlace[]>([]),
     [selected, setSelected] = useState<PlaceReceipt | null>(null),
     [query, setQuery] = useState(''),
-    [manual, setManual] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [more, setMore] = useState(false);
@@ -79,17 +80,21 @@ export function NearbyAddress({
       }
       if (!active.current || id !== sequence.current) return;
       setPlaces((old) =>
-        [...new Map([...(n === 1 ? [] : old), ...r!.places].map((p) => [p.id, p])).values()].sort(
-          (a, b) => a.distance - b.distance,
-        ),
+        [
+          ...new Map(
+            [...(n === 1 ? [] : old), ...r!.places.filter((p) => nearbyMapPlace(p.receipt))].map(
+              (p) => [p.id, p],
+            ),
+          ).values(),
+        ].sort((a, b) => a.distance - b.distance),
       );
       setMore(r.more);
       page.current = n + 1;
-      if (n === 1) setSelected(r.places[0]?.receipt || null);
-      if (!r.places.length && n === 1) setError('暂无地点，可手动填写');
+      if (n === 1) setSelected(r.places.find((p) => nearbyMapPlace(p.receipt))?.receipt || null);
+      if (!r.places.length && n === 1) setError('2公里内暂无可选高德地点，请重新定位或搜索');
     } catch {
       if (active.current && id === sequence.current) {
-        setError('附近地点暂不可用，可手动填写');
+        setError('附近地点暂不可用，请重新定位或稍后重试');
         setMore(false);
       }
     } finally {
@@ -117,6 +122,7 @@ export function NearbyAddress({
   }
   useEffect(() => {
     active.current = true;
+    preparePhotoRenderer();
     void locate();
     return () => {
       active.current = false;
@@ -128,25 +134,6 @@ export function NearbyAddress({
     const t = setTimeout(() => void search(location, query), 350);
     return () => clearTimeout(t);
   }, [query]);
-  async function useManual() {
-    setBusy(true);
-    try {
-      const loc = freshLocation(location) ? location! : await gpsNow();
-      const p = await cloudApi<PlaceReceipt>('/site-photos/place', 'POST', {
-        location: loc,
-        name: manual.trim(),
-      });
-      if (active.current) {
-        setLocation(loc);
-        setSelected(p);
-        setError('');
-      }
-    } catch (e) {
-      if (active.current) setError(String(e));
-    } finally {
-      if (active.current) setBusy(false);
-    }
-  }
   async function refreshSelected() {
     setBusy(true);
     try {
@@ -202,24 +189,7 @@ export function NearbyAddress({
           </button>
         )}
       </div>
-      <div className="nearby-manual">
-        <input
-          aria-label="手动地点名称"
-          maxLength={80}
-          placeholder="手动填写地点"
-          value={manual}
-          onChange={(e) => setManual(e.target.value)}
-        />
-        <button disabled={busy || !manual.trim()} onClick={() => void useManual()}>
-          使用此地点
-        </button>
-      </div>
-      {selected && (
-        <p>
-          已选：{selected.placeName}
-          {selected.placeSource === 'user-manual' ? '（手动）' : ''}
-        </p>
-      )}
+      {selected && <p>已选：{selected.placeName}</p>}
       {busy && <p role="status">正在定位或查询…</p>}
       {error && <p role="status">{error}</p>}
       <footer>
@@ -228,7 +198,7 @@ export function NearbyAddress({
         </button>
         <button
           className="primary"
-          disabled={busy || !selected}
+          disabled={busy || !nearbyMapPlace(selected)}
           onClick={() => {
             if (selected) {
               if (freshPlace(selected)) onConfirm(selected);

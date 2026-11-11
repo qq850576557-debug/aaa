@@ -10,6 +10,7 @@ import {
   freshLocation,
   nearbyPlace,
   nearbyPois,
+  nearbyMapPlace,
   wgsToGcj,
   type PlaceReceipt,
 } from '../src/lib/photo-location';
@@ -71,14 +72,15 @@ export function photoGeocodeRoutes(app: Express) {
         input.previousToken && input.previousAt
           ? verifyPlace(input.previousToken, req.actor!, input.previousAt)
           : null;
-      if (!old && !input.name) throw new ApiError(400, '请填写地点名称');
+      if (input.name || !old || !nearbyMapPlace({ ...old, location: input.location }))
+        throw new ApiError(400, '请选择高德地图2公里内的地点；当前位置已变化时请重新选择');
       res.json(
         signPlace(req.actor!, {
           location: input.location,
-          placeName: old?.placeName || input.name!,
-          placeSource: old?.placeSource || 'user-manual',
-          nearby: old?.nearby ?? false,
-          ...(old?.poi ? { poi: old.poi } : {}),
+          placeName: old.placeName,
+          placeSource: old.placeSource,
+          nearby: true,
+          poi: old.poi,
           resolvedAt: new Date().toISOString(),
           expiresAt: new Date(Date.parse(input.location.obtainedAt) + 90000).toISOString(),
         }),
@@ -101,7 +103,7 @@ export function photoGeocodeRoutes(app: Express) {
           .parse(req.body);
         if (!freshLocation(input.location))
           throw new ApiError(400, '定位已过期或精度不足，请重新定位');
-        if (!geocodeEnabled()) throw new ApiError(503, '附近地点暂不可用，可手动填写地点');
+        if (!geocodeEnabled()) throw new ApiError(503, '附近地点暂不可用，请稍后重试');
         const today = new Date().toISOString().slice(0, 10);
         if (day !== today) {
           day = today;
@@ -109,7 +111,7 @@ export function photoGeocodeRoutes(app: Express) {
         }
         const limit = Number(process.env.CHUNMO_AMAP_DAILY_LIMIT || 200);
         if (!Number.isInteger(limit) || limit < 1 || requests >= limit)
-          throw new ApiError(429, '地点查询达到限额，可手动填写地点');
+          throw new ApiError(429, '地点查询达到限额，请稍后重试');
         requests++;
         const point = wgsToGcj(input.location.latitude, input.location.longitude);
         const url = new URL('https://restapi.amap.com/v3/place/around');
@@ -130,9 +132,9 @@ export function photoGeocodeRoutes(app: Express) {
           if (!response.ok) throw Error();
           raw = await response.json();
         } catch {
-          throw new ApiError(503, '附近地点暂不可用，可手动填写地点');
+          throw new ApiError(503, '附近地点暂不可用，请稍后重试');
         }
-        if (raw?.status !== '1') throw new ApiError(503, '附近地点暂不可用，可手动填写地点');
+        if (raw?.status !== '1') throw new ApiError(503, '附近地点暂不可用，请稍后重试');
         const places = nearbyPois(raw, point).map((p) => ({
           id: p.id,
           name: p.name,

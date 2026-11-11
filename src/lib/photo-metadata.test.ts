@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { photoMetadata } from './photo-metadata';
-import { watermarkLayout, type PhotoMeta } from './site-photo';
+import { watermarkLayout, watermarkSvg, type PhotoMeta } from './site-photo';
 it('exports true GPS and manual provenance without altering pixel bytes or exposing receipt tokens', async () => {
   const m = {
     placeName: '手动地点',
@@ -20,4 +20,19 @@ it('exports true GPS and manual provenance without altering pixel bytes or expos
   expect(text).toContain('accuracy');
   expect(text).not.toContain('private-receipt');
   expect(watermarkLayout(1200, 800, m).wrapped[0]).toBe('工地定位：手动地点');
+});
+
+it('watermark uses a circular original logo, larger brand type and lighter translucent panel', () => {
+  const m = {
+    capturedAt: new Date().toISOString(),
+    placeName: '测试地点',
+    actorName: '测试',
+  } as PhotoMeta;
+  const l = watermarkLayout(1100, 800, m),
+    svg = watermarkSvg(1100, 800, m, 'original-logo');
+  expect(l.brandFont).toBeGreaterThan(l.font);
+  expect(l.logoSize).toBeGreaterThan(l.brandFont);
+  expect(svg).toContain('clip-path="url(#brand-circle)"');
+  expect(svg).toContain('fill-opacity="0.55"');
+  expect(svg).toContain('original-logo');
 });

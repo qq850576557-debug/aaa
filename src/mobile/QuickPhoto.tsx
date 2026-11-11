@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { photoTiming, photoStage } from '../lib/photo-performance';
 import type { CloudUser } from '../lib/cloud';
-import { cloudApi } from '../lib/cloud';
+import { cloudApi, CloudError } from '../lib/cloud';
 import {
   batchSummaries,
   getBatch,
@@ -12,12 +12,11 @@ import {
   type BatchPhoto,
   type BatchSummary,
 } from '../lib/photo-batch';
-import { freshPlace, type PlaceReceipt } from '../lib/photo-location';
-import { renderPhoto } from '../lib/photo-render';
+import { freshPlace, nearbyMapPlace, type PlaceReceipt } from '../lib/photo-location';
+import { renderPhoto, holdPhotoRenderer } from '../lib/photo-render';
 import { exifCapture } from '../lib/photo-exif';
 import { photoTime } from '../lib/site-photo';
 import { imageDataUrl } from '../lib/photo-image';
-import { photoMetadata } from '../lib/photo-metadata';
 import { NearbyAddress, renewPlace } from './NearbyAddress';
 export function QuickPhoto({
   user,
@@ -44,7 +43,8 @@ export function QuickPhoto({
     [flash, setFlash] = useState(false),
     [, setFilesVersion] = useState(0),
     [saveFallback, setSaveFallback] = useState(false),
-    [storageFailed, setStorageFailed] = useState(false);
+    [storageFailed, setStorageFailed] = useState(false),
+    [locationBlocked, setLocationBlocked] = useState(false);
   const owner = { id: user.id, workspaceId: user.workspaceId },
     video = useRef<HTMLVideoElement>(null),
     input = useRef<HTMLInputElement>(null),
@@ -60,7 +60,11 @@ export function QuickPhoto({
     files = useRef(new Map<string, File>()),
     session = useRef(0),
     cameraStarted = useRef(0),
-    preparing = useRef(false);
+    preparing = useRef(false),
+    locationFlight = useRef<Promise<PlaceReceipt> | null>(null),
+    captureCanvas = useRef<HTMLCanvasElement | null>(null),
+    spaceCheck = useRef({ at: 0, free: Infinity }),
+    nativeStill = useRef<any>(null);
   const FILE_BUDGET = 64 * 1024 * 1024;
   function cacheFile(row: BatchPhoto) {
     const started = performance.now();
@@ -104,6 +108,11 @@ export function QuickPhoto({
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
     session.current++;
+    nativeStill.current = null;
+    if (captureCanvas.current) {
+      captureCanvas.current.width = captureCanvas.current.height = 0;
+      captureCanvas.current = null;
+    }
     setReady(false);
   };
   function accept(row: BatchPhoto) {
@@ -154,6 +163,7 @@ export function QuickPhoto({
       const result = await renderPhoto(
         new File([row.original], row.meta.originalName, { type: row.mime || 'image/jpeg' }),
         row.meta,
+        { thumbnail: false, provenance: true },
       );
       const next: BatchPhoto = {
         owner: row.owner,
@@ -164,7 +174,7 @@ export function QuickPhoto({
           originalWidth: result.originalWidth,
           originalHeight: result.originalHeight,
         },
-        output: await (await photoMetadata(result.blob, result.meta)).arrayBuffer(),
+        output: await result.blob.arrayBuffer(),
         mime: result.blob.type,
       };
       await durable(next);
@@ -304,16 +314,66 @@ export function QuickPhoto({
       document.removeEventListener('visibilitychange', visible);
     };
   }, [phase]);
-  async function currentPlace() {
+  async function currentPlace(force = false): Promise<PlaceReceipt> {
     const p = placeRef.current;
-    if (!p) throw Error('请先选择地址');
-    if (freshPlace(p, Date.now(), 30000)) return p;
-    const next = await renewPlace(p);
-    if (!alive.current) throw Error('拍摄已结束');
-    setPlace(next);
-    placeRef.current = next;
-    return next;
+    if (!nearbyMapPlace(p)) throw Error('请选择高德地图2公里内的地点');
+    if (!force && freshPlace(p)) return p!;
+    if (locationFlight.current) return locationFlight.current;
+    const generation = session.current;
+    const work = (async () => {
+      let next: PlaceReceipt;
+      try {
+        next = await renewPlace(p!);
+      } catch (e) {
+        if (
+          alive.current &&
+          generation === session.current &&
+          e instanceof CloudError &&
+          [400, 403].includes(e.status)
+        ) {
+          placeRef.current = null;
+          setLocationBlocked(true);
+        }
+        throw e;
+      }
+      if (!alive.current || generation !== session.current) throw Error('拍摄已结束');
+      if (!nearbyMapPlace(next)) {
+        placeRef.current = null;
+        setLocationBlocked(true);
+        throw Error('所选地点不在当前2公里内，请重新选择');
+      }
+      setPlace(next);
+      setLocationBlocked(false);
+      placeRef.current = next;
+      return next;
+    })();
+    locationFlight.current = work;
+    try {
+      return await work;
+    } finally {
+      if (locationFlight.current === work) locationFlight.current = null;
+    }
   }
+  useEffect(() => {
+    if (!['starting', 'camera'].includes(phase)) return;
+    return holdPhotoRenderer();
+  }, [phase]);
+  useEffect(() => {
+    if (phase !== 'camera') return;
+    let live = true;
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      const p = placeRef.current;
+      if (p && Date.now() - Date.parse(p.location.obtainedAt) > 45000 && !locationFlight.current)
+        void currentPlace(true).catch(() => {
+          if (live && !freshPlace(placeRef.current)) setStatus('定位已过期，请重试或重新选择地点');
+        });
+    }, 15000);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [phase]);
   function openNative() {
     setStatus('');
     const p = placeRef.current;
@@ -327,12 +387,25 @@ export function QuickPhoto({
     setPhase('native');
     input.current?.click();
   }
+  async function checkSpace() {
+    if (!navigator.storage?.estimate) return;
+    try {
+      const { quota, usage } = await navigator.storage.estimate();
+      spaceCheck.current = {
+        at: performance.now(),
+        free: quota && usage ? quota - usage : Infinity,
+      };
+    } catch {
+      /* Durable writes remain the final storage check. */
+    }
+  }
   async function liveCamera() {
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
     setPhase('starting');
     cameraStarted.current = performance.now();
+    void checkSpace();
     const generation = ++session.current;
     try {
       await currentPlace();
@@ -352,6 +425,12 @@ export function QuickPhoto({
         return;
       }
       stream.current = s;
+      try {
+        const IC = (window as any).ImageCapture;
+        nativeStill.current = IC ? new IC(s.getVideoTracks()[0]) : null;
+      } catch {
+        nativeStill.current = null;
+      }
       setPhase('camera');
       setStatus('');
     } catch (e) {
@@ -420,7 +499,7 @@ export function QuickPhoto({
     }
   }
   async function shoot() {
-    if (locked.current || !ready || storageFailed) return;
+    if (locked.current || !ready || storageFailed || locationBlocked) return;
     locked.current = true;
     setBusy(true);
     const started = performance.now();
@@ -429,34 +508,35 @@ export function QuickPhoto({
         await new Promise((resolve) => setTimeout(resolve, 30));
         if (!alive.current || !stream.current) throw Error('相机会话已结束');
       }
-      if (navigator.storage?.estimate) {
-        const { quota, usage } = await navigator.storage.estimate();
-        if (quota && usage && quota - usage < 20 * 1024 * 1024)
-          throw Error('本机空间不足，请先完成保存后再继续拍摄');
-      }
+      if (!spaceCheck.current.at || performance.now() - spaceCheck.current.at > 10000)
+        await checkSpace();
+      if (spaceCheck.current.free < 20 * 1024 * 1024)
+        throw Error('本机空间不足，请先完成保存后再继续拍摄');
       const p = await currentPlace();
       const track = stream.current?.getVideoTracks()[0],
         v = video.current;
       if (!track || !v) throw Error('相机已关闭');
       const at = new Date().toISOString();
       let blob: Blob | undefined;
-      const IC = (window as any).ImageCapture;
-      if (IC)
+      if (nativeStill.current)
         try {
-          blob = await new IC(track).takePhoto();
-        } catch {}
+          blob = await nativeStill.current.takePhoto();
+        } catch (e) {
+          if ((e as DOMException)?.name === 'NotSupportedError') nativeStill.current = null;
+        }
       const method = blob ? 'image-capture' : 'video-frame';
       if (!blob) {
-        const c = document.createElement('canvas');
-        c.width = v.videoWidth;
-        c.height = v.videoHeight;
+        const c = (captureCanvas.current ||= document.createElement('canvas'));
+        if (c.width !== v.videoWidth || c.height !== v.videoHeight) {
+          c.width = v.videoWidth;
+          c.height = v.videoHeight;
+        }
         const ctx = c.getContext('2d');
         if (!ctx || !c.width) throw Error('相机画面未就绪');
         ctx.drawImage(v, 0, 0);
         blob = await new Promise<Blob>((resolve, reject) =>
           c.toBlob((b) => (b ? resolve(b) : reject(Error('拍照失败'))), 'image/jpeg', 0.98),
         );
-        c.width = c.height = 0;
       }
       setFlash(true);
       setTimeout(() => {
@@ -568,6 +648,7 @@ export function QuickPhoto({
           onConfirm={(p) => {
             setPlace(p);
             placeRef.current = p;
+            setLocationBlocked(false);
             void liveCamera();
           }}
         />
@@ -612,7 +693,7 @@ export function QuickPhoto({
               <button
                 className="camera-shutter"
                 aria-label="拍照"
-                disabled={busy || !ready || processing >= 2 || storageFailed}
+                disabled={busy || !ready || processing >= 2 || storageFailed || locationBlocked}
                 onClick={() => void shoot()}
               >
                 <span />

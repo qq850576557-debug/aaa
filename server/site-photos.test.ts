@@ -11,6 +11,7 @@ import { config } from './config';
 import { fixtureAccounts, fixtureQuery } from './test-fixtures';
 import { pool, privatePool } from './db';
 import { fixture } from '../tests/helpers';
+import { signPlace } from './photo-geocode';
 import { PHOTO_CHUNK } from '../src/lib/site-photo';
 let server: Server, base: string, dir: string;
 before(async () => {
@@ -389,7 +390,7 @@ test('V1.1 fresh reverse location receipt, optional project, authenticated water
   }
 });
 
-test('V1.3 mixed nearby search, paging, manual fallback and authenticated source receipts', async () => {
+test('map-only selection, paging, radius renewal and historical manual photos remain readable', async () => {
   const f = await fixtureAccounts(),
     c = await login(f.login, f.password);
   const location = {
@@ -405,8 +406,27 @@ test('V1.3 mixed nearby search, paging, manual fallback and authenticated source
     { location, name: '自建房测试地点' },
     c,
   );
-  assert.equal(manualResponse.status, 200);
-  const manual = await manualResponse.json();
+  assert.equal(manualResponse.status, 400);
+  // Historical, already-captured manual receipts must still upload/recover unchanged.
+  const manual = signPlace(c.user, {
+    location,
+    placeName: '历史手动地点',
+    placeSource: 'user-manual',
+    nearby: false,
+    resolvedAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + 90000).toISOString(),
+  });
+  assert.equal(
+    (
+      await req(
+        '/site-photos/place',
+        'POST',
+        { location, previousToken: manual.token, previousAt: manual.resolvedAt },
+        c,
+      )
+    ).status,
+    400,
+  );
   const storedManual = await req(
     '/site-photos',
     'POST',
@@ -492,6 +512,37 @@ test('V1.3 mixed nearby search, paging, manual fallback and authenticated source
     const place = await renewed.json();
     assert.equal(place.placeName, '村庄测试');
     assert.equal(place.placeSource, 'amap-poi-selected');
+    assert.equal(
+      (
+        await req(
+          '/site-photos/place',
+          'POST',
+          {
+            location: { ...location, longitude: location.longitude + 0.1 },
+            previousToken: selected.token,
+            previousAt: selected.resolvedAt,
+          },
+          c,
+        )
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await req(
+          '/site-photos/place',
+          'POST',
+          {
+            location,
+            name: '伪造地点',
+            previousToken: selected.token,
+            previousAt: selected.resolvedAt,
+          },
+          c,
+        )
+      ).status,
+      400,
+    );
     assert.deepEqual(place.location, location);
     const stranger = await fixtureAccounts(),
       other = await login(stranger.login, stranger.password);

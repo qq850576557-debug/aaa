@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import sharp from 'sharp';
 import { fixtureAccounts } from '../server/test-fixtures';
 import { signPlace } from '../server/photo-geocode';
+import { watermarkLayout } from '../src/lib/photo-layout';
 async function setup(page: Page, context: any, manual = false) {
   await context.grantPermissions(['camera', 'geolocation']);
   await context.setGeolocation({ latitude: 30, longitude: 120, accuracy: 12 });
@@ -164,6 +165,16 @@ test('12MP output preserves full pixels; finish directly invokes active multi-fi
   expect(rows.every((r) => r.ready && !r.original)).toBe(true);
   const image = await sharp(Buffer.from(rows[0].bytes)).metadata();
   expect([image.width, image.height]).toEqual([4000, 3000]);
+  const layout = watermarkLayout(4000, 3000, rows[0].meta);
+  await sharp(Buffer.from(rows[0].bytes))
+    .extract({
+      left: Math.floor(layout.x),
+      top: Math.floor(layout.y),
+      width: Math.ceil(layout.boxW),
+      height: Math.ceil(layout.boxH),
+    })
+    .resize({ width: 1100 })
+    .toFile('/tmp/chunmo-v31-export-watermark.png');
   expect(rows[0].meta.captureMethod).toBe('image-capture');
   expect(Buffer.from(rows[0].bytes).toString()).toContain('amap-poi-selected');
   expect(uploads).toEqual([]);
@@ -239,13 +250,11 @@ for (const count of [10, 20])
     await expect(page.locator('.photo-immersive')).toHaveCount(0);
     expect((await data(page)).every((r) => r.ready)).toBe(true);
   });
-test('manual location and rendering failure keep unique original, block unsafe finish and offer recovery', async ({
+test('rendering failure keeps unique original, blocks unsafe finish and offers recovery', async ({
   page,
   context,
 }) => {
-  await setup(page, context, true);
-  await page.getByLabel('手动地点名称').fill('自建房现场');
-  await page.getByRole('button', { name: '使用此地点' }).click();
+  await setup(page, context);
   await still(page, false);
   await open(page);
   await page.locator('.camera-shutter').click();
@@ -254,7 +263,7 @@ test('manual location and rendering failure keep unique original, block unsafe f
   await page.getByRole('button', { name: '有照片处理失败，前往恢复' }).click();
   const row = (await data(page))[0];
   expect(row.original).toBe(true);
-  expect(row.meta.placeSource).toBe('user-manual');
+  expect(row.meta.placeSource).toBe('amap-poi-selected');
   await expect(page.getByRole('button', { name: '保存本次照片' })).toBeDisabled();
 });
 test('GPS denial never initializes a camera', async ({ page, context }) => {
@@ -331,5 +340,35 @@ test('closing while camera permission is pending discards late stream without re
       ),
     )
     .toBe(true);
+  await expect(page.locator('.photo-immersive')).toHaveCount(0);
+});
+
+test('no map results provides retry/search but no manual location or camera bypass', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context, true);
+  await expect(page.getByRole('dialog', { name: '选择拍摄地址' })).toContainText(
+    '暂无可选高德地点',
+  );
+  await expect(page.getByLabel('手动地点名称')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '确认地址并拍摄' })).toBeDisabled();
+  expect(await page.evaluate(() => (window as any).cameraCalls)).toBe(0);
+});
+test('background GPS renewal outside the selected POI radius disables new capture', async ({
+  page,
+  context,
+}) => {
+  await setup(page, context);
+  await open(page);
+  await page.clock.install({ time: new Date() });
+  await context.setGeolocation({ latitude: 30, longitude: 120.1, accuracy: 12 });
+  const renewed = page.waitForResponse(
+    (r) => r.url().endsWith('/api/site-photos/place') && r.request().method() === 'POST',
+  );
+  await page.clock.fastForward(46000);
+  expect((await renewed).status()).toBe(400);
+  await expect(page.locator('.camera-shutter')).toBeDisabled();
+  await page.getByRole('button', { name: '关闭相机' }).click();
   await expect(page.locator('.photo-immersive')).toHaveCount(0);
 });

@@ -1,3 +1,4 @@
+import { photoMetadata } from './photo-metadata';
 import { imageDataUrl } from './photo-image';
 import { encodedDimensions } from './photo-dimensions';
 import { watermarkSvg, PHOTO_MAX, type PhotoMeta } from './site-photo';
@@ -18,6 +19,25 @@ let worker: Worker | null = null;
 let unavailable = false;
 let idle: ReturnType<typeof setTimeout> | undefined;
 let sequence = 0;
+let leases = 0;
+function idleClose() {
+  clearTimeout(idle);
+  if (!leases && !pending.size) idle = setTimeout(closeWorker, 30000);
+}
+export function holdPhotoRenderer() {
+  leases++;
+  clearTimeout(idle);
+  preparePhotoRenderer();
+  let held = true;
+  return () => {
+    if (held) {
+      held = false;
+      leases--;
+      idleClose();
+    }
+  };
+}
+type RenderOptions = { thumbnail?: boolean; provenance?: boolean };
 const pending = new Map<
   number,
   { resolve: (r: RenderResult) => void; reject: (e: Error) => void }
@@ -47,14 +67,14 @@ export function preparePhotoRenderer() {
       if (!p) return;
       pending.delete(data.id);
       data.error ? p.reject(Error(data.error)) : p.resolve(data.result);
-      if (!pending.size) idle = setTimeout(closeWorker, 30000);
+      if (!pending.size) idleClose();
     };
     worker.onerror = () => {
       unavailable = true;
       closeWorker();
     };
     worker.postMessage({ prepare: true });
-    idle = setTimeout(closeWorker, 30000);
+    idleClose();
   } catch {
     unavailable = true;
     closeWorker();
@@ -81,10 +101,14 @@ const image = (src: string) =>
   });
 const jobs = new Map<string, Promise<RenderResult>>();
 let chain: Promise<unknown> = Promise.resolve();
-export function renderPhoto(file: File, meta: PhotoMeta): Promise<RenderResult> {
+export function renderPhoto(
+  file: File,
+  meta: PhotoMeta,
+  options: RenderOptions = {},
+): Promise<RenderResult> {
   const old = jobs.get(meta.requestId);
   if (old) return old;
-  const work = chain.then(() => renderOnePhoto(file, meta));
+  const work = chain.then(() => renderOnePhoto(file, meta, options));
   jobs.set(meta.requestId, work);
   chain = work
     .catch(() => {})
@@ -93,7 +117,7 @@ export function renderPhoto(file: File, meta: PhotoMeta): Promise<RenderResult> 
     });
   return work;
 }
-async function renderOnePhoto(file: File, meta: PhotoMeta) {
+async function renderOnePhoto(file: File, meta: PhotoMeta, options: RenderOptions) {
   const started = performance.now();
   const header = new Uint8Array(await file.slice(0, 256 * 1024).arrayBuffer());
   const dimensions = encodedDimensions(header);
@@ -128,14 +152,14 @@ async function renderOnePhoto(file: File, meta: PhotoMeta) {
             reject(error);
           },
         });
-        worker!.postMessage({ id, file, meta: actual });
+        worker!.postMessage({ id, file, meta: actual, options });
       });
     } catch {
       unavailable = true;
       closeWorker();
-      result = await renderCurrentPhoto(file, actual);
+      result = await renderCurrentPhoto(file, actual, options);
     }
-  } else result = await renderCurrentPhoto(file, actual);
+  } else result = await renderCurrentPhoto(file, actual, options);
   photoTiming('watermark', started, {
     renderer: result.renderer || 'main',
     width: result.width,
@@ -143,7 +167,7 @@ async function renderOnePhoto(file: File, meta: PhotoMeta) {
   });
   return { ...result, exifRaw: exif?.raw };
 }
-async function renderCurrentPhoto(file: File, meta: PhotoMeta) {
+async function renderCurrentPhoto(file: File, meta: PhotoMeta, options: RenderOptions) {
   if (!file.size || file.size > PHOTO_MAX) throw Error('原图需小于50MiB，本地文件未修改');
   const header = new Uint8Array(await file.slice(0, 256 * 1024).arrayBuffer());
   const dimensions = encodedDimensions(header);
@@ -208,14 +232,18 @@ async function renderCurrentPhoto(file: File, meta: PhotoMeta) {
       blob = await encode();
     }
 
-    const preview = document.createElement('canvas');
-    preview.width = 240;
-    preview.height = Math.max(1, Math.round((240 * height) / width));
-    preview.getContext('2d')?.drawImage(canvas, 0, 0, preview.width, preview.height);
-    const thumbnail = await new Promise<Blob | undefined>((resolve) =>
-      preview.toBlob((b) => resolve(b || undefined), 'image/jpeg', 0.75),
-    );
-    preview.width = preview.height = 0;
+    if (options.provenance) blob = await photoMetadata(blob, actual);
+    let thumbnail: Blob | undefined;
+    if (options.thumbnail !== false) {
+      const preview = document.createElement('canvas');
+      preview.width = 240;
+      preview.height = Math.max(1, Math.round((240 * height) / width));
+      preview.getContext('2d')?.drawImage(canvas, 0, 0, preview.width, preview.height);
+      thumbnail = await new Promise<Blob | undefined>((resolve) =>
+        preview.toBlob((b) => resolve(b || undefined), 'image/jpeg', 0.75),
+      );
+      preview.width = preview.height = 0;
+    }
     canvas.width = canvas.height = 0;
     return {
       blob,

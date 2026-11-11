@@ -1,0 +1,77 @@
+{
+  "environment": "Linux Chromium fake camera/GPS/POI and sharing stub. Not real iPhone, real AMap or Photos verification. Historical V3 samples are not a controlled A/B benchmark.",
+  "runs": [
+    {
+      "count": 10,
+      "pixels": [3840, 2160],
+      "metrics": {
+        "click-preview": {
+          "n": 1,
+          "medianMs": 144.6,
+          "p95Ms": 144.6
+        },
+        "camera-initialize": {
+          "n": 1,
+          "medianMs": 33.9,
+          "p95Ms": 33.9
+        },
+        "shutter-local": {
+          "n": 10,
+          "medianMs": 65.2,
+          "p95Ms": 101.1
+        },
+        "watermark": {
+          "n": 10,
+          "medianMs": 87.2,
+          "p95Ms": 121.8
+        },
+        "watermark-durable": {
+          "n": 10,
+          "medianMs": 109.9,
+          "p95Ms": 151.8
+        },
+        "file-prepare": {
+          "n": 10,
+          "medianMs": 1.0,
+          "p95Ms": 1.4
+        }
+      }
+    },
+    {
+      "count": 20,
+      "pixels": [3840, 2160],
+      "metrics": {
+        "click-preview": {
+          "n": 1,
+          "medianMs": 138.4,
+          "p95Ms": 138.4
+        },
+        "camera-initialize": {
+          "n": 1,
+          "medianMs": 31.2,
+          "p95Ms": 31.2
+        },
+        "shutter-local": {
+          "n": 20,
+          "medianMs": 61.0,
+          "p95Ms": 76
+        },
+        "watermark": {
+          "n": 20,
+          "medianMs": 85.7,
+          "p95Ms": 107.3
+        },
+        "watermark-durable": {
+          "n": 20,
+          "medianMs": 98.7,
+          "p95Ms": 118.3
+        },
+        "file-prepare": {
+          "n": 20,
+          "medianMs": 0.8,
+          "p95Ms": 2.5
+        }
+      }
+    }
+  ]
+}

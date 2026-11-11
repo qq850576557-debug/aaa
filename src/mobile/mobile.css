@@ -750,3 +750,19 @@ body:has(dialog[open]) .assistant-fab {
     padding-top: calc(4px + env(safe-area-inset-top));
   }
 }
+/* Keep the preview in step with the exported circular brand row. */
+.photo-immersive .live-watermark {
+  background: rgba(21, 44, 35, 0.55);
+}
+.photo-immersive .live-watermark > div {
+  font-size: 1.333em;
+  line-height: 1.35;
+  gap: 10px;
+}
+.photo-immersive .live-watermark img {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: contain;
+  flex: none;
+}

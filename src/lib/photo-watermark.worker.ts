@@ -1,5 +1,6 @@
+import { photoMetadata } from './photo-metadata';
 import type { PhotoMeta } from './site-photo';
-import { watermarkLayout } from './photo-layout';
+import { watermarkLayout, watermarkOpacity } from './photo-layout';
 
 let logo: Promise<ImageBitmap> | null = null;
 function originalLogo() {
@@ -17,7 +18,11 @@ function originalLogo() {
       throw e;
     }));
 }
-async function render(file: Blob, meta: PhotoMeta) {
+async function render(
+  file: Blob,
+  meta: PhotoMeta,
+  options: { thumbnail?: boolean; provenance?: boolean } = {},
+) {
   const source = await createImageBitmap(file, { imageOrientation: 'from-image' });
   let canvas: OffscreenCanvas | undefined;
   try {
@@ -32,26 +37,36 @@ async function render(file: Blob, meta: PhotoMeta) {
     if (!ctx) throw Error('离屏绘图不可用');
     const mark = await originalLogo();
     ctx.drawImage(source, 0, 0, width, height);
-    const { scale, font, gap, pad, wrapped, boxW, boxH, x, y } = watermarkLayout(
-      width,
-      height,
-      meta,
-    );
-    ctx.fillStyle = 'rgba(21,44,35,.78)';
+    const { scale, font, gap, pad, wrapped, boxW, boxH, x, y, logoSize, brandFont, headerH } =
+      watermarkLayout(width, height, meta);
+    ctx.fillStyle = `rgba(21,44,35,${watermarkOpacity})`;
     ctx.beginPath();
     ctx.roundRect(x, y, boxW, boxH, 14 * scale);
     ctx.fill();
-    ctx.drawImage(mark, x + pad, y + pad - 5 * scale, 34 * scale, 34 * scale);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x + pad + logoSize / 2, y + pad + logoSize / 2, logoSize / 2, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(mark, x + pad, y + pad, logoSize, logoSize);
+    ctx.restore();
     ctx.fillStyle = '#fffdf1';
-    ctx.font = `600 ${font}px sans-serif`;
-    ctx.fillText('春茉设计', x + pad + 47 * scale, y + pad + font);
+    ctx.font = `600 ${brandFont}px sans-serif`;
+    ctx.fillText(
+      '春茉设计',
+      x + pad + logoSize + 12 * scale,
+      y + pad + logoSize / 2 + brandFont * 0.38,
+    );
     ctx.font = `${font}px sans-serif`;
-    wrapped.forEach((line, i) => ctx.fillText(line, x + pad, y + pad + gap * (i + 2)));
-    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.95 });
-    const thumb = new OffscreenCanvas(240, Math.max(1, Math.round((240 * height) / width)));
-    thumb.getContext('2d')!.drawImage(canvas, 0, 0, thumb.width, thumb.height);
-    const thumbnail = await thumb.convertToBlob({ type: 'image/jpeg', quality: 0.75 });
-    thumb.width = thumb.height = 0;
+    wrapped.forEach((line, i) => ctx.fillText(line, x + pad, y + pad + headerH + font + gap * i));
+    let blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.95 });
+    if (options.provenance) blob = await photoMetadata(blob, meta);
+    let thumbnail: Blob | undefined;
+    if (options.thumbnail !== false) {
+      const thumb = new OffscreenCanvas(240, Math.max(1, Math.round((240 * height) / width)));
+      thumb.getContext('2d')!.drawImage(canvas, 0, 0, thumb.width, thumb.height);
+      thumbnail = await thumb.convertToBlob({ type: 'image/jpeg', quality: 0.75 });
+      thumb.width = thumb.height = 0;
+    }
     return {
       blob,
       thumbnail,
@@ -74,13 +89,13 @@ async function render(file: Blob, meta: PhotoMeta) {
   }
 }
 self.onmessage = async (event: MessageEvent) => {
-  const { id, file, meta } = event.data;
+  const { id, file, meta, options } = event.data;
   if (!file) {
     void originalLogo().catch(() => {});
     return;
   }
   try {
-    self.postMessage({ id, result: await render(file, meta) });
+    self.postMessage({ id, result: await render(file, meta, options) });
   } catch (e) {
     self.postMessage({ id, error: e instanceof Error ? e.message : String(e) });
   }
