@@ -192,7 +192,7 @@ test('mobile daily reminders and shared record/purchase edits with multiple ment
   await page.screenshot({ path: '/tmp/chunmo-mobile-records-390.png', fullPage: true });
 });
 
-test('legacy local Blob photos remain readable offline without top-level blob navigation', async ({
+test('legacy local Blob originals and pending uploads remain untouched by the new photo flow', async ({
   page,
   context,
 }) => {
@@ -204,7 +204,7 @@ test('legacy local Blob photos remain readable offline without top-level blob na
     .jpeg()
     .toBuffer();
   await page.getByRole('button', { name: '拍照', exact: true }).click();
-  await expect(page.locator('.mobile-photo')).toBeVisible();
+  await expect(page.locator('.quick-photo')).toBeVisible();
   await context.setOffline(true);
   const id = crypto.randomUUID();
   await page.evaluate(
@@ -255,18 +255,33 @@ test('legacy local Blob photos remain readable offline without top-level blob na
       projectId: d.projects[0].id,
     },
   );
-  await expect(page.locator('.mobile-photo-row')).toHaveCount(1);
-  await page
-    .locator('.mobile-photo-row')
-    .getByRole('button', { name: '原图', exact: true })
-    .click();
-  await expect(page.getByAltText('应用内原图预览')).toBeVisible();
-  expect(await page.getByAltText('应用内原图预览').getAttribute('src')).toMatch(
-    /^data:image\/jpeg/,
+  await expect(page.locator('.mobile-photo-row')).toHaveCount(0);
+  const retained = await page.evaluate(
+    async ({ owner, id }) => {
+      const db = await new Promise<IDBDatabase>((resolve) => {
+        const r = indexedDB.open('chunmo-site-photos');
+        r.onsuccess = () => resolve(r.result);
+      });
+      const row: any = await new Promise((resolve) => {
+        const r = db
+          .transaction('photos')
+          .objectStore('photos')
+          .get(JSON.stringify([owner.workspaceId, owner.id, id]));
+        r.onsuccess = () => resolve(r.result);
+      });
+      db.close();
+      return {
+        state: row.state,
+        original: Array.from(new Uint8Array(await row.original.arrayBuffer())),
+        watermarkedSize: row.watermarked.size,
+      };
+    },
+    { owner: { id: f.id, workspaceId: f.workspaceId }, id },
   );
+  expect(retained.original).toEqual(Array.from(original));
+  expect(retained.state).toBe('pending');
+  expect(retained.watermarkedSize).toBe(original.length);
   expect(page.url()).not.toContain('blob:');
-  await page.getByRole('button', { name: '存入相册', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText('长按');
 });
 
 test('install manifest, static-only service worker cache and desktop retains full navigation', async ({

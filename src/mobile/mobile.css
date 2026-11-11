@@ -480,3 +480,89 @@ body:has(dialog[open]) .assistant-fab {
   min-width: 0;
   flex: 1;
 }
+.quick-photo {
+  display: grid;
+  gap: 12px;
+}
+.photo-address {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d8e5db;
+  border-radius: 14px;
+  background: #fbfcf8;
+}
+.photo-address header,
+.photo-address footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.photo-address h2,
+.photo-batch-summary h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.photo-address .nearby-list {
+  max-height: 42dvh;
+}
+.quick-camera {
+  position: relative;
+  background: #17231e;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.quick-camera video {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 65dvh;
+  object-fit: contain;
+}
+.quick-camera > p {
+  color: #fff;
+  padding: 28px 16px;
+  text-align: center;
+}
+.live-watermark {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  display: grid;
+  gap: 3px;
+  background: #152c23c7;
+  border-radius: 8px;
+  color: #fffdf1;
+  padding: 10px 12px;
+  font-size: 12px;
+  pointer-events: none;
+}
+.live-watermark > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.live-watermark img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
+.quick-camera-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.photo-batch-summary {
+  display: grid;
+  gap: 12px;
+}
+.photo-export img {
+  display: block;
+  max-width: 100%;
+  max-height: 65dvh;
+  object-fit: contain;
+}

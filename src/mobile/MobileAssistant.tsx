@@ -10,10 +10,9 @@ import { MentionInbox } from '../components/MentionInbox';
 import { Avatar } from '../components/Avatar';
 import { Modal } from '../components/Modal';
 import { SaveFeedback } from '../components/SaveFeedback';
-import { syncPhotos } from '../lib/photo-queue';
 import './mobile.css';
 import '../components/purchase-status.css';
-const loadPhotos = () => import('./PhotoAssistant').then((m) => ({ default: m.PhotoAssistant }));
+const loadPhotos = () => import('./QuickPhoto').then((m) => ({ default: m.QuickPhoto }));
 const Photos = lazy(loadPhotos);
 export function MobileAssistant({
   data,
@@ -52,8 +51,7 @@ export function MobileAssistant({
     ),
     [onlyOpen, setOnlyOpen] = useState(false),
     [profile, setProfile] = useState(false);
-  const [cameraRequest, setCameraRequest] = useState(0),
-    [cameraActive, setCameraActive] = useState(false);
+  const [cameraActive, setCameraActive] = useState(false);
   const [install, setInstall] = useState<any>(null),
     [update, setUpdate] = useState<ServiceWorker | null>(null);
   useEffect(() => {
@@ -88,21 +86,6 @@ export function MobileAssistant({
       window.removeEventListener('beforeinstallprompt', prompt);
     };
   }, []);
-  useEffect(() => {
-    if (!user) return;
-    const run = () => {
-      if (navigator.onLine) void syncPhotos(user);
-    };
-    run();
-    window.addEventListener('online', run);
-    window.addEventListener('focus', run);
-    const t = setInterval(run, 60000);
-    return () => {
-      window.removeEventListener('online', run);
-      window.removeEventListener('focus', run);
-      clearInterval(t);
-    };
-  }, [user?.id, user?.workspaceId]);
   const items = data.projects
     .flatMap((p) => categorizedAgenda(data, records, p.id, now).items)
     .filter((i) => i.kind === 'record' || i.kind === 'purchase');
@@ -274,12 +257,12 @@ export function MobileAssistant({
           user ? (
             <Suspense fallback={<p>正在打开拍照…</p>}>
               <Photos
-                projects={data.projects}
                 user={user}
-                projectId={project}
-                onProject={setProject}
-                startRequest={cameraRequest}
                 onSessionChange={setCameraActive}
+                onReturn={() => {
+                  setCameraActive(false);
+                  setTab('home');
+                }}
               />
             </Suspense>
           ) : (
@@ -354,7 +337,6 @@ export function MobileAssistant({
           className="assistant-camera"
           onClick={() => {
             setTab('photo');
-            setCameraRequest((n) => n + 1);
           }}
           aria-current={tab === 'photo' ? 'page' : undefined}
         >
