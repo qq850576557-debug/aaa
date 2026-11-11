@@ -21,7 +21,7 @@ export function watermarkLayout(width: number, height: number, m: PhotoMeta) {
   const maxChars = 26;
   const details = m.placeName
     ? [
-        `工地定位：${m.nearby ? '附近：' : ''}${m.placeName}`,
+        `工地定位${m.placeSource === 'user-manual' ? '（手动）' : ''}：${m.nearby ? '附近：' : ''}${m.placeName}`,
         `拍摄时间：${photoTime(m.capturedAt)}`,
         `拍摄人员：${m.actorName}`,
       ]

@@ -3,6 +3,7 @@ import {
   freshLocation,
   freshPlace,
   nearbyPlace,
+  nearbyPois,
   wgsToGcj,
   type PlaceReceipt,
 } from './photo-location';
@@ -62,4 +63,21 @@ it('nearby AOI has no boundary proof and cannot select an unrelated nearest shop
     }),
   ).toBeNull();
   expect(nearbyPlace({ status: '0' })).toBeNull();
+});
+
+it('mixed POIs include village, shop and residence, use coordinates rather than claimed distances and exclude beyond 2km', () => {
+  const result = nearbyPois(
+    {
+      pois: [
+        { id: 'v', name: '村庄', location: '120.005,30', distance: '1', type: '190000' },
+        { id: 's', name: '便利店', location: '120.001,30', distance: '900', type: '060000' },
+        { id: 'r', name: '住宅', location: '120.003,30', type: '120000' },
+        { id: 'far', name: '范围外', location: '121,30' },
+        { id: 'bad', name: '无坐标', location: 'invalid' },
+      ],
+    },
+    { latitude: 30, longitude: 120 },
+  );
+  expect(result.map((p) => p.id)).toEqual(['s', 'r', 'v']);
+  expect(result.every((p) => p.distance <= 2000)).toBe(true);
 });

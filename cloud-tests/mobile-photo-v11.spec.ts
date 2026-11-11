@@ -75,7 +75,7 @@ async function photos(p: Page) {
   });
 }
 
-test('V1.2 name and left header; denied location or missing geocoder never permits a new shot', async ({
+test('V1.3 denied GPS blocks capture; missing geocoder keeps manual location available', async ({
   page,
 }) => {
   await enter(page);
@@ -120,8 +120,9 @@ test('V1.2 name and left header; denied location or missing geocoder never permi
     }),
   );
   await page.getByRole('button', { name: '重试定位并拍照' }).click();
-  await expect(page.locator('.mobile-photo')).toContainText('地点识别尚未配置');
-  await expect(page.locator('.camera-shutter')).toHaveCount(0);
+  await expect(page.locator('.mobile-photo')).toContainText('附近地点暂不可用');
+  await expect(page.getByLabel('手动地点名称')).toBeVisible();
+  await expect(page.locator('.camera-shutter:not(:disabled)')).toHaveCount(0);
 });
 
 test('V1.1 continuous live camera: three automatic byte-backed local saves, offline retry, share, optional archive and fresh next session', async ({

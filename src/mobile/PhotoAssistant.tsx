@@ -8,6 +8,8 @@ import {
   freshPlace,
   type PlaceReceipt,
   type PhotoLocation,
+  type NearbyPlace,
+  type NearbyResult,
 } from '../lib/photo-location';
 import { preparePhotoRenderer, renderPhoto } from '../lib/photo-render';
 import { imageBlob, imageDataUrl, sharePhoto } from '../lib/photo-image';
@@ -157,9 +159,112 @@ export function PhotoAssistant({
     shutterBusy = useRef(false),
     functions = useRef({ start: async () => {} }),
     nativeReceipt = useRef<PlaceReceipt | null>(null);
+  const gps = useRef<PhotoLocation | null>(null);
+  const [places, setPlaces] = useState<NearbyPlace[]>([]),
+    [query, setQuery] = useState(''),
+    [manual, setManual] = useState(''),
+    [more, setMore] = useState(false),
+    [placeBusy, setPlaceBusy] = useState(false),
+    [placeError, setPlaceError] = useState('');
+  const nextPage = useRef(1),
+    lookupSequence = useRef(0),
+    placeCache = useRef(new Map<string, NearbyResult>());
+  const queryRef = useRef(query);
+  queryRef.current = query;
+  function choosePlace(p: PlaceReceipt) {
+    receipt.current = p;
+    setPlace(p);
+    setLocationValid(freshPlace(p));
+  }
+  async function nearby(loc: PhotoLocation, text = '', page = 1, autoSelect = false) {
+    const seq = ++lookupSequence.current,
+      session = generation.current;
+    setPlaceBusy(true);
+    setPlaceError('');
+    try {
+      const key = JSON.stringify([loc.obtainedAt, text, page]);
+      let result = placeCache.current.get(key);
+      if (!result) {
+        const response = await photoStage('place-lookup', () =>
+          cloudApi<NearbyResult | PlaceReceipt>('/site-photos/location', 'POST', {
+            location: loc,
+            nearby: true,
+            query: text,
+            page,
+          }),
+        );
+        result =
+          'token' in response
+            ? {
+                places: [
+                  {
+                    id: response.token,
+                    name: response.placeName,
+                    address: '',
+                    distance: 0,
+                    receipt: response,
+                  },
+                ],
+                more: false,
+              }
+            : response;
+        if (placeCache.current.size >= 40) placeCache.current.clear();
+        placeCache.current.set(key, result);
+      }
+      if (!active.current || session !== generation.current || seq !== lookupSequence.current)
+        return;
+      setPlaces((old) =>
+        [
+          ...new Map(
+            [...(page === 1 ? [] : old), ...result!.places].map((p) => [p.id, p]),
+          ).values(),
+        ].sort((a, b) => a.distance - b.distance),
+      );
+      setMore(result.more);
+      nextPage.current = page + 1;
+      if ((autoSelect || page === 1) && !receipt.current && result.places[0])
+        choosePlace(result.places[0].receipt);
+      if (!result.places.length && page === 1) setPlaceError('暂无附近地点，可手动填写');
+    } catch (e) {
+      if (active.current && session === generation.current && seq === lookupSequence.current) {
+        setPlaceError('附近地点暂不可用，可手动填写');
+        setMore(false);
+      }
+    } finally {
+      if (active.current && seq === lookupSequence.current) setPlaceBusy(false);
+    }
+  }
+  useEffect(() => {
+    if (!gps.current || !['camera', 'native'].includes(phase)) return;
+    const t = setTimeout(() => {
+      if (gps.current && freshLocation(gps.current)) void nearby(gps.current, query);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [query]);
+  async function manualPlace() {
+    setPlaceBusy(true);
+    const session = generation.current;
+    try {
+      const loc = freshLocation(gps.current) ? gps.current! : await locationNow();
+      const p = await cloudApi<PlaceReceipt>('/site-photos/place', 'POST', {
+        location: loc,
+        name: manual.trim(),
+      });
+      if (active.current && session === generation.current) {
+        gps.current = loc;
+        choosePlace(p);
+        setStatus('');
+      }
+    } catch (e) {
+      setPlaceError(String(e));
+    } finally {
+      setPlaceBusy(false);
+    }
+  }
   const startedAt = useRef(0);
   const placeFlight = useRef<Promise<PlaceReceipt> | null>(null);
   const readyMeasured = useRef(false);
+  const lastLocationRetry = useRef(0);
   const refresh = () =>
     void localPhotos(user)
       .then((rows) => {
@@ -312,22 +417,28 @@ export function PhotoAssistant({
     const work = (async () => {
       const loc = await locationNow();
       if (!active.current || session !== generation.current) throw Error('拍摄已结束');
-      const p = await photoStage('place-lookup', () =>
-        cloudApi<PlaceReceipt>('/site-photos/location', 'POST', { location: loc }),
-      );
-      if (!freshPlace(p)) throw Error('地点识别未确认，请重试');
-      if (!active.current || session !== generation.current) throw Error('拍摄已结束');
-      receipt.current = p;
-      setPlace(p);
-      setLocationValid(true);
-      return p;
+      gps.current = loc;
+      if (receipt.current) {
+        const previous = receipt.current;
+        const p = await cloudApi<PlaceReceipt>('/site-photos/place', 'POST', {
+          location: loc,
+          previousToken: previous.token,
+          previousAt: previous.resolvedAt,
+        });
+        if (!active.current || session !== generation.current) throw Error('拍摄已结束');
+        choosePlace(p);
+        return p;
+      }
+      await nearby(loc, queryRef.current, 1, true);
+      if (!receipt.current || !freshPlace(receipt.current))
+        throw Error('请选择附近地点或手动填写地点');
+      return receipt.current;
     })();
     placeFlight.current = work;
     try {
       return await work;
     } catch (e) {
       if (active.current && session === generation.current) {
-        receipt.current = null;
         setLocationValid(false);
       }
       throw e;
@@ -348,7 +459,15 @@ export function PhotoAssistant({
     setPreviewReady(false);
     setCount(0);
     setPhase('starting');
-    setStatus('正在定位并识别小区…');
+    gps.current = null;
+    lookupSequence.current++;
+    placeCache.current.clear();
+    setPlaces([]);
+    setQuery('');
+    setManual('');
+    setMore(false);
+    setPlaceError('');
+    setStatus('正在定位…');
     preparePhotoRenderer();
     if (navigator.permissions?.query)
       void photoStage('camera-permission-check', async () => {
@@ -365,6 +484,10 @@ export function PhotoAssistant({
       })
       .catch((e) => {
         if (live()) {
+          if (freshLocation(gps.current)) {
+            setStatus('请选择附近地点或手动填写地点');
+            return;
+          }
           generation.current++;
           stop();
           setPhase('error');
@@ -406,7 +529,21 @@ export function PhotoAssistant({
   }
   useEffect(() => {
     if (phase !== 'camera' && phase !== 'native') return;
-    const tick = () => setLocationValid(freshPlace(receipt.current));
+    const tick = () => {
+      const valid = freshPlace(receipt.current);
+      setLocationValid(valid);
+      if (
+        !valid &&
+        receipt.current &&
+        !placeFlight.current &&
+        Date.now() - lastLocationRetry.current > 30000
+      ) {
+        lastLocationRetry.current = Date.now();
+        void ensurePlace().catch((e) => {
+          if (active.current) setStatus(String(e));
+        });
+      }
+    };
     tick();
     const t = setInterval(tick, 1000);
     return () => clearInterval(t);
@@ -482,7 +619,8 @@ export function PhotoAssistant({
       placeToken: p.token,
       placeName: p.placeName,
       placeSource: p.placeSource,
-      nearby: true,
+      ...(p.poi ? { placePoi: p.poi } : {}),
+      nearby: p.nearby,
       actorId: user.id,
       actorName: config?.actorName || user.displayName || user.login,
     };
@@ -668,8 +806,92 @@ export function PhotoAssistant({
         </p>
       )}
       <strong className="camera-place">
-        {place ? `附近：${place.placeName}` : '等待定位识别小区'}
+        {place
+          ? `${place.placeSource === 'user-manual' ? '手动地点：' : '附近：'}${place.placeName}`
+          : '等待选择地点'}
       </strong>
+      {['starting', 'camera', 'native'].includes(phase) && (
+        <section className="nearby-picker" aria-label="附近地点">
+          <input
+            aria-label="搜索附近地点"
+            maxLength={80}
+            type="search"
+            placeholder="搜索附近2公里地点"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <div
+            className="nearby-list"
+            role="listbox"
+            aria-label="附近地点列表"
+            aria-busy={placeBusy}
+          >
+            {places.map((p) => (
+              <button
+                key={p.id}
+                role="option"
+                aria-selected={
+                  place?.placeName === p.name &&
+                  place?.placeSource !== 'user-manual' &&
+                  (!place?.poi || place.poi.id === p.id)
+                }
+                disabled={busy}
+                onClick={() => {
+                  choosePlace(p.receipt);
+                  setStatus('');
+                }}
+              >
+                <span>
+                  <strong>{p.name}</strong>
+                  <small>{p.address}</small>
+                </span>
+                <span>
+                  {p.distance}米 {place?.poi?.id === p.id ? '✓' : ''}
+                </span>
+              </button>
+            ))}
+            {more && (
+              <button
+                disabled={placeBusy}
+                onClick={() => {
+                  if (gps.current) void nearby(gps.current, query, nextPage.current);
+                }}
+              >
+                加载更多
+              </button>
+            )}
+          </div>
+          {placeBusy && <small role="status">正在查询附近地点…</small>}
+          {placeError && <small role="status">{placeError}</small>}
+          <div className="nearby-manual">
+            <input
+              aria-label="手动地点名称"
+              placeholder="手动填写地点"
+              maxLength={80}
+              value={manual}
+              onChange={(e) => setManual(e.target.value)}
+            />
+            <button
+              disabled={!manual.trim() || placeBusy || busy}
+              onClick={() => void manualPlace()}
+            >
+              使用此地点
+            </button>
+          </div>
+          <button
+            disabled={placeBusy || busy}
+            onClick={() => {
+              receipt.current = null;
+              setPlace(null);
+              gps.current = null;
+              setLocationValid(false);
+              void ensurePlace().catch((e) => setStatus(String(e)));
+            }}
+          >
+            重新定位
+          </button>
+        </section>
+      )}
       {status && (
         <p role="status" className="camera-status">
           {status}
@@ -711,7 +933,7 @@ export function PhotoAssistant({
       {phase === 'native' && (
         <button
           className="camera-start"
-          disabled={!locationValid || busy || !!unsaved}
+          disabled={!locationValid || busy || placeBusy || !!unsaved}
           onClick={() => {
             if (freshPlace(receipt.current)) {
               nativeReceipt.current = receipt.current;
@@ -742,7 +964,14 @@ export function PhotoAssistant({
           <span>本次已拍 {count} 张</span>
           <button
             className="camera-shutter"
-            disabled={phase !== 'camera' || busy || !!unsaved || !locationValid || !previewReady}
+            disabled={
+              phase !== 'camera' ||
+              busy ||
+              placeBusy ||
+              !!unsaved ||
+              !locationValid ||
+              !previewReady
+            }
             onClick={() => void capture()}
           >
             拍照

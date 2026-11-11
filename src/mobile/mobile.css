@@ -429,3 +429,54 @@ body:has(dialog[open]) .assistant-fab {
   color: #984c39;
   background: #faf0e9;
 }
+
+.nearby-picker {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+}
+.nearby-list {
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #d9e4dc;
+  border-radius: 10px;
+}
+.nearby-list button[role='option'] {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid #e3ebe5;
+  border-radius: 0;
+}
+.nearby-list button[role='option'] > span:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.nearby-list small {
+  display: block;
+  color: #718075;
+  font-size: 12px;
+}
+.nearby-list button[role='option'][aria-selected='true'] {
+  --button-soft: #dfefe2;
+  background: #dfefe2 !important;
+  color: #245346 !important;
+}
+.nearby-list button > span:last-child {
+  white-space: nowrap;
+  font-size: 12px;
+  align-self: center;
+}
+.nearby-manual {
+  display: flex;
+  gap: 8px;
+}
+.nearby-manual input {
+  min-width: 0;
+  flex: 1;
+}

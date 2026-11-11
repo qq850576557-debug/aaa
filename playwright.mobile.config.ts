@@ -8,7 +8,12 @@ process.env.CHUNMO_API_TARGET = 'http://127.0.0.1:4001';
 process.env.CHUNMO_PHOTO_DIR = mkdtempSync(join(tmpdir(), 'chunmo-mobile-pwa-'));
 export default defineConfig({
   testDir: './cloud-tests',
-  testMatch: ['mobile-assistant.spec.ts', 'mobile-photo-v11.spec.ts', 'mobile-v12.spec.ts'],
+  testMatch: [
+    'mobile-assistant.spec.ts',
+    'mobile-photo-v11.spec.ts',
+    'mobile-v12.spec.ts',
+    'mobile-v13.spec.ts',
+  ],
   workers: 1,
   timeout: 90000,
   use: {

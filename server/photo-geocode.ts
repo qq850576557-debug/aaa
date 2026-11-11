@@ -9,6 +9,7 @@ import {
   locationSchema,
   freshLocation,
   nearbyPlace,
+  nearbyPois,
   wgsToGcj,
   type PlaceReceipt,
 } from '../src/lib/photo-location';
@@ -53,8 +54,103 @@ export function verifyPlace(token: string, actor: Actor, capturedAt: string): Pl
 let day = '',
   requests = 0;
 export function photoGeocodeRoutes(app: Express) {
+  app.post('/api/site-photos/place', async (req: AuthRequest, res, next) => {
+    try {
+      const input = z
+        .object({
+          location: locationSchema,
+          name: z.string().trim().min(1).max(80).optional(),
+          previousToken: z.string().max(8000).optional(),
+          previousAt: z.iso.datetime().optional(),
+        })
+        .strict()
+        .parse(req.body);
+      if (!freshLocation(input.location))
+        throw new ApiError(400, '定位已过期或精度不足，请重新定位');
+      const old =
+        input.previousToken && input.previousAt
+          ? verifyPlace(input.previousToken, req.actor!, input.previousAt)
+          : null;
+      if (!old && !input.name) throw new ApiError(400, '请填写地点名称');
+      res.json(
+        signPlace(req.actor!, {
+          location: input.location,
+          placeName: old?.placeName || input.name!,
+          placeSource: old?.placeSource || 'user-manual',
+          nearby: old?.nearby ?? false,
+          ...(old?.poi ? { poi: old.poi } : {}),
+          resolvedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.parse(input.location.obtainedAt) + 90000).toISOString(),
+        }),
+      );
+    } catch (e) {
+      next(e);
+    }
+  });
   app.post('/api/site-photos/location', async (req: AuthRequest, res, next) => {
     try {
+      if (req.body?.nearby === true) {
+        const input = z
+          .object({
+            location: locationSchema,
+            nearby: z.literal(true),
+            query: z.string().trim().max(80).default(''),
+            page: z.number().int().min(1).max(25).default(1),
+          })
+          .strict()
+          .parse(req.body);
+        if (!freshLocation(input.location))
+          throw new ApiError(400, '定位已过期或精度不足，请重新定位');
+        if (!geocodeEnabled()) throw new ApiError(503, '附近地点暂不可用，可手动填写地点');
+        const today = new Date().toISOString().slice(0, 10);
+        if (day !== today) {
+          day = today;
+          requests = 0;
+        }
+        const limit = Number(process.env.CHUNMO_AMAP_DAILY_LIMIT || 200);
+        if (!Number.isInteger(limit) || limit < 1 || requests >= limit)
+          throw new ApiError(429, '地点查询达到限额，可手动填写地点');
+        requests++;
+        const point = wgsToGcj(input.location.latitude, input.location.longitude);
+        const url = new URL('https://restapi.amap.com/v3/place/around');
+        url.search = new URLSearchParams({
+          key: process.env.CHUNMO_AMAP_KEY!,
+          location: `${point.longitude},${point.latitude}`,
+          radius: '2000',
+          sortrule: 'distance',
+          offset: '20',
+          page: String(input.page),
+          extensions: 'base',
+          keywords: input.query,
+          output: 'JSON',
+        }).toString();
+        let raw: any;
+        try {
+          const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+          if (!response.ok) throw Error();
+          raw = await response.json();
+        } catch {
+          throw new ApiError(503, '附近地点暂不可用，可手动填写地点');
+        }
+        if (raw?.status !== '1') throw new ApiError(503, '附近地点暂不可用，可手动填写地点');
+        const places = nearbyPois(raw, point).map((p) => ({
+          id: p.id,
+          name: p.name,
+          address: p.address,
+          distance: p.distance,
+          receipt: signPlace(req.actor!, {
+            location: input.location,
+            placeName: p.name,
+            placeSource: 'amap-poi-selected',
+            nearby: true,
+            poi: { id: p.id, latitude: p.latitude, longitude: p.longitude },
+            resolvedAt: new Date().toISOString(),
+            expiresAt: new Date(Date.parse(input.location.obtainedAt) + 90000).toISOString(),
+          }),
+        }));
+        res.json({ places, more: input.page < 25 && Number(raw.count) > input.page * 20 });
+        return;
+      }
       if (!geocodeEnabled())
         throw new ApiError(503, '地点识别尚未配置，请负责人配置已批准的高德Web服务Key后再拍照');
       const { location } = z.object({ location: locationSchema }).strict().parse(req.body);

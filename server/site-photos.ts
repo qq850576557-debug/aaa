@@ -147,7 +147,12 @@ export function sitePhotoRoutes(app: Express) {
           actorName: a.displayName || a.login,
           projectName: project?.name || '',
           ...(place
-            ? { placeName: place.placeName, placeSource: place.placeSource, nearby: true }
+            ? {
+                placeName: place.placeName,
+                placeSource: place.placeSource,
+                nearby: place.nearby,
+                ...(place.poi ? { placePoi: place.poi } : {}),
+              }
             : { legacyLocationUnverified: true }),
           bodyHash: digest,
           hashes: {},

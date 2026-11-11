@@ -35,6 +35,7 @@ export type PhotoInput = z.infer<typeof photoInput>;
 export type PhotoMeta = PhotoInput & {
   placeName?: string;
   placeSource?: string;
+  placePoi?: { id: string; latitude: number; longitude: number };
   nearby?: boolean;
   legacyLocationUnverified?: boolean;
   associationVersion?: number;

@@ -388,3 +388,127 @@ test('V1.1 fresh reverse location receipt, optional project, authenticated water
     delete process.env.CHUNMO_AMAP_ENABLED;
   }
 });
+
+test('V1.3 mixed nearby search, paging, manual fallback and authenticated source receipts', async () => {
+  const f = await fixtureAccounts(),
+    c = await login(f.login, f.password);
+  const location = {
+    latitude: 30,
+    longitude: 120,
+    accuracy: 12,
+    obtainedAt: new Date().toISOString(),
+  };
+  delete process.env.CHUNMO_AMAP_ENABLED;
+  const manualResponse = await req(
+    '/site-photos/place',
+    'POST',
+    { location, name: '自建房测试地点' },
+    c,
+  );
+  assert.equal(manualResponse.status, 200);
+  const manual = await manualResponse.json();
+  const storedManual = await req(
+    '/site-photos',
+    'POST',
+    {
+      requestId: crypto.randomUUID(),
+      projectId: '',
+      captureSource: 'live-camera',
+      capturedAt: new Date().toISOString(),
+      location,
+      placeToken: manual.token,
+      originalName: 'manual-test.jpg',
+      originalSize: 100,
+      outputWidth: 1,
+      outputHeight: 1,
+    },
+    c,
+  );
+  assert.equal(storedManual.status, 200);
+  const manualMeta = await storedManual.json();
+  assert.equal(manualMeta.placeSource, 'user-manual');
+  assert.equal(manualMeta.nearby, false);
+  assert.equal(manualMeta.actorId, c.user.id);
+  assert.equal(manual.placeSource, 'user-manual');
+  assert.equal(manual.nearby, false);
+  assert.equal(
+    (
+      await req(
+        '/site-photos/place',
+        'POST',
+        { location: { ...location, obtainedAt: '2020-01-01T00:00:00Z' }, name: '过期' },
+        c,
+      )
+    ).status,
+    400,
+  );
+  process.env.CHUNMO_AMAP_ENABLED = '1';
+  process.env.CHUNMO_AMAP_KEY = 'test-only';
+  const real = globalThis.fetch;
+  let called = '';
+  const mocked = mock.method(globalThis, 'fetch', async (...args: Parameters<typeof fetch>) => {
+    if (String(args[0]).startsWith('https://restapi.amap.com/')) {
+      called = String(args[0]);
+      const point = new URL(called).searchParams.get('location')!.split(',').map(Number);
+      return Response.json({
+        status: '1',
+        count: '45',
+        pois: [
+          { id: 'village', name: '村庄测试', location: `${point[0] + 0.005},${point[1]}` },
+          { id: 'shop', name: '商铺测试', location: `${point[0] + 0.001},${point[1]}` },
+        ],
+      });
+    }
+    return real(...args);
+  });
+  try {
+    const response = await req(
+      '/site-photos/location',
+      'POST',
+      { location, nearby: true, query: '测试', page: 2 },
+      c,
+    );
+    assert.equal(response.status, 200);
+    const result = await response.json();
+    assert.deepEqual(
+      result.places.map((p: any) => p.id),
+      ['shop', 'village'],
+    );
+    assert.equal(result.more, true);
+    const url = new URL(called);
+    assert.equal(url.pathname, '/v3/place/around');
+    assert.equal(url.searchParams.get('types'), null);
+    assert.equal(url.searchParams.get('radius'), '2000');
+    assert.equal(url.searchParams.get('page'), '2');
+    assert.equal(url.searchParams.get('keywords'), '测试');
+    const selected = result.places[1].receipt;
+    const renewed = await req(
+      '/site-photos/place',
+      'POST',
+      { location, previousToken: selected.token, previousAt: selected.resolvedAt },
+      c,
+    );
+    assert.equal(renewed.status, 200);
+    const place = await renewed.json();
+    assert.equal(place.placeName, '村庄测试');
+    assert.equal(place.placeSource, 'amap-poi-selected');
+    assert.deepEqual(place.location, location);
+    const stranger = await fixtureAccounts(),
+      other = await login(stranger.login, stranger.password);
+    assert.equal(
+      (
+        await req(
+          '/site-photos/place',
+          'POST',
+          { location, previousToken: selected.token, previousAt: selected.resolvedAt },
+          other,
+        )
+      ).status,
+      403,
+    );
+  } finally {
+    mocked.mock.restore();
+    delete process.env.CHUNMO_AMAP_ENABLED;
+    delete process.env.CHUNMO_AMAP_KEY;
+  }
+});

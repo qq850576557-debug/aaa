@@ -13,7 +13,8 @@ export type PlaceReceipt = {
   location: PhotoLocation;
   placeName: string;
   placeSource: string;
-  nearby: true;
+  nearby: boolean;
+  poi?: { id: string; latitude: number; longitude: number };
   resolvedAt: string;
   expiresAt: string;
   token: string;
@@ -81,4 +82,63 @@ export function nearbyPlace(raw: any): { name: string; source: string } | null {
   if (typeof n === 'string' && n.trim().length && n.length <= 80)
     return { name: n.trim(), source: 'amap-regeo-neighborhood-nearby' };
   return null;
+}
+
+export type NearbyPlace = {
+  id: string;
+  name: string;
+  address: string;
+  distance: number;
+  receipt: PlaceReceipt;
+};
+export type NearbyResult = { places: NearbyPlace[]; more: boolean };
+export function poiDistance(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+) {
+  const rad = Math.PI / 180,
+    lat = (b.latitude - a.latitude) * rad,
+    lng = (b.longitude - a.longitude) * rad;
+  const h =
+    Math.sin(lat / 2) ** 2 +
+    Math.cos(a.latitude * rad) * Math.cos(b.latitude * rad) * Math.sin(lng / 2) ** 2;
+  return 6371000 * 2 * Math.asin(Math.sqrt(Math.min(1, h)));
+}
+export function nearbyPois(raw: any, origin: { latitude: number; longitude: number }) {
+  const unique = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      address: string;
+      distance: number;
+      latitude: number;
+      longitude: number;
+    }
+  >();
+  for (const p of Array.isArray(raw?.pois) ? raw.pois : []) {
+    const [longitude, latitude] = String(p.location).split(',').map(Number);
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      Math.abs(latitude) > 90 ||
+      Math.abs(longitude) > 180 ||
+      typeof p.name !== 'string' ||
+      !p.name.trim() ||
+      p.name.length > 80 ||
+      !p.id
+    )
+      continue;
+    const distance = poiDistance(origin, { latitude, longitude });
+    if (distance > 2000) continue;
+    unique.set(String(p.id), {
+      id: String(p.id),
+      name: p.name.trim(),
+      address: typeof p.address === 'string' ? p.address.slice(0, 240) : '',
+      distance: Math.round(distance),
+      latitude,
+      longitude,
+    });
+  }
+  return [...unique.values()].sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
 }
