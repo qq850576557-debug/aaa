@@ -566,3 +566,187 @@ body:has(dialog[open]) .assistant-fab {
   max-height: 65dvh;
   object-fit: contain;
 }
+/* V3 camera is portalled to body, outside dashboard scrolling/transform contexts. */
+.mobile-assistant .assistant-header[hidden] {
+  display: none;
+}
+.photo-immersive {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  height: 100svh;
+  height: 100dvh;
+  z-index: 10000;
+  overflow: hidden;
+  background: #000;
+  color: #fff;
+  isolation: isolate;
+}
+.immersive-viewfinder {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.immersive-viewfinder video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.photo-immersive .live-watermark {
+  left: max(14px, env(safe-area-inset-left));
+  bottom: calc(150px + env(safe-area-inset-bottom));
+  max-width: calc(100% - 28px);
+  font-size: clamp(11px, 2.9vw, 15px);
+  line-height: 1.45;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #152c23b8;
+  z-index: 1;
+}
+.photo-immersive .live-watermark img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+.immersive-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 20px
+    max(12px, env(safe-area-inset-left));
+  background: linear-gradient(#000a, transparent);
+  z-index: 2;
+}
+.immersive-top strong {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  padding-right: 44px;
+}
+.photo-immersive button {
+  --button-soft: transparent;
+  --button-soft-hover: #ffffff22;
+  --button-ink: #fff;
+  color: #fff;
+  box-shadow: none;
+  min-height: 44px;
+  touch-action: manipulation;
+}
+.immersive-top button {
+  font-size: 32px;
+  line-height: 1;
+  width: 44px;
+  padding: 0;
+  border: 0;
+  flex: none;
+}
+.photo-immersive .immersive-bottom {
+  position: absolute;
+  inset: auto 0 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px minmax(0, 1fr);
+  align-items: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 25px max(12px, env(safe-area-inset-right)) calc(25px + env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  background: linear-gradient(transparent, #000c 35%, #000e);
+  z-index: 2;
+}
+.immersive-bottom > span {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.immersive-bottom > button:last-child {
+  border: 0;
+  padding: 10px 8px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.photo-immersive .camera-shutter {
+  width: 78px;
+  height: 78px;
+  min-height: 78px;
+  border: 4px solid #fff;
+  border-radius: 50% !important;
+  padding: 4px;
+  background: #fff !important;
+  box-shadow: inset 0 0 0 3px #18221c !important;
+  display: grid;
+  place-items: center;
+}
+.photo-immersive .camera-shutter > span {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #fff;
+}
+.photo-immersive .camera-shutter:active:not(:disabled) > span {
+  background: #c2d6c6;
+}
+.immersive-status {
+  position: absolute;
+  top: calc(70px + env(safe-area-inset-top));
+  left: 12px;
+  right: 12px;
+  text-align: center;
+  font-size: 13px;
+  background: #0008;
+  border-radius: 8px;
+  padding: 8px;
+  z-index: 3;
+}
+.immersive-recovery {
+  position: absolute;
+  bottom: calc(120px + env(safe-area-inset-bottom));
+  left: 14px;
+  right: 14px;
+  z-index: 4;
+  background: #5b3328 !important;
+}
+.shutter-feedback .immersive-viewfinder::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: #fff4;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shutter-feedback .immersive-viewfinder::after {
+    background: transparent;
+  }
+  .photo-immersive button {
+    transition: none;
+  }
+}
+@media (orientation: landscape) {
+  .photo-immersive .live-watermark {
+    bottom: calc(125px + env(safe-area-inset-bottom));
+    font-size: 11px;
+    padding: 6px 9px;
+    gap: 1px;
+  }
+  .photo-immersive .immersive-bottom {
+    padding-top: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  .photo-immersive .camera-shutter {
+    width: 64px;
+    height: 64px;
+    min-height: 64px;
+  }
+  .immersive-top {
+    padding-top: calc(4px + env(safe-area-inset-top));
+  }
+}

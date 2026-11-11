@@ -1,6 +1,13 @@
 import 'fake-indexeddb/auto';
 import { expect, it, beforeEach, vi } from 'vitest';
-import { batchPhotos, putBatch, confirmBatch, type BatchPhoto } from './photo-batch';
+import {
+  batchPhotos,
+  putBatch,
+  confirmBatch,
+  type BatchPhoto,
+  batchSummaries,
+  getBatch,
+} from './photo-batch';
 vi.mock('./record-outbox', () => ({ verifiedOwner: () => ({ id: 'a', workspaceId: 'w' }) }));
 const owner = { id: 'a', workspaceId: 'w' };
 const row = (id: string, output?: ArrayBuffer): BatchPhoto => ({
@@ -46,4 +53,16 @@ it('retains originals on failure; replaces them only after output is durably wri
 });
 it('rejects another account and keeps recovery data', async () => {
   await expect(batchPhotos({ id: 'b', workspaceId: 'w' })).rejects.toThrow('账号');
+});
+
+it('restores only summaries and fetches one photo under account isolation', async () => {
+  await putBatch(row('summary', new Uint8Array([9, 8]).buffer));
+  const summaries = await batchSummaries(owner),
+    info = summaries.find((r) => r.meta.requestId === 'summary')!;
+  expect(info.hasOutput).toBe(true);
+  expect(info.outputSize).toBe(2);
+  expect(info).not.toHaveProperty('output');
+  expect(info).not.toHaveProperty('original');
+  expect((await getBatch(owner, 'summary'))?.output?.byteLength).toBe(2);
+  await expect(getBatch({ id: 'b', workspaceId: 'w' }, 'summary')).rejects.toThrow('账号');
 });

@@ -33,6 +33,7 @@ export const photoInput = z
   .strict();
 export type PhotoInput = z.infer<typeof photoInput>;
 export type PhotoMeta = PhotoInput & {
+  captureMethod?: 'image-capture' | 'video-frame' | 'native-camera';
   placeName?: string;
   placeSource?: string;
   placePoi?: { id: string; latitude: number; longitude: number };

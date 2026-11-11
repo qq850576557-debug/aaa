@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { photoTiming, photoStage } from '../lib/photo-performance';
 import type { CloudUser } from '../lib/cloud';
 import { cloudApi } from '../lib/cloud';
-import { batchPhotos, putBatch, confirmBatch, type BatchPhoto } from '../lib/photo-batch';
+import {
+  batchSummaries,
+  getBatch,
+  summarizeBatch,
+  putBatch,
+  confirmBatch,
+  type BatchPhoto,
+  type BatchSummary,
+} from '../lib/photo-batch';
 import { freshPlace, type PlaceReceipt } from '../lib/photo-location';
 import { renderPhoto } from '../lib/photo-render';
 import { exifCapture } from '../lib/photo-exif';
@@ -18,11 +28,11 @@ export function QuickPhoto({
   onSessionChange: (v: boolean) => void;
   onReturn: () => void;
 }) {
-  const [phase, setPhase] = useState<'loading' | 'address' | 'native' | 'camera' | 'done'>(
-      'loading',
-    ),
+  const [phase, setPhase] = useState<
+      'loading' | 'address' | 'starting' | 'native' | 'camera' | 'done'
+    >('loading'),
     [place, setPlace] = useState<PlaceReceipt | null>(null),
-    [rows, setRows] = useState<BatchPhoto[]>([]),
+    [rows, setRows] = useState<BatchSummary[]>([]),
     [status, setStatus] = useState(''),
     [busy, setBusy] = useState(false),
     [processing, setProcessing] = useState(0),
@@ -31,7 +41,10 @@ export function QuickPhoto({
     [preview, setPreview] = useState(''),
     [exportIndex, setExportIndex] = useState(0),
     [ready, setReady] = useState(false),
-    [aspect, setAspect] = useState(0.75);
+    [flash, setFlash] = useState(false),
+    [, setFilesVersion] = useState(0),
+    [saveFallback, setSaveFallback] = useState(false),
+    [storageFailed, setStorageFailed] = useState(false);
   const owner = { id: user.id, workspaceId: user.workspaceId },
     video = useRef<HTMLVideoElement>(null),
     input = useRef<HTMLInputElement>(null),
@@ -43,19 +56,61 @@ export function QuickPhoto({
     actor = useRef(user.displayName || user.login),
     placeRef = useRef(place),
     rowsRef = useRef(rows),
-    shown = useRef<string[]>([]);
+    shown = useRef<string[]>([]),
+    files = useRef(new Map<string, File>()),
+    session = useRef(0),
+    cameraStarted = useRef(0),
+    preparing = useRef(false);
+  const FILE_BUDGET = 64 * 1024 * 1024;
+  function cacheFile(row: BatchPhoto) {
+    const started = performance.now();
+    if (!row.output || files.current.has(row.meta.requestId)) return;
+    const total = [...files.current.values()].reduce((n, f) => n + f.size, 0);
+    if (total + row.output.byteLength > FILE_BUDGET && files.current.size) return;
+    files.current.set(
+      row.meta.requestId,
+      new File([row.output], row.meta.originalName, { type: row.mime || 'image/jpeg' }),
+    );
+    photoTiming('file-prepare', started);
+    if (alive.current) setFilesVersion((n) => n + 1);
+  }
+  async function prepareFiles(items = rowsRef.current) {
+    if (preparing.current) return;
+    preparing.current = true;
+    const started = performance.now();
+    try {
+      for (const item of items) {
+        if (!alive.current) break;
+        if (!item.hasOutput || files.current.has(item.meta.requestId)) continue;
+        if (
+          [...files.current.values()].reduce((n, f) => n + f.size, 0) + item.outputSize >
+            FILE_BUDGET &&
+          files.current.size
+        )
+          break;
+        const row = await getBatch(owner, item.meta.requestId);
+        if (row && alive.current) cacheFile(row);
+      }
+    } catch (e) {
+      if (alive.current) setStatus(String(e));
+    } finally {
+      preparing.current = false;
+      photoTiming('batch-prepare', started);
+    }
+  }
   placeRef.current = place;
   rowsRef.current = rows;
   const stop = () => {
     stream.current?.getTracks().forEach((t) => t.stop());
     stream.current = null;
+    session.current++;
     setReady(false);
   };
   function accept(row: BatchPhoto) {
     if (alive.current)
       setRows((old) =>
-        [...old.filter((p) => p.meta.requestId !== row.meta.requestId), row].sort((a, b) =>
-          a.meta.capturedAt.localeCompare(b.meta.capturedAt),
+        [...old.filter((p) => p.meta.requestId !== row.meta.requestId), summarizeBatch(row)].sort(
+          (a, b) => a.meta.capturedAt.localeCompare(b.meta.capturedAt),
         ),
       );
   }
@@ -65,12 +120,18 @@ export function QuickPhoto({
     try {
       await putBatch(row);
       volatile.current.delete(row.meta.requestId);
+      cacheFile(row);
+      if (alive.current && !volatile.current.size) setStorageFailed(false);
     } catch (e) {
-      if (alive.current) setStatus('本机暂存失败，照片仍在当前页面，请勿关闭。请重试暂存或导出。');
+      if (alive.current) {
+        setStorageFailed(true);
+        setStatus('本机暂存失败，照片仍在当前页面，请勿关闭。请重试暂存或导出。');
+      }
       throw e;
     }
   }
   async function process(row: BatchPhoto) {
+    const started = performance.now();
     pending.current++;
     if (alive.current) setProcessing(pending.current);
     try {
@@ -96,7 +157,13 @@ export function QuickPhoto({
       );
       const next: BatchPhoto = {
         owner: row.owner,
-        meta: { ...result.meta, outputWidth: result.width, outputHeight: result.height },
+        meta: {
+          ...result.meta,
+          outputWidth: result.width,
+          outputHeight: result.height,
+          originalWidth: result.originalWidth,
+          originalHeight: result.originalHeight,
+        },
         output: await (await photoMetadata(result.blob, result.meta)).arrayBuffer(),
         mime: result.blob.type,
       };
@@ -109,18 +176,28 @@ export function QuickPhoto({
         } catch {}
       }
     } finally {
+      photoTiming('watermark-durable', started);
       pending.current--;
       if (alive.current) setProcessing(pending.current);
     }
   }
   useEffect(() => {
     alive.current = true;
-    void batchPhotos(owner)
+    void batchSummaries(owner)
       .then((items) => {
         if (!alive.current) return;
         setRows(items);
         setPhase(items.length ? 'done' : 'address');
-        for (const p of items) if (p.original && !p.error) void process(p);
+        void prepareFiles(items);
+        void (async () => {
+          for (const item of items) {
+            if (!alive.current) break;
+            if (item.hasOriginal && !item.error) {
+              const row = await getBatch(owner, item.meta.requestId);
+              if (row && alive.current) await process(row);
+            }
+          }
+        })();
       })
       .catch(() => {
         if (alive.current) {
@@ -140,7 +217,15 @@ export function QuickPhoto({
     };
   }, [user.id, user.workspaceId]);
   useEffect(() => {
-    onSessionChange(['camera', 'native', 'address'].includes(phase));
+    onSessionChange(['starting', 'camera', 'native', 'address'].includes(phase));
+  }, [phase]);
+  useEffect(() => {
+    if (!['starting', 'camera'].includes(phase)) return;
+    const before = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = before;
+    };
   }, [phase]);
   useEffect(() => {
     const timer = setInterval(() => setClock(new Date().toISOString()), 1000);
@@ -177,9 +262,47 @@ export function QuickPhoto({
     void v
       .play()
       .then(() => {
-        if (alive.current) setReady(true);
+        const frame = () => {
+          if (alive.current && video.current === v && stream.current) {
+            setReady(true);
+            photoTiming('click-preview', cameraStarted.current);
+          }
+        };
+        if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(frame);
+        else requestAnimationFrame(frame);
       })
       .catch(() => setStatus('相机预览失败，可使用系统相机'));
+  }, [phase]);
+  useEffect(() => {
+    if (phase !== 'camera') return;
+    const track = stream.current?.getVideoTracks()[0];
+    const ended = () => {
+      setReady(false);
+      setStatus('相机会话已中断，请关闭后重新进入');
+    };
+    const visible = () => {
+      if (document.hidden) setReady(false);
+      else if (track?.readyState === 'live' && video.current) {
+        void video.current
+          .play()
+          .then(() => {
+            const v = video.current;
+            if (!v) return;
+            const frame = () => {
+              if (alive.current && track.readyState === 'live') setReady(true);
+            };
+            if (v.requestVideoFrameCallback) v.requestVideoFrameCallback(frame);
+            else requestAnimationFrame(frame);
+          })
+          .catch(ended);
+      }
+    };
+    track?.addEventListener('ended', ended);
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      track?.removeEventListener('ended', ended);
+      document.removeEventListener('visibilitychange', visible);
+    };
   }, [phase]);
   async function currentPlace() {
     const p = placeRef.current;
@@ -208,17 +331,23 @@ export function QuickPhoto({
     if (locked.current) return;
     locked.current = true;
     setBusy(true);
+    setPhase('starting');
+    cameraStarted.current = performance.now();
+    const generation = ++session.current;
     try {
       await currentPlace();
-      const s = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 4096 },
-          height: { ideal: 3072 },
-        },
-      });
-      if (!alive.current) {
+      if (!alive.current || generation !== session.current) return;
+      const s = await photoStage('camera-initialize', () =>
+        navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 4096 },
+            height: { ideal: 3072 },
+          },
+        }),
+      );
+      if (!alive.current || generation !== session.current) {
         s.getTracks().forEach((t) => t.stop());
         return;
       }
@@ -226,7 +355,10 @@ export function QuickPhoto({
       setPhase('camera');
       setStatus('');
     } catch (e) {
-      setStatus(String(e));
+      if (alive.current && generation === session.current) {
+        setPhase('done');
+        setStatus('无法开启后置相机，请检查相机权限后重试');
+      }
     } finally {
       locked.current = false;
       if (alive.current) setBusy(false);
@@ -237,6 +369,7 @@ export function QuickPhoto({
     p: PlaceReceipt,
     at: string,
     source: 'live-camera' | 'native-camera',
+    captureMethod: 'image-capture' | 'video-frame' | 'native-camera' = 'native-camera',
   ) {
     const row: BatchPhoto = {
       owner,
@@ -246,6 +379,7 @@ export function QuickPhoto({
         projectName: '',
         capturedAt: at,
         captureSource: source,
+        captureMethod,
         originalName: `春茉-${at.replace(/[:.]/g, '-')}-${crypto.randomUUID().slice(0, 8)}.jpg`,
         originalSize: file.size,
         outputWidth: 1,
@@ -286,10 +420,20 @@ export function QuickPhoto({
     }
   }
   async function shoot() {
-    if (locked.current || !ready) return;
+    if (locked.current || !ready || storageFailed) return;
     locked.current = true;
     setBusy(true);
+    const started = performance.now();
     try {
+      while (pending.current >= 2) {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        if (!alive.current || !stream.current) throw Error('相机会话已结束');
+      }
+      if (navigator.storage?.estimate) {
+        const { quota, usage } = await navigator.storage.estimate();
+        if (quota && usage && quota - usage < 20 * 1024 * 1024)
+          throw Error('本机空间不足，请先完成保存后再继续拍摄');
+      }
       const p = await currentPlace();
       const track = stream.current?.getVideoTracks()[0],
         v = video.current;
@@ -301,6 +445,7 @@ export function QuickPhoto({
         try {
           blob = await new IC(track).takePhoto();
         } catch {}
+      const method = blob ? 'image-capture' : 'video-frame';
       if (!blob) {
         const c = document.createElement('canvas');
         c.width = v.videoWidth;
@@ -313,12 +458,18 @@ export function QuickPhoto({
         );
         c.width = c.height = 0;
       }
+      setFlash(true);
+      setTimeout(() => {
+        if (alive.current) setFlash(false);
+      }, 120);
       await retain(
         new File([blob], `春茉-${at.replaceAll(':', '-')}.jpg`, { type: blob.type }),
         p,
         at,
         'live-camera',
+        method,
       );
+      photoTiming('shutter-local', started);
     } catch (e) {
       setStatus(String(e));
     } finally {
@@ -326,35 +477,47 @@ export function QuickPhoto({
       if (alive.current) setBusy(false);
     }
   }
-  const outputs = rows.filter((r) => r.output),
+  const outputs = rows.filter((r) => r.hasOutput),
     failures = rows.filter((r) => r.error);
   async function share(partial = false) {
-    const chosen = partial ? outputs.slice(0, 5) : outputs;
-    const files = chosen.map(
-      (r) => new File([r.output!], r.meta.originalName, { type: r.mime || 'image/jpeg' }),
-    );
+    const wanted = partial ? outputs.slice(0, 5) : outputs;
+    const chosen = wanted.filter((row) => files.current.has(row.meta.requestId));
+    const batchFiles = chosen.map((row) => files.current.get(row.meta.requestId)!);
     try {
-      if (!files.length) throw Error('照片仍在处理');
-      if (!navigator.share || !navigator.canShare?.({ files })) {
+      if (!batchFiles.length) {
+        void prepareFiles();
+        setStatus('正在准备文件，请再次点击保存');
+        return;
+      }
+      if (!navigator.share || !navigator.canShare?.({ files: batchFiles })) {
+        setSaveFallback(true);
         setStatus('当前浏览器不支持此批图片分享，可尝试分批分享或逐张导出');
         return;
       }
       setBusy(true);
-      await navigator.share({ files, title: '春茉设计' });
+      await navigator.share({ files: batchFiles, title: '春茉设计' });
       if (alive.current) {
         setShared(chosen.map((r) => r.meta.requestId));
-        setStatus('已交给系统分享。请确认相册中已存储这些照片，副本仍保留。');
+        setStatus(
+          `已交给系统分享${chosen.length}张。请确认相册中已存储这些照片，副本仍保留。${chosen.length < outputs.length ? '其余照片尚未导出，确认后可继续分批保存。' : ''}`,
+        );
       }
     } catch (e) {
-      if (alive.current) setStatus('未确认保存，照片已保留，可重试、分批分享或导出。');
+      if (alive.current) {
+        setSaveFallback(true);
+        setStatus('未确认保存，照片已保留，可重试、分批分享或导出。');
+      }
     } finally {
       if (alive.current) setBusy(false);
     }
   }
   async function exportOne(index: number) {
-    const row = rows[index];
-    if (!row) return;
+    const info = rows[index];
+    if (!info) return;
     try {
+      const row =
+        volatile.current.get(info.meta.requestId) || (await getBatch(owner, info.meta.requestId));
+      if (!row) throw Error('照片暂不可用');
       const bytes = row.output || row.original;
       if (!bytes) throw Error('照片暂不可用');
       setPreview(await imageDataUrl(new Blob([bytes], { type: row.mime || 'image/jpeg' })));
@@ -374,6 +537,8 @@ export function QuickPhoto({
     try {
       await confirmBatch(owner, ids);
       setRows((old) => old.filter((p) => !ids.includes(p.meta.requestId)));
+      for (const id of ids) files.current.delete(id);
+      void prepareFiles(rowsRef.current.filter((row) => !ids.includes(row.meta.requestId)));
       setShared([]);
       shown.current = [];
       setPreview('');
@@ -403,83 +568,118 @@ export function QuickPhoto({
           onConfirm={(p) => {
             setPlace(p);
             placeRef.current = p;
-            openNative();
+            void liveCamera();
           }}
         />
       )}
       {phase === 'loading' && <p>正在读取待保存照片…</p>}
-      {(phase === 'camera' || phase === 'native') && (
-        <>
-          <div
-            className="quick-camera"
-            style={
-              phase === 'camera'
-                ? { width: `min(100%, ${65 * aspect}dvh)`, marginInline: 'auto' }
-                : undefined
-            }
+      {['starting', 'camera'].includes(phase) &&
+        createPortal(
+          <section
+            className={`photo-immersive ${flash ? 'shutter-feedback' : ''}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="连续拍摄相机"
           >
-            {phase === 'camera' && (
-              <>
-                <video
-                  ref={video}
-                  autoPlay
-                  muted
-                  playsInline
-                  aria-label="后置相机实时预览"
-                  onLoadedMetadata={(e) => {
-                    const v = e.currentTarget;
-                    if (v.videoWidth && v.videoHeight) setAspect(v.videoWidth / v.videoHeight);
-                  }}
-                />
-                <div className="live-watermark" aria-label="实时水印">
-                  <div>
-                    <img src="/brand/source/chunmo-original.jpg" alt="春茉原始Logo" />
-                    春茉设计
-                  </div>
-                  <span>工地定位：{place?.placeName}</span>
-                  <span>拍摄时间：{photoTime(clock)}</span>
-                  <span>拍摄人员：{actor.current}</span>
+            <div className="immersive-viewfinder">
+              <video ref={video} autoPlay muted playsInline aria-label="后置相机实时预览" />
+              <div className="live-watermark" aria-label="实时水印">
+                <div>
+                  <img src="/brand/source/chunmo-original.jpg" alt="春茉原始Logo" />
+                  春茉设计
                 </div>
-              </>
+                <span>工地定位：{place?.placeName}</span>
+                <span>拍摄时间：{photoTime(clock)}</span>
+                <span>拍摄人员：{actor.current}</span>
+              </div>
+            </div>
+            <header className="immersive-top">
+              <button
+                aria-label="关闭相机"
+                disabled={busy && phase !== 'starting'}
+                onClick={() => {
+                  stop();
+                  setPhase('done');
+                  if (!rowsRef.current.length && !volatile.current.size) onReturn();
+                }}
+              >
+                ×
+              </button>
+              <strong>{place?.placeName}</strong>
+            </header>
+            <footer className="quick-camera-controls immersive-bottom">
+              <span aria-live="polite">已拍 {rows.length} 张</span>
+              <button
+                className="camera-shutter"
+                aria-label="拍照"
+                disabled={busy || !ready || processing >= 2 || storageFailed}
+                onClick={() => void shoot()}
+              >
+                <span />
+              </button>
+              <button
+                disabled={
+                  busy ||
+                  processing > 0 ||
+                  rows.some((r) => !r.hasOutput) ||
+                  !outputs.length ||
+                  storageFailed
+                }
+                onClick={() => {
+                  stop();
+                  setPhase('done');
+                  void share();
+                }}
+              >
+                完成拍摄
+              </button>
+            </footer>
+            {(phase === 'starting' || status) && (
+              <p role="status" className="immersive-status">
+                {phase === 'starting' ? '正在开启相机…' : status}
+              </p>
             )}
-            {phase === 'native' && <p>{place?.placeName}</p>}
-          </div>
-          <div className="quick-camera-controls">
-            <span>已拍 {rows.length} 张</span>
-            {phase === 'native' ? (
-              <>
-                <button className="primary" disabled={busy} onClick={openNative}>
-                  继续拍摄
-                </button>
-                <button disabled={busy} onClick={() => void liveCamera()}>
-                  网页连续拍摄
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  className="primary camera-shutter"
-                  disabled={busy || !ready || !!volatile.current.size}
-                  onClick={() => void shoot()}
-                >
-                  拍照
-                </button>
-                <button disabled={busy} onClick={openNative}>
-                  系统相机
-                </button>
-              </>
+            {storageFailed && (
+              <button
+                className="immersive-recovery"
+                onClick={() => {
+                  stop();
+                  setPhase('done');
+                }}
+              >
+                照片未可靠暂存，前往恢复
+              </button>
             )}
-            <button
-              disabled={busy}
-              onClick={() => {
-                stop();
-                setPhase('done');
-              }}
-            >
-              完成拍摄
-            </button>
-          </div>
-        </>
+            {failures.length > 0 && (
+              <button
+                className="immersive-recovery"
+                onClick={() => {
+                  stop();
+                  setPhase('done');
+                }}
+              >
+                有照片处理失败，前往恢复
+              </button>
+            )}
+          </section>,
+          document.body,
+        )}
+      {phase === 'native' && (
+        <div className="photo-batch-summary">
+          <p>{place?.placeName}</p>
+          <button disabled={busy} onClick={openNative}>
+            继续拍摄
+          </button>
+          <button
+            disabled={busy}
+            onClick={() => {
+              stop();
+              setPhase('done');
+            }}
+          >
+            完成拍摄
+          </button>
+        </div>
       )}
       {phase === 'done' && (
         <div className="photo-batch-summary">
@@ -487,28 +687,41 @@ export function QuickPhoto({
           {processing > 0 && <p role="status">正在加水印 {processing} 张</p>}
           <button
             className="primary"
-            disabled={busy || processing > 0 || !outputs.length}
+            disabled={busy || processing > 0 || !outputs.length || storageFailed}
             onClick={() => void share()}
           >
             保存本次照片
           </button>
-          {outputs.length > 1 && (
-            <button disabled={busy || processing > 0} onClick={() => void share(true)}>
-              分批分享（最多5张）
-            </button>
-          )}
-          {rows.length > 0 && (
-            <button onClick={() => void exportOne(0)}>分享不可用，逐张导出</button>
-          )}
+          <details
+            className="photo-save-options"
+            open={saveFallback}
+            onToggle={(e) => setSaveFallback(e.currentTarget.open)}
+          >
+            <summary>更多保存方式</summary>
+            {outputs.length > 1 && (
+              <button disabled={busy || processing > 0} onClick={() => void share(true)}>
+                分批分享（最多5张）
+              </button>
+            )}
+            {rows.length > 0 && (
+              <button onClick={() => void exportOne(0)}>分享不可用，逐张导出</button>
+            )}
+          </details>
           {(shared.length > 0 || shown.current.length > 0) && (
-            <button disabled={busy || !!volatile.current.size} onClick={() => void cleanup()}>
-              已确认存入相册，清理对应副本
+            <button disabled={busy || storageFailed} onClick={() => void cleanup()}>
+              已确认存入相册
             </button>
           )}
-          <button onClick={onReturn} disabled={!!volatile.current.size}>
+          <button onClick={onReturn} disabled={storageFailed}>
             返回管理页面
           </button>
-          {!rows.length && <button onClick={() => setPhase('address')}>开始拍摄</button>}
+          {!rows.length && <button onClick={() => setPhase('address')}>重新选择地址</button>}
+          {!rows.length && place && (
+            <button disabled={busy} onClick={() => void liveCamera()}>
+              重试开启相机
+            </button>
+          )}
+          {!rows.length && place && <button onClick={openNative}>兼容模式：系统相机</button>}
         </div>
       )}
       {status && <p role="status">{status}</p>}
@@ -516,13 +729,18 @@ export function QuickPhoto({
         <button
           disabled={processing > 0}
           onClick={() => {
-            for (const row of failures) void process(row);
+            void (async () => {
+              for (const info of failures) {
+                const row = await getBatch(owner, info.meta.requestId);
+                if (row) await process(row);
+              }
+            })();
           }}
         >
           重试水印处理（{failures.length}张）
         </button>
       )}
-      {volatile.current.size > 0 && (
+      {storageFailed && (
         <button
           onClick={() => {
             for (const row of volatile.current.values())

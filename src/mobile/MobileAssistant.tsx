@@ -150,7 +150,7 @@ export function MobileAssistant({
   );
   return (
     <div className="mobile-assistant">
-      <header className="assistant-header">
+      <header className="assistant-header" hidden={cameraActive}>
         <button
           className="assistant-brand"
           onClick={() => setTab('home')}

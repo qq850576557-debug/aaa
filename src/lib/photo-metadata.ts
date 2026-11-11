@@ -11,6 +11,7 @@ export async function photoMetadata(blob: Blob, m: PhotoMeta) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   if (bytes[0] !== 255 || bytes[1] !== 216) throw Error('水印输出不是JPEG，原始捕获文件已保留');
   const data = {
+    captureMethod: m.captureMethod,
     placeName: m.placeName,
     placeSource: m.placeSource,
     location: m.location,
