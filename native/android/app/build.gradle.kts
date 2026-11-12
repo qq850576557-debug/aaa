@@ -6,12 +6,21 @@ android {
         applicationId = "cn.chmsj.photo"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0-internal"
+        versionCode = providers.gradleProperty("photoVersionCode").getOrElse("2").toInt().also { require(it>=2) }
+        versionName = providers.gradleProperty("photoVersionName").getOrElse("2.0.0-internal").also { require(Regex("[0-9]+\\.[0-9]+\\.[0-9]+-internal").matches(it)) }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_ORIGIN", "\"https://chmsj.cn\"")
+        // ZSL is opt-in for controlled device A/B validation, never assumed fast from a capability flag alone.
+        buildConfigField("boolean", "ENABLE_ZSL", providers.gradleProperty("photoEnableZsl").getOrElse("false").also { require(it in listOf("true","false")) })
     }
     buildFeatures { buildConfig = true }
+    signingConfigs.getByName("debug") {
+        // Never silently generate a different key for an already distributed app.
+        storeFile = file("../signing/existing-internal-debug.keystore")
+        storePassword = "android"
+        keyAlias = "androiddebugkey"
+        keyPassword = "android"
+    }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     testOptions { unitTests.isIncludeAndroidResources = !project.hasProperty("protocolOnly") }

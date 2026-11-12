@@ -1,0 +1,80 @@
+{
+  "baseline": "de57984c66ff864b39f3289947879b0d36742b25",
+  "date": "2026-11-12",
+  "android": {
+    "package": "cn.chmsj.photo",
+    "versionCode": 2,
+    "versionName": "2.0.0-internal",
+    "bytes": 11031250,
+    "sha256": "b56c96d268928336ac40130d5e80fcd6e8c051e8ab9985cb6a4025f9f58ec597",
+    "certificateSha256": "011aa52c0ad4ee183a42fc34542d312ff924f6ef2ed22ec6bb340451f8ba6501",
+    "internalTest": true,
+    "apkUrl": "https://chmsj.cn/download/releases/2-b56c96d26892/chunmo-photo-2.0.0-internal.apk",
+    "notes": "2.0内部测试：品牌界面、附近地点固定确认、低延迟连续捕获、主线程写盘整改、后台水印/相册回执、账本索引、安全检查更新。鸿蒙原生图库需独立HAP验收。"
+  },
+  "build": {
+    "compileSdk": 35,
+    "minSdk": 29,
+    "type": "debug",
+    "jvmTestsPassed": 11,
+    "lintErrors": 0,
+    "zip16KiBVerified": true,
+    "sameCertificateAsV1": true
+  },
+  "emulator": {
+    "hardware": "ranchu/goldfish software AOSP API35; no KVM",
+    "v1ToV2OverrideInstall": "passed: encrypted session and pending JPEG hash retained",
+    "platformUpdateValidation": "passed: same signer accepted, wrong signer/hash/downgrade rejected",
+    "graphicsAndRecoveryTests": "8 unique tests passed; repeat-session fixture assertion corrected and targeted retest passed",
+    "uiWidthsDp": [320, 360, 390, 430],
+    "uiLandscape": true,
+    "uiScreenshotMethod": "actual native Window screenshot after frame-commit callback; synthetic identity/GPS/POI",
+    "finalSingleCamera": "passed, actual virtual camera capture to MediaStore read-back",
+    "finalSingleMetrics": {
+      "width": 1392,
+      "height": 1856,
+      "captureStartMs": 4352,
+      "captureMs": 10311,
+      "rawSyncMs": 22,
+      "watermarkMs": 57676,
+      "encodeMs": 6295,
+      "albumMs": 5341,
+      "cameraFirstFrameMs": 11436,
+      "appToCameraIncludesTestLoginAndScreenshots": true
+    },
+    "singleWallMs": 91789,
+    "syntheticOutputSizes": [
+      [4000, 3000],
+      [1200, 800],
+      [800, 1200]
+    ],
+    "continuous20": {
+      "status": "not passed",
+      "candidateAccepted": 7,
+      "requested": 20,
+      "timeoutSeconds": 640.574,
+      "reason": "software emulation, system UI/launcher ANR, virtual-camera CPU contention and preserved backlog; not physical-phone results"
+    },
+    "realPhoneValidated": false,
+    "windowFramesCommittedBeforeScreenshot": true
+  },
+  "sharedAndExistingDeployTestsPassed": 19,
+  "publisherTestsPassed": 11,
+  "nginxDownloadIntegration": "passed with final APK version/bytes/SHA, manifest and immutable URL on isolated trusted-CA nginx; not production HTTPS",
+  "harmony": {
+    "targetModel": "Pura70 HBP-AL00",
+    "targetSoftware": "6.1.0.146 (C00E120R5P5)",
+    "targetSdk": "6.1.1(24)",
+    "sdkAvailable": false,
+    "sdkPreflightExit": 2,
+    "fullArktsCompilation": false,
+    "signed": false,
+    "hap": null,
+    "galleryRealDeviceValidated": false
+  },
+  "productionDeployment": false,
+  "databaseMigration": false,
+  "pwaDataTouched": false,
+  "businessApiChanged": false,
+  "apkCommittedToGit": false
+}

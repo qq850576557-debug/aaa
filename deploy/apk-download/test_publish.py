@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import tempfile
+import os
 import unittest
 from unittest.mock import patch
 
@@ -33,6 +34,16 @@ http {
 
 
 class PublicationTests(unittest.TestCase):
+    def test_release_rejects_changed_signature_package_and_untrusted_url(self):
+        import json
+        base={"package":"cn.chmsj.photo", "certificateSha256":p.CERT, "internalTest":True, "versionCode":2, "versionName":"2.0.0-internal", "bytes":100, "sha256":"a"*64, "apkUrl":"https://chmsj.cn/download/releases/2-aaaaaaaaaaaa/chunmo-photo-2.0.0-internal.apk", "notes":"internal"}
+        with tempfile.TemporaryDirectory() as temp:
+            file=Path(temp)/"release.json"
+            for field,value in (("package","another.app"),("certificateSha256","b"*64),("apkUrl","https://evil.test/app.apk"),("internalTest",False),("versionCode",1)):
+                file.write_text(json.dumps({**base,field:value}))
+                with self.assertRaises(ValueError):
+                    p.use_release(file)
+
     def test_only_correct_https_server_changes_and_is_idempotent(self):
         rendered, headers, cert = p.configure(CONFIG, "chmsj.cn")
         self.assertEqual(rendered.replace("\n    " + p.HOOK, ""), CONFIG)
@@ -51,8 +62,8 @@ class PublicationTests(unittest.TestCase):
     def test_preserves_all_security_headers_on_both_new_locations(self):
         _, headers, _ = p.configure(CONFIG, "chmsj.cn")
         text = p.snippet(headers)
-        self.assertEqual(text.count("Strict-Transport-Security"), 2)
-        self.assertEqual(text.count("Content-Security-Policy"), 2)
+        self.assertEqual(text.count("Strict-Transport-Security"), 3)
+        self.assertEqual(text.count("Content-Security-Policy"), 3)
         self.assertIn("application/vnd.android.package-archive", text)
         self.assertIn('attachment; filename="chunmo-photo-test.apk"', text)
         self.assertNotIn("proxy_pass", text)
@@ -65,7 +76,7 @@ class PublicationTests(unittest.TestCase):
                 p.verify_apk(file)
 
     def test_original_artifact_still_verifies(self):
-        file = Path(__file__).resolve().parents[2] / "native/android/app/build/outputs/apk/debug/app-debug.apk"
+        file = Path(os.environ.get("CHUNMO_TEST_APK", str(Path(__file__).resolve().parents[2] / "native/android/app/build/outputs/apk/debug/app-debug.apk")))
         if not file.exists():
             self.skipTest("No local APK; wrong-artifact boundary still tested")
         p.verify_apk(file)

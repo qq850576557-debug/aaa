@@ -1,0 +1,11 @@
+{
+  "package": "cn.chmsj.photo",
+  "versionCode": 2,
+  "versionName": "2.0.0-internal",
+  "bytes": 11031250,
+  "sha256": "b56c96d268928336ac40130d5e80fcd6e8c051e8ab9985cb6a4025f9f58ec597",
+  "certificateSha256": "011aa52c0ad4ee183a42fc34542d312ff924f6ef2ed22ec6bb340451f8ba6501",
+  "internalTest": true,
+  "apkUrl": "https://chmsj.cn/download/releases/2-b56c96d26892/chunmo-photo-2.0.0-internal.apk",
+  "notes": "2.0内部测试：品牌界面、附近地点固定确认、低延迟连续捕获、主线程写盘整改、后台水印/相册回执、账本索引、安全检查更新。鸿蒙原生图库需独立HAP验收。"
+}

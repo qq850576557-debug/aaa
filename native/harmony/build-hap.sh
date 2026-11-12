@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 cd "$(dirname "$0")"
+node sdk-preflight.mjs
 if [[ -z ${DEVECO_SDK_HOME:-} || ! -d ${DEVECO_SDK_HOME:-} ]]; then
   echo '未找到HarmonyOS SDK。尚未构建HAP；请在目标DevEco环境核验6.1/API和签名。' >&2
   exit 2

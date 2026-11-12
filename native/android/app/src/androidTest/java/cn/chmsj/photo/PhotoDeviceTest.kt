@@ -20,6 +20,40 @@ import java.io.IOException
 /** Emulator-only synthetic capture files, real Android graphics and system MediaStore; no production login. */
 @RunWith(AndroidJUnit4::class)
 class PhotoDeviceTest {
+    @Test fun exportNativeCameraOutputAndMetrics() {
+        val context=context(); val tasks=QueueStore(context).all().filter { it.actor.id=="emulator-ui" && it.stage==Stage.SAVED && it.data.has("captureMs") }
+        assumeTrue("A real emulator camera capture must have been saved first",tasks.isNotEmpty())
+        val task=tasks.last(); val output=java.io.File(context.cacheDir,"actual-camera.jpg")
+        context.contentResolver.openInputStream(android.net.Uri.parse(task.data.getString("mediaUri")))!!.use { input->FileOutputStream(output).use { input.copyTo(it); it.fd.sync() } }
+        assertEquals(task.data.getString("sha256"),fileHash(output))
+        val b=BitmapFactory.Options().apply { inJustDecodeBounds=true }; BitmapFactory.decodeFile(output.path,b)
+        assertEquals(task.data.getInt("width"),b.outWidth); assertEquals(task.data.getInt("height"),b.outHeight)
+        val rows=org.json.JSONArray(tasks.map { t->JSONObject(t.data.toString()).apply { remove("actor");remove("receipt");remove("mediaUri") } })
+        java.io.File(context.cacheDir,"actual-camera-report.json").writeText(JSONObject().put("emulatorOnly",true).put("width",b.outWidth).put("height",b.outHeight).put("tasks",rows).toString(2))
+    }
+    @Test fun liveCaptureIsLockedAndStatusReadsDoNotRescanDisk() {
+        val context=context(); val store=QueueStore(context)
+        val original=fixture() // A complete private marked image; not yet a gallery success.
+        val proofSession="indexed-status-proof-${java.util.UUID.randomUUID()}"
+        val reservation=store.reserve(original.actor,original.data.getJSONObject("receipt"),proofSession)
+        try {
+            java.io.RandomAccessFile(java.io.File(reservation.task.dir,".capture.lock"),"rw").channel.use { other ->
+                assertThrows(java.nio.channels.OverlappingFileLockException::class.java) { other.tryLock() }
+            }
+            val reads=java.util.concurrent.atomic.AtomicInteger()
+            val previous=android.os.StrictMode.getThreadPolicy()
+            try {
+                android.os.StrictMode.setThreadPolicy(android.os.StrictMode.ThreadPolicy.Builder().detectDiskReads().penaltyListener(java.util.concurrent.Executor { it.run() }) { reads.incrementAndGet() }.build())
+                repeat(20) { assertEquals(1,store.statistics(proofSession)[4]) }
+            } finally { android.os.StrictMode.setThreadPolicy(previous) }
+            assertEquals("Status polling must not scan historical files",0,reads.get())
+            original.raw.copyTo(reservation.task.raw); reservation.task.stage=Stage.CAPTURED; reservation.task.save()
+        } finally { reservation.lock.release(); reservation.handle.close() }
+        WatermarkRenderer(context).render(reservation.task); AlbumWriter(context).publish(reservation.task)
+        AlbumWriter(context).publish(original)
+        assertEquals(1,store.statistics(proofSession)[1])
+        assertEquals(Stage.SAVED,store.all().first { it.id==reservation.task.id }.stage)
+    }
     @Test fun deviceKeystoreRoundtripNeverStoresAPlainCookie() {
         val context=context(); val vault=SessionVault(context)
         assumeTrue("Do not replace any existing session",vault.read()==null)

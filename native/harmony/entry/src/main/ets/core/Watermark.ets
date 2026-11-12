@@ -12,7 +12,7 @@ export class Watermark {
     if(this.logo) return;
     const bytes=await this.context.resourceManager.getRawFileContent('chunmo-original.jpg');
     const source=image.createImageSource(bytes.buffer);
-    try { this.logo=await source.createPixelMap({desiredSize:{width:256,height:256}}); } finally { source.release(); }
+    try { this.logo=await source.createPixelMap({desiredSize:{width:512,height:512}}); } finally { source.release(); }
   }
   private label(canvas: drawing.Canvas, content: string, x: number, baseline: number, size: number, width: number, bold: boolean): void {
     const paragraph=new text.ParagraphBuilder({align:text.TextAlign.LEFT},text.FontCollection.getGlobalInstance());
@@ -21,6 +21,13 @@ export class Watermark {
   }
   async render(shot: Shot): Promise<void> {
     await this.prepare();
+    const check=fs.openSync(shot.raw,fs.OpenMode.READ_ONLY);
+    try {
+      const length=fs.statSync(check.fd).size; const tail=new ArrayBuffer(2);
+      if(length<4 || fs.readSync(check.fd,tail,{offset:length-2})!==2) throw new Error('捕获文件不完整，原文件保留');
+      const bytes=new Uint8Array(tail);
+      if(bytes[0]!==255 || bytes[1]!==217) throw new Error('捕获JPEG未完整落盘，原文件保留');
+    } finally { fs.closeSync(check); }
     const file=fs.openSync(shot.raw,fs.OpenMode.READ_ONLY); const source=image.createImageSource(file.fd);
     let pixel: image.PixelMap | undefined;
     try {

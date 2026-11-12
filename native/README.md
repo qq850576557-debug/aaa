@@ -1,5 +1,7 @@
 # 春茉工地拍照 · 独立原生客户端
 
+当前V2整改及明确验收边界见[交付说明](../docs/native-photo-v2.md)。V1记录继续保留，不作为当前真机验收结果。
+
 基线：`3f46936be0cf7fceb7b89e08d6f6777b8eddcd9c`，开发分支 `feat/chunmo-project-manager`。
 
 这里是独立原生工程，不替换React管理系统，不迁移网页照片，不增加业务数据库或云端照片库。

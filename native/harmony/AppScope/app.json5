@@ -2,8 +2,8 @@
   app: {
     bundleName: 'cn.chmsj.photo',
     vendor: 'chunmo',
-    versionCode: 1000000,
-    versionName: '1.0.0',
+    versionCode: 2000000,
+    versionName: '2.0.0',
     icon: '$media:app_icon',
     label: '$string:app_name',
   },

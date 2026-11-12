@@ -17,6 +17,12 @@ import java.util.UUID
 
 enum class Stage { CAPTURING, CAPTURED, WATERMARKED, INSERTING, PUBLISHING, SAVED, FAILED }
 private object LedgerLock
+private val ledgerRevision=java.util.concurrent.atomic.AtomicLong()
+private data class LedgerEntry(val stage: Stage,val session: String,val captured: Boolean,val snapshot: String?)
+private fun entry(data: JSONObject,snapshot: String)=LedgerEntry(Stage.valueOf(data.getString("stage")),data.optString("session"),data.has("captureMs") || data.getString("stage")=="SAVED",if(data.getString("stage")=="SAVED")null else snapshot)
+private val ledgerIndex=mutableMapOf<String,LinkedHashMap<String,LedgerEntry>>()
+private val normalScheduled=java.util.concurrent.atomic.AtomicBoolean()
+private val retryScheduled=java.util.concurrent.atomic.AtomicBoolean()
 data class Task(val dir: File, val data: JSONObject) {
     val id: String get() = data.getString("id")
     val actor: Identity get() = Identity.parse(data.getJSONObject("actor"))
@@ -26,32 +32,78 @@ data class Task(val dir: File, val data: JSONObject) {
     val raw get() = File(dir, "capture.jpg")
     val marked get() = File(dir, "watermarked.jpg")
     val filename get() = "CHUNMO_$id.jpg"
-    fun save() = synchronized(LedgerLock) {
+    fun save(): Unit = synchronized(LedgerLock) {
         dir.mkdirs()
         val store = AtomicFile(File(dir, "task.json")); val out = store.startWrite()
-        try { out.write(data.toString().toByteArray()); store.finishWrite(out) }
+        try {
+            val snapshot=data.toString(); out.write(snapshot.toByteArray()); store.finishWrite(out)
+            ledgerIndex[dir.parentFile!!.absolutePath]?.put(dir.name,entry(data,snapshot))
+            ledgerRevision.incrementAndGet()
+        }
         catch (e: Throwable) { store.failWrite(out); throw e }
+        Unit
     }
 }
 class QueueStore(val context: Context) {
+    val revision: Long get()=ledgerRevision.get()
     val root = File(context.filesDir, "photo-tasks").apply { mkdirs() }
-    fun all(): List<Task> = root.listFiles()?.filter { it.isDirectory }?.mapNotNull { dir ->
-        try { synchronized(LedgerLock) { Task(dir, JSONObject(AtomicFile(File(dir, "task.json")).openRead().bufferedReader().use { it.readText() })) } }
-        catch (_: Exception) { null } // Unknown directories retained for diagnosis, never discarded.
-    }?.sortedBy { it.data.optString("capturedAt") } ?: emptyList()
-    fun create(actor: Identity, receipt: JSONObject, session: String): Task {
+    fun checkWritable() {
+        check(root.usableSpace>200L*1024*1024) { "存储空间不足，请释放空间后重试" }
+        val probe=File(root,".probe-${UUID.randomUUID()}")
+        try { FileOutputStream(probe).use { it.write(1); it.fd.sync() } } finally { probe.delete() }
+    }
+    private fun index(): LinkedHashMap<String,LedgerEntry> = ledgerIndex.getOrPut(root.absolutePath) {
+        linkedMapOf<String,LedgerEntry>().apply {
+            root.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
+                runCatching { AtomicFile(File(dir,"task.json")).openRead().bufferedReader().use { it.readText() } }
+                    .getOrNull()?.let { snapshot -> runCatching { entry(JSONObject(snapshot),snapshot) }.getOrNull()?.let { put(dir.name,it) } }
+            }
+        }
+    }
+    private fun read(id: String,e: LedgerEntry): Task? = runCatching {
+        val text=e.snapshot ?: AtomicFile(File(root,"$id/task.json")).openRead().bufferedReader().use { it.readText() }
+        Task(File(root,id),JSONObject(text))
+    }.getOrNull()
+    // Full history remains on disk; only explicit history/tests read saved JSON.
+    fun all(): List<Task> = synchronized(LedgerLock) { index().mapNotNull { (id,e)->read(id,e) }.sortedBy { it.data.optString("capturedAt") } }
+    fun pending(): List<Task> = synchronized(LedgerLock) { index().filterValues { it.stage!=Stage.SAVED }.mapNotNull { (id,e)->read(id,e) }.sortedBy { it.data.optString("capturedAt") } }
+    fun statistics(session: String): IntArray = synchronized(LedgerLock) {
+        val mine=index().values.filter { it.session==session }
+        intArrayOf(mine.count { it.captured },mine.count { it.stage==Stage.SAVED },mine.count { it.stage==Stage.FAILED },index().values.count { it.stage!=Stage.SAVED },mine.size)
+    }
+    private fun draft(actor: Identity, receipt: JSONObject, session: String): Task {
         check(placeFresh(receipt)) { "地点凭据已过期，请重新定位" }
         check(root.usableSpace > 200L * 1024 * 1024) { "存储空间不足，未开始拍摄" }
+        check(index().values.count { it.stage!=Stage.SAVED }<12) { "本机待保存队列已满，请先重试保存" }
         val id = UUID.randomUUID().toString()
         return Task(File(root, id), JSONObject().put("id", id).put("actor", actor.json())
             .put("receipt", JSONObject(receipt.toString())).put("session", session)
-            .put("capturedAt", Instant.now().toString()).put("stage", Stage.CAPTURING.name)).also { it.save() }
+            .put("capturedAt", Instant.now().toString()).put("stage", Stage.CAPTURING.name))
+    }
+    fun create(actor: Identity, receipt: JSONObject, session: String): Task = synchronized(LedgerLock) {
+        draft(actor,receipt,session).also { it.save() }
+    }
+    fun reserve(actor: Identity, receipt: JSONObject, session: String): CaptureReservation = synchronized(LedgerLock) {
+        val task=draft(actor,receipt,session); task.dir.mkdirs()
+        val handle=RandomAccessFile(File(task.dir,".capture.lock"),"rw")
+        try {
+            val lock=handle.channel.lock()
+            try { task.save(); CaptureReservation(task,handle,lock) }
+            catch(e: Throwable) { lock.release(); throw e }
+        } catch(e: Throwable) { handle.close(); throw e }
     }
     fun schedule(retry: Boolean = false) {
+        val flag=if(retry)retryScheduled else normalScheduled
+        if(!flag.compareAndSet(false,true))return
         val request = OneTimeWorkRequestBuilder<PhotoWorker>().setInputData(workDataOf("retry" to retry)).build()
-        WorkManager.getInstance(context).enqueueUniqueWork("chunmo-photo-save", ExistingWorkPolicy.APPEND_OR_REPLACE, request)
+        try {
+            val accepted=WorkManager.getInstance(context).enqueueUniqueWork("chunmo-photo-save", ExistingWorkPolicy.APPEND_OR_REPLACE, request).result
+            accepted.addListener({ runCatching { accepted.get() }.onFailure { flag.set(false) } },java.util.concurrent.ForkJoinPool.commonPool())
+        }
+        catch(e: Exception) { flag.set(false); throw e }
     }
 }
+data class CaptureReservation(val task: Task, val handle: RandomAccessFile, val lock: java.nio.channels.FileLock)
 fun fileHash(file: File): String = file.inputStream().use { stream ->
     val digest = MessageDigest.getInstance("SHA-256"); val buffer = ByteArray(64 * 1024)
     while (true) { val n = stream.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
@@ -83,6 +135,7 @@ class AlbumWriter(private val context: Context, private val checkpoint: (String)
         hash.digest().joinToString("") { "%02x".format(it) } == expected
     } ?: false
     fun publish(task: Task, retryMissing: Boolean=false) {
+        val started=System.nanoTime()
         val expected = task.data.getString("sha256")
         check(task.marked.isFile && fileHash(task.marked) == expected) { "水印文件未完整保存，原文件仍保留" }
         val oldUri = task.data.optString("mediaUri")
@@ -93,7 +146,7 @@ class AlbumWriter(private val context: Context, private val checkpoint: (String)
         }
         if (uri != null && pending(uri) == 0) {
             check(matches(uri, expected)) { "已发布照片内容与任务不符，停止自动重试以防重复" }
-            finish(task, uri); return
+            finish(task, uri); Performance.record(context,"albumReconcile",(System.nanoTime()-started)/1000000,task.id); return
         }
         if (uri == null) {
             task.stage = Stage.INSERTING; task.save()
@@ -115,7 +168,9 @@ class AlbumWriter(private val context: Context, private val checkpoint: (String)
         val count = resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
         check(count == 1 && pending(uri) == 0 && matches(uri, expected)) { "相册发布未得到明确回执，照片仍保留" }
         checkpoint("after-publish")
+        task.data.put("albumMs",(System.nanoTime()-started)/1000000)
         finish(task, uri)
+        Performance.record(context,"albumPublish",(System.nanoTime()-started)/1000000,task.id)
     }
     private fun finish(task: Task, uri: Uri) {
         task.data.put("mediaUri", uri.toString()).put("savedAt", Instant.now().toString()).remove("error")
@@ -125,9 +180,10 @@ class AlbumWriter(private val context: Context, private val checkpoint: (String)
 }
 class PhotoWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
+        (if(inputData.getBoolean("retry",false))retryScheduled else normalScheduled).set(false)
         val store = QueueStore(applicationContext)
         RandomAccessFile(File(store.root, ".queue.lock"), "rw").channel.use { channel -> channel.lock().use {
-            for (task in store.all()) {
+            for (task in store.pending()) {
                 if (isStopped) break
                 if (task.stage == Stage.SAVED || (task.stage == Stage.FAILED && !inputData.getBoolean("retry", false))) continue
                 try {

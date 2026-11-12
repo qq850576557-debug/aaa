@@ -5,6 +5,7 @@ Requires local Docker and openssl/curl. Image must already be available locally.
 Uses only loopback ports 18443/18080; the APK itself is never rebuilt.
 """
 import hashlib
+import json
 import importlib.util
 import os
 from pathlib import Path
@@ -25,7 +26,9 @@ def docker(*args):
 
 def main():
     repo = Path(__file__).resolve().parents[2]
-    apk = repo / "native/android/app/build/outputs/apk/debug/app-debug.apk"
+    apk = Path(os.environ.get("CHUNMO_TEST_APK", str(repo / "native/android/app/build/outputs/apk/debug/app-debug.apk")))
+    if os.environ.get("CHUNMO_TEST_RELEASE"):
+        p.use_release(Path(os.environ["CHUNMO_TEST_RELEASE"]))
     p.verify_apk(apk)
     with tempfile.TemporaryDirectory(prefix="chunmo-nginx-apk-") as folder:
         lab = Path(folder)
@@ -38,11 +41,21 @@ def main():
         snippets.chmod(0o755)
         for filename in ("index.html", "download.css"):
             shutil.copyfile(Path(__file__).parent / filename, site / filename)
+        (site / "index.html").write_text(p.render_page((site / "index.html").read_text()))
         shutil.copyfile(repo / "public/brand/source/chunmo-original-circle.png", site / "logo.png")
         shutil.copyfile(apk, site / "chunmo-photo-test.apk")
         (site / "SHA256SUMS").write_text(p.SHA + "  chunmo-photo-test.apk\n")
+        if p.RELEASE:
+            (site / "update.json").write_text(json.dumps(p.RELEASE))
+            immutable = site / "releases" / f"{p.CODE}-{p.SHA[:12]}"
+            immutable.mkdir(parents=True)
+            immutable.parent.chmod(0o755)
+            immutable.chmod(0o755)
+            shutil.copyfile(apk, immutable / f"chunmo-photo-{p.VERSION}.apk")
+            (immutable / f"chunmo-photo-{p.VERSION}.apk").chmod(0o644)
         for file in site.iterdir():
-            file.chmod(0o644)
+            if file.is_file():
+                file.chmod(0o644)
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=chmsj.cn", "-addext", "subjectAltName=DNS:chmsj.cn", "-keyout", str(lab / "key.pem"), "-out", str(lab / "cert.pem")], check=True, capture_output=True)
         original = '''events { }
 http { access_log off; server {
@@ -101,9 +114,16 @@ http { access_log off; server {
             assert partial == body[:32]
             page_headers, page_body = get("/download/")
             assert "春茉工地拍照".encode() in page_body, (page_headers, page_body[:160])
+            assert p.VERSION.encode() in page_body and p.SHA.encode() in page_body
             assert "text/css" in get("/download/download.css")[0]
             assert get("/")[1] == before
             assert get("/api/health")[1] == b'{"ok":true}'
+            if p.RELEASE:
+                assert json.loads(get("/download/update.json")[1]) == p.RELEASE
+                immutable_path = p.RELEASE["apkUrl"].split("https://chmsj.cn", 1)[1]
+                immutable_headers, immutable_bytes = get(immutable_path)
+                assert "application/vnd.android.package-archive" in immutable_headers
+                assert hashlib.sha256(immutable_bytes).hexdigest() == p.SHA
             # Real browser mobile layout + actual APK download, no UI app build.
             browser_script = r'''
 import { chromium } from '@playwright/test';

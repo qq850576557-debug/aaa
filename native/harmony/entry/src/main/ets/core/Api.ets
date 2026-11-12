@@ -4,15 +4,13 @@ import { Identity, Login, Session, PhotoConfig, Failure } from './Protocol';
 
 /** Memory-only native session; no plaintext password/cookie persistence and no second account system. */
 export class Api {
-  origin: string = 'https://chmsj.cn';
+  readonly origin: string = 'https://chmsj.cn';
   cookie: string = '';
   csrf: string = '';
   actor?: Identity;
   setOrigin(value: string): void {
     const s = value.trim().replace(/\/$/, '');
-    if (!/^https:\/\/[a-zA-Z0-9.-]+(:[0-9]+)?$/.test(s)) throw new Error('请输入无路径的HTTPS地址');
-    if (s !== this.origin) { this.cookie=''; this.csrf=''; this.actor=undefined; }
-    this.origin=s;
+    if (s !== this.origin) throw new Error('仅允许工作室受控服务器');
   }
   async request(path: string, body: string=''): Promise<string> {
     // Verified public declaration: maxRedirects starts at API 23. Fail closed on older SDKs.
@@ -23,7 +21,7 @@ export class Api {
     try {
       const options: NativeRequestOptions = {
         method: body.length > 0 ? http.RequestMethod.POST : http.RequestMethod.GET,
-        header: { 'Origin':this.origin, 'Cookie':this.cookie, 'X-CSRF-Token':this.csrf, 'Content-Type':'application/json', 'User-Agent':'ChunmoPhoto/1.0 Harmony' },
+        header: { 'Origin':this.origin, 'Cookie':this.cookie, 'X-CSRF-Token':this.csrf, 'Content-Type':'application/json', 'User-Agent':'ChunmoPhoto/2.0 Harmony' },
         extraData:body, connectTimeout:15000, readTimeout:20000, usingCache:false,
         expectDataType:http.HttpDataType.STRING,
         maxRedirects:0,
@@ -36,7 +34,7 @@ export class Api {
         throw new Error(failure.error || `HTTP ${result.responseCode}`);
       }
       const header = result.header as Record<string, string | string[]>;
-      const cookies = header['set-cookie'];
+      const cookies = header['set-cookie'] || header['Set-Cookie'];
       const values: string[] = typeof cookies === 'string' ? [cookies] : (cookies || []);
       values.forEach((entry: string) => { const token = entry.split(';')[0]; if (token.startsWith('chunmo_session=')) this.cookie=token; });
       return result.result as string;

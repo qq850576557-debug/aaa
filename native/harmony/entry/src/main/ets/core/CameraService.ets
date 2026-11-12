@@ -41,7 +41,7 @@ export class CameraService {
       try {
         const component=await photo.main.getComponent(image.ComponentType.JPEG);
         buffer=component.byteBuffer;
-        this.journal.bytes(shot.raw,component.byteBuffer); shot.stage=Stage.Captured; this.journal.persist(shot); this.saved();
+        await this.journal.bytesAsync(shot.raw,component.byteBuffer); shot.stage=Stage.Captured; this.journal.persist(shot); this.saved();
       } catch(e) {
         if(buffer) { this.volatileBytes=buffer.slice(0); this.volatileShot=shot; }
         shot.stage=Stage.Failed; shot.error=buffer?'暂存失败，完整JPEG保留在当前会话内，请勿退出；释放空间后重试暂存':`捕获未完成：${e}`;

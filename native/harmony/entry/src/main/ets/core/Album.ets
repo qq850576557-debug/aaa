@@ -24,8 +24,9 @@ export class Album {
       try { shot.mediaUri=await photoAccessHelper.getPhotoAccessHelper(this.context).createAsset(photoAccessHelper.PhotoType.IMAGE,'jpg',{title:'CHUNMO_'+shot.id}); }
       catch(e) {
         const error=e as BusinessError;
-        shot.stage=error.code===201 ? Stage.Marked : Stage.Unknown;
-        shot.error=error.code===201?'相册权限未获准，请使用系统确认保存':'相册创建回执不明确，原文件保留，需人工核查'; this.journal.persist(shot); throw new Error(shot.error);
+        const rejected=error.code===201 || error.code===202;
+        shot.stage=rejected ? Stage.Marked : Stage.Unknown;
+        shot.error=rejected?'相册权限未获准，请使用系统确认保存':'相册创建回执不明确，原文件保留，需人工核查'; this.journal.persist(shot); throw new Error(shot.error);
       }
       this.journal.persist(shot);
     }
@@ -33,11 +34,11 @@ export class Album {
   }
   async write(shot: Shot): Promise<void> {
     shot.stage=Stage.Writing; this.journal.persist(shot);
-    const input=fs.openSync(shot.output,fs.OpenMode.READ_ONLY);
+    const input=await fs.open(shot.output,fs.OpenMode.READ_ONLY);
     try {
-      const out=fs.openSync(shot.mediaUri,fs.OpenMode.READ_WRITE|fs.OpenMode.TRUNC);
-      try { fs.copyFileSync(input.fd,out.fd); fs.fsyncSync(out.fd); } finally { fs.closeSync(out); }
-    } finally { fs.closeSync(input); }
+      const out=await fs.open(shot.mediaUri,fs.OpenMode.READ_WRITE|fs.OpenMode.TRUNC);
+      try { await fs.copyFile(input.fd,out.fd); await fs.fsync(out.fd); } finally { await fs.close(out); }
+    } finally { await fs.close(input); }
     if(await hash(shot.output)!==await hash(shot.mediaUri)) throw new Error('相册内容校验失败，保留私有文件和同一URI重试');
     this.journal.saved(shot);
   }
@@ -49,7 +50,12 @@ export class Album {
     batch.forEach((s: Shot)=>{ s.stage=Stage.Creating; this.journal.persist(s); });
     let uris: string[];
     try { uris=await photoAccessHelper.getPhotoAccessHelper(this.context).showAssetsCreationDialog(batch.map((s: Shot)=>fileUri.getUriFromPath(s.output)),configs); }
-    catch { batch.forEach((s: Shot)=>{ s.stage=Stage.Unknown; s.error='系统保存创建结果不明确，源文件保留，禁止重复创建'; this.journal.persist(s); }); throw new Error('系统保存未确认，照片仍保留'); }
+    catch(e) {
+      const code=(e as BusinessError).code;
+      const rejected=code===201 || code===202 || code===401;
+      batch.forEach((s: Shot)=>{ s.stage=rejected?Stage.Marked:Stage.Unknown; s.error=rejected?'系统拒绝保存请求，原文件保留，可在修正授权后重试':'系统保存创建结果不明确，源文件保留，禁止重复创建'; this.journal.persist(s); });
+      throw new Error('系统保存未确认，照片仍保留');
+    }
     if(uris.length===0) { batch.forEach((s: Shot)=>{ s.stage=Stage.Marked; this.journal.persist(s); }); return; }
     // Persist all returned URI mappings before any long image write.
     batch.forEach((s: Shot,i: number)=>{

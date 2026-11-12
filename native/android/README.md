@@ -36,3 +36,10 @@ adb -s emulator-5556 shell am instrument -w cn.chmsj.photo.test/androidx.test.ru
 debug签名仅用于内部验证，不等于工作室长期release签名。**已经安装本测试包的设备，后续覆盖更新必须继续使用包名`cn.chmsj.photo`及同一签名私钥**，不能重新生成debug key或直接换release key；签名证书指纹见构建记录。应先将现有私钥备份到工作室受控密钥库，不得上传下载网站、Git或聊天。未来正式签名切换需另行安排受控迁移或不同包名，不能让监理为更新而卸载含待保存照片的旧版。本工程不自动购买账号、上传商店或部署服务器。
 
 实机门槛：vivo/小米/OPPO/安卓兼容设备的权限拒绝、GPS室内精度、20张实际相机连拍、横竖屏预览/成图一致、原始实际像素、Gallery中全部可见、空间不足、强退恢复和更新不丢待存文件。模拟器输出与纯协议测试不能替代这些验收。
+
+
+## V2
+
+当前默认`2.0.0-internal`/versionCode2，增量界面、低延迟/后台保存、安全检查更新及签名保留见[交付说明](../../docs/native-photo-v2.md)。`-PphotoVersionCode`和`-PphotoVersionName`用于受控递增发布；ZSL仅在受控A/B测试中传`-PphotoEnableZsl=true`，默认关闭，不用能力标志冒充实测收益。
+
+状态读取使用重启可重建的账本索引；捕获开始回调只取实际时刻，落盘转专用执行器。原账本路径与保存协议不变。测试证据分为JVM、Android真实图形/MediaStore、软件虚拟相机、真实手机，不把合成20张或原生窗口截图当真机连拍20张。

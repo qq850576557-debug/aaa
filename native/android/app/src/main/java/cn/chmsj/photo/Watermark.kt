@@ -17,6 +17,7 @@ private object BrandBitmap {
 }
 class WatermarkRenderer(private val context: Context) {
     private val logo get() = BrandBitmap.get(context)
+    fun prepare() { BrandBitmap.get(context) }
     fun draw(canvas: Canvas, width: Int, height: Int, place: String, at: String, name: String) {
         val m = markLayout(width, height, place, at, name); val s = m.scale
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -55,7 +56,9 @@ class WatermarkRenderer(private val context: Context) {
             if (!bitmap.isMutable) { val next = bitmap.copy(Bitmap.Config.ARGB_8888, true); bitmap.recycle(); bitmap = next }
             draw(Canvas(bitmap), bitmap.width, bitmap.height, task.data.getJSONObject("receipt").getString("placeName"), task.data.getString("capturedAt"), task.actor.name)
             val tmp = File(task.dir, "watermarked.tmp")
+            val encoding=System.nanoTime()
             FileOutputStream(tmp).use { out -> check(bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)) { "JPEG编码失败" }; out.flush(); out.fd.sync() }
+            task.data.put("encodeMs",(System.nanoTime()-encoding)/1000000)
             // Preserve real location, precision, POI provenance and identity outside the visible watermark.
             ExifInterface(tmp).apply {
                 setAttribute(ExifInterface.TAG_ORIENTATION, "1")
@@ -73,6 +76,7 @@ class WatermarkRenderer(private val context: Context) {
             task.data.put("width",bitmap.width).put("height",bitmap.height).put("sha256",fileHash(task.marked))
                 .put("watermarkMs", (System.nanoTime()-started)/1_000_000)
             task.stage = Stage.WATERMARKED; task.save()
+            Performance.record(context,"watermark",(System.nanoTime()-started)/1000000,task.id,"${bitmap.width}x${bitmap.height};encodeMs=${task.data.getLong("encodeMs")}")
         } finally { bitmap.recycle() }
     }
 }

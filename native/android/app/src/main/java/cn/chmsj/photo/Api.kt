@@ -49,10 +49,13 @@ class Api(private val vault: SessionStorage, private val connection: (URL) -> Ht
     private var csrf = ""
     val hasSession: Boolean get() = cookie.isNotEmpty()
     var identity: Identity? = null; private set
-    init { vault.read()?.let { origin = it.optString("origin", origin); cookie = it.optString("cookie") } }
+    init { vault.read()?.let {
+        if (it.optString("origin") == BuildConfig.API_ORIGIN) cookie = it.optString("cookie")
+        else vault.clear() // Never send a saved cookie to a different build's server.
+    } }
     fun setOrigin(text: String) {
         val u = URI(text.trim())
-        require(u.scheme == "https" && !u.host.isNullOrBlank() && u.rawUserInfo == null && u.rawQuery == null && u.rawFragment == null && (u.path.isNullOrEmpty() || u.path == "/")) { "请输入完整HTTPS网站地址，不带路径" }
+        require(text.trim().trimEnd('/') == BuildConfig.API_ORIGIN && u.scheme == "https" && !u.host.isNullOrBlank() && u.rawUserInfo == null && u.rawQuery == null && u.rawFragment == null && (u.path.isNullOrEmpty() || u.path == "/")) { "仅允许工作室受控服务器" }
         val next = text.trim().trimEnd('/')
         if (next != origin) { cookie = ""; csrf = ""; identity = null; vault.clear() }
         origin = next
@@ -65,7 +68,7 @@ class Api(private val vault: SessionStorage, private val connection: (URL) -> Ht
             c.instanceFollowRedirects = false; c.connectTimeout = 15000; c.readTimeout = 20000
             c.requestMethod = if (body == null) "GET" else "POST"
             c.setRequestProperty("Origin", requestOrigin)
-            c.setRequestProperty("User-Agent", "ChunmoPhoto/1.0 Android")
+            c.setRequestProperty("User-Agent", "ChunmoPhoto/${BuildConfig.VERSION_NAME} Android")
             if (requestCookie.isNotEmpty()) c.setRequestProperty("Cookie", requestCookie)
             if (body != null) {
                 c.doOutput = true; c.setRequestProperty("Content-Type", "application/json")

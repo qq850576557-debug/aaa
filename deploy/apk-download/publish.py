@@ -16,10 +16,29 @@ import subprocess
 import sys
 import tempfile
 import time
+import html
+from urllib.parse import urlparse
 
 SIZE = 11030504
 SHA = "f6a1046dbd7b66125971573b16b435d31b34bc1f45e1d12543d0d8b7859a4d8d"
 CERT = "011aa52c0ad4ee183a42fc34542d312ff924f6ef2ed22ec6bb340451f8ba6501"
+VERSION = "1.0.0-internal"
+CODE = 1
+RELEASE = None
+
+
+def use_release(path):
+    """Founder-reviewed metadata from prepare-release.py; no private keys needed on ECS."""
+    global SIZE, SHA, VERSION, CODE, RELEASE
+    value = json.loads(Path(path).read_text())
+    if value.get("package") != "cn.chmsj.photo" or value.get("certificateSha256") != CERT or value.get("internalTest") is not True:
+        raise ValueError("Unexpected package/signature/channel; refusing publication")
+    if not isinstance(value.get("versionCode"), int) or value["versionCode"] < 2 or not isinstance(value.get("bytes"), int) or not 0 < value["bytes"] <= 100 * 1024 * 1024 or not re.fullmatch(r"[a-f0-9]{64}", value.get("sha256", "")) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-internal", value.get("versionName", "")):
+        raise ValueError("Invalid release metadata")
+    expected_path = f'/download/releases/{value["versionCode"]}-{value["sha256"][:12]}/chunmo-photo-{value["versionName"]}.apk'
+    if value.get("apkUrl") != "https://chmsj.cn" + expected_path or not isinstance(value.get("notes"), str):
+        raise ValueError("Unexpected immutable download URL")
+    SIZE, SHA, VERSION, CODE, RELEASE = value["bytes"], value["sha256"], value["versionName"], value["versionCode"], value
 HOOK = "include /etc/chunmo-staging/downloads/*.conf;"
 BASE = Path("/opt/chunmo-staging")
 STATE = Path("/var/lib/chunmo-downloads")
@@ -111,8 +130,18 @@ def snippet(headers, root=STATE / "current"):
     root = str(root)
     if not re.fullmatch(r"/[a-zA-Z0-9_./-]+", root):
         raise ValueError("Unsafe static path")
+    releases = str(STATE / "releases") if root == str(STATE / "current") else root + "/releases"
     return f'''# APK downloads only; original website/API routes remain unchanged.
 location = /download {{ return 308 /download/; }}
+location ^~ /download/releases/ {{
+  alias {releases}/;
+  autoindex off;
+  types {{ application/vnd.android.package-archive apk; }}
+  default_type application/octet-stream;
+  {headers}
+  add_header Content-Disposition attachment always;
+  add_header Cache-Control "no-cache" always;
+}}
 location = /download/chunmo-photo-test.apk {{
   alias {root}/chunmo-photo-test.apk;
   types {{ }}
@@ -139,6 +168,11 @@ def patch_sw(text):
     if text.count(SW_OLD) != 1:
         raise ValueError("Unknown service worker; cannot safely exclude download pages from app-shell cache")
     return text.replace(SW_OLD, SW_NEW, 1)
+
+
+def render_page(text):
+    page = text.replace("1.0.0-internal（1）", html.escape(f"{VERSION}（{CODE}）"))
+    return re.sub(r"[a-f0-9]{64}", SHA, page).replace("11.03 MB · 11,030,504 字节", f"{SIZE / 1000000:.2f} MB · {SIZE:,} 字节")
 
 
 def atomic(path, content, mode=0o644):
@@ -248,6 +282,8 @@ def publish(apk, logo, check_only=False):
         raise ValueError("Web unit uses an unknown nginx config; no changes made")
     public = json.loads(Path("/etc/chunmo-staging/public-https.json").read_text())
     origin = public["origin"]
+    if RELEASE and urlparse(RELEASE["apkUrl"]).netloc != urlparse(origin).netloc:
+        raise ValueError("Release origin differs from actual website; no changes made")
     if not re.fullmatch(r"https://[a-zA-Z0-9.-]+", origin) or public.get("mode"):
         raise ValueError("Need an existing publicly trusted domain on HTTPS port 443")
     host = origin.removeprefix("https://")
@@ -275,7 +311,14 @@ def publish(apk, logo, check_only=False):
     os.chmod(SNIPPET.parent, 0o755)
     if shutil.disk_usage(STATE).free < 3 * SIZE:
         raise ValueError("Insufficient space for safe publication")
-    release = STATE / "releases" / ("1.0.0-debug-" + SHA[:12])
+    retained = STATE / "current" / "release.json"
+    if retained.exists() and json.loads(retained.read_text()).get("versionCode", 0) > CODE:
+        raise ValueError("Refusing a download-channel downgrade")
+    if retained.exists():
+        old = json.loads(retained.read_text())
+        if old.get("versionCode") == CODE and old.get("sha256") != SHA:
+            raise ValueError("VersionCode already published with different bytes; increment it")
+    release = STATE / "releases" / (f"{CODE}-" + SHA[:12] if RELEASE else "1.0.0-debug-" + SHA[:12])
     if release.exists():
         verify_apk(release / "chunmo-photo-test.apk")
     else:
@@ -283,11 +326,15 @@ def publish(apk, logo, check_only=False):
         os.chmod(temp, 0o755)
         for filename in ("index.html", "download.css"):
             shutil.copyfile(Path(__file__).parent / filename, temp / filename)
+        (temp / "index.html").write_text(render_page((temp / "index.html").read_text()))
         shutil.copyfile(logo, temp / "logo.png")
         shutil.copyfile(apk, temp / "chunmo-photo-test.apk")
+        if RELEASE:
+            shutil.copyfile(apk, temp / f"chunmo-photo-{VERSION}.apk")
+            (temp / "update.json").write_text(json.dumps(RELEASE, ensure_ascii=False, indent=2) + "\n")
         verify_apk(temp / "chunmo-photo-test.apk")
         (temp / "SHA256SUMS").write_text(SHA + "  chunmo-photo-test.apk\n")
-        (temp / "release.json").write_text(json.dumps({"package": "cn.chmsj.photo", "version": "1.0.0-internal", "versionCode": 1, "debug": True, "bytes": SIZE, "sha256": SHA, "certificateSha256": CERT}, indent=2) + "\n")
+        (temp / "release.json").write_text(json.dumps({"package": "cn.chmsj.photo", "version": VERSION, "versionCode": CODE, "debug": True, "bytes": SIZE, "sha256": SHA, "certificateSha256": CERT}, indent=2) + "\n")
         for file in temp.iterdir():
             file.chmod(0o644)
         os.rename(temp, release)
@@ -312,6 +359,14 @@ def publish(apk, logo, check_only=False):
         nginx_test(nginx)
         reload_web()  # HUP only; API process and active requests are preserved
         wait_for_downloads(origin)
+        if RELEASE:
+            for local in (True, False):
+                _, body = get(origin, "/download/update.json", local)
+                if json.loads(body) != RELEASE:
+                    raise ValueError("Published update manifest differs")
+                _, body = get(origin, urlparse(RELEASE["apkUrl"]).path, local)
+                if hashlib.sha256(body).hexdigest() != SHA:
+                    raise ValueError("Immutable update APK checksum differs")
         website(origin)
         active_services()
     except BaseException:
@@ -340,7 +395,10 @@ def main():
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--logo", type=Path, required=True)
     parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--release", type=Path, help="Reviewed metadata generated with SDK signature/package validation")
     args = parser.parse_args()
+    if args.release:
+        use_release(args.release)
     if os.geteuid() != 0:
         parser.error("Run as root in Aliyun Workbench")
     # Same deployment lock as the existing updater; never race a site update.
