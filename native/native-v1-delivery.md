@@ -6,7 +6,7 @@
 
 **Android：已构建并签名校验debug APK，在独立Android15模拟器安装成功。** 源码实现已有账号登录、真实GPS/服务端地点、CameraX连续静态拍摄、共享原稿水印、WorkManager串行恢复队列及MediaStore相册回执。最低Android10，包含arm64-v8a、armeabi-v7a、x86、x86_64。不是release长期签名版本，不能冒称真机已经验收。
 
-安装包实际位置：[版本1 debug APK](releases/chunmo-photo-1.0.0-debug.apk)，另复制到`/workspace/artifacts/chunmo-native-v1/chunmo-photo-1.0.0-debug.apk`。构建位置`native/android/app/build/outputs/apk/debug/app-debug.apk`。完整校验和与签名见[构建核验](validation/build-results.json)和[校验和文件](releases/SHA256SUMS)。本次在开发分支保留实际APK用于试装；签名私钥不进Git。
+安装包实际构建位置为`native/android/app/build/outputs/apk/debug/app-debug.apk`，另保留在`/workspace/artifacts/chunmo-native-v1/chunmo-photo-1.0.0-debug.apk`。完整校验和与签名见[构建核验](validation/build-results.json)和[校验和文件](releases/SHA256SUMS)。后续下载交付见[APK网站发布说明](../docs/android-apk-download.md)：本轮不重新构建，改用原测试包，当前源码分支不再追踪APK二进制。原提交中的字节保留作为固定校验的过渡下载来源，不重写Git历史；签名私钥不进Git。
 
 **Harmony：已建立独立ArkTS/ArkUI原生工程源码，但尚未完成6.1 SDK适配、编译、签名和设备安装；没有HAP文件。** 公开API核查和纯协议测试不能替代DevEco编译。API12模板与HTTP API23门槛的实际6.1映射未确认，见[具体SDK门槛](harmony/README.md)。普通相册权限不可得时使用系统确认保存，不能承诺静默自动入相册。
 

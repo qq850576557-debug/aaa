@@ -18,6 +18,7 @@ test('domain uses standard HTTPS, fixed-host HTTP redirect, same-origin API and 
   assert.match(text, /server_name chmsj\.cn;/);
   assert.match(text, /proxy_buffering off;/);
   assert.match(text, /listen 127\.0\.0\.1:8443 ssl;/);
+  assert.equal(text.split('include /etc/chunmo-staging/downloads/*.conf;').length - 1, 2);
   for (const origin of [
     'https://chmsj.cn:4000',
     'https://chmsj.cn/path',

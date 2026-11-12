@@ -20,3 +20,5 @@ native/**/*.p12
 native/**/*.p7b
 native/**/*.jks
 native/**/*.keystore
+native/releases/*.apk
+__pycache__/

@@ -30,7 +30,9 @@ self.addEventListener('fetch', (event) => {
   if (
     req.method !== 'GET' ||
     url.origin !== self.location.origin ||
-    url.pathname.startsWith('/api/')
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/download' ||
+    url.pathname.startsWith('/download/')
   )
     return;
   const navigation = req.mode === 'navigate';

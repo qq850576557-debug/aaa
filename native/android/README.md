@@ -33,6 +33,6 @@ adb -s emulator-5556 install -r app/build/outputs/apk/androidTest/debug/app-debu
 adb -s emulator-5556 shell am instrument -w cn.chmsj.photo.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
-debug签名仅用于内部验证，不等于工作室长期release签名。正式内部分发前，在Android Studio的Generate Signed Bundle/APK中使用工作室受控固定签名，保存好私钥以保证覆盖升级；不要将私钥或密码提交Git。本工程不自动购买账号、上传商店或部署服务器。
+debug签名仅用于内部验证，不等于工作室长期release签名。**已经安装本测试包的设备，后续覆盖更新必须继续使用包名`cn.chmsj.photo`及同一签名私钥**，不能重新生成debug key或直接换release key；签名证书指纹见构建记录。应先将现有私钥备份到工作室受控密钥库，不得上传下载网站、Git或聊天。未来正式签名切换需另行安排受控迁移或不同包名，不能让监理为更新而卸载含待保存照片的旧版。本工程不自动购买账号、上传商店或部署服务器。
 
 实机门槛：vivo/小米/OPPO/安卓兼容设备的权限拒绝、GPS室内精度、20张实际相机连拍、横竖屏预览/成图一致、原始实际像素、Gallery中全部可见、空间不足、强退恢复和更新不丢待存文件。模拟器输出与纯协议测试不能替代这些验收。
