@@ -4,3 +4,7 @@ package-lock.json
 playwright-report
 test-results
 *.tsbuildinfo
+native/**/build
+native/**/.gradle
+native/**/.hvigor
+native/**/oh_modules

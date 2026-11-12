@@ -1,0 +1,56 @@
+{
+  "baseline": "3f46936be0cf7fceb7b89e08d6f6777b8eddcd9c",
+  "api": {
+    "login": "POST /api/auth/login",
+    "session": "GET /api/auth/session",
+    "identity": "GET /api/site-photos/config",
+    "nearby": "POST /api/site-photos/location",
+    "renew": "POST /api/site-photos/place"
+  },
+  "security": {
+    "cookie": "chunmo_session",
+    "csrf": "X-CSRF-Token",
+    "origin": "https://chmsj.cn",
+    "gpsLeaseMs": 90000,
+    "maxAccuracyMetres": 100,
+    "radiusMetres": 2000,
+    "manualPlaceAllowed": false
+  },
+  "brandSha256": "611a63cc6e1e5f8e4271f94e55b449e1f48f074648c7996fa5d1878afcffb831",
+  "references": {
+    "interface_sdk_js_commit": "8a86234f0d542e5062e24e948652f5a484d90904",
+    "docs_commit": "f41b9345badd47c7ab0c263344cd7f4b5a549afb",
+    "declarations": [
+      {
+        "file": "photoAccessHelper.d.ts",
+        "sha256": "b0165f0279daa1a18ff7885a4cdbc663fd33b01a74a889314e44f29b2a1c2419"
+      },
+      {
+        "file": "location.d.ts",
+        "sha256": "d21310fb12219d99d856593e9084ef2765730cff0e4bf0eba3ad45861bce179e"
+      },
+      {
+        "file": "camera.d.ts",
+        "sha256": "b02659f4b675e8c5afc88c463efc9046695bd5d8eacf2624891fd7957f497190"
+      },
+      {
+        "file": "http.d.ts",
+        "sha256": "0e9444dd6d3c9b4edfcbbb3b81b3e28b137b926f528c7652745b6d8d301c6674"
+      },
+      {
+        "file": "fs.d.ts",
+        "sha256": "9ec958b39f4e0382462e04980f31abfcee9219c8e09d39e6a91f33df2951e6a8"
+      },
+      {
+        "file": "text.d.ts",
+        "sha256": "2d5ecaec73fa30a8f5470957caa14d0cec2a220e9d300d781e1964bfdb7f0e9a"
+      },
+      {
+        "file": "drawing.d.ts",
+        "sha256": "b0bde4a62114f2def41942e7bd0193142d0688d881fb479be52dc8358eb887f4"
+      }
+    ],
+    "photoSaveGuide": "https://github.com/openharmony/docs/blob/f41b9345badd47c7ab0c263344cd7f4b5a549afb/en/application-dev/media/medialibrary/photoAccessHelper-savebutton.md",
+    "verified": "Public OpenHarmony declarations only; HarmonyOS 6.1 SDK binary/API mapping not verified."
+  }
+}

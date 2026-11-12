@@ -1,0 +1,9 @@
+{
+  name: 'entry',
+  version: '1.0.0',
+  description: 'Camera Kit and Media Library native client',
+  main: '',
+  author: '',
+  license: '',
+  dependencies: {},
+}

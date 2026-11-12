@@ -1,0 +1,48 @@
+{
+  "baseline": "3f46936be0cf7fceb7b89e08d6f6777b8eddcd9c",
+  "date": "2026-11-12",
+  "timezone": "Asia/Shanghai",
+  "android": {
+    "apk": "native/releases/chunmo-photo-1.0.0-debug.apk",
+    "bytes": 11030504,
+    "sha256": "f6a1046dbd7b66125971573b16b435d31b34bc1f45e1d12543d0d8b7859a4d8d",
+    "signing": "Android debug RSA2048 APK Signature Scheme v2 verified; NOT company release signing",
+    "certificateSha256": "011aa52c0ad4ee183a42fc34542d312ff924f6ef2ed22ec6bb340451f8ba6501",
+    "package": "cn.chmsj.photo",
+    "minSdk": 29,
+    "targetSdk": 35,
+    "abis": ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"],
+    "zip16KiBAlignmentVerified": true,
+    "arm64ElfLoadAlignment": "0x4000",
+    "gradle": "8.9",
+    "agp": "8.7.3",
+    "kotlin": "2.0.21",
+    "cameraX": "1.4.1",
+    "jvmTests": {
+      "passed": 7,
+      "failures": 0,
+      "errors": 0
+    },
+    "lint": "passed with no errors; advisory warnings retained",
+    "instrumentationPassed": 6,
+    "installedOn": "Isolated AOSP Android15 API35 x86_64 software emulator",
+    "realPhoneCameraTested": false,
+    "robolectricSuite": "not executed; GCP Maven mirror redirect denied by current egress policy"
+  },
+  "sharedContractTestsPassed": 4,
+  "isolatedServerPhotoTestsPassed": 4,
+  "webProductionBuild": "passed; src/server/public/package manifests unchanged",
+  "harmony": {
+    "source": "native/harmony",
+    "sdkAvailable": false,
+    "hap": null,
+    "buildPreflightExit": 2,
+    "sdk61ApiMappingVerified": false,
+    "fullArktsCompilation": false,
+    "signingConfigured": false,
+    "nativeNetworkMinimumVerifiedApi": 23
+  },
+  "productionDeployment": false,
+  "productionMigration": false,
+  "pwaPhotoDataTouched": false
+}

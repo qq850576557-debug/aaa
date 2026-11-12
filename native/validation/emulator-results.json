@@ -1,0 +1,29 @@
+{
+  "environment": "Android15 API35 x86_64 AOSP emulator, TCG software CPU/SwiftShader, NO KVM, synthetic JPEG inputs; NOT phone camera or worksite performance",
+  "testsPassed": 6,
+  "imageCount": 20,
+  "inputs": "19x1200x800 and 1x4000x3000 synthetic solid-colour JPEG; one EXIF6 gives800x1200",
+  "systemMediaStore": {
+    "allSaved": true,
+    "retryRowsPerTask": 1,
+    "authorizedUriReadbackSha256Verified": true
+  },
+  "processingPlusVerificationMs": {
+    "samples": [
+      23117, 7319, 6196, 4937, 4664, 4460, 5289, 5232, 5477, 4530, 4829, 4422, 4461, 5468, 4841,
+      4270, 6599, 6817, 5163, 5246
+    ],
+    "median": 5197.5,
+    "max": 23117,
+    "note": "Includes synthetic raw JPEG creation, native watermark, media publication, SHA256 and decoded readback; excludes real camera/GPS"
+  },
+  "sample": {
+    "file": "native/samples/emulator-watermark-4000x3000.jpg",
+    "width": 4000,
+    "height": 3000,
+    "sha256": "ef0cead784d52ac3cbdf25b3403818fedf34e7722bc3c15e3346f698f6b56935"
+  },
+  "coldLoginActivityLaunchMs": 16430,
+  "realDevicesTested": false,
+  "extraTests": ["post-scan sample authorized URI export", "device keystore roundtrip"]
+}

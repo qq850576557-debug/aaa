@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "app_name",
+      "value": "春茉工地拍照"
+    },
+    {
+      "name": "reason_camera",
+      "value": "用于工地现场连续拍照"
+    },
+    {
+      "name": "reason_location",
+      "value": "用于查询高德2公里内地点并记录真实拍摄位置"
+    },
+    {
+      "name": "reason_album",
+      "value": "将本应用拍摄的水印照片保存到系统相册"
+    }
+  ]
+}

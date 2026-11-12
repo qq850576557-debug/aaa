@@ -9,3 +9,14 @@ test-results/
 *.tsbuildinfo
 dist-api/
 dist-deploy/
+native/**/.gradle/
+native/**/build/
+native/**/local.properties
+native/**/.idea/
+native/**/.hvigor/
+native/**/oh_modules/
+native/**/signing/
+native/**/*.p12
+native/**/*.p7b
+native/**/*.jks
+native/**/*.keystore
