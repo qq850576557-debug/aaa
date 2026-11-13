@@ -226,7 +226,7 @@ def nginx_test(nginx):
 
 
 def reload_web():
-    run("systemctl", "kill", "--kill-whom=main", "--signal=HUP", UNIT)
+    run("systemctl", "kill", "--kill-who=main", "--signal=HUP", UNIT)
 
 
 def active_services():

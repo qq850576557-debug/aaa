@@ -112,6 +112,32 @@ location / { return 200 '<html>original site</html>'; }
                 self.assertEqual(sw.read_bytes(), original_sw)
                 self.assertFalse(snippet.exists())
 
+    def test_reload_targets_systemd_main_process(self):
+        with patch.object(p, "run") as run:
+            p.reload_web()
+            run.assert_called_once_with("systemctl", "kill", "--kill-who=main", "--signal=HUP", "chunmo-staging-web")
+
+    def test_reload_and_rollback_reload_failures_preserve_files_and_report_both(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config, sw, snippet, apk = self.fixture_routes(folder)
+            original = config.read_bytes()
+            with patch.multiple(p, CONFIG=config, SW=sw, SOURCE_SNIPPET=snippet, APK_SNIPPET=apk, STATE=Path(folder)/"state"):
+                plan = p.route_plan(REPO)
+                with patch.object(p, "nginx_check"), patch.object(p, "reload_web", side_effect=[ValueError("publish HUP failed"), ValueError("rollback HUP failed")]), patch.object(p, "health") as health:
+                    with self.assertRaisesRegex(ValueError, "回滚未完全确认") as error:
+                        p.activate_route(plan, "https://chmsj.cn", b"test")
+                    self.assertIn("publish HUP failed", str(error.exception))
+                    self.assertIn("rollback HUP failed", str(error.exception))
+                    health.assert_called_once()
+                self.assertEqual(config.read_bytes(), original)
+                self.assertFalse(snippet.exists())
+
+    def test_unchanged_reexecution_does_not_reload(self):
+        plan = {"config": b"same", "old_config": b"same", "snippet": b"s", "old_snippet": b"s", "sw": b"w", "old_sw": b"w"}
+        with patch.object(p, "reload_web") as reload, patch.object(p, "verify", return_value="verified"):
+            self.assertEqual(p.activate_route(plan, "https://chmsj.cn", b"test"), "verified")
+            reload.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -164,7 +164,7 @@ def nginx_check():
 
 
 def reload_web():
-    run("systemctl", "kill", "--kill-whom=main", "--signal=HUP", "chunmo-staging-web")
+    run("systemctl", "kill", "--kill-who=main", "--signal=HUP", "chunmo-staging-web")
 
 
 def route_plan(repo):
@@ -237,12 +237,27 @@ def activate_route(plan, origin, data):
                 if attempt == 7:
                     raise
                 time.sleep(0.5)
-    except Exception:
+    except Exception as publication_error:
         print("验证未通过，正在恢复原下载配置……", flush=True)
-        restore_route(plan)
-        nginx_check()
-        reload_web()
-        health(origin)
+        failures = []
+        try:
+            restore_route(plan)
+        except Exception as error:
+            failures.append("恢复文件失败：" + str(error))
+        if not failures:
+            try:
+                nginx_check()
+                reload_web()
+            except Exception as error:
+                failures.append("原配置重载失败：" + str(error))
+        try:
+            health(origin)
+        except Exception as error:
+            failures.append("服务健康检查失败：" + str(error))
+        if failures:
+            raise ValueError("发布失败：{}；回滚未完全确认：{}；备份保留在 {}，禁止视为发布成功".format(
+                publication_error, "；".join(failures), folder))
+        print("原配置已恢复并重载；此次发布失败，不输出PASS。", flush=True)
         raise
 
 
