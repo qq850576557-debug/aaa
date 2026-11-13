@@ -34,7 +34,7 @@ location / { return 200 '<html>original site</html>'; }
         a, b = p.source_zip(REPO), p.source_zip(REPO)
         self.assertEqual(a, b)
         self.assertEqual(hashlib.sha256(a).hexdigest(), p.EXPECTED_SHA)
-        self.assertEqual(len(a), 665931)
+        self.assertEqual(len(a), 674485)
 
     def test_registered_appid_and_original_logo_without_private_config_or_secrets(self):
         with zipfile.ZipFile(io.BytesIO(p.source_zip(REPO))) as source:
