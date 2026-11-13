@@ -16,6 +16,13 @@ import time
 spec=importlib.util.spec_from_file_location('mini_install',Path(__file__).with_name('install.py'))
 p=importlib.util.module_from_spec(spec);spec.loader.exec_module(p)
 REPO=Path(__file__).resolve().parents[2]
+workbench = os.environ.get('CHUNMO_WORKBENCH_LAB') == '1'
+if workbench:
+    candidate_spec=importlib.util.spec_from_file_location('candidate',REPO/'deploy/workbench/install.py')
+    candidate=importlib.util.module_from_spec(candidate_spec);candidate_spec.loader.exec_module(candidate)
+    candidate.profile(p)
+prefix='/api/mini-photo-candidate/' if workbench else '/api/mini-photo/'
+route_mount='/opt/chunmo-mini-workbench/routes' if workbench else '/opt/chunmo-mini-photo/routes'
 env={k:v for k,v in os.environ.items() if k not in ('DOCKER_HOST','DOCKER_CONTEXT','DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH')}
 def docker(*args):
     return subprocess.check_output(['docker','--host=unix:///var/run/docker.sock',*args],env=env,stderr=subprocess.STDOUT)
@@ -38,6 +45,8 @@ location /api/ { proxy_pass http://127.0.0.1:4000; }
 location / { default_type text/html; return 200 '<html>original site</html>'; }
 } }
 '''
+    if workbench:
+        original=original.replace(b'location /api/ {', b"""location = /api/mini-photo/health { default_type application/json; return 200 '{"ok":true,"mode":"sidecar"}'; }\nlocation /api/ {""")
     p.CONFIG.write_bytes(original)
     (lab/'fake-wechat.cjs').write_text("globalThis.fetch=async()=>Response.json({openid:'synthetic-wx-only'});\n")
     (lab/'supervisor.cjs').write_text(r'''
@@ -48,7 +57,8 @@ http.createServer((req,res)=>{let body='';req.on('data',b=>body+=b);req.on('end'
   if(req.url==='/api/health')return res.end(JSON.stringify({ok:true,recordsRevision:7}));
   if(req.url==='/api/auth/login'){if(JSON.parse(body).login!=='fixture'){res.statusCode=401;return res.end('{}')};res.setHeader('Set-Cookie',cookie+'; HttpOnly; Secure; Path=/api');return res.end('{"ok":true}')}
   if(req.headers.cookie!==cookie){res.statusCode=401;return res.end('{}')}
-  if(req.method==='POST'&&req.headers['x-csrf-token']!=='original-csrf'){res.statusCode=403;return res.end('{}')}
+  if(['POST','PUT'].includes(req.method)&&req.headers['x-csrf-token']!=='original-csrf'){res.statusCode=403;return res.end('{}')}
+  if(req.url==='/api/workspace')return res.end('{"revision":7,"data":{"purchases":[]}}');
   if(req.url==='/api/auth/session')return res.end('{"user":{"id":"fixture","workspaceId":"fixture-workspace"},"csrf":"original-csrf"}');
   if(req.url==='/api/site-photos/config')return res.end('{"actorId":"fixture","actorName":"测试监理"}');
   if(req.url==='/api/site-photos/location')return res.end('{"places":[],"more":false}');
@@ -70,11 +80,14 @@ http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/jso
     docker('run','-d','--name',names[0],'-p','127.0.0.1:18445:443','-v',directory+':/lab:ro','node:22-alpine','node','/lab/supervisor.cjs')
     try:
         docker('run','-d','--name',names[1],'--network','container:'+names[0],'-v',directory+':/lab:ro',
-               '-v',str(p.ROUTE.parent)+':/opt/chunmo-mini-photo/routes:ro','nginx:1.28-alpine','nginx','-c','/lab/nginx.conf','-g','daemon off;')
+               '-v',str(p.ROUTE.parent)+':'+route_mount+':ro','nginx:1.28-alpine','nginx','-c','/lab/nginx.conf','-g','daemon off;')
         def control(action):
             code="fetch('http://127.0.0.1:4900/"+action+"').then(r=>r.text()).then(console.log)"
             return json.loads(docker('exec',names[0],'node','-e',code))
         def curl(url,headers=(),local=False,body=None):
+            if url.startswith('http://127.0.0.1:4000/'):
+                js="fetch("+json.dumps(url)+").then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()})))"
+                value=json.loads(docker('exec',names[0],'node','-e',js));return value['status'],value['body'].encode()
             if url.startswith('http://127.0.0.1:4011/'):
                 value=control('probe');return value['status'],value['body'].encode()
             args=['curl','--silent','--show-error','--max-time','10','--noproxy','chmsj.cn','--cacert',str(lab/'cert.pem'),
@@ -87,13 +100,14 @@ http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/jso
         def old_health(port):
             assert curl(p.ORIGIN+'/')[1]==b'<html>original site</html>'
             assert json.loads(curl(p.ORIGIN+'/api/health')[1])['recordsRevision']==7
+            if workbench: assert json.loads(curl(p.ORIGIN+'/api/mini-photo/health')[1])['mode']=='sidecar'
         for i in range(30):
             try: old_health(4000);break
             except Exception:
                 if i==29:raise
                 time.sleep(.1)
         p.old_health=old_health
-        assert curl(p.ORIGIN+'/api/mini-photo/health')[0]!=200
+        assert curl(p.ORIGIN+prefix+'health')[0]!=200
         p.nginx_check=lambda:docker('exec',names[1],'nginx','-t','-c','/lab/nginx.conf')
         p.reload_web=lambda:docker('kill','--signal=HUP',names[1])
         p.read_secret=lambda:'a'*32
@@ -104,7 +118,7 @@ http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/jso
                 if args[1]=='start':control('start')
                 if args[1]=='stop':control('stop')
                 return b''
-            if args[0]=='getent':return ('chunmo-mini-photo:x:1000:1000::'+str(p.STATE)+':/sbin/nologin').encode()
+            if args[0]=='getent':return (p.SERVICE+':x:1000:1000::'+str(p.STATE)+':/sbin/nologin').encode()
             if args[0]=='id':return b'1000'
             if args[0]=='runuser':return docker('exec','--user','1000:1000',names[0],'node','--version')
             return original_run(*args)
@@ -112,21 +126,22 @@ http.createServer(async(req,res)=>{res.setHeader('Content-Type','application/jso
         commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO).decode().strip()
         plan={'commit':commit,'node':'/usr/local/bin/node','apiPort':4000,'listenPort':4011,'currentRelease':str(p.CURRENT.resolve()),
               'apiSha256':p.sha((p.CURRENT/'dist-api/server.mjs').read_bytes()),'nginxSha256':p.sha(original),'approvalToken':'fixture-approved','installed':False}
-        files={n:(REPO/'deploy/miniprogram'/n).read_bytes() for n in ('runtime.cjs','runtime.cjs.LEGAL.txt')}
+        files={n:(REPO/('deploy/workbench' if workbench else 'deploy/miniprogram')/n).read_bytes() for n in ('runtime.cjs','runtime.cjs.LEGAL.txt')}
         p.check=lambda repo,commit:(plan,files)
         print('ISOLATED LAB ONLY: Node/Nginx real; systemctl emulated; synthetic credentials and old API fixture.',flush=True)
         p.install(REPO,commit,'fixture-approved')
         assert control('status')['childUid']==1000
         ref='Referer: https://servicewechat.com/'+p.APP_ID+'/0/page-frame.html'
-        status,data=curl(p.ORIGIN+'/api/mini-photo/bootstrap',headers=(ref,),body='{"code":"fixture-code"}')
+        status,data=curl(p.ORIGIN+prefix+'bootstrap',headers=(ref,),body='{"code":"fixture-code"}')
         assert status==200
         proof=json.loads(data)['proof']
         h=(ref,'X-Chunmo-Mini-Proof: '+proof)
-        assert curl(p.ORIGIN+'/api/mini-photo/login',headers=h,body='{"login":"fixture","password":"fixture-only"}')[0]==200
+        assert curl(p.ORIGIN+prefix+'login',headers=h,body='{"login":"fixture","password":"fixture-only"}')[0]==200
         cookie='Cookie: chunmo_session='+'a'*64
-        assert json.loads(curl(p.ORIGIN+'/api/mini-photo/session',headers=h+(cookie,))[1])['csrf']=='original-csrf'
-        assert curl(p.ORIGIN+'/api/mini-photo/nearby',headers=h+(cookie,),body='{}')[0]==403
-        assert curl(p.ORIGIN+'/api/mini-photo/nearby',headers=h+(cookie,'X-CSRF-Token: original-csrf'),body='{}')[0]==200
+        assert json.loads(curl(p.ORIGIN+prefix+'session',headers=h+(cookie,))[1])['csrf']=='original-csrf'
+        assert curl(p.ORIGIN+prefix+'nearby',headers=h+(cookie,),body='{}')[0]==403
+        assert curl(p.ORIGIN+prefix+'nearby',headers=h+(cookie,'X-CSRF-Token: original-csrf'),body='{}')[0]==200
+        if workbench: assert json.loads(curl(p.ORIGIN+prefix+'workbench/workspace',headers=h+(cookie,))[1])['revision']==7
         starts=control('status')['starts'];plan['installed']=True
         p.install(REPO,commit,'old-token')
         assert control('status')['starts']==starts

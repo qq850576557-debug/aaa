@@ -12,11 +12,18 @@ export function miniRuntime(base: string, appId: string) {
     login: (o: any) => o.success({ code: 'test-one-use-code' }),
     request: async (o: any) => {
       try {
-        const r = await fetch(base + new URL(o.url).pathname, {
-          method: o.method,
-          headers: { ...o.header, referer: `https://servicewechat.com/${appId}/0/page-frame.html` },
-          ...(o.data === undefined ? {} : { body: JSON.stringify(o.data) }),
-        });
+        const r = await fetch(
+          base +
+            new URL(o.url).pathname.replace(/^\/api\/mini-photo-candidate\//, '/api/mini-photo/'),
+          {
+            method: o.method,
+            headers: {
+              ...o.header,
+              referer: `https://servicewechat.com/${appId}/0/page-frame.html`,
+            },
+            ...(o.data === undefined ? {} : { body: JSON.stringify(o.data) }),
+          },
+        );
         o.success({
           statusCode: r.status,
           data: await r.json(),

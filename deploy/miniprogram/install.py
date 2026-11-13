@@ -34,6 +34,7 @@ CURRENT = Path('/opt/chunmo-staging/current')
 OLD_ENV = Path('/etc/chunmo-staging/runtime.env')
 PUBLIC = Path('/etc/chunmo-staging/public-https.json')
 HOOK = 'include /opt/chunmo-mini-photo/routes/*.conf;'
+HEALTH_PATH = '/api/mini-photo/health'
 BUNDLE_SHA = '6ce608ae9d9e1071c33b51f21c0f47f9efe3e9166c01f749bb5ed9c53ec38a7c'
 MARKER = '# Managed Chunmo mini-photo v1\n'
 
@@ -239,9 +240,9 @@ Description=Chunmo mini-photo loopback adapter
 After=network.target chunmo-staging-api.service
 [Service]
 Type=simple
-User=chunmo-mini-photo
-Group=chunmo-mini-photo
-EnvironmentFile=/etc/chunmo-mini-photo.env
+User={service}
+Group={service}
+EnvironmentFile={env}
 Environment=NODE_ENV=production
 WorkingDirectory={release}
 ExecStart={node} {release}/runtime.cjs
@@ -260,7 +261,7 @@ MemoryLimit=256M
 LimitNOFILE=4096
 [Install]
 WantedBy=multi-user.target
-'''.format(release=release, node=plan['node'])).encode()
+'''.format(release=release, node=plan['node'], service=SERVICE, env=ENV)).encode()
 
 
 def render_route(port):
@@ -391,6 +392,11 @@ def read_secret():
     return secret
 
 
+def render_environment(plan, secret):
+    return ('CHUNMO_MINI_APP_ID=' + APP_ID + '\nCHUNMO_MINI_APP_SECRET=' + secret +
+           '\nCHUNMO_MINI_SIGNING_KEY=' + secrets.token_hex(32) + '\nCHUNMO_MINI_ORIGIN=' + ORIGIN +
+           '\nCHUNMO_MINI_PORT=' + str(plan['listenPort']) + '\nCHUNMO_MINI_API_PORT=' + str(plan['apiPort']) + '\n').encode()
+
 def install(repo, commit, approved):
     plan, files = check(repo, commit)
     if plan['installed']:
@@ -413,9 +419,7 @@ def install(repo, commit, approved):
     print('备份编号：' + name, flush=True)
     try:
         secret = read_secret()
-        env = ('CHUNMO_MINI_APP_ID=' + APP_ID + '\nCHUNMO_MINI_APP_SECRET=' + secret +
-               '\nCHUNMO_MINI_SIGNING_KEY=' + secrets.token_hex(32) + '\nCHUNMO_MINI_ORIGIN=' + ORIGIN +
-               '\nCHUNMO_MINI_PORT=' + str(plan['listenPort']) + '\nCHUNMO_MINI_API_PORT=' + str(plan['apiPort']) + '\n').encode()
+        env = render_environment(plan, secret)
         record['after']['env'] = sha(env); record['phase'] = 'installing'; save_record(record)
         # Detect concurrent site updates even outside the standard deployment lock.
         if sha(CONFIG.read_bytes()) != plan['nginxSha256']: raise ValueError('Nginx已被其他操作修改，停止安装')
@@ -459,7 +463,7 @@ def install(repo, commit, approved):
         run('systemctl','enable',SERVICE)
         record['phase']='installed'; save_record(record)
         print('PASS 独立服务安装与HTTPS路由验证完成；原API版本未变。微信真实登录/拍照仍须手机验收。')
-        print('健康地址：' + ORIGIN + '/api/mini-photo/health')
+        print('健康地址：' + ORIGIN + HEALTH_PATH)
     except (Exception, KeyboardInterrupt) as error:
         print('安装未完成，尝试回滚；不会把失败当作成功。', flush=True)
         try: rollback(name)
