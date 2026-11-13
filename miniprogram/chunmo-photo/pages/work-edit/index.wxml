@@ -1,16 +1,16 @@
 <view class="edit">
  <view class="title">{{kind === 'purchase' ? '采购记录' : '事项记录'}}</view>
  <view wx:if="{{error}}" class="error">{{error}}</view>
- <view class="label">所属工地 *</view><picker range="{{projects}}" range-key="name" value="{{projectIndex}}" bindchange="project"><view class="field picker">{{projects[projectIndex].name || '选择工地'}}</view></picker>
+ <view class="label">所属工地 *</view><picker disabled="{{busy}}" range="{{projects}}" range-key="name" value="{{projectIndex}}" bindchange="project"><view class="field picker">{{projects[projectIndex].name || '选择工地'}}</view></picker>
  <view class="label">{{kind === 'purchase' ? '材料或采购事项' : '任务事项'}} *</view>
- <input wx:if="{{kind === 'purchase'}}" class="field" value="{{form.name}}" data-field="name" bindinput="field" maxlength="100" />
- <input wx:else class="field" value="{{form.title}}" data-field="title" bindinput="field" maxlength="240" />
+ <input disabled="{{busy}}" wx:if="{{kind === 'purchase'}}" class="field" value="{{form.name}}" data-field="name" bindinput="field" maxlength="100" />
+ <input disabled="{{busy}}" wx:else class="field" value="{{form.title}}" data-field="title" bindinput="field" maxlength="240" />
  <view class="label">{{kind === 'purchase' ? '最迟采购日期' : '节点日期'}} *</view>
- <picker mode="date" value="{{kind === 'purchase' ? form.due : form.nodeDate}}" data-field="{{kind === 'purchase' ? 'due' : 'nodeDate'}}" bindchange="field"><view class="field picker">{{kind === 'purchase' ? form.due : form.nodeDate}}</view></picker>
- <view class="label">状态</view><picker range="{{statuses}}" value="{{statusIndex}}" bindchange="status"><view class="field picker">{{form.status}}</view></picker>
- <view class="label">负责人</view><input class="field" value="{{form.owner}}" data-field="owner" bindinput="field" maxlength="100" />
- <block wx:if="{{kind === 'purchase'}}"><view class="label">规格</view><input class="field" value="{{form.specification}}" data-field="specification" bindinput="field" maxlength="4000" /><view class="label">数量</view><input class="field" value="{{form.quantity}}" data-field="quantity" bindinput="field" maxlength="100" /></block>
- <view class="label">备注</view><textarea class="area" value="{{form.notes}}" data-field="notes" bindinput="field" maxlength="4000" />
- <block wx:if="{{kind === 'record'}}"><view class="label">跟进记录</view><textarea class="area" value="{{form.followUp}}" data-field="followUp" bindinput="field" maxlength="4000" /></block>
+ <picker disabled="{{busy}}" mode="date" value="{{kind === 'purchase' ? form.due : form.nodeDate}}" data-field="{{kind === 'purchase' ? 'due' : 'nodeDate'}}" bindchange="field"><view class="field picker">{{kind === 'purchase' ? form.due : form.nodeDate}}</view></picker>
+ <view class="label">状态</view><picker disabled="{{busy}}" range="{{statuses}}" value="{{statusIndex}}" bindchange="status"><view class="field picker">{{form.status}}</view></picker>
+ <view class="label">负责人</view><input disabled="{{busy}}" class="field" value="{{form.owner}}" data-field="owner" bindinput="field" maxlength="100" />
+ <block wx:if="{{kind === 'purchase'}}"><view class="label">规格</view><input disabled="{{busy}}" class="field" value="{{form.specification}}" data-field="specification" bindinput="field" maxlength="4000" /><view class="label">数量</view><input disabled="{{busy}}" class="field" value="{{form.quantity}}" data-field="quantity" bindinput="field" maxlength="100" /></block>
+ <view class="label">备注</view><textarea disabled="{{busy}}" class="area" value="{{form.notes}}" data-field="notes" bindinput="field" maxlength="4000" />
+ <block wx:if="{{kind === 'record'}}"><view class="label">跟进记录</view><textarea disabled="{{busy}}" class="area" value="{{form.followUp}}" data-field="followUp" bindinput="field" maxlength="4000" /></block>
  <view wx:for="{{history}}" wx:key="at" class="event">{{item.at}} · {{item.actorName}}<view>{{item.operation}} · {{item.fields}}</view></view>
 </view><view class="footer"><button class="primary" loading="{{busy}}" disabled="{{busy}}" bindtap="save">保存</button></view><privacy-dialog show="{{privacyVisible}}" />

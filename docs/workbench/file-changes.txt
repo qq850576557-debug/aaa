@@ -1,0 +1,149 @@
+Baseline c140cc5; D=deleted source, R=moved evidence, A=new; this list and measurement report excluded from their own inventory.
+M	.gitignore
+M	.prettierignore
+A	cloud-tests/mini-workbench.spec.ts
+D	deploy/apk-download/integration.py
+M	deploy/apk-download/test_publish.py
+D	deploy/apk-download/workbench.sh
+A	docs/archive/native/README-original.md
+R100	native/native-v1-delivery.md	docs/archive/native/native-v1-delivery.md
+R100	native/releases/SHA256SUMS	docs/archive/native/releases/SHA256SUMS
+R100	native/releases/current.json	docs/archive/native/releases/current.json
+R100	native/releases/v2-SHA256SUMS	docs/archive/native/releases/v2-SHA256SUMS
+R100	native/samples/emulator-watermark-4000x3000.jpg	docs/archive/native/samples/emulator-watermark-4000x3000.jpg
+R100	native/validation/build-results.json	docs/archive/native/validation/build-results.json
+R100	native/validation/emulator-results.json	docs/archive/native/validation/emulator-results.json
+R100	native/validation/v2-results.json	docs/archive/native/validation/v2-results.json
+R100	native/validation/v2-single-emulator-run.json	docs/archive/native/validation/v2-single-emulator-run.json
+R100	native/validation/v2-ui/camera-landscape.png	docs/archive/native/validation/v2-ui/camera-landscape.png
+R100	native/validation/v2-ui/camera.png	docs/archive/native/validation/v2-ui/camera.png
+R100	native/validation/v2-ui/login.png	docs/archive/native/validation/v2-ui/login.png
+R100	native/validation/v2-ui/places.png	docs/archive/native/validation/v2-ui/places.png
+A	docs/workbench/README.md
+A	docs/workbench/audit.md
+A	docs/workbench/baseline.json
+A	docs/workbench/measurement.json
+A	docs/workbench/release-plan.md
+A	docs/workbench/retired-files.txt
+A	docs/workbench/screenshots/camera-template.png
+A	docs/workbench/screenshots/desktop-closed-loop.png
+A	docs/workbench/screenshots/login-template.png
+A	docs/workbench/screenshots/password-template.png
+A	docs/workbench/screenshots/photo-template.png
+A	docs/workbench/screenshots/purchase-editor-template.png
+A	docs/workbench/screenshots/record-editor-template.png
+A	docs/workbench/screenshots/workbench-template.png
+A	docs/workbench/validation.md
+M	miniprogram/chunmo-photo/app.json
+M	miniprogram/chunmo-photo/config.js
+M	miniprogram/chunmo-photo/lib/api.js
+A	miniprogram/chunmo-photo/lib/shared-workbench.js
+A	miniprogram/chunmo-photo/lib/shared-workbench.manifest.json
+A	miniprogram/chunmo-photo/lib/workbench-client.js
+M	miniprogram/chunmo-photo/package.json
+M	miniprogram/chunmo-photo/pages/login/index.js
+M	miniprogram/chunmo-photo/pages/login/index.wxss
+A	miniprogram/chunmo-photo/pages/me/index.js
+A	miniprogram/chunmo-photo/pages/me/index.json
+A	miniprogram/chunmo-photo/pages/me/index.wxml
+A	miniprogram/chunmo-photo/pages/me/index.wxss
+M	miniprogram/chunmo-photo/pages/password/index.js
+A	miniprogram/chunmo-photo/pages/photo/index.js
+A	miniprogram/chunmo-photo/pages/photo/index.json
+A	miniprogram/chunmo-photo/pages/photo/index.wxml
+A	miniprogram/chunmo-photo/pages/photo/index.wxss
+A	miniprogram/chunmo-photo/pages/work-edit/index.js
+A	miniprogram/chunmo-photo/pages/work-edit/index.json
+A	miniprogram/chunmo-photo/pages/work-edit/index.wxml
+A	miniprogram/chunmo-photo/pages/work-edit/index.wxss
+A	miniprogram/chunmo-photo/pages/workbench/index.js
+A	miniprogram/chunmo-photo/pages/workbench/index.json
+A	miniprogram/chunmo-photo/pages/workbench/index.wxml
+A	miniprogram/chunmo-photo/pages/workbench/index.wxss
+M	miniprogram/chunmo-photo/project.config.json
+M	miniprogram/chunmo-photo/tests/login.test.cjs
+A	miniprogram/chunmo-photo/tests/workbench.test.cjs
+M	native/README.md
+D	native/android/README.md
+D	native/android/app/build.gradle.kts
+D	native/android/app/src/androidTest/java/cn/chmsj/photo/NativeUiTest.kt
+D	native/android/app/src/androidTest/java/cn/chmsj/photo/PhotoDeviceTest.kt
+D	native/android/app/src/androidTest/java/cn/chmsj/photo/UpdateDeviceTest.kt
+D	native/android/app/src/graphicsTest/java/cn/chmsj/photo/NativeCoreTest.kt
+D	native/android/app/src/main/AndroidManifest.xml
+D	native/android/app/src/main/java/cn/chmsj/photo/Api.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/AppUpdater.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/BrandUi.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/Gps.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/MainActivity.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/NativeFrames.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/Performance.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/PhotoQueue.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/Protocol.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/UpdateProtocol.kt
+D	native/android/app/src/main/java/cn/chmsj/photo/Watermark.kt
+D	native/android/app/src/main/res/drawable-nodpi/chunmo_original.jpg
+D	native/android/app/src/main/res/drawable/app_icon.png
+D	native/android/app/src/main/res/drawable/icon_foreground.xml
+D	native/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+D	native/android/app/src/main/res/values/colors.xml
+D	native/android/app/src/main/res/values/styles.xml
+D	native/android/app/src/main/res/xml/data_extraction_rules.xml
+D	native/android/app/src/main/res/xml/update_paths.xml
+D	native/android/app/src/test/java/cn/chmsj/photo/ProtocolUnitTest.kt
+D	native/android/app/src/test/java/cn/chmsj/photo/UpgradeUnitTest.kt
+D	native/android/build.gradle.kts
+D	native/android/gradle.properties
+D	native/android/gradle/wrapper/gradle-wrapper.jar
+D	native/android/gradle/wrapper/gradle-wrapper.properties
+D	native/android/gradlew
+D	native/android/gradlew.bat
+D	native/android/settings.gradle.kts
+D	native/harmony/AppScope/app.json5
+D	native/harmony/AppScope/resources/base/element/string.json
+D	native/harmony/AppScope/resources/base/media/app_icon.png
+D	native/harmony/DEVICE-TARGET.md
+D	native/harmony/README.md
+D	native/harmony/build-hap.sh
+D	native/harmony/build-profile.json5
+D	native/harmony/entry/build-profile.json5
+D	native/harmony/entry/hvigorfile.ts
+D	native/harmony/entry/oh-package.json5
+D	native/harmony/entry/src/main/ets/core/Album.ets
+D	native/harmony/entry/src/main/ets/core/Api.ets
+D	native/harmony/entry/src/main/ets/core/CameraService.ets
+D	native/harmony/entry/src/main/ets/core/Journal.ets
+D	native/harmony/entry/src/main/ets/core/SaveQueue.ets
+D	native/harmony/entry/src/main/ets/core/Watermark.ets
+D	native/harmony/entry/src/main/ets/entryability/EntryAbility.ets
+D	native/harmony/entry/src/main/ets/pages/Index.ets
+D	native/harmony/entry/src/main/ets/ui/Brand.ets
+D	native/harmony/entry/src/main/module.json5
+D	native/harmony/entry/src/main/resources/base/element/string.json
+D	native/harmony/entry/src/main/resources/base/media/app_icon.png
+D	native/harmony/entry/src/main/resources/base/media/camera_outline.svg
+D	native/harmony/entry/src/main/resources/base/profile/main_pages.json
+D	native/harmony/entry/src/main/resources/rawfile/chunmo-original.jpg
+D	native/harmony/hvigor/hvigor-config.json5
+D	native/harmony/hvigorfile.ts
+D	native/harmony/oh-package.json5
+D	native/harmony/sdk-preflight.mjs
+D	native/release-tools/prepare-release.py
+M	package.json
+A	scripts/build-mini-workbench.mjs
+A	scripts/build-workbench-sidecar.mjs
+A	scripts/check-mini-workbench.mjs
+A	scripts/test-mini-workbench-legacy.mjs
+A	scripts/workbench-template-screenshots.mjs
+M	server/app.ts
+A	server/mini-workbench.integration.test.ts
+M	server/miniprogram-photo.test.ts
+M	server/miniprogram-photo.ts
+M	server/miniprogram-sidecar-main.ts
+M	server/miniprogram-sidecar.ts
+R076	scripts/native/contracts.test.ts	shared/photo/contracts.test.ts
+R100	native/harmony/entry/src/main/ets/core/Protocol.ets	shared/photo/legacy-protocol.ts
+R100	native/shared/protocol-v1.json	shared/photo/protocol-v1.json
+A	src/lib/mini-workbench.test.ts
+A	src/lib/mini-workbench.ts
+A	tests/support/mini-runtime.ts

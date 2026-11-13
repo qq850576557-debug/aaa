@@ -65,3 +65,4 @@ rm 'native/harmony/hvigorfile.ts'
 rm 'native/harmony/oh-package.json5'
 rm 'native/harmony/sdk-preflight.mjs'
 rm 'native/release-tools/prepare-release.py'
+rm 'deploy/apk-download/integration.py' (second retirement commit)

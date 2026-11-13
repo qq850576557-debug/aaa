@@ -1,0 +1,53 @@
+{
+  "scope": "Git tracked existing files; excludes this measurement report itself; docs screenshots counted as resources",
+  "baseline": "c140cc5a4a5cc4cf71ae0262929a2c238de880a5",
+  "before": {
+    "files": 909,
+    "bytes": 48760936,
+    "sourceAndConfigBytes": 4535248,
+    "resourceBytes": 43386247,
+    "build": {
+      "dist": {
+        "files": 36,
+        "bytes": 9621759
+      },
+      "dist-api": {
+        "files": 1,
+        "bytes": 315271
+      }
+    },
+    "dependencies": {
+      "dependencies": 13,
+      "devDependencies": 15
+    }
+  },
+  "after": {
+    "files": 888,
+    "bytes": 48892546,
+    "sourceAndConfigBytes": 4914208,
+    "resourceBytes": 43135215,
+    "build": {
+      "dist": {
+        "files": 36,
+        "bytes": 9621759
+      },
+      "dist-api": {
+        "files": 1,
+        "bytes": 316690
+      }
+    },
+    "dependencies": {
+      "dependencies": 13,
+      "devDependencies": 15
+    },
+    "miniPackageSourceBytes": 819968
+  },
+  "serverDiskDelta": "not measured; no server operation",
+  "workingDirectoryPhysicalDiskDelta": "not measured before/after; ignored native build caches retained",
+  "gitHistory": "not rewritten; deleted files remain recoverable in historical commits",
+  "gitObjectsBefore": "count: 2977\nsize: 65.56 MiB\nin-pack: 0\npacks: 0\nsize-pack: 0 bytes\nprune-packable: 0\ngarbage: 0\nsize-garbage: 0 bytes\n",
+  "gitObjectsAfter": "count: 3081\nsize: 66.32 MiB\nin-pack: 0\npacks: 0\nsize-pack: 0 bytes\nprune-packable: 0\ngarbage: 0\nsize-garbage: 0 bytes\n",
+  "staticSecretPatternMatches": [],
+  "trackedEnvOrPrivateKeyFiles": [],
+  "snapshotNote": "staged worktree before final report commit; excludes measurement.json itself; no server disk measured"
+}
