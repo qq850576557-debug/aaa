@@ -19,12 +19,12 @@ import tempfile
 import time
 import zipfile
 
-SOURCE = "43b24198ff717defd4c08733cac6334493fec00f"
-RELEASE = "wechat-photo-source-43b2419"
-FILENAME = "chunmo-wechat-photo-v121-43b2419.zip"
+SOURCE = "76eff49f26e0c564a233a725cc50cd87cece3470"
+RELEASE = "wechat-photo-source-76eff49"
+FILENAME = "chunmo-wechat-photo-v122-76eff49.zip"
 PATHS = ["docs/wechat-photo-v12-release.md", "miniprogram/chunmo-photo", "docs/wechat-photo-v1-delivery.md", "docs/wechat-photo-v1-render-results.json", "docs/screenshots/wechat-photo-v1"]
 STATE = Path("/var/lib/chunmo-downloads")
-EXPECTED_SHA = "bc357774a679672735467186be091fbce7a87d8dc178a4f75c13957e52412c95"
+EXPECTED_SHA = "4c3bee0d39edc62b3073337f5f4f3f5ab56116c3036f65feff89e2d0aece6213"
 CONFIG = Path("/opt/chunmo-staging/nginx.conf")
 SOURCE_SNIPPET = STATE / "routes/source.conf"
 APK_SNIPPET = Path("/etc/chunmo-staging/downloads/apk.conf")
@@ -63,7 +63,7 @@ def source_zip(repo):
             entry = zipfile.ZipInfo("chunmo-wechat-photo/打开说明.txt", (2026, 11, 13, 0, 0, 0))
             entry.create_system = 3
             entry.external_attr = 0o100644 << 16
-            target.writestr(entry, ("\ufeff春茉工地拍照 微信小程序 V1.2.1 候选版\r\n"
+            target.writestr(entry, ("\ufeff春茉工地拍照 微信小程序 V1.2.2 候选版\r\n"
                 "微信开发者工具导入：miniprogram/chunmo-photo\r\n"
                 "已配置公开AppID：wxb48a7abb3858a252\r\n"
                 "接入和验收说明：docs/wechat-photo-v12-release.md\r\n"

@@ -35,3 +35,6 @@ Codex环境没有Aliyun SSH权限，不能据本地测试声称网站已发布�
 
 
 1.2.1最新源码待发布：43b24198ff717defd4c08733cac6334493fec00f，chunmo-wechat-photo-v121-43b2419.zip，676709字节，SHA256 bc357774a679672735467186be091fbce7a87d8dc178a4f75c13957e52412c95。修正账号框尺寸及底部圆形继续拍摄按钮；第三方输入法和高清输出仍待真机验证。只有Workbench输出PASS才能认定新版下载地址已发布。
+
+
+1.2.2最新源码待发布：76eff49f26e0c564a233a725cc50cd87cece3470，chunmo-wechat-photo-v122-76eff49.zip，684983字节，SHA256 4c3bee0d39edc62b3073337f5f4f3f5ab56116c3036f65feff89e2d0aece6213。账号和密码拆分独立页面；第三方键盘仍需iPhone实测。不更新API/sidecar/数据库。Workbench输出PASS后才确认新下载地址可用。
