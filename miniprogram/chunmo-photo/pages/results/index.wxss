@@ -1,5 +1,48 @@
 .results {
-  padding: 18px 16px calc(110px + env(safe-area-inset-bottom));
+  padding: 18px 16px calc(126px + env(safe-area-inset-bottom));
+}
+.results-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  z-index: 10;
+}
+.continue-camera {
+  flex: 0 0 68px;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  padding: 9px 0;
+  background: #244e42;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 11px;
+  box-shadow: 0 3px 10px rgba(36, 78, 66, 0.22);
+}
+.continue-icon {
+  width: 24px;
+  height: 17px;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  position: relative;
+}
+.continue-icon::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  position: absolute;
+  left: 5px;
+  top: 2px;
+}
+.save-selected {
+  flex: 1;
+  min-width: 0;
 }
 .title {
   font-size: 20px;

@@ -3,8 +3,7 @@ const { message, privacy, call } = require('../../lib/platform');
 Page({
   data: { login: '', password: '', busy: false, error: '', privacyVisible: false },
   accountInput(e) {
-    // Ordinary text editor avoids iOS account/password keyboard grouping.
-    // Keep the account on one line; never alter the password input security.
+    // Normal text input; the OS/WeChat controls availability of third-party IMEs.
     this.setData({ login: e.detail.value.replace(/[\r\n]/g, '') });
   },
   passwordInput(e) {

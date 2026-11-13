@@ -32,14 +32,15 @@
     ></view
   ><view wx:if="{{!photos.length}}" class="empty muted">暂无照片</view
   ><view class="row secondary"
-    ><button class="quiet small" bindtap="continueCapture">继续拍摄</button
     ><button class="quiet small" open-type="openSetting" bindopensetting="permissionChanged">
       权限设置</button
     ><button class="quiet small" bindtap="clearSelected" disabled="{{busy}}">删除选中</button></view
   ><button class="quiet small" bindtap="diagnostics">复制性能记录</button></view
-><view class="footer"
+><view class="footer results-actions"
+  ><button class="continue-camera" bindtap="continueCapture" disabled="{{busy}}" aria-label="继续拍摄"
+    ><view class="continue-icon"></view><view>继续拍摄</view></button
   ><button
-    class="primary"
+    class="primary save-selected"
     disabled="{{!selectedCount || busy}}"
     loading="{{busy}}"
     bindtap="saveSelected"

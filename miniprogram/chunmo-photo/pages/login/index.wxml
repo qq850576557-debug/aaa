@@ -4,15 +4,15 @@
       >春茉工地拍照</view
     ><view class="camera-icon"></view></view
   ><view class="panel"
-    ><textarea
-      class="field account-field"
+    ><input
+      class="field"
+      type="text"
+      password="{{false}}"
       value="{{login}}"
       bindinput="accountInput"
       placeholder="员工账号"
       maxlength="80"
-      fixed
-      disable-default-padding
-      show-confirm-bar="false"
+      confirm-type="next"
     /><input
       class="field"
       value="{{password}}"
