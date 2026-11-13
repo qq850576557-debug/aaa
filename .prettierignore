@@ -8,3 +8,6 @@ native/**/build
 native/**/.gradle
 native/**/.hvigor
 native/**/oh_modules
+
+miniprogram/chunmo-photo/lib/shared-workbench.js
+dist-workbench

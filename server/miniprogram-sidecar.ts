@@ -1,6 +1,6 @@
 import express from 'express';
 import http from 'node:http';
-import { createMiniPhotoGateway, miniPhotoRoutes } from './miniprogram-photo';
+import { createMiniPhotoGateway, miniPhotoRoutes, miniWorkbenchTarget } from './miniprogram-photo';
 
 /** Separate loopback-only adapter for older running APIs. No database client,
  * workspace endpoints, photo upload or production release replacement. */
@@ -14,10 +14,17 @@ export function createMiniPhotoSidecar(
   app.set('trust proxy', 'loopback');
   app.get('/internal/ready', (_req, res) => res.json({ ok: true, protocol: 1 }));
   app.get('/api/mini-photo/health', (_req, res) => {
-    res.set('Cache-Control', 'no-store').json({ ok: true, protocol: 1, mode: 'sidecar' });
+    res
+      .set('Cache-Control', 'no-store')
+      .json({
+        ok: true,
+        protocol: 1,
+        mode: 'sidecar',
+        features: options.workbenchEnabled ? ['workbench-v1'] : [],
+      });
   });
   app.use(createMiniPhotoGateway(options));
-  app.use(express.json({ limit: '8kb', strict: true }));
+  app.use(express.json({ limit: options.workbenchEnabled ? '256kb' : '8kb', strict: true }));
   const allowed = new Set(
     Object.entries(miniPhotoRoutes).map(([key, path]) => key.split(' ')[0] + ' ' + path),
   );
@@ -26,7 +33,14 @@ export function createMiniPhotoSidecar(
     // API paths and unsolicited client Origins must never bypass wx proof.
     if (
       !req.originalUrl.startsWith('/api/mini-photo/') ||
-      !allowed.has(req.method + ' ' + req.path) ||
+      !(
+        allowed.has(req.method + ' ' + req.path) ||
+        miniWorkbenchTarget(
+          req.method,
+          req.originalUrl.slice('/api/mini-photo'.length),
+          options.workbenchEnabled,
+        ) === req.path
+      ) ||
       req.get('origin') !== options.origin
     ) {
       res.status(404).json({ error: '接口不存在' });
@@ -40,7 +54,7 @@ export function createMiniPhotoSidecar(
       const value = req.get(name);
       if (value) headers[name] = value;
     }
-    const body = req.method === 'POST' ? JSON.stringify(req.body ?? {}) : undefined;
+    const body = ['POST', 'PUT'].includes(req.method) ? JSON.stringify(req.body ?? {}) : undefined;
     if (body) headers['content-length'] = String(Buffer.byteLength(body));
     const upstream = http.request(
       {
@@ -56,7 +70,7 @@ export function createMiniPhotoSidecar(
         let bytes = 0;
         response.on('data', (chunk) => {
           bytes += chunk.length;
-          if (bytes > 1024 * 1024) {
+          if (bytes > (options.workbenchEnabled ? 16 : 1) * 1024 * 1024) {
             response.destroy();
             upstream.destroy(Error('response limit'));
           } else chunks.push(Buffer.from(chunk));

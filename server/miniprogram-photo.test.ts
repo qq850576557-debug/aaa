@@ -166,3 +166,40 @@ test('bootstrap rate limit rejects repeated exchange attempts', async () => {
     await f.close();
   }
 });
+
+test('workbench is explicitly opt-in and cannot proxy project, admin or snapshot mutations', async () => {
+  const off = await fixture();
+  try {
+    assert.equal((await off.send('/api/mini-photo/workbench/workspace')).status, 404);
+  } finally {
+    await off.close();
+  }
+  const on = await fixture({ workbenchEnabled: true });
+  try {
+    const h = {
+      'X-Chunmo-Mini-Proof': await proof(on),
+      Cookie: 'chunmo_session=test',
+      'X-CSRF-Token': 'test-csrf',
+    };
+    assert.equal((await on.send('/api/mini-photo/workbench/workspace', undefined, h)).status, 200);
+    assert.equal((await on.send('/api/mini-photo/workbench/accounts', undefined, h)).status, 404);
+    assert.equal(
+      (await on.send('/api/mini-photo/workbench/workspace', { revision: 0, data: {} }, h, 'PUT'))
+        .status,
+      400,
+    );
+    assert.equal(
+      (
+        await on.send(
+          '/api/mini-photo/workbench/workspace',
+          { protocol: 3, changes: [{ collection: 'projects', kind: 'record', after: {} }] },
+          h,
+          'PUT',
+        )
+      ).status,
+      400,
+    );
+  } finally {
+    await on.close();
+  }
+});

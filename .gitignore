@@ -23,3 +23,5 @@ native/**/*.keystore
 native/releases/*.apk
 __pycache__/
 miniprogram/**/project.private.config.json
+
+dist-workbench/

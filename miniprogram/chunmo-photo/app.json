@@ -4,7 +4,11 @@
     "pages/password/index",
     "pages/places/index",
     "pages/camera/index",
-    "pages/results/index"
+    "pages/results/index",
+    "pages/workbench/index",
+    "pages/work-edit/index",
+    "pages/photo/index",
+    "pages/me/index"
   ],
   "window": {
     "navigationBarTitleText": "春茉工地拍照",
@@ -23,5 +27,24 @@
   },
   "requiredPrivateInfos": ["getLocation"],
   "lazyCodeLoading": "requiredComponents",
-  "sitemapLocation": "sitemap.json"
+  "sitemapLocation": "sitemap.json",
+  "tabBar": {
+    "color": "#617269",
+    "selectedColor": "#244e42",
+    "backgroundColor": "#f7f8f4",
+    "list": [
+      {
+        "pagePath": "pages/workbench/index",
+        "text": "工作台"
+      },
+      {
+        "pagePath": "pages/photo/index",
+        "text": "工地拍照"
+      },
+      {
+        "pagePath": "pages/me/index",
+        "text": "我的"
+      }
+    ]
+  }
 }

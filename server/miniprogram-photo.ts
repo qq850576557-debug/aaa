@@ -12,7 +12,22 @@ export const miniPhotoRoutes: Record<string, string> = {
   'POST /nearby': '/api/site-photos/location',
   'POST /renew': '/api/site-photos/place',
 };
+export function miniWorkbenchTarget(method: string, path: string, enabled = false) {
+  if (!enabled) return undefined;
+  const exact: Record<string, string> = {
+    'GET /workbench/workspace': '/api/workspace',
+    'PUT /workbench/workspace': '/api/workspace',
+    'GET /workbench/records': '/api/records',
+    'POST /workbench/records': '/api/records',
+  };
+  if (exact[method + ' ' + path]) return exact[method + ' ' + path];
+  const match = /^\/workbench\/records\/([a-f0-9-]{36})(\/history)?$/.exec(path);
+  if (match && ((method === 'GET' && match[2]) || (method === 'PUT' && !match[2])))
+    return '/api/records/' + match[1] + (match[2] || '');
+  return undefined;
+}
 type Options = {
+  workbenchEnabled?: boolean;
   enabled: boolean;
   appId: string;
   appSecret: string;
@@ -67,10 +82,10 @@ export function createMiniPhotoGateway(options: Options): RequestHandler {
       return;
     }
     const path = req.path.slice('/api/mini-photo'.length);
-    if (
-      req.url.includes('?') ||
-      (path !== '/bootstrap' && !miniPhotoRoutes[req.method + ' ' + path])
-    ) {
+    const target =
+      miniPhotoRoutes[req.method + ' ' + path] ||
+      miniWorkbenchTarget(req.method, path, options.workbenchEnabled);
+    if (req.url.includes('?') || (path !== '/bootstrap' && !target)) {
       res.status(404).json({ error: '小程序接口不存在' });
       return;
     }
@@ -155,7 +170,28 @@ export function createMiniPhotoGateway(options: Options): RequestHandler {
     // Only after cryptographic verification, translate this exact allowlisted
     // transport request. The original Origin gate, employee login throttling,
     // session permissions and CSRF middleware below remain unchanged.
-    req.url = miniPhotoRoutes[req.method + ' ' + path]!;
+    if (req.method === 'PUT' && path === '/workbench/workspace') {
+      // Only purchase record deltas, never snapshot writes or other collections.
+      express.json({ limit: '256kb', strict: true })(req, res, (error) => {
+        if (
+          error ||
+          req.body?.protocol !== 3 ||
+          !Array.isArray(req.body.changes) ||
+          req.body.changes.length !== 1 ||
+          req.body.changes.some(
+            (c: any) => c.collection !== 'purchases' || c.kind !== 'record' || c.after === null,
+          )
+        ) {
+          res.status(400).json({ error: '工作台仅允许单条采购新增或编辑' });
+          return;
+        }
+        req.url = target!;
+        req.headers.origin = options.origin;
+        next();
+      });
+      return;
+    }
+    req.url = target!;
     req.headers.origin = options.origin;
     next();
   };

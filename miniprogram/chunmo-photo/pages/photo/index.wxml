@@ -1,0 +1,1 @@
+<view class="page"><view class="title">工地拍照</view><view class="panel"><image src="/assets/chunmo-original.jpg" class="logo" mode="aspectFit"/><button class="primary" bindtap="camera">选择地点并拍摄</button><button class="quiet" bindtap="recover">查看本机照片 · 待处理 {{pending}}</button></view></view><privacy-dialog show="{{privacyVisible}}" />

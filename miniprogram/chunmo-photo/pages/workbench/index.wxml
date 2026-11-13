@@ -1,0 +1,15 @@
+<view class="workbench">
+  <view class="heading"><text class="title">工作台</text><button class="quiet small" bindtap="reload" loading="{{busy}}">刷新</button></view>
+  <view class="tabs"><button wx:for="{{tabs}}" wx:key="*this" class="tab {{tab === tabKeys[index] ? 'active' : ''}}" data-key="{{tabKeys[index]}}" bindtap="tab">{{item}}</button></view>
+  <view class="filters"><picker range="{{projects}}" range-key="name" value="{{projectIndex}}" bindchange="project"><view class="filter">{{projects[projectIndex].name || '全部工地'}} ▾</view></picker><view class="mine">与我相关<switch checked="{{mine}}" bindchange="mine" color="#244e42" /></view></view>
+  <view class="filters"><picker mode="date" value="{{date || day}}" bindchange="date"><view class="filter">{{date || '按日期筛选'}}</view></picker><button wx:if="{{date}}" class="quiet small" bindtap="clearDate">清除日期</button><button class="quiet small" bindtap="recoverDraft">恢复草稿</button></view>
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+  <view wx:for="{{pending}}" wx:key="index" class="pending" data-index="{{item.index}}" bindtap="pending">{{item.title}} · {{item.blocked || '本机已保存·待云端确认'}}<view>{{item.blocked ? '点此复制草稿并核对' : '点此复制待同步内容'}}</view></view>
+  <view wx:if="{{!items.length && !busy}}" class="empty">暂无记录</view>
+  <view wx:for="{{items}}" wx:key="key" class="work-card {{item.done ? 'done' : ''}}" data-id="{{item.id}}" data-kind="{{item.kind}}" bindtap="edit">
+    <view class="card-title">{{item.title}}</view><view>{{item.projectName}}</view>
+    <view class="meta">{{item.date || '未设日期'}} · {{item.kind === 'purchase' ? '采购' : '事项'}} · {{item.status}}</view>
+    <view class="meta">{{item.owner ? '负责人：'+item.owner : ''}} {{item.remainingLabel}}</view>
+  </view>
+  <button class="fab" bindtap="add" aria-label="新增记录">＋</button>
+</view><privacy-dialog show="{{privacyVisible}}" />

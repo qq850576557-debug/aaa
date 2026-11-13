@@ -1,0 +1,12 @@
+{
+  "sources": {
+    "src/lib/model.ts": "7aa7900360ad5085d6331530d768f2236802948d39c2ac99c318b8ca9e43ad96",
+    "src/lib/procurement.ts": "c16d123b6a2cfdd170092a0948d064a4465534dd2c44ca67e60e6cba964ea9e1",
+    "src/lib/agenda.ts": "a7430bac751d22619a29becb2cf4d9fcf3e4fdd53703a58cae77aaafb847344a",
+    "src/lib/history.ts": "a6850110e657c99c98efb86671a173cb9ae6dbfb8004bd69e7c8bf63cbd4f59a",
+    "src/lib/workspace-delta.ts": "8594770b966d258ed1fdcb1bc1b5415e543e42013583b0479fa8e858f72e128c",
+    "src/lib/records.ts": "edb9d6cbdaa020f4929fea2fafba6e7fa328884923451131b3929b54dcc25219",
+    "src/lib/mini-workbench.ts": "158ce36ce7a32385ec44218f14fee9828197d7d07715c94c671bb1a7d8f656fc"
+  },
+  "sha256": "36ee981fb0e65f5cc37e5fb2afc1c5fffd463b1fe8c5603fe393a4e256ca922e"
+}

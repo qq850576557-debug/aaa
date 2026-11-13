@@ -105,6 +105,7 @@ export function createApp() {
   app.use(
     createMiniPhotoGateway({
       enabled: process.env.CHUNMO_MINI_PHOTO_ENABLED === '1',
+      workbenchEnabled: process.env.CHUNMO_MINI_WORKBENCH_ENABLED === '1',
       appId: process.env.CHUNMO_MINI_APP_ID ?? '',
       appSecret: process.env.CHUNMO_MINI_APP_SECRET ?? '',
       signingKey: config.PRIVATE_DATA_KEY,

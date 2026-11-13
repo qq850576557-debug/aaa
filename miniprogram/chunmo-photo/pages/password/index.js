@@ -53,7 +53,7 @@ Page({
           return;
         }
       }
-      await call('redirectTo', { url: '/pages/places/index' });
+      await call('switchTab', { url: '/pages/workbench/index' });
     } catch (error) {
       this.setData({ error: message(error) });
     } finally {

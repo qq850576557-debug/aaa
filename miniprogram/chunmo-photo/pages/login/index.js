@@ -1,8 +1,18 @@
 const { message, call } = require('../../lib/platform');
 Page({
   data: { login: '', busy: false, error: '', privacyVisible: false },
-  onLoad() {
-    this.setData({ login: getApp().pendingLogin || '' });
+  async onLoad() {
+    const app = getApp();
+    this.setData({ login: app.pendingLogin || '' });
+    // Resume only an existing in-memory session; do not persist employee cookies.
+    if (app.api?.identity && app.engine) {
+      try {
+        await app.api.restore();
+        await call('switchTab', { url: '/pages/workbench/index' });
+      } catch (e) {
+        this.setData({ error: message(e) });
+      }
+    }
   },
   accountInput(e) {
     this.setData({ login: e.detail.value.replace(/[\r\n]/g, '') });

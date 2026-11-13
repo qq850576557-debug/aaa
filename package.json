@@ -27,7 +27,11 @@
     "verify:native": "node scripts/verify-native.mjs",
     "build:deploy": "tsc -p tsconfig.server.json && esbuild deploy/native/admin.ts deploy/native/ops.ts deploy/native/public.ts --bundle --platform=node --format=esm --packages=external --outdir=dist-deploy --out-extension:.js=.mjs",
     "test:deploy": "node --import tsx --test deploy/native/*.test.ts",
-    "test:native-lab": "node --import tsx deploy/native/lab.ts"
+    "test:native-lab": "node --import tsx deploy/native/lab.ts",
+    "build:mini-workbench": "node scripts/build-mini-workbench.mjs",
+    "check:mini-workbench": "node scripts/check-mini-workbench.mjs",
+    "build:workbench-sidecar": "node scripts/build-workbench-sidecar.mjs",
+    "test:workbench:api": "node --env-file=.env.test.local --import tsx --test --test-isolation=none server/mini-workbench.integration.test.ts"
   },
   "dependencies": {
     "@uiw/color-convert": "^2.10.3",

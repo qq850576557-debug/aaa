@@ -23,6 +23,7 @@ function start() {
     throw Error('Invalid private service configuration');
   const app = createMiniPhotoSidecar({
     enabled: true,
+    workbenchEnabled: env.CHUNMO_MINI_WORKBENCH_ENABLED === '1',
     appId,
     appSecret,
     signingKey,
