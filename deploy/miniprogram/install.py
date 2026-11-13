@@ -378,7 +378,9 @@ def rollback(name):
 
 def read_secret():
     try:
-        with open('/dev/tty', 'r+') as tty:
+        # Text r+ requires seeking and fails on real Linux terminals. getpass
+        # opens its own input descriptor; this stream is only for the prompt.
+        with open('/dev/tty', 'w') as tty:
             if not tty.isatty(): raise ValueError('需要交互终端')
             with warnings.catch_warnings():
                 warnings.simplefilter('error', getpass.GetPassWarning)

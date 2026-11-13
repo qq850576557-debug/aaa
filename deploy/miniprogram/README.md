@@ -93,3 +93,5 @@ python3 deploy/miniprogram/integration.py
 ```
 
 测试不需要真实AppSecret；不要为了测试把它写入环境示例或源码。
+
+终端兼容性回归：Linux `/dev/tty` 不支持文本 `r+` 模式所要求的seek，因此提示流采用只写模式，输入继续交给getpass独立TTY描述符。真实伪终端测试同时把stdin重定向到/dev/null，核验Workbench/heredoc场景下可以输入且不回显；Python 3.6容器中14项安装测试通过。无TTY、无法关闭回显时仍直接拒绝读取密钥。

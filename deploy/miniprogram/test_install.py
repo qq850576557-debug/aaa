@@ -2,6 +2,12 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
+import pty
+import select
+import signal
+import sys
+import time
 from pathlib import Path
 import tempfile
 import unittest
@@ -114,6 +120,36 @@ class InstallTests(unittest.TestCase):
         with patch('builtins.open',side_effect=OSError('no tty')), patch.object(p.getpass,'getpass') as read:
             with self.assertRaisesRegex(ValueError,'安全交互终端'): p.read_secret()
         read.assert_not_called()
+
+    def test_real_controlling_terminal_hidden_input_with_heredoc_stdin(self):
+        script = Path(p.__file__).resolve()
+        pid, master = pty.fork()
+        if pid == 0:
+            # Workbench invokes Python from a heredoc: stdin is not the TTY.
+            os.dup2(os.open(os.devnull, os.O_RDONLY), 0)
+            code = ("import importlib.util; s=importlib.util.spec_from_file_location('installer'," + repr(str(script)) +
+                    "); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); "
+                    "assert m.read_secret() == 'a'*32; print('HIDDEN_INPUT_OK')")
+            os.execl(sys.executable, sys.executable, '-c', code)
+        output = b''; sent = False
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if not select.select([master], [], [], 0.2)[0]: continue
+                try: chunk = os.read(master, 4096)
+                except OSError: break
+                if not chunk: break
+                output += chunk
+                if not sent and b'AppSecret' in output:
+                    os.write(master, b'a'*32 + b'\n'); sent = True
+                if b'HIDDEN_INPUT_OK' in output: break
+            self.assertIn(b'HIDDEN_INPUT_OK', output)
+            self.assertNotIn(b'a'*32, output)
+        finally:
+            os.close(master)
+            try: os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError: pass
+            os.waitpid(pid, 0)
 
     def test_unit_and_route_are_scoped_without_database_or_public_bind(self):
         unit=p.render_unit(self.plan).decode(); route=p.render_route(4011).decode()
