@@ -6,7 +6,9 @@ function layout(width, height, task) {
   const scale = Math.min(width / 1100, height / 800);
   const lines = [
     '工地定位：' + task.place.placeName,
-    '拍摄时间：' + photoTime(task.capturedAt),
+    task.captureSource === 'wx-native-camera' && task.captureReturnedAt
+      ? '拍摄时段：' + photoTime(task.capturedAt) + '—' + photoTime(task.captureReturnedAt)
+      : '拍摄时间：' + photoTime(task.capturedAt),
     '拍摄人员：' + task.actorName,
   ].flatMap((text) => {
     const chars = Array.from(text),

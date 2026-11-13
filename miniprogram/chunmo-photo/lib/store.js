@@ -125,6 +125,17 @@ class PhotoStore {
         deleted,
         thumbnailReady,
       };
+      // Native camera exposes no exact shutter timestamp: retain immutable
+      // request time and record callback time as an honest capture interval.
+      if (
+        old.stage === 'capturing' &&
+        patch.captureSource === 'wx-native-camera' &&
+        Number.isFinite(Date.parse(patch.captureReturnedAt)) &&
+        Date.parse(patch.captureReturnedAt) >= Date.parse(old.capturedAt)
+      ) {
+        changes.captureSource = patch.captureSource;
+        changes.captureReturnedAt = patch.captureReturnedAt;
+      }
       const task = { ...old };
       Object.keys(changes).forEach((key) => {
         if (changes[key] !== undefined) task[key] = changes[key];

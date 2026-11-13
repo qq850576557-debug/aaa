@@ -184,8 +184,22 @@ Page({
       this.refresh();
     }
   },
-  async capture() {
-    if (!this.data.ready || this.data.capturing || this.data.blocked || this.data.finishing) return;
+  captureNative() {
+    return this.capture('native');
+  },
+  async capture(mode) {
+    const native = mode === 'native';
+    if (
+      (!native && !this.data.ready) ||
+      this.data.capturing ||
+      this.data.blocked ||
+      this.data.finishing
+    )
+      return;
+    if (native && typeof wx.chooseMedia !== 'function') {
+      this.setData({ notice: '当前微信不支持原生高清入口，请升级微信；已拍照片保留' });
+      return;
+    }
     if (!fresh(this.app.place)) {
       this.setData({ blocked: true });
       this.refreshLease();
@@ -205,20 +219,37 @@ Page({
         this.refreshLease();
         throw Error('定位凭据已过期，重新定位后再拍摄');
       }
-      const photo = await new Promise((resolve, reject) =>
-        this.context.takePhoto({
-          quality: 'original',
-          selfieMirror: false,
-          success: resolve,
-          fail: reject,
-        }),
-      );
+      const photo = native
+        ? await call('chooseMedia', {
+            count: 1,
+            mediaType: ['image'],
+            sourceType: ['camera'],
+            sizeType: ['original'],
+            camera: 'back',
+          }).then((result) => {
+            const file = result.tempFiles && result.tempFiles[0];
+            if (!file || !file.tempFilePath) throw Error('相机未返回照片，请重试');
+            return { tempImagePath: file.tempFilePath };
+          })
+        : await new Promise((resolve, reject) =>
+            this.context.takePhoto({
+              quality: 'original',
+              selfieMirror: false,
+              success: resolve,
+              fail: reject,
+            }),
+          );
       record('camera-file', started);
       // Native cover-image shows the actual captured still without a second
       // canvas/encoding pass. It never stops or remounts the camera stream.
       this.setData({ freezePath: photo.tempImagePath });
       this.freezeTimer = setTimeout(() => this.clearFreeze(), 800);
       this.volatile = { id: task.id, path: photo.tempImagePath };
+      if (native)
+        this.volatile.patch = {
+          captureReturnedAt: new Date().toISOString(),
+          captureSource: 'wx-native-camera',
+        };
       if (this.app.volatilePhotos) this.app.volatilePhotos.set(task.id, this.volatile);
       await this.persistVolatile();
       if (wx.vibrateShort) wx.vibrateShort({ type: 'light', fail() {} });
@@ -229,7 +260,11 @@ Page({
         } catch {
           /* journal retained */
         }
-      this.setData({ notice: message(error) });
+      this.setData({
+        notice: /cancel/i.test(String(error.errMsg || error.message))
+          ? '已取消拍摄'
+          : message(error),
+      });
     } finally {
       this.setData({ capturing: false });
       this.refresh();
@@ -239,6 +274,7 @@ Page({
     const current = this.volatile;
     if (!current) return;
     const started = Date.now();
+    if (current.patch) await this.app.store.update(current.id, current.patch);
     await this.app.store.persistRaw(current.id, current.path);
     if (this.app.volatilePhotos) this.app.volatilePhotos.delete(current.id);
     this.volatile = null;

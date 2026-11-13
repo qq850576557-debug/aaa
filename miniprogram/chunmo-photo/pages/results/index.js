@@ -65,7 +65,16 @@ Page({
         selected: this.selected.get(t.id),
         label: this.engine.uncertain.has(t.id) ? '请核对相册' : labels[t.stage] || '待处理',
         thumbnail: t.thumbnailReady ? t.dir + '/thumb.jpg' : '',
-        dimensions: t.outputWidth ? t.outputWidth + '×' + t.outputHeight : '',
+        dimensions: t.outputWidth
+          ? '原图 ' +
+            t.rawWidth +
+            '×' +
+            t.rawHeight +
+            ' → 成品 ' +
+            t.outputWidth +
+            '×' +
+            t.outputHeight
+          : '',
       };
     });
     this.setData({
@@ -108,6 +117,7 @@ Page({
         if (!task || task.deleted || task.stage === 'saved') continue;
         const volatile = this.app.volatilePhotos && this.app.volatilePhotos.get(id);
         if (volatile) {
+          if (volatile.patch) await this.app.store.update(id, volatile.patch);
           await this.app.store.persistRaw(id, volatile.path);
           this.app.volatilePhotos.delete(id);
           task = this.app.store.tasks.get(id);

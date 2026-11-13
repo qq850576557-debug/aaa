@@ -62,6 +62,7 @@ const definition = {
       this.busy = true;
       try {
         const info = await call('getImageInfo', { src: raw });
+        record('source-pixels', started, { width: info.width, height: info.height });
         if (
           !info.width ||
           !info.height ||

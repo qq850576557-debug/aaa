@@ -90,5 +90,24 @@ test('actual camera page controller handles 20 synthetic takePhoto callbacks wit
       .list()
       .every((t) => t.actorName === identity.name && t.place.placeName === app.place.placeName),
   );
+  global.wx.chooseMedia = (options) => {
+    assert.deepEqual(options.sourceType, ['camera']);
+    assert.deepEqual(options.sizeType, ['original']);
+    assert.deepEqual(options.mediaType, ['image']);
+    assert.equal(options.count, 1);
+    options.success({ tempFiles: [{ tempFilePath: file }] });
+  };
+  await page.captureNative();
+  await engine.kick();
+  const nativeTask = store.list().find((t) => t.captureSource === 'wx-native-camera');
+  assert.ok(nativeTask);
+  assert.ok(Date.parse(nativeTask.captureReturnedAt) >= Date.parse(nativeTask.capturedAt));
+  assert.equal(nativeTask.stage, 'saved');
+  assert.equal(captures, 20); // Native path must not silently fall back to low-res CameraContext.
+  global.wx.chooseMedia = (options) => options.fail({ errMsg: 'chooseMedia:fail cancel' });
+  await page.captureNative();
+  assert.equal(store.list().filter((t) => t.stage === 'saved').length, 21);
+  assert.equal(store.list().filter((t) => t.stage === 'cancelled').length, 1);
+  assert.equal(page.volatile, null);
   page.onUnload();
 });

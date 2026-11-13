@@ -45,6 +45,7 @@
     ><cover-view class="counts"
       >已拍 {{captured}} · 已存 {{saved}}<cover-view wx:if="{{failed}}"
         >待处理 {{failed}}</cover-view
+      ><cover-view class="native-capture" bindtap="captureNative">原生高清</cover-view
       ></cover-view
     ><cover-view
       class="shutter {{ready && !capturing && !blocked ? '' : 'disabled'}}"
