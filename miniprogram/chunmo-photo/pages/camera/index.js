@@ -3,6 +3,7 @@ const { fresh, renew } = require('../../lib/location');
 const { call, message, safeTop } = require('../../lib/platform');
 const { layout } = require('../../lib/watermark');
 const { record } = require('../../lib/metrics');
+const { viewport } = require('../../lib/photo-geometry');
 Page({
   app: null,
   engine: null,
@@ -91,13 +92,15 @@ Page({
       };
     // Preview uses the same typography/line wrapping. Its native camera viewport
     // may crop on some phones; final output always uses the complete still photo.
-    const l = layout(window.windowWidth, window.windowHeight, task);
+    const frame = viewport(window.windowWidth, window.windowHeight, window.top);
+    const l = layout(frame.width, frame.height, task);
     this.setData({
       top: window.top,
+      frame,
       lines: l.lines,
       wm: {
-        x: l.x,
-        bottom: window.windowWidth > window.windowHeight ? 16 : 148,
+        x: frame.left + l.x,
+        y: frame.top + l.y,
         width: l.boxW,
         pad: l.pad,
         radius: 14 * l.scale,

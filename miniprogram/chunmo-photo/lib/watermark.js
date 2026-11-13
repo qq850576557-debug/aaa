@@ -18,7 +18,7 @@ function layout(width, height, task) {
     gap = 35 * scale,
     pad = 22 * scale;
   const boxW = Math.min(width - 32 * scale, 780 * scale),
-    boxH = pad * 2 + 50 * scale + font + gap * (lines.length - 1);
+    boxH = pad * 2 + 72 * scale + font + gap * (lines.length - 1);
   return {
     scale,
     font,
@@ -29,9 +29,9 @@ function layout(width, height, task) {
     boxH,
     x: 16 * scale,
     y: height - boxH - 16 * scale,
-    logoSize: 44 * scale,
-    brandFont: 32 * scale,
-    headerH: 50 * scale,
+    logoSize: 64 * scale,
+    brandFont: 40 * scale,
+    headerH: 72 * scale,
   };
 }
 function drawWatermark(ctx, logo, width, height, task) {

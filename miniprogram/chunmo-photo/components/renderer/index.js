@@ -121,7 +121,7 @@ const definition = {
           destWidth: width,
           destHeight: height,
           fileType: 'jpg',
-          quality: 0.95,
+          quality: 1,
         });
         // Decode dimensions only, not another full JS bitmap. Export must match
         // exactly, otherwise keep the raw and refuse a silently downscaled result.

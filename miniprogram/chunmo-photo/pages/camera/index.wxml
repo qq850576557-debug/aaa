@@ -3,10 +3,12 @@
     wx:if="{{mounted}}"
     id="siteCamera"
     class="camera"
+    style="left:{{frame.left}}px;top:{{frame.top}}px;width:{{frame.width}}px;height:{{frame.height}}px"
     mode="normal"
     device-position="back"
     flash="off"
     resolution="high"
+    frame-size="large"
     bindinitdone="cameraReady"
     binderror="cameraError"
     bindstop="cameraStopped"
@@ -15,7 +17,7 @@
     ><cover-view class="close" bindtap="close">关闭</cover-view></cover-view
   ><cover-view
     class="watermark"
-    style="left:{{wm.x}}px;bottom:{{wm.bottom}}px;width:{{wm.width}}px;padding:{{wm.pad}}px;border-radius:{{wm.radius}}px"
+    style="left:{{wm.x}}px;top:{{wm.y}}px;width:{{wm.width}}px;padding:{{wm.pad}}px;border-radius:{{wm.radius}}px"
     ><cover-view class="brand-row"
       ><cover-image
         src="/assets/chunmo-original.jpg"
