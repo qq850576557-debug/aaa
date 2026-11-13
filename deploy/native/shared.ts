@@ -194,6 +194,8 @@ http {
     include /etc/chunmo-staging/downloads/*.conf;
     # Public source downloads use a separate readable directory, never secret config.
     include /var/lib/chunmo-downloads/routes/*.conf;
+    # Optional independent mini-photo service; absent wildcard is safe.
+    include /opt/chunmo-mini-photo/routes/*.conf;
     location /api/ {
       proxy_pass http://127.0.0.1:${apiPort};
       proxy_http_version 1.1;

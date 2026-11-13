@@ -13,6 +13,9 @@ export function createMiniPhotoSidecar(
   app.disable('x-powered-by');
   app.set('trust proxy', 'loopback');
   app.get('/internal/ready', (_req, res) => res.json({ ok: true, protocol: 1 }));
+  app.get('/api/mini-photo/health', (_req, res) => {
+    res.set('Cache-Control', 'no-store').json({ ok: true, protocol: 1, mode: 'sidecar' });
+  });
   app.use(createMiniPhotoGateway(options));
   app.use(express.json({ limit: '8kb', strict: true }));
   const allowed = new Set(

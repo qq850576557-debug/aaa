@@ -1,0 +1,16 @@
+{
+  "name": "chunmo-mini-photo",
+  "protocol": 1,
+  "node": ">=22.12",
+  "appId": "wxb48a7abb3858a252",
+  "files": {
+    "runtime.cjs": {
+      "bytes": 813411,
+      "sha256": "6ce608ae9d9e1071c33b51f21c0f47f9efe3e9166c01f749bb5ed9c53ec38a7c"
+    },
+    "runtime.cjs.LEGAL.txt": {
+      "bytes": 5528,
+      "sha256": "1eaab7467686774452a0ebf39c1665bf0ce0087baa75f8c0f90dba9006efa98c"
+    }
+  }
+}
