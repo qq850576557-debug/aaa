@@ -1,0 +1,74 @@
+{
+  "base": "c140cc5a4a5cc4cf71ae0262929a2c238de880a5",
+  "trackedFiles": 909,
+  "trackedBytes": 48760936,
+  "directories": {
+    "src": {
+      "files": 205,
+      "bytes": 1506121
+    },
+    "server": {
+      "files": 56,
+      "bytes": 550967
+    },
+    "miniprogram": {
+      "files": 53,
+      "bytes": 322422
+    },
+    "native/android": {
+      "files": 35,
+      "bytes": 419020
+    },
+    "native/harmony": {
+      "files": 30,
+      "bytes": 310382
+    },
+    "native/shared": {
+      "files": 1,
+      "bytes": 2015
+    },
+    "native/validation": {
+      "files": 8,
+      "bytes": 222940
+    },
+    "native/samples": {
+      "files": 1,
+      "bytes": 192113
+    },
+    "native/releases": {
+      "files": 3,
+      "bytes": 837
+    },
+    "deploy": {
+      "files": 49,
+      "bytes": 1128058
+    },
+    "docs": {
+      "files": 335,
+      "bytes": 34452871
+    },
+    "public/brand": {
+      "files": 17,
+      "bytes": 2010794
+    },
+    "scripts": {
+      "files": 21,
+      "bytes": 79793
+    }
+  },
+  "dependencies": {
+    "dependencies": 13,
+    "devDependencies": 15
+  },
+  "gitObjectDisk": "count: 2977\nsize: 65.56 MiB\nin-pack: 0\npacks: 0\nsize-pack: 0 bytes\nprune-packable: 0\ngarbage: 0\nsize-garbage: 0 bytes\n",
+  "build": {
+    "dist": {
+      "files": 36,
+      "bytes": 9621759
+    },
+    "dist-api": {
+      "files": 1,
+      "bytes": 315271
+    }
+  }
+}

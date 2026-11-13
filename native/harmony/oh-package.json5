@@ -1,8 +1,0 @@
-{
-  name: 'chunmo-photo',
-  version: '2.0.0',
-  description: 'Independent native photo client; no web data migration',
-  modelVersion: '5.0.0',
-  dependencies: {},
-  devDependencies: {},
-}
