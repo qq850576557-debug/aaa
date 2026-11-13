@@ -1,0 +1,22 @@
+<view class="login"
+  ><view class="brand"
+    ><image src="/assets/chunmo-original.jpg" mode="aspectFit" class="logo" /><view class="title"
+      >春茉工地拍照</view
+    ><view class="camera-icon"></view></view
+  ><view class="panel"
+    ><view class="account-summary"><view>{{login}}</view><button class="quiet" bindtap="changeAccount" disabled="{{busy}}">修改账号</button></view
+    ><input
+      class="field"
+      value="{{password}}"
+      bindinput="passwordInput"
+      placeholder="登录密码"
+      password
+      maxlength="128"
+      confirm-type="done"
+      bindconfirm="submit"
+    /><view wx:if="{{error}}" class="error">{{error}}</view
+    ><button class="primary spaced" bindtap="submit" loading="{{busy}}" disabled="{{busy}}">
+      登录</button
+    ><button class="quiet" bindtap="privacyContract">隐私保护指引</button></view
+  ></view
+><privacy-dialog show="{{privacyVisible}}" />

@@ -206,7 +206,7 @@ Page({
   },
   diagnostics() {
     call('setClipboardData', {
-      data: JSON.stringify({ version: '1.2.1', metrics: snapshot() }),
+      data: JSON.stringify({ version: '1.2.2', metrics: snapshot() }),
     }).catch((error) => this.setData({ notice: message(error) }));
   },
 });

@@ -1,0 +1,15 @@
+@import '../login/index.wxss';
+.account-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #244e42;
+  overflow-wrap: anywhere;
+}
+.account-summary .quiet {
+  flex-shrink: 0;
+  font-size: 13px;
+  padding: 10px 4px;
+}

@@ -7,24 +7,15 @@
     ><input
       class="field"
       type="text"
-      password="{{false}}"
       value="{{login}}"
       bindinput="accountInput"
       placeholder="员工账号"
       maxlength="80"
       confirm-type="next"
-    /><input
-      class="field"
-      value="{{password}}"
-      bindinput="passwordInput"
-      placeholder="登录密码"
-      password
-      maxlength="128"
-      confirm-type="done"
-      bindconfirm="submit"
+      bindconfirm="next"
     /><view wx:if="{{error}}" class="error">{{error}}</view
-    ><button class="primary spaced" bindtap="submit" loading="{{busy}}" disabled="{{busy}}">
-      登录</button
+    ><button class="primary spaced" bindtap="next" loading="{{busy}}" disabled="{{busy}}">
+      下一步</button
     ><button class="quiet" bindtap="privacyContract">隐私保护指引</button></view
   ></view
 ><privacy-dialog show="{{privacyVisible}}" />
