@@ -192,6 +192,8 @@ http {
     add_header Referrer-Policy no-referrer always;
     # Optional, persistent APK downloads; absent wildcard is safe on existing installs.
     include /etc/chunmo-staging/downloads/*.conf;
+    # Public source downloads use a separate readable directory, never secret config.
+    include /var/lib/chunmo-downloads/routes/*.conf;
     location /api/ {
       proxy_pass http://127.0.0.1:${apiPort};
       proxy_http_version 1.1;

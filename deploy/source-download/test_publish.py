@@ -4,6 +4,7 @@ import io
 import json
 from pathlib import Path
 import unittest
+import tempfile
 from unittest.mock import patch
 import zipfile
 
@@ -14,6 +15,21 @@ REPO = Path(__file__).resolve().parents[2]
 
 
 class SourceDeliveryTests(unittest.TestCase):
+    def fixture_routes(self, directory):
+        root = Path(directory)
+        config, sw, snippet, apk = root / "nginx.conf", root / "sw.js", root / "downloads/source.conf", root / "downloads/apk.conf"
+        original = '''events {} http {
+add_header Strict-Transport-Security "max-age=31536000" always;
+add_header Content-Security-Policy "default-src 'self'" always;
+server { listen 0.0.0.0:443 ssl; server_name chmsj.cn;
+ssl_certificate /existing/certificate.crt;
+location / { return 200 '<html>original site</html>'; }
+} }
+'''.encode()
+        config.write_bytes(original)
+        sw.write_text("if (url.pathname.startsWith('/api/')) return; // original worker")
+        return config, sw, snippet, apk
+
     def test_deterministic_bytes_and_reviewed_hash(self):
         a, b = p.source_zip(REPO), p.source_zip(REPO)
         self.assertEqual(a, b)
@@ -54,6 +70,47 @@ class SourceDeliveryTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "SHA-256"):
                 p.publish(b"incorrect ZIP")
             read.assert_not_called()
+
+    def test_missing_apk_mapping_plans_one_exact_source_route_and_inherits_security(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config, sw, snippet, apk = self.fixture_routes(folder)
+            original = config.read_bytes()
+            with patch.multiple(p, CONFIG=config, SW=sw, SOURCE_SNIPPET=snippet, APK_SNIPPET=apk):
+                plan = p.route_plan(REPO)
+            self.assertEqual(config.read_bytes(), original)  # plan is read-only
+            self.assertIn(p.HOOK.encode(), plan["config"])
+            self.assertIsNone(plan["old_snippet"])
+            self.assertIn(("location = " + p.ROUTE).encode(), plan["snippet"])
+            self.assertIn(b"application/zip", plan["snippet"])
+            self.assertIn(b"Strict-Transport-Security", plan["snippet"])
+            self.assertIn(b"Content-Security-Policy", plan["snippet"])
+            self.assertIn(b"url.pathname.startsWith('/download/')", plan["sw"])
+            self.assertNotIn(b"location /api", plan["snippet"])
+
+    def test_existing_apk_config_is_preserved_and_source_gets_its_own_exact_route(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config, sw, snippet, apk = self.fixture_routes(folder)
+            apk.parent.mkdir()
+            apk.write_text("location ^~ /download/releases/ { alias /var/lib/chunmo-downloads/releases/; }")
+            original_apk = apk.read_bytes()
+            with patch.multiple(p, CONFIG=config, SW=sw, SOURCE_SNIPPET=snippet, APK_SNIPPET=apk):
+                plan = p.route_plan(REPO)
+            self.assertIn(("location = " + p.ROUTE).encode(), plan["snippet"])
+            self.assertEqual(apk.read_bytes(), original_apk)
+
+    def test_invalid_nginx_update_rolls_back_original_bytes_and_worker(self):
+        with tempfile.TemporaryDirectory() as folder:
+            config, sw, snippet, apk = self.fixture_routes(folder)
+            original, original_sw = config.read_bytes(), sw.read_bytes()
+            with patch.multiple(p, CONFIG=config, SW=sw, SOURCE_SNIPPET=snippet, APK_SNIPPET=apk, STATE=Path(folder)/"state"):
+                plan = p.route_plan(REPO)
+                with patch.object(p, "nginx_check", side_effect=[None, ValueError("injected nginx -t failure"), None]), patch.object(p, "reload_web") as reload, patch.object(p, "health"):
+                    with self.assertRaisesRegex(ValueError, "injected"):
+                        p.activate_route(plan, "https://chmsj.cn", b"test")
+                    self.assertEqual(reload.call_count, 1)  # only restored original gets HUP
+                self.assertEqual(config.read_bytes(), original)
+                self.assertEqual(sw.read_bytes(), original_sw)
+                self.assertFalse(snippet.exists())
 
 
 if __name__ == "__main__":

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Publish a deterministic source ZIP through the EXISTING APK HTTPS route.
+"""Python 3.6+ source delivery; reuses downloads or installs one exact ZIP route.
 
-No checkout/pull/build, nginx reload/config edits, API restart or DB operations.
-Only creates one immutable directory under /var/lib/chunmo-downloads/releases.
+No website build/checkout, API restart, account changes or DB operations.
+An absent route is backed up, syntax-tested, HUP-reloaded and rollback-protected.
 """
 import argparse
 import fcntl
@@ -12,9 +12,11 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import zipfile
 
 SOURCE = "b9a97ff0c996c616733affd7cd21030e4ff1f817"
@@ -23,10 +25,24 @@ FILENAME = "chunmo-wechat-photo-v1-b9a97ff.zip"
 PATHS = ["miniprogram/chunmo-photo", "docs/wechat-photo-v1-delivery.md", "docs/wechat-photo-v1-render-results.json", "docs/screenshots/wechat-photo-v1"]
 STATE = Path("/var/lib/chunmo-downloads")
 EXPECTED_SHA = "70e69a53df9b30667b4bbdfd768db8383a94f1d2a3169d3bf250ad0ab3b37e0b"
+CONFIG = Path("/opt/chunmo-staging/nginx.conf")
+SOURCE_SNIPPET = STATE / "routes/source.conf"
+APK_SNIPPET = Path("/etc/chunmo-staging/downloads/apk.conf")
+SW = Path("/opt/chunmo-staging/current/dist/sw.js")
+HOOK = "include /var/lib/chunmo-downloads/routes/*.conf;"
+ROUTE = "/download/releases/" + RELEASE + "/" + FILENAME
 
 
 def run(*args):
-    return subprocess.check_output(args, stderr=subprocess.PIPE)
+    try:
+        return subprocess.check_output(args, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as error:
+        name = Path(str(args[0])).name
+        if name in ("curl", "nginx", "setpriv", "systemctl"):
+            detail = (error.stderr or b"").decode("utf-8", "replace").strip()[-1600:]
+            detail = re.sub(r"(?i)(https?://)[^\s/@]+:[^\s/@]+@", r"\1[redacted]@", detail)
+            raise ValueError("{}失败（exit={}）：{}".format(name, error.returncode, detail or "请检查现有服务状态"))
+        raise
 
 
 def source_zip(repo):
@@ -62,7 +78,7 @@ def fetch(origin, route, local=False, extra=()):
         args = ["curl", "--fail", "--silent", "--show-error", "--proto", "=https",
                 "--connect-timeout", "8", "--max-time", "35", "--dump-header", str(headers), "--output", str(body)]
         if local:
-            host = origin.removeprefix("https://")
+            host = origin[len("https://"):]
             args += ["--noproxy", host, "--resolve", host + ":443:127.0.0.1"]
         run(*args, *extra, origin + route)
         return headers.read_text().lower(), body.read_bytes()
@@ -97,7 +113,140 @@ def verify(origin, data):
     return origin + route
 
 
-def publish(data):
+def syntax_helpers(repo):
+    # Reuse the reviewed conservative nginx lexer/serializer, not the old
+    # publisher's Python-3.7+ subprocess wrapper or its APK release mutations.
+    code = run("git", "-C", str(repo), "show", SOURCE + ":deploy/apk-download/publish.py")
+    namespace = {"__name__": "chunmo_nginx_syntax", "__file__": "reviewed-nginx-syntax.py"}
+    exec(compile(code, "reviewed-nginx-syntax.py", "exec"), namespace)
+    # /etc/chunmo-staging is deliberately 0700 and stores database/key material.
+    # Never relax that directory to make downloads visible to nginx's service UID.
+    namespace["HOOK"] = HOOK
+    return namespace
+
+
+def source_snippet(headers):
+    return ("# Managed Chunmo WeChat source ZIP only.\n"
+            "location = " + ROUTE + " {\n"
+            "  alias " + str(STATE / "releases" / RELEASE / FILENAME) + ";\n"
+            "  types { }\n  default_type application/zip;\n"
+            "  " + headers + "\n"
+            "  add_header Content-Disposition 'attachment; filename=\"" + FILENAME + "\"' always;\n"
+            "  add_header Cache-Control no-cache always;\n}\n")
+
+
+def atomic(path, content, mode=0o644):
+    fd, temporary = tempfile.mkstemp(prefix=".source-", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "wb") as file:
+            file.write(content)
+            file.flush()
+            os.fsync(file.fileno())
+        os.chmod(temporary, mode)
+        if path.exists():
+            previous = path.stat()
+            os.chown(temporary, previous.st_uid, previous.st_gid)
+            os.chmod(temporary, previous.st_mode & 0o777)
+        os.replace(temporary, str(path))
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def nginx_check():
+    binary = shutil.which("nginx")
+    if not binary:
+        raise ValueError("找不到现有nginx命令，未重载服务")
+    run("setpriv", "--reuid=chunmo-staging-web", "--regid=chunmo-staging-web", "--init-groups",
+        "--bounding-set=-all,+net_bind_service", "--inh-caps=-all,+net_bind_service",
+        "--ambient-caps=-all,+net_bind_service", "--no-new-privs", "--", binary,
+        "-t", "-p", "/var/lib/chunmo-staging-web/", "-c", str(CONFIG))
+
+
+def reload_web():
+    run("systemctl", "kill", "--kill-whom=main", "--signal=HUP", "chunmo-staging-web")
+
+
+def route_plan(repo):
+    for path in (CONFIG, SOURCE_SNIPPET, SOURCE_SNIPPET.parent, APK_SNIPPET, SW):
+        if path.is_symlink():
+            raise ValueError("未知的软链接配置，未修改：" + str(path))
+    original = CONFIG.read_bytes()
+    old_snippet = SOURCE_SNIPPET.read_bytes() if SOURCE_SNIPPET.exists() else None
+    old_sw = SW.read_bytes()
+    helpers = syntax_helpers(repo)
+    updated, headers, _ = helpers["configure"](original.decode("utf-8"), "chmsj.cn")
+    # Always own one exact ZIP route. An old apk.conf can exist without being
+    # readable/loaded by the running nginx, so its presence is not proof of routing.
+    snippet = source_snippet(headers).encode("utf-8")
+    if old_snippet is not None and not old_snippet.startswith(b"# Managed Chunmo WeChat source ZIP only.\n"):
+        raise ValueError("source.conf已有非本工具管理的内容，未覆盖")
+    new_sw = helpers["patch_sw"](old_sw.decode("utf-8")).encode("utf-8")
+    return {"old_config": original, "config": updated.encode("utf-8"), "old_snippet": old_snippet,
+            "snippet": snippet, "old_sw": old_sw, "sw": new_sw}
+
+
+def restore_route(plan):
+    atomic(CONFIG, plan["old_config"])
+    atomic(SW, plan["old_sw"])
+    if plan["old_snippet"] is None:
+        if SOURCE_SNIPPET.exists():
+            SOURCE_SNIPPET.unlink()
+    else:
+        atomic(SOURCE_SNIPPET, plan["old_snippet"])
+
+
+def activate_route(plan, origin, data):
+    changed = (plan["config"] != plan["old_config"] or plan["snippet"] != plan["old_snippet"] or plan["sw"] != plan["old_sw"])
+    if not changed:
+        return verify(origin, data)
+    backups = STATE / "backups"
+    if backups.is_symlink():
+        raise ValueError("未知的备份目录软链接，未修改配置")
+    backups.mkdir(mode=0o700, parents=True, exist_ok=True)
+    backups.chmod(0o700)
+    folder = Path(tempfile.mkdtemp(prefix="source-route-", dir=str(backups)))
+    for key in ("old_config", "old_sw", "old_snippet"):
+        if plan[key] is not None:
+            file = folder / key
+            file.write_bytes(plan[key])
+            file.chmod(0o600)
+    print("配置备份：" + str(folder), flush=True)
+    nginx_check()  # existing configuration must already be valid
+    if CONFIG.read_bytes() != plan["old_config"] or SW.read_bytes() != plan["old_sw"]:
+        raise ValueError("配置在检查期间被其他操作修改，未覆盖")
+    actual_snippet = SOURCE_SNIPPET.read_bytes() if SOURCE_SNIPPET.exists() else None
+    if actual_snippet != plan["old_snippet"]:
+        raise ValueError("下载配置在检查期间变化，未覆盖")
+    try:
+        SOURCE_SNIPPET.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        SOURCE_SNIPPET.parent.chmod(0o755)
+        if plan["snippet"] is not None:
+            atomic(SOURCE_SNIPPET, plan["snippet"])
+        atomic(CONFIG, plan["config"])
+        if plan["sw"] != plan["old_sw"]:
+            atomic(SW, plan["sw"])
+        nginx_check()
+        reload_web()  # HUP, not restart; no API process is touched
+        for attempt in range(8):
+            try:
+                result = verify(origin, data)
+                health(origin)
+                return result
+            except (ValueError, subprocess.CalledProcessError):
+                if attempt == 7:
+                    raise
+                time.sleep(0.5)
+    except Exception:
+        print("验证未通过，正在恢复原下载配置……", flush=True)
+        restore_route(plan)
+        nginx_check()
+        reload_web()
+        health(origin)
+        raise
+
+
+def publish(data, repo=None):
     if os.geteuid() != 0:
         raise ValueError("请在阿里云Workbench中使用root执行")
     if hashlib.sha256(data).hexdigest() != EXPECTED_SHA:
@@ -106,22 +255,20 @@ def publish(data):
     origin = public["origin"]
     if origin != "https://chmsj.cn":
         raise ValueError("实际HTTPS域名与已核对的下载域名不同，请先核对")
-    snippet = Path("/etc/chunmo-staging/downloads/apk.conf").read_text()
-    if not re.search(r"location\s+\^~\s+/download/releases/\s*\{\s*alias\s+/var/lib/chunmo-downloads/releases/;", snippet):
-        raise ValueError("现有APK下载映射不匹配；未修改Nginx配置")
     start = run("systemctl", "show", "--property=ExecStart", "--value", "chunmo-staging-web").decode()
-    if "/opt/chunmo-staging/nginx.conf" not in start:
+    if str(CONFIG) not in start or "/var/lib/chunmo-staging-web/" not in start:
         raise ValueError("Nginx服务使用未知配置，未发布")
-    main_config = Path("/opt/chunmo-staging/nginx.conf").read_text()
-    if "include /etc/chunmo-staging/downloads/*.conf;" not in main_config:
-        raise ValueError("现有Nginx未加载APK下载配置，未发布")
     for path in (STATE, STATE / "releases"):
-        if not path.is_dir() or path.is_symlink():
-            raise ValueError("缺少之前APK使用的持久下载目录：" + str(path))
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise ValueError("未知的持久下载目录：" + str(path))
     with open("/run/lock/chunmo-staging-deploy.lock", "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         print("正在检查原网站、API及HTTPS证书……", flush=True)
         health(origin)
+        plan = route_plan(repo or Path("/opt/chunmo-source"))
+        for path in (STATE, STATE / "releases"):
+            path.mkdir(mode=0o755, parents=True, exist_ok=True)
+            path.chmod(0o755)
         destination = STATE / "releases" / RELEASE
         if destination.exists() or destination.is_symlink():
             if destination.is_symlink() or (destination / FILENAME).is_symlink() or (destination / FILENAME).read_bytes() != data:
@@ -140,13 +287,13 @@ def publish(data):
                 if hashlib.sha256(archive.read_bytes()).hexdigest() != EXPECTED_SHA:
                     raise ValueError("持久目录写入校验失败")
                 os.rename(folder, destination)
-        url = verify(origin, data)
+        url = activate_route(plan, origin, data)
         health(origin)
         print("PASS：HTTPS GET/HEAD/断点续传、大小与SHA-256核对完成。原网站和API正常。")
         print("下载地址：" + url)
         print("字节数：" + str(len(data)))
         print("SHA-256：" + EXPECTED_SHA)
-        print("未更新网站版本、未重启服务、未修改Nginx或数据库。")
+        print("未更新网站版本、未重启API、未修改数据库；下载入口按需补齐并平滑重载Nginx。")
 
 
 if __name__ == "__main__":
@@ -161,7 +308,7 @@ if __name__ == "__main__":
             args.output.write_bytes(data)
             print(str(args.output), len(data), hashlib.sha256(data).hexdigest())
         if args.publish:
-            publish(data)
+            publish(data, args.repo)
     except Exception as error:
         # Do not print subprocess argv or arbitrary stderr containing credentials.
         print("发布未完成：" + (str(error) if not isinstance(error, subprocess.CalledProcessError) else "Git/curl/systemctl命令失败，请核对网络或现有网站状态"))
