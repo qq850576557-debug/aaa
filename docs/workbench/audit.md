@@ -34,3 +34,5 @@
 src/电脑完整界面及旧mobile兼容入口；miniprogram/chunmo-photo/同AppID候选原生工作台；server/现有API和传输适配；shared/photo/保留照片协议及测试夹具；src/lib/共享业务源；public/brand/品牌源；server/migrations/原迁移；deploy/服务器工具；docs/workbench/本轮报告；docs/archive/native/退役历史证据。
 
 测量基准见baseline.json。源码与资源仅统计git跟踪的实际字节，不等于压缩传输、Git对象或服务器可释放空间。新旧构建输出另记结果，不借清缓存制造节省数字。
+
+补充退役：APK专属integration.py不再作为活动测试入口；原脚本可在基线提交恢复。保留的APK发布器单元测试不再默认引用已删除的android构建目录，历史安装包校验须显式提供CHUNMO_TEST_APK。未删除服务器下载文件。旧交付文档所列历史命令可能已退役，应以本审计记录为准。

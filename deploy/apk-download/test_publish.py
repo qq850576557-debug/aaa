@@ -76,7 +76,9 @@ class PublicationTests(unittest.TestCase):
                 p.verify_apk(file)
 
     def test_original_artifact_still_verifies(self):
-        file = Path(os.environ.get("CHUNMO_TEST_APK", str(Path(__file__).resolve().parents[2] / "native/android/app/build/outputs/apk/debug/app-debug.apk")))
+        if not os.environ.get("CHUNMO_TEST_APK"):
+            self.skipTest("Retired App: set CHUNMO_TEST_APK only for explicit historical artifact verification")
+        file = Path(os.environ["CHUNMO_TEST_APK"])
         if not file.exists():
             self.skipTest("No local APK; wrong-artifact boundary still tested")
         p.verify_apk(file)
