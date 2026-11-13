@@ -26,3 +26,6 @@ python3 -m unittest discover -s deploy/source-download -p 'test_*.py' -v
 针对截图问题，已在真实Python3.6.15容器验证ZIP/SHA、subprocess、旧SW和缺失配置处理；7项测试包含失败回滚。隔离Nginx测试从“ZIP地址返回网页、无apk.conf”的状态出发，实际增加精确ZIP路由、执行nginx -t/HUP并核对GET/HEAD/Range、完整字节和安全响应头；原网站/API/既有APK测试入口保持正常。这些不是阿里云实测，仍需Workbench执行后打印PASS。
 
 Codex环境没有Aliyun SSH权限，不能据本地测试声称网站已发布；需要Workbench实际打印PASS后才是已核验网站下载。仅为源码文件发布，本轮不会启用小程序后端、部署管理系统或操作公众号。
+
+
+新版1.1源码待发布：源码提交fc8bf26dccf87c230c2d8fd8b586236011d197ee，文件chunmo-wechat-photo-v11-fc8bf26.zip，665931字节，SHA256 40224203c18b062106f51ebcbd7ad0a7860113e58178943714f208809ed7c6dd。当前脚本发布新版独立路径；旧源码文件不删除。上文旧版信息仅作历史记录。未在阿里云执行发布，不可将新地址视为已可下载。

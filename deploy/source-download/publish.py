@@ -19,12 +19,12 @@ import tempfile
 import time
 import zipfile
 
-SOURCE = "b9a97ff0c996c616733affd7cd21030e4ff1f817"
-RELEASE = "wechat-photo-source-b9a97ff"
-FILENAME = "chunmo-wechat-photo-v1-b9a97ff.zip"
+SOURCE = "fc8bf26dccf87c230c2d8fd8b586236011d197ee"
+RELEASE = "wechat-photo-source-fc8bf26"
+FILENAME = "chunmo-wechat-photo-v11-fc8bf26.zip"
 PATHS = ["miniprogram/chunmo-photo", "docs/wechat-photo-v1-delivery.md", "docs/wechat-photo-v1-render-results.json", "docs/screenshots/wechat-photo-v1"]
 STATE = Path("/var/lib/chunmo-downloads")
-EXPECTED_SHA = "70e69a53df9b30667b4bbdfd768db8383a94f1d2a3169d3bf250ad0ab3b37e0b"
+EXPECTED_SHA = "40224203c18b062106f51ebcbd7ad0a7860113e58178943714f208809ed7c6dd"
 CONFIG = Path("/opt/chunmo-staging/nginx.conf")
 SOURCE_SNIPPET = STATE / "routes/source.conf"
 APK_SNIPPET = Path("/etc/chunmo-staging/downloads/apk.conf")
