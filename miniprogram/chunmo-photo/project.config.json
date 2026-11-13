@@ -2,16 +2,33 @@
   "description": "春茉工地拍照：微信原生小程序",
   "miniprogramRoot": "./",
   "compileType": "miniprogram",
-  "appid": "touristappid",
+  "appid": "wxb48a7abb3858a252",
   "projectname": "chunmo-photo",
   "libVersion": "3.7.12",
-  "setting": { "es6": true, "enhance": true, "minified": true, "urlCheck": true },
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "minified": true,
+    "urlCheck": true
+  },
   "packOptions": {
     "ignore": [
-      { "type": "folder", "value": "tests" },
-      { "type": "folder", "value": "tools" },
-      { "type": "file", "value": "package.json" },
-      { "type": "file", "value": "README.md" }
+      {
+        "type": "folder",
+        "value": "tests"
+      },
+      {
+        "type": "folder",
+        "value": "tools"
+      },
+      {
+        "type": "file",
+        "value": "package.json"
+      },
+      {
+        "type": "file",
+        "value": "README.md"
+      }
     ]
   }
 }
