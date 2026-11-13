@@ -81,6 +81,10 @@ test('actual camera page controller handles 20 synthetic takePhoto callbacks wit
   assert.equal(page.data.captured, 20);
   assert.equal(page.data.saved, 20);
   assert.equal(store.list().length, 20);
+  assert.equal(page.data.freezePath, file);
+  page.freezeLoaded();
+  await new Promise((resolve) => setTimeout(resolve, 220));
+  assert.equal(page.data.freezePath, '');
   assert.ok(
     store
       .list()

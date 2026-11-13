@@ -3,7 +3,9 @@ const { message, privacy, call } = require('../../lib/platform');
 Page({
   data: { login: '', password: '', busy: false, error: '', privacyVisible: false },
   accountInput(e) {
-    this.setData({ login: e.detail.value });
+    // Ordinary text editor avoids iOS account/password keyboard grouping.
+    // Keep the account on one line; never alter the password input security.
+    this.setData({ login: e.detail.value.replace(/[\r\n]/g, '') });
   },
   passwordInput(e) {
     this.setData({ password: e.detail.value });

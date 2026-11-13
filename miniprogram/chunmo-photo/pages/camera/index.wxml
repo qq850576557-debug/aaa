@@ -12,6 +12,14 @@
     bindinitdone="cameraReady"
     binderror="cameraError"
     bindstop="cameraStopped"
+  /><image
+    wx:if="{{freezePath}}"
+    class="capture-freeze"
+    src="{{freezePath}}"
+    mode="aspectFill"
+    style="left:{{frame.left}}px;top:{{frame.top}}px;width:{{frame.width}}px;height:{{frame.height}}px"
+    bindload="freezeLoaded"
+    binderror="clearFreeze"
   /><cover-view class="top" style="padding-top:{{top}}px"
     ><cover-view class="place">{{placeName}}</cover-view
     ><cover-view class="close" bindtap="close">关闭</cover-view></cover-view

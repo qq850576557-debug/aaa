@@ -34,6 +34,7 @@ Page({
     wm: {},
     top: 60,
     privacyVisible: false,
+    freezePath: '',
   },
   onLoad() {
     this.app = requireSession();
@@ -67,12 +68,14 @@ Page({
     this.engine.kick();
   },
   onHide() {
+    this.clearFreeze();
     this.hidden = true;
     clearInterval(this.clock);
     clearInterval(this.lease);
     this.setData({ ready: false });
   },
   onUnload() {
+    this.clearFreeze();
     this.closed = true;
     clearInterval(this.clock);
     clearInterval(this.lease);
@@ -117,6 +120,14 @@ Page({
     this.cameraIssue = '';
     record('camera-init', this.started);
     this.refresh();
+  },
+  clearFreeze() {
+    clearTimeout(this.freezeTimer);
+    if (!this.closed) this.setData({ freezePath: '' });
+  },
+  freezeLoaded() {
+    clearTimeout(this.freezeTimer);
+    this.freezeTimer = setTimeout(() => this.clearFreeze(), 180);
   },
   cameraError(e) {
     this.cameraIssue = '相机不可用：' + message(e.detail) + '；点击重试';
@@ -183,6 +194,7 @@ Page({
     const started = Date.now(),
       place = JSON.parse(JSON.stringify(this.app.place));
     const capturedAt = new Date().toISOString();
+    this.clearFreeze();
     this.setData({ capturing: true });
     let task;
     try {
@@ -202,6 +214,10 @@ Page({
         }),
       );
       record('camera-file', started);
+      // Native cover-image shows the actual captured still without a second
+      // canvas/encoding pass. It never stops or remounts the camera stream.
+      this.setData({ freezePath: photo.tempImagePath });
+      this.freezeTimer = setTimeout(() => this.clearFreeze(), 800);
       this.volatile = { id: task.id, path: photo.tempImagePath };
       if (this.app.volatilePhotos) this.app.volatilePhotos.set(task.id, this.volatile);
       await this.persistVolatile();

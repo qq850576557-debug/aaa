@@ -38,6 +38,14 @@
 .field {
   background: #f7f8f4;
 }
+.account-field {
+  height: 48px;
+  min-height: 48px;
+  line-height: 22px;
+  padding-top: 13px;
+  padding-bottom: 13px;
+  overflow: hidden;
+}
 .panel {
   padding: 22px;
 }
