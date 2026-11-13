@@ -1,0 +1,47 @@
+<view class="camera-page"
+  ><camera
+    wx:if="{{mounted}}"
+    id="siteCamera"
+    class="camera"
+    mode="normal"
+    device-position="back"
+    flash="off"
+    resolution="high"
+    bindinitdone="cameraReady"
+    binderror="cameraError"
+    bindstop="cameraStopped"
+  /><cover-view class="top" style="padding-top:{{top}}px"
+    ><cover-view class="place">{{placeName}}</cover-view
+    ><cover-view class="close" bindtap="close">关闭</cover-view></cover-view
+  ><cover-view
+    class="watermark"
+    style="left:{{wm.x}}px;bottom:{{wm.bottom}}px;width:{{wm.width}}px;padding:{{wm.pad}}px;border-radius:{{wm.radius}}px"
+    ><cover-view class="brand-row"
+      ><cover-image
+        src="/assets/chunmo-original.jpg"
+        class="brand-logo"
+        style="width:{{wm.logo}}px;height:{{wm.logo}}px"
+      /><cover-view style="font-size:{{wm.brand}}px" class="brand-name"
+        >春茉设计</cover-view
+      ></cover-view
+    ><cover-view
+      wx:for="{{lines}}"
+      wx:key="*this"
+      style="font-size:{{wm.font}}px;line-height:{{wm.gap}}px"
+      >{{item}}</cover-view
+    ></cover-view
+  ><cover-view class="notice" wx:if="{{notice}}" bindtap="noticeTap">{{notice}}</cover-view
+  ><cover-view class="controls"
+    ><cover-view class="counts"
+      >已拍 {{captured}} · 已存 {{saved}}<cover-view wx:if="{{failed}}"
+        >待处理 {{failed}}</cover-view
+      ></cover-view
+    ><cover-view
+      class="shutter {{ready && !capturing && !blocked ? '' : 'disabled'}}"
+      bindtap="capture"
+      ><cover-view class="shutter-center"></cover-view></cover-view
+    ><cover-view class="done" bindtap="finish"
+      >{{finishing ? '正在处理' : '完成'}}</cover-view
+    ></cover-view
+  ></view
+><photo-renderer id="renderer" /><privacy-dialog show="{{privacyVisible}}" />

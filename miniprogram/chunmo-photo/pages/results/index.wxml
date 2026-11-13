@@ -1,0 +1,49 @@
+<view class="results"
+  ><view class="row between"
+    ><view class="title">{{recover ? '本机照片' : '本次照片'}} {{photos.length}}</view
+    ><button class="quiet small" bindtap="toggleAll">
+      {{allSelected ? '取消全选' : '全选'}}
+    </button></view
+  ><view class="summary"
+    >已拍 {{stats.captured}} · 相册已保存 {{stats.saved}} · 待处理 {{stats.failed}}</view
+  ><view wx:if="{{notice}}" class="error">{{notice}}</view
+  ><view wx:if="{{warning}}" class="error">{{warning}}</view
+  ><view class="grid"
+    ><view
+      wx:for="{{photos}}"
+      wx:key="id"
+      class="tile {{item.selected ? 'selected' : ''}}"
+      data-id="{{item.id}}"
+      bindtap="toggle"
+      ><image
+        wx:if="{{item.thumbnail}}"
+        src="{{item.thumbnail}}"
+        lazy-load
+        mode="aspectFill"
+        class="thumb"
+      /><view wx:else class="placeholder">{{item.label}}</view
+      ><view class="check">{{item.selected ? '✓' : ''}}</view
+      ><view class="tile-footer"
+        ><text>{{item.label}}</text
+        ><button class="save-one" catchtap="saveOne" data-id="{{item.id}}" aria-label="保存此照片">
+          ↓
+        </button></view
+      ><view wx:if="{{item.dimensions}}" class="dimensions">{{item.dimensions}}</view></view
+    ></view
+  ><view wx:if="{{!photos.length}}" class="empty muted">暂无照片</view
+  ><view class="row secondary"
+    ><button class="quiet small" bindtap="continueCapture">继续拍摄</button
+    ><button class="quiet small" open-type="openSetting" bindopensetting="permissionChanged">
+      权限设置</button
+    ><button class="quiet small" bindtap="clearSelected" disabled="{{busy}}">删除选中</button></view
+  ><button class="quiet small" bindtap="diagnostics">复制性能记录</button></view
+><view class="footer"
+  ><button
+    class="primary"
+    disabled="{{!selectedCount || busy}}"
+    loading="{{busy}}"
+    bindtap="saveSelected"
+  >
+    {{busy ? '正在逐张保存' : '保存选中照片（' + selectedCount + '张）'}}
+  </button></view
+><photo-renderer id="renderer" /><privacy-dialog show="{{privacyVisible}}" />

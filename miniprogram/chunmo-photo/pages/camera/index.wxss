@@ -1,0 +1,156 @@
+page {
+  background: #101a15;
+}
+.camera-page,
+.camera,
+.top,
+.close,
+.controls,
+.shutter,
+.shutter-center,
+.watermark,
+.notice,
+.counts,
+.done {
+  box-sizing: border-box;
+}
+.camera-page {
+  position: fixed;
+  inset: 0;
+  background: #101a15;
+  height: 100vh;
+  height: 100dvh;
+  color: #fff;
+}
+.camera {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding-left: 20px;
+  padding-right: 20px;
+  padding-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+}
+.place {
+  font-size: 16px;
+  max-width: 75%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.close {
+  padding: 10px 12px;
+  font-size: 14px;
+  min-height: 44px;
+}
+.controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 20px 20px calc(22px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.42);
+  color: #fff;
+  min-height: 112px;
+}
+.counts {
+  width: 95px;
+  font-size: 12px;
+  line-height: 20px;
+}
+.shutter {
+  width: 76px;
+  height: 76px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shutter-center {
+  width: 58px;
+  height: 58px;
+  background: #fff;
+  border-radius: 50%;
+}
+.disabled {
+  opacity: 0.4;
+}
+.done {
+  width: 95px;
+  padding: 16px 10px;
+  text-align: right;
+  font-size: 16px;
+}
+.watermark {
+  position: absolute;
+  background: rgba(21, 44, 35, 0.55);
+  color: #fffdf1;
+  overflow: hidden;
+}
+.brand-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.brand-logo {
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.brand-name {
+  margin-left: 6px;
+  font-weight: 600;
+}
+.notice {
+  position: absolute;
+  bottom: 145px;
+  left: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 13px;
+  line-height: 20px;
+  white-space: normal;
+}
+@media (orientation: landscape) {
+  .controls {
+    left: auto;
+    width: 124px;
+    top: 0;
+    flex-direction: column;
+    padding: 68px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+  .top {
+    right: 124px;
+  }
+  .done {
+    width: 100%;
+    text-align: center;
+    padding: 12px 0;
+  }
+  .counts {
+    width: 100%;
+    text-align: center;
+  }
+  .notice {
+    right: 144px;
+    bottom: 165px;
+  }
+}

@@ -1,0 +1,63 @@
+.places {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding: 0 18px;
+}
+.head {
+  flex-shrink: 0;
+  padding-top: 14px;
+}
+.title {
+  font-size: 20px;
+}
+.small {
+  font-size: 13px;
+  padding: 8px 10px;
+}
+.status {
+  justify-content: space-between;
+  margin: 8px 0;
+}
+.list {
+  flex: 1;
+  height: 0;
+  min-height: 0;
+}
+.place {
+  padding: 18px 16px;
+  border: 1px solid #e3e8e0;
+  background: #fff;
+  border-radius: 14px;
+  margin: 0 0 10px;
+}
+.selected {
+  border-color: #73947c;
+  background: #edf3ec;
+}
+.name {
+  font-weight: 600;
+  flex: 1;
+}
+.distance {
+  font-size: 13px;
+  color: #244e42;
+  white-space: nowrap;
+}
+.address {
+  margin-top: 8px;
+  line-height: 1.5;
+}
+.bottom {
+  flex-shrink: 0;
+  padding: 12px 0 calc(4px + env(safe-area-inset-bottom));
+  background: #f7f8f4;
+}
+.empty {
+  padding: 28px 12px;
+  text-align: center;
+}
+.error {
+  margin-bottom: 12px;
+}

@@ -20,6 +20,8 @@
     "build:api": "tsc -p tsconfig.server.json && esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-api/server.mjs",
     "test:api": "node --env-file=.env.test.local --import tsx --test --test-concurrency=1 server/cloud.test.ts server/audit.test.ts server/migration.test.ts server/site-photos.test.ts",
     "test:mobile": "playwright test --config playwright.mobile.config.ts",
+    "test:miniprogram": "npm test --prefix miniprogram/chunmo-photo && node --import tsx --test server/miniprogram-photo.test.ts",
+    "test:miniprogram:api": "node --env-file=.env.test.local --import tsx --test --test-concurrency=1 server/miniprogram-photo.integration.test.ts",
     "test:cloud:e2e": "playwright test --config playwright.cloud.config.ts",
     "test:all": "npm test && npm run test:api && npm run test:e2e && npm run test:cloud:e2e",
     "verify:native": "node scripts/verify-native.mjs",

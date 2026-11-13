@@ -1,0 +1,18 @@
+<view wx:if="{{show}}" class="shade"
+  ><view class="dialog"
+    ><view class="heading">隐私保护</view
+    ><view>拍照需使用定位、相机和相册权限。照片仅保留在本机，不上传云端。</view
+    ><button bindtap="contract">查看隐私保护指引</button
+    ><view class="actions"
+      ><button bindtap="disagree">暂不同意</button
+      ><button
+        id="chunmo-privacy-agree"
+        open-type="agreePrivacyAuthorization"
+        bindagreeprivacyauthorization="agree"
+        class="agree"
+      >
+        同意并继续
+      </button></view
+    ></view
+  ></view
+>

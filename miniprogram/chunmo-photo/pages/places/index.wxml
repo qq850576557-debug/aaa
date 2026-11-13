@@ -1,0 +1,56 @@
+<view class="places"
+  ><view class="head"
+    ><view class="row between"
+      ><view class="title">选择拍摄地点</view
+      ><button class="quiet small" bindtap="logout">退出</button></view
+    ><view class="row status"
+      ><text class="muted">{{status}}</text
+      ><button class="quiet small" bindtap="relocate" disabled="{{busy}}">重新定位</button></view
+    ><input
+      class="field"
+      placeholder="搜索附近地点"
+      value="{{query}}"
+      bindinput="queryInput"
+      bindconfirm="search"
+      confirm-type="search"
+      maxlength="80"
+    /><view wx:if="{{error}}" class="error"
+      >{{error}}<button
+        class="quiet small"
+        open-type="openSetting"
+        bindopensetting="settingsChanged"
+      >
+        权限设置
+      </button></view
+    ></view
+  ><scroll-view scroll-y class="list" bindscrolltolower="loadMore"
+    ><view
+      wx:for="{{places}}"
+      wx:key="id"
+      class="place {{selectedId === item.id ? 'selected' : ''}}"
+      bindtap="select"
+      data-id="{{item.id}}"
+      ><view class="row between"
+        ><text class="name">{{item.name}}</text
+        ><text class="distance"
+          >{{item.distance}}米 {{selectedId === item.id ? '✓' : ''}}</text
+        ></view
+      ><view class="muted address">{{item.address}}</view></view
+    ><button wx:if="{{more}}" class="quiet" bindtap="loadMore" loading="{{busy}}">加载更多</button
+    ><view wx:if="{{!busy && !places.length}}" class="empty muted"
+      >暂无可选地点，请重新定位或搜索</view
+    ></scroll-view
+  ><view class="bottom"
+    ><button
+      class="primary"
+      disabled="{{!selectedId || busy || entering}}"
+      loading="{{entering}}"
+      bindtap="confirm"
+    >
+      确认并开始拍摄</button
+    ><view class="row between"
+      ><button class="quiet small" bindtap="results">本机照片</button
+      ><text class="muted">{{accountName}}</text></view
+    ></view
+  ></view
+><privacy-dialog show="{{privacyVisible}}" />

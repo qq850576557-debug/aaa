@@ -1,0 +1,44 @@
+.shade {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.dialog {
+  width: 84%;
+  padding: 24px;
+  background: #f7f8f4;
+  border-radius: 18px;
+  color: #293d34;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.heading {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+button {
+  font-size: 14px;
+  border: 0;
+  margin-top: 14px;
+  border-radius: 10px;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+}
+.actions button {
+  flex: 1;
+  padding: 8px;
+}
+.agree {
+  background: #244e42;
+  color: #fff;
+}
+button::after {
+  border: 0;
+}

@@ -1,4 +1,5 @@
 import { photoGeocodeRoutes } from './photo-geocode';
+import { createMiniPhotoGateway } from './miniprogram-photo';
 import { sitePhotoRoutes } from './site-photos';
 import {
   aggregatePresence,
@@ -101,6 +102,15 @@ export function createApp() {
   });
   // Only the local Nginx is trusted; it replaces incoming X-Forwarded-For.
   app.set('trust proxy', 'loopback');
+  app.use(
+    createMiniPhotoGateway({
+      enabled: process.env.CHUNMO_MINI_PHOTO_ENABLED === '1',
+      appId: process.env.CHUNMO_MINI_APP_ID ?? '',
+      appSecret: process.env.CHUNMO_MINI_APP_SECRET ?? '',
+      signingKey: config.PRIVATE_DATA_KEY,
+      origin: config.APP_ORIGIN,
+    }),
+  );
   let hashing = 0;
   app.use('/api', (req, res, next) => {
     res.set({

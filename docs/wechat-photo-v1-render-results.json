@@ -1,0 +1,151 @@
+{
+  "environment": "Linux Chromium; compiled WXML browser adapter, NOT WeChat",
+  "physicalDevice": false,
+  "layouts": [
+    {
+      "page": "login",
+      "width": 320,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "places",
+      "width": 320,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "camera",
+      "width": 320,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "results",
+      "width": 320,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "login",
+      "width": 360,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "places",
+      "width": 360,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "camera",
+      "width": 360,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "results",
+      "width": 360,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "login",
+      "width": 390,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "places",
+      "width": 390,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "camera",
+      "width": 390,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "results",
+      "width": 390,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "login",
+      "width": 430,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "places",
+      "width": 430,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "camera",
+      "width": 430,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "results",
+      "width": 430,
+      "height": 844,
+      "pass": true,
+      "scope": "browser layout adapter"
+    },
+    {
+      "page": "camera",
+      "width": 844,
+      "height": 390,
+      "pass": true,
+      "scope": "browser layout adapter"
+    }
+  ],
+  "pixels": [
+    {
+      "width": 4000,
+      "height": 3000,
+      "bytes": 203107,
+      "kind": "synthetic Canvas image, not a phone capture"
+    },
+    {
+      "width": 3000,
+      "height": 4000,
+      "bytes": 167004,
+      "kind": "synthetic Canvas image, not a phone capture"
+    }
+  ],
+  "serial20": {
+    "completed": 20,
+    "width": 4000,
+    "height": 3000,
+    "timesMs": [
+      64.5, 47.59999996423721, 45.5, 46.60000002384186, 46.59999996423721, 46.200000047683716,
+      44.799999952316284, 47.10000002384186, 48, 46.80000001192093, 46, 45.10000002384186,
+      45.39999997615814, 44.700000047683716, 48.59999996423721, 45.80000001192093, 46,
+      48.89999997615814, 47.10000002384186, 46.89999997615814
+    ],
+    "kind": "Chromium synthetic draw+JPEG; no camera / WeChat / album timings"
+  }
+}

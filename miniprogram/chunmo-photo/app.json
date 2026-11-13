@@ -1,0 +1,17 @@
+{
+  "pages": ["pages/login/index", "pages/places/index", "pages/camera/index", "pages/results/index"],
+  "window": {
+    "navigationBarTitleText": "春茉工地拍照",
+    "navigationBarBackgroundColor": "#f7f8f4",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f8f4"
+  },
+  "usingComponents": {
+    "privacy-dialog": "/components/privacy/index",
+    "photo-renderer": "/components/renderer/index"
+  },
+  "permission": { "scope.userLocation": { "desc": "用于查询2公里内拍摄地点并记录照片定位" } },
+  "requiredPrivateInfos": ["getLocation"],
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json"
+}
