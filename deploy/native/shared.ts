@@ -196,6 +196,8 @@ http {
     include /var/lib/chunmo-downloads/routes/*.conf;
     # Optional independent mini-photo service; absent wildcard is safe.
     include /opt/chunmo-mini-photo/routes/*.conf;
+    # Keep the independently installed workbench candidate when updating desktop.
+    include /opt/chunmo-mini-workbench/routes/*.conf;
     location /api/ {
       proxy_pass http://127.0.0.1:${apiPort};
       proxy_http_version 1.1;

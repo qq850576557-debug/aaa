@@ -21,6 +21,7 @@ test('domain uses standard HTTPS, fixed-host HTTP redirect, same-origin API and 
   assert.equal(text.split('include /etc/chunmo-staging/downloads/*.conf;').length - 1, 2);
   assert.equal(text.split('include /var/lib/chunmo-downloads/routes/*.conf;').length - 1, 2);
   assert.equal(text.split('include /opt/chunmo-mini-photo/routes/*.conf;').length - 1, 2);
+  assert.equal(text.split('include /opt/chunmo-mini-workbench/routes/*.conf;').length - 1, 2);
   for (const origin of [
     'https://chmsj.cn:4000',
     'https://chmsj.cn/path',
