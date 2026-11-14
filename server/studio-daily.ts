@@ -1,3 +1,4 @@
+import { rotationCommand, changeRotation } from '../src/lib/studio-rotation';
 import type { Express } from 'express';
 import { z } from 'zod';
 import { owner, type AuthRequest } from './auth';
@@ -41,16 +42,22 @@ export function studioDailyRoutes(app: Express) {
       next(e);
     }
   });
-  app.put('/api/studio-daily', owner, async (req: AuthRequest, res, next) => {
+  const write: import('express').RequestHandler = async (request, res, next) => {
+    const req = request as AuthRequest;
+    const rotation = req.path.endsWith('/rotation');
     try {
       const b = z
-        .object({ requestId: z.uuid(), version: z.number().int().min(0), value: studioSettings })
+        .object({
+          requestId: z.uuid(),
+          version: z.number().int().min(0),
+          value: rotation ? rotationCommand : studioSettings,
+        })
         .strict()
         .parse(req.body);
       const result = await transaction(async (c) => {
         const a = req.actor!;
         await c.query('SELECT id FROM cloud_workspace WHERE id=$1 FOR UPDATE', [a.workspaceId]);
-        const digest = hash(canonical(b));
+        const digest = hash(canonical(rotation ? { rotation, body: b } : b));
         const receipt = (
           await c.query(
             'SELECT * FROM studio_daily_submission WHERE workspace_id=$1 AND request_id=$2',
@@ -63,14 +70,48 @@ export function studioDailyRoutes(app: Express) {
           return { version: receipt.version };
         }
         const old = (
-          await c.query('SELECT version FROM studio_daily WHERE workspace_id=$1', [a.workspaceId])
+          await c.query('SELECT version,value FROM studio_daily WHERE workspace_id=$1', [
+            a.workspaceId,
+          ])
         ).rows[0];
         if ((old?.version || 0) !== b.version)
           throw new ApiError(409, '设置已被其他负责人修改，请保留草稿并重新读取');
+        let value: any;
+        if (rotation) {
+          try {
+            value = {
+              ...(old?.value || emptyStudio()),
+              rotation: changeRotation(
+                old?.value.rotation,
+                b.value as any,
+                b.requestId,
+                new Date().toISOString(),
+              ),
+            };
+          } catch (e) {
+            throw new ApiError(400, (e as Error).message);
+          }
+        } else {
+          value = b.value;
+          if (value.rotation && canonical(value.rotation) !== canonical(old?.value.rotation))
+            throw new ApiError(400, '轮值请使用专用操作，历史不能覆盖');
+          if (old?.value.rotation) value = { ...value, rotation: old.value.rotation };
+        }
         const people = [
-          ...b.value.rules.flatMap((r) => r.people),
-          ...b.value.weekly.flat(),
-          ...b.value.exceptions.flatMap((x) => x.people),
+          ...value.rules
+            .filter(
+              (r: any) =>
+                canonical(r.people) !==
+                canonical(old?.value.rules.find((x: any) => x.id === r.id)?.people),
+            )
+            .flatMap((r: any) => r.people),
+          ...(rotation && (b.value as any).action === 'configure' ? value.rotation.people : []),
+          ...(!rotation && canonical(value.weekly) !== canonical(old?.value.weekly)
+            ? value.weekly.flat()
+            : []),
+          ...(!rotation && canonical(value.exceptions) !== canonical(old?.value.exceptions)
+            ? value.exceptions.flatMap((x: any) => x.people)
+            : []),
         ];
         const valid = new Set(
           (
@@ -84,7 +125,7 @@ export function studioDailyRoutes(app: Express) {
         const version = b.version + 1;
         await c.query(
           'INSERT INTO studio_daily VALUES($1,$2,$3,$4,now()) ON CONFLICT(workspace_id) DO UPDATE SET version=$2,value=$3,updated_by=$4,updated_at=now()',
-          [a.workspaceId, version, JSON.stringify(b.value), a.id],
+          [a.workspaceId, version, JSON.stringify(value), a.id],
         );
         await c.query('INSERT INTO studio_daily_submission VALUES($1,$2,$3,$4,$5)', [
           a.workspaceId,
@@ -97,7 +138,9 @@ export function studioDailyRoutes(app: Express) {
           entityType: 'studio_daily',
           entityId: a.workspaceId,
           operation: 'update',
-          changedFields: ['rules', 'weekly', 'exceptions', 'cleaning'],
+          changedFields: rotation
+            ? ['rotation:' + (b.value as any).action]
+            : ['rules', 'weekly', 'exceptions', 'cleaning'],
         });
         return { version };
       });
@@ -105,5 +148,7 @@ export function studioDailyRoutes(app: Express) {
     } catch (e) {
       next(e);
     }
-  });
+  };
+  app.put('/api/studio-daily', owner, write);
+  app.post('/api/studio-daily/rotation', owner, write);
 }

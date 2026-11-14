@@ -1,79 +1,144 @@
 import { useEffect, useState, useRef } from 'react';
 import { Modal } from './Modal';
+import { PeoplePicker, type StudioUser } from './StudioKit';
 import { BriefPanel } from './BriefPanel';
 import { ruleActive, duty, studioWeek, type StudioSettings } from '../lib/studio-daily';
+import {
+  changeRotation,
+  rotationPreview,
+  effectiveActual,
+  type Rotation,
+} from '../lib/studio-rotation';
 import { plus } from '../lib/model';
 import './studio-daily.css';
+import './studio-kit.css';
 type Result = {
   version: number;
   value: StudioSettings;
-  users: { id: string; name: string; active?: boolean }[];
+  users: StudioUser[];
   owner: boolean;
   day: string;
 };
 export function StudioDaily({ cloud }: { cloud: boolean }) {
   const [state, setState] = useState<Result | null>(null),
-    [error, setError] = useState(''),
-    [draft, setDraft] = useState<StudioSettings | null>(null),
     [mode, setMode] = useState(''),
+    [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [week, setWeek] = useState(false);
+    [weekOffset, setWeekOffset] = useState(0);
+  const [ruleId, setRuleId] = useState(''),
+    [text, setText] = useState(''),
+    [people, setPeople] = useState<string[]>([]);
+  const [interval, setInterval] = useState<3 | 7>(3),
+    [start, setStart] = useState(''),
+    [planned, setPlanned] = useState(''),
+    [actual, setActual] = useState(''),
+    [action, setAction] = useState('configure');
   const pending = useRef<any>(null);
+  const newRuleId = useRef('');
+  const retainedMode = useRef('');
+  const dirty = useRef(false);
+  useEffect(() => {
+    const protect = (e: BeforeUnloadEvent) => {
+      if (dirty.current) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', protect);
+    return () => window.removeEventListener('beforeunload', protect);
+  }, []);
   async function load() {
     try {
       const r = await fetch('/api/studio-daily');
-      if (!r.ok) throw Error('工作室日常读取失败，请重试');
+      if (!r.ok) throw Error('工作室日常读取失败');
       setState(await r.json());
       setError('');
     } catch (e) {
-      setError(String((e as Error).message));
+      setError((e as Error).message);
     }
   }
   useEffect(() => {
     if (cloud) void load();
   }, [cloud]);
-  const names = (ids: string[]) =>
-    ids.map((id) => state?.users.find((u) => u.id === id)?.name || '已停用账号').join('、') ||
-    '暂无安排';
-  function edit(m: string) {
-    if (draft) {
-      setMode(m);
+  const name = (id: string) => state?.users.find((u) => u.id === id)?.name || '已停用账号';
+  const rotation = state?.value.rotation;
+  function openRule(id = '') {
+    if (!state?.owner) return;
+    if (!id && retainedMode.current === 'rules') {
+      setMode('rules');
       return;
     }
+    if (dirty.current && !confirm('切换后将放弃尚未保存的输入，继续吗？')) return;
+    dirty.current = false;
+    retainedMode.current = 'rules';
+    const r = state.value.rules.find((x) => x.id === id);
+    setRuleId(id);
+    newRuleId.current = crypto.randomUUID();
+    setText(r?.text || '');
+    setPeople(r?.people || []);
     pending.current = null;
-    setDraft(structuredClone(state!.value));
-    setMode(m);
     setError('');
+    setMode('rules');
   }
-  function change(value: StudioSettings) {
+  function openDuty() {
+    if (!state?.owner) return;
+    if (retainedMode.current === 'duty') {
+      setMode('duty');
+      return;
+    }
+    if (dirty.current && !confirm('切换后将放弃尚未保存的输入，继续吗？')) return;
+    dirty.current = false;
+    retainedMode.current = 'duty';
+    setPeople(rotation?.people || []);
+    setInterval(rotation?.interval || 3);
+    setStart(rotation?.start || state.day);
+    setPlanned(rotation?.currentDate || state.day);
+    setActual(state.day);
+    setAction('configure');
     pending.current = null;
-    setDraft(value);
+    setError('');
+    setMode('duty');
   }
-  async function save() {
-    if (!draft || !state || busy) return;
+  const command =
+    action === 'configure'
+      ? { action, interval, people, start, currentDate: planned }
+      : { action, actual };
+  let preview: Rotation | undefined;
+  try {
+    if (mode === 'duty')
+      preview = changeRotation(
+        rotation,
+        command as any,
+        '00000000-0000-4000-8000-000000000000',
+        new Date().toISOString(),
+      );
+  } catch {
+    /* incomplete form */
+  }
+  async function submit(value: unknown, rot = false) {
+    if (!state?.owner || busy) return;
     setBusy(true);
     try {
-      const s = await (await fetch('/api/auth/session')).json();
-      const body =
-        pending.current ||
-        (pending.current = {
-          version: state.version,
-          value: draft,
-          requestId: crypto.randomUUID(),
-        });
-      const r = await fetch('/api/studio-daily', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': s.csrf },
-        body: JSON.stringify(body),
+      const session = await (await fetch('/api/auth/session')).json();
+      const fingerprint = JSON.stringify({ rot, value });
+      if (!pending.current || pending.current.fingerprint !== fingerprint)
+        pending.current = {
+          fingerprint,
+          body: { requestId: crypto.randomUUID(), version: state.version, value },
+        };
+      const r = await fetch('/api/studio-daily' + (rot ? '/rotation' : ''), {
+        method: rot ? 'POST' : 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf },
+        body: JSON.stringify(pending.current.body),
       });
-      if (!r.ok) {
-        const e = await r.json();
-        throw Error(e.error || '保存失败，草稿保留');
-      }
       const ack = await r.json();
-      if (!Number.isInteger(ack.version)) throw Error('云端未确认，草稿保留');
+      if (r.status === 409) {
+        await load();
+        pending.current = null;
+        throw Error('设置已更新，已读取最新版本；输入仍保留，请核对工作要求或当前轮次后重新保存。');
+      }
+      if (!r.ok) throw Error(ack.error || '保存失败，输入内容保留');
+      if (!Number.isInteger(ack.version)) throw Error('未收到云端确认，请重试');
       pending.current = null;
-      setDraft(null);
+      retainedMode.current = '';
+      dirty.current = false;
       setMode('');
       await load();
     } catch (e) {
@@ -82,287 +147,400 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
       setBusy(false);
     }
   }
-  const people = (selected: string[], onChange: (v: string[]) => void) => (
-    <div className="studio-people">
-      {state?.users.map((u) => (
-        <label key={u.id}>
-          <input
-            type="checkbox"
-            checked={selected.includes(u.id)} disabled={u.active === false && !selected.includes(u.id)}
-            onChange={(e) =>
-              onChange(
-                e.target.checked ? [...selected, u.id] : selected.filter((id) => id !== u.id),
-              )
-            }
-          />
-          {u.name}{u.active === false ? '（停用）' : ''}
-        </label>
-      ))}
-    </div>
-  );
+  function saveRule() {
+    if (!state || !text.trim()) {
+      setError('请填写工作要求');
+      return;
+    }
+    const old = state.value.rules.find((r) => r.id === ruleId);
+    if (ruleId && !old) {
+      setError('这条要求已被删除，输入仍保留，请核对后新增。');
+      return;
+    }
+    const r = old
+      ? { ...old, text: text.trim(), people }
+      : {
+          id: newRuleId.current,
+          text: text.trim(),
+          people,
+          enabled: true,
+          weekdays: [0, 1, 2, 3, 4, 5, 6],
+          from: '',
+          to: '',
+        };
+    const rules = old
+      ? state.value.rules.map((x) => (x.id === ruleId ? r : x))
+      : [...state.value.rules, r];
+
+    void submit({ ...state.value, rules });
+  }
   if (!cloud) return <section className="panel">工作室日常需登录云端账号后使用。</section>;
+  const active = (state?.value.rules || []).filter((r) => ruleActive(r, state!.day));
+  const next = rotation ? rotationPreview(rotation, 2) : [];
+  const week = state ? studioWeek(plus(state.day, weekOffset * 7)) : [];
   return (
-    <section className="studio-daily">
+    <section className="studio-ui sd-section">
       <h2>工作室日常</h2>
       {error && !mode && (
-        <p role="alert">
+        <div className="sd-error" role="alert">
           {error}
           <button onClick={() => void load()}>重试</button>
-        </p>
+        </div>
       )}
-      <div className="studio-columns">
-        <BriefPanel
-          title="每日必做"
-          testId="studio-rules"
-          items={(state?.value.rules || [])
-            .filter((r) => ruleActive(r, state!.day))
-            .map((r) => (
-              <article className="studio-rule" key={r.id}>
-                <strong>{r.text}</strong>
-                {(r.from || r.to) && (
-                  <small>
-                    {r.from || '不限'} — {r.to || '不限'} · 临时要求
-                  </small>
-                )}
-              </article>
+      <div className="sd-grid">
+        <div className="sd-card sd-rules">
+          <BriefPanel
+            title="每日必做"
+            testId="studio-rules"
+            items={active.map((r) => (
+              <div className="sd-rule-line" key={r.id}>
+                <span className="sd-dot" />
+                <p>{r.text}</p>
+              </div>
             ))}
-          actions={
-            state?.owner ? <button onClick={() => edit('rules')}>管理每日必做</button> : null
-          }
-        />
-        <section className="panel">
+            actions={
+              state?.owner ? (
+                <button className="sd-secondary" onClick={() => openRule()}>
+                  管理每日必做
+                </button>
+              ) : null
+            }
+          />
+        </div>
+        <section className="sd-card sd-duty">
           <header>
-            <h2>工作室卫生值日</h2>
-            {state?.owner && <button onClick={() => edit('duty')}>编辑值日安排</button>}
+            <h2>卫生值日</h2>
+            <div className="sd-actions">
+              <button
+                className="sd-secondary"
+                onClick={() => {
+                  setWeekOffset(0);
+                  setMode('schedule');
+                }}
+              >
+                查看排班
+              </button>
+              {state?.owner && (
+                <button className="sd-primary" onClick={openDuty}>
+                  编辑值日
+                </button>
+              )}
+            </div>
           </header>
-          <p>今日值日：{state ? names(duty(state.value, state.day)) : '暂无安排'}</p>
-          <p>明日值日：{state ? names(duty(state.value, plus(state.day, 1))) : '暂无安排'}</p>
-          {state?.value.cleaning && <p className="studio-description">{state.value.cleaning}</p>}
-          <button onClick={() => setWeek(!week)}>查看本周排班</button>
-          {week &&
-            state &&
-            studioWeek(state.day).map((d) => (
-              <p key={d}>
-                {d}：{names(duty(state.value, d))}
-              </p>
-            ))}
+          {rotation ? (
+            <>
+              <div className="sd-caption">当前轮值 · 每{rotation.interval}天轮换</div>
+              <strong className="sd-person">{name(next[0].person)}</strong>
+              <p>计划打扫　{next[0].planned}</p>
+              <div className="sd-next">
+                下一位：{name(next[1].person)}
+                <span>{next[1].planned} · 计划</span>
+              </div>
+              {!!rotation.history.length && (
+                <small>
+                  最近完成：{name(rotation.history.at(-1)!.person)} ·{' '}
+                  {effectiveActual(rotation, rotation.history.at(-1)!)}
+                </small>
+              )}
+            </>
+          ) : (
+            <>
+              <p>暂无轮换安排</p>
+              {state && (
+                <small>
+                  原周排班：今日 {duty(state.value, state.day).map(name).join('、') || '暂无安排'}
+                  ；明日 {duty(state.value, plus(state.day, 1)).map(name).join('、') || '暂无安排'}
+                </small>
+              )}
+            </>
+          )}
         </section>
       </div>
-      {mode && draft && state && (
+      {mode && (
         <Modal
-          title={mode === 'rules' ? '管理每日必做' : '编辑值日安排'}
+          title={mode === 'rules' ? '每日必做' : mode === 'duty' ? '编辑值日' : '值日排班'}
+          className="studio-ui sd-modal"
+          blocking
+          wide={mode === 'rules'}
           onClose={() => {
-            if (
-              !busy &&
-              (!pending.current ||
-                confirm('保存结果尚未确认，关闭后当前草稿仍留在内存中。确认关闭？'))
-            )
-              setMode('');
+            if (!busy) setMode('');
           }}
-          wide
         >
-          {error && (
-            <p role="alert" className="error-banner">
-              {error}
-            </p>
-          )}
-          <button
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(JSON.stringify(draft, null, 2))
-                .catch(() => setError('复制失败，请保留当前表单'))
-            }
-          >
-            复制草稿
-          </button>
-          <button
-            disabled={busy}
-            onClick={() => {
-              if (confirm('确认放弃当前表单草稿并重新读取云端设置？请先复制需要保留的内容。')) {
-                pending.current = null;
-                setDraft(null);
-                setMode('');
-                void load();
-              }
-            }}
-          >
-            重新读取设置
-          </button>
-          <fieldset disabled={busy} className="studio-editor">
-            {mode === 'rules' ? (
-              <>
-                <button
-                  onClick={() =>
-                    change({
-                      ...draft,
-                      rules: [
-                        ...draft.rules,
-                        {
-                          id: crypto.randomUUID(),
-                          text: '',
-                          enabled: true,
-                          people: [],
-                          weekdays: [1, 2, 3, 4, 5],
-                          from: '',
-                          to: '',
-                        },
-                      ],
-                    })
-                  }
-                >
-                  新增工作要求
-                </button>
-                {draft.rules.map((r, i) => {
-                  const patch = (v: any) =>
-                    change({
-                      ...draft,
-                      rules: draft.rules.map((x, j) => (j === i ? { ...x, ...v } : x)),
-                    });
-                  return (
-                    <article key={r.id} className="studio-rule">
-                      <label>
-                        工作要求
-                        <textarea
-                          value={r.text}
-                          maxLength={2000}
-                          onChange={(e) => patch({ text: e.target.value })}
-                        />
-                      </label>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={r.enabled}
-                          onChange={(e) => patch({ enabled: e.target.checked })}
-                        />
-                        启用
-                      </label>
-                      <div>不选指定人员即全体员工</div>
-                      {people(r.people, (people) => patch({ people }))}
-                      <div>
-                        {['日', '一', '二', '三', '四', '五', '六'].map((n, d) => (
-                          <label key={d}>
-                            <input
-                              type="checkbox"
-                              checked={r.weekdays.includes(d)}
-                              onChange={(e) =>
-                                patch({
-                                  weekdays: e.target.checked
-                                    ? [...r.weekdays, d]
-                                    : r.weekdays.filter((x) => x !== d),
-                                })
-                              }
-                            />
-                            周{n}
-                          </label>
-                        ))}
-                      </div>
-                      <label>
-                        生效日期
-                        <input
-                          type="date"
-                          value={r.from}
-                          onChange={(e) => patch({ from: e.target.value })}
-                        />
-                      </label>
-                      <label>
-                        到期日期
-                        <input
-                          type="date"
-                          value={r.to}
-                          onChange={(e) => patch({ to: e.target.value })}
-                        />
-                      </label>
-                      <button
-                        disabled={!i}
-                        onClick={() => {
-                          const rules = [...draft.rules];
-                          [rules[i - 1], rules[i]] = [rules[i], rules[i - 1]];
-                          change({ ...draft, rules });
-                        }}
-                      >
-                        上移
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm('确认删除此工作要求？'))
-                            change({ ...draft, rules: draft.rules.filter((x) => x.id !== r.id) });
-                        }}
-                      >
-                        删除
-                      </button>
-                    </article>
-                  );
-                })}
-              </>
-            ) : (
-              <>
-                <label>
-                  值日内容
-                  <textarea
-                    value={draft.cleaning}
-                    maxLength={4000}
-                    onChange={(e) => change({ ...draft, cleaning: e.target.value })}
-                  />
-                </label>
-                {['日', '一', '二', '三', '四', '五', '六'].map((d, i) => (
-                  <article className="studio-rule" key={d}>
-                    每周{d}（不选即休息）
-                    {people(draft.weekly[i], (ids) =>
-                      change({ ...draft, weekly: draft.weekly.map((x, j) => (j === i ? ids : x)) }),
-                    )}
-                  </article>
-                ))}
-                <button
-                  onClick={() =>
-                    change({
-                      ...draft,
-                      exceptions: [...draft.exceptions, { date: state.day, people: [] }],
-                    })
-                  }
-                >
-                  新增指定日期／临时调班
-                </button>
-                {draft.exceptions.map((x, i) => (
-                  <article className="studio-rule" key={i}>
-                    <label>
-                      指定日期
-                      <input
-                        type="date"
-                        value={x.date}
-                        onChange={(e) =>
-                          change({
-                            ...draft,
-                            exceptions: draft.exceptions.map((v, j) =>
-                              j === i ? { ...v, date: e.target.value } : v,
-                            ),
-                          })
-                        }
-                      />
-                    </label>
-                    <div>不选人员即跳过该日</div>
-                    {people(x.people, (ids) =>
-                      change({
-                        ...draft,
-                        exceptions: draft.exceptions.map((v, j) =>
-                          j === i ? { ...v, people: ids } : v,
-                        ),
-                      }),
-                    )}
-                    <button
-                      onClick={() =>
-                        change({ ...draft, exceptions: draft.exceptions.filter((_, j) => j !== i) })
-                      }
-                    >
-                      移除临时安排
-                    </button>
-                  </article>
-                ))}
-              </>
+          <div className="modal-body">
+            {error && mode !== 'schedule' && (
+              <p className="sd-error" role="alert">
+                {error}
+              </p>
             )}
-          </fieldset>
-          <button disabled={busy} onClick={() => void save()}>
-            {busy ? '保存中' : '保存设置'}
-          </button>
+            {mode === 'rules' && state?.owner && (
+              <fieldset
+                disabled={busy}
+                className="sd-fieldset sd-rule-manager"
+                onChangeCapture={() => {
+                  dirty.current = true;
+                }}
+              >
+                <aside>
+                  <button
+                    className="sd-secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      if (!dirty.current || confirm('新建要求将放弃尚未保存的输入，继续吗？')) {
+                        retainedMode.current = '';
+                        dirty.current = false;
+                        openRule();
+                      }
+                    }}
+                  >
+                    新增要求
+                  </button>
+                  {state.value.rules.map((r) => (
+                    <button
+                      disabled={busy}
+                      className={ruleId === r.id ? 'selected' : ''}
+                      key={r.id}
+                      onClick={() => openRule(r.id)}
+                    >
+                      {r.text}
+                    </button>
+                  ))}
+                </aside>
+                <div className="sd-form">
+                  <label>
+                    工作要求
+                    <textarea
+                      aria-label="工作要求"
+                      className="sd-input"
+                      value={text}
+                      maxLength={2000}
+                      disabled={busy}
+                      placeholder="填写希望员工每天看到的工作要求"
+                      onChange={(e) => setText(e.target.value)}
+                    />
+                  </label>
+                  <label>关联员工</label>
+                  <PeoplePicker
+                    users={state.users}
+                    value={people}
+                    onChange={(ids) => {
+                      dirty.current = true;
+                      setPeople(ids);
+                    }}
+                    all
+                  />
+                  <footer>
+                    {ruleId && state.value.rules.some((r) => r.id === ruleId) && (
+                      <button
+                        className="sd-danger"
+                        disabled={busy}
+                        onClick={() => {
+                          if (confirm('确认删除这条工作要求？'))
+                            void submit({
+                              ...state.value,
+                              rules: state.value.rules.filter((r) => r.id !== ruleId),
+                            });
+                        }}
+                      >
+                        删除要求
+                      </button>
+                    )}
+                    <button className="sd-primary" disabled={busy} onClick={saveRule}>
+                      {busy ? '保存中' : '保存'}
+                    </button>
+                  </footer>
+                </div>
+              </fieldset>
+            )}
+            {mode === 'duty' && state?.owner && (
+              <fieldset
+                disabled={busy}
+                className="sd-fieldset sd-form"
+                onChangeCapture={() => {
+                  dirty.current = true;
+                }}
+              >
+                <label>
+                  本次操作
+                  <select
+                    aria-label="本次操作"
+                    className="sd-input"
+                    value={action}
+                    onChange={(e) => setAction(e.target.value)}
+                    disabled={busy}
+                  >
+                    <option value="configure">设置轮换安排</option>
+                    <option value="complete" disabled={!rotation}>
+                      记录本轮完成
+                    </option>
+                    <option value="correctLast" disabled={!rotation?.history.length}>
+                      修正最近一次完成日期
+                    </option>
+                  </select>
+                </label>
+                {action === 'configure' ? (
+                  <>
+                    <label>参与人员 · 按选择顺序轮换</label>
+                    <PeoplePicker
+                      users={state.users}
+                      value={people}
+                      onChange={(ids) => {
+                        dirty.current = true;
+                        setPeople(ids);
+                      }}
+                    />
+                    <div className="sd-row sd-rotation-dates">
+                      <label>
+                        轮换周期
+                        <select
+                          aria-label="轮换周期"
+                          className="sd-input"
+                          value={interval}
+                          onChange={(e) => setInterval(Number(e.target.value) as 3 | 7)}
+                        >
+                          <option value={3}>每3天一人</option>
+                          <option value={7}>每7天一人</option>
+                        </select>
+                      </label>
+                      <label>
+                        起始日期
+                        <input
+                          className="sd-input"
+                          type="date"
+                          value={start}
+                          onChange={(e) => {
+                            setStart(e.target.value);
+                            setPlanned(e.target.value);
+                          }}
+                        />
+                      </label>
+                      <label>
+                        当前轮次计划日期
+                        <input
+                          className="sd-input"
+                          type="date"
+                          value={planned}
+                          onChange={(e) => setPlanned(e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </>
+                ) : (
+                  <label>
+                    <span className="sd-caption">
+                      {action === 'complete'
+                        ? `本轮：${name(rotation!.people[rotation!.position])} · 计划 ${rotation!.currentDate}`
+                        : `最近完成：${name(rotation!.history.at(-1)!.person)} · ${effectiveActual(rotation!, rotation!.history.at(-1)!)}`}
+                    </span>
+                    <br />
+                    实际完成日期
+                    <input
+                      aria-label="实际完成日期"
+                      className="sd-input"
+                      type="date"
+                      value={actual}
+                      onChange={(e) => setActual(e.target.value)}
+                    />
+                  </label>
+                )}
+                <div className="sd-preview">
+                  <h3>保存后的排班预览</h3>
+                  {preview ? (
+                    rotationPreview(preview, 3).map((p, i) => (
+                      <div key={i}>
+                        <span>{name(p.person)}</span>
+                        <time>{p.planned}</time>
+                        <small>{i ? '计划' : '当前轮次'}</small>
+                      </div>
+                    ))
+                  ) : (
+                    <p>请选择人员并填写有效日期</p>
+                  )}
+                </div>
+                <footer>
+                  <button
+                    className="sd-primary"
+                    disabled={busy || !preview}
+                    onClick={() => void submit(command, true)}
+                  >
+                    {busy ? '保存中' : '确认预览并保存'}
+                  </button>
+                </footer>
+              </fieldset>
+            )}
+            {mode === 'schedule' && state && (
+              <div className="sd-schedule">
+                <div className="sd-actions">
+                  <button className="sd-secondary" onClick={() => setWeekOffset((v) => v - 1)}>
+                    上周
+                  </button>
+                  <strong>
+                    {week[0]} — {week[6]}
+                  </strong>
+                  <button className="sd-secondary" onClick={() => setWeekOffset((v) => v + 1)}>
+                    下周
+                  </button>
+                </div>
+                {rotation ? (
+                  <>
+                    {rotation.history
+                      .filter((h) => {
+                        const d = effectiveActual(rotation, h);
+                        return d >= week[0] && d <= week[6];
+                      })
+                      .map((h) => (
+                        <div className="sd-schedule-row" key={h.id}>
+                          <strong>{name(h.person)}</strong>
+                          <span>原计划 {h.planned}</span>
+                          <span>实际 {effectiveActual(rotation, h)} · 已完成</span>
+                        </div>
+                      ))}
+                    {rotationPreview(
+                      rotation,
+                      Math.min(
+                        10000,
+                        Math.max(
+                          8,
+                          Math.ceil(
+                            (new Date(week[6]).getTime() -
+                              new Date(rotation.currentDate).getTime()) /
+                              86400000 /
+                              rotation.interval,
+                          ) + 1,
+                        ),
+                      ),
+                    )
+                      .filter((p) => p.planned >= week[0] && p.planned <= week[6])
+                      .map((p, i) => (
+                        <div className="sd-schedule-row" key={i}>
+                          <strong>{name(p.person)}</strong>
+                          <span>{p.planned}</span>
+                          <span>{p.current ? '当前轮次' : '计划'}</span>
+                        </div>
+                      ))}
+                    {(next[0].planned < week[0] || next[0].planned > week[6]) && (
+                      <>
+                        <h3>当前轮次</h3>
+                        <p>
+                          {name(next[0].person)} · {next[0].planned}（计划）
+                        </p>
+                      </>
+                    )}
+                    <h3>近期下一轮</h3>
+                    <p>
+                      {name(next[1].person)} · {next[1].planned}（计划）
+                    </p>
+                  </>
+                ) : (
+                  week.map((d) => (
+                    <div className="sd-schedule-row" key={d}>
+                      <time>{d}</time>
+                      <span>{duty(state.value, d).map(name).join('、') || '暂无安排'}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </Modal>
       )}
     </section>

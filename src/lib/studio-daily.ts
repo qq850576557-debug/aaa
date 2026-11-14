@@ -1,3 +1,4 @@
+import { rotationSchema } from './studio-rotation';
 import { z } from 'zod';
 import { dateOK, plus } from './model';
 const date = z.string().refine((v) => v === '' || dateOK(v));
@@ -29,6 +30,7 @@ export const studioSettings = z
       .max(400)
       .refine((x) => new Set(x.map((r) => r.date)).size === x.length),
     cleaning: z.string().max(4000),
+    rotation: rotationSchema.optional(),
   })
   .strict();
 export type StudioSettings = z.infer<typeof studioSettings>;

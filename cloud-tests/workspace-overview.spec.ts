@@ -120,7 +120,7 @@ async function expectOverview(page: Page) {
 async function expand(page: Page) {
   for (const id of ['today-panel', 'tomorrow-panel']) {
     const button = page.getByTestId(id).locator('.brief-toggle');
-    if (await button.isEnabled()) await button.click();
+    if ((await button.getAttribute('aria-expanded')) === 'false') await button.click();
   }
 }
 test.use({ timezoneId: 'America/Los_Angeles' });
@@ -182,11 +182,17 @@ for (const width of [1280, 1440, 1920])
     }
     const statsBox = await page.locator('.overview-stats').boundingBox();
     const sitesBox = await page.locator('.ongoing-projects').boundingBox();
-    await expect(page.getByTestId('today-panel').locator('.agenda-item')).toHaveCount(4);
+    // The confirmed V2 home opens all reminders by default (no four-item truncation).
+    await expect(page.getByTestId('today-panel').locator('.agenda-item')).toHaveCount(
+      workspaceAgenda(d, records, undefined, businessDay).today.length,
+    );
     const todayBox = await page.getByTestId('today-panel').boundingBox();
     const tomorrowBox = await page.getByTestId('tomorrow-panel').boundingBox();
     expect(sitesBox!.y).toBeGreaterThan(statsBox!.y + statsBox!.height);
     expect(todayBox!.y).toBeGreaterThan(sitesBox!.y + sitesBox!.height);
+    const studioBox = await page.locator('.sd-section').boundingBox();
+    expect(studioBox!.y).toBeGreaterThan(sitesBox!.y + sitesBox!.height);
+    expect(todayBox!.y).toBeGreaterThan(studioBox!.y + studioBox!.height);
     expect(Math.abs(todayBox!.y - tomorrowBox!.y)).toBeLessThan(1);
     expect(Math.abs(todayBox!.height - tomorrowBox!.height)).toBeLessThan(1);
     expect(todayBox!.height).toBeGreaterThanOrEqual(354);

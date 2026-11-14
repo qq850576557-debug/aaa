@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { createApp } from './app';
-import { fixtureAccounts } from './test-fixtures';
+import { fixtureAccounts, fixtureQuery } from './test-fixtures';
 import { config } from './config';
 import { pool, privatePool } from './db';
 import { emptyStudio, studioDay } from '../src/lib/studio-daily';
@@ -95,4 +95,134 @@ test('studio settings persist, scope assignments, enforce owner/CSRF/CAS, dedupl
     ).status,
     400,
   );
+});
+
+test('rotation owner-only commands append completion and corrections; legacy settings cannot erase history', async () => {
+  const f = await fixtureAccounts(),
+    a = await login(f.login, f.password),
+    s = await login(f.employee, f.password);
+  const configure = {
+    requestId: randomUUID(),
+    version: 0,
+    value: {
+      action: 'configure',
+      interval: 3,
+      people: [f.employeeId],
+      start: '2026-11-16',
+      currentDate: '2026-11-16',
+    },
+  };
+  // Resolve account IDs from the same directory used by the desktop UI.
+  const current = await (await req('/studio-daily', 'GET', undefined, a)).json();
+  configure.value.people = current.users.map((u: any) => u.id);
+  assert.equal((await req('/studio-daily/rotation', 'POST', configure, s)).status, 403);
+  assert.equal((await req('/studio-daily/rotation', 'POST', configure, a)).status, 200);
+  const complete = {
+    requestId: randomUUID(),
+    version: 1,
+    value: { action: 'complete', actual: '2026-11-15' },
+  };
+  assert.equal((await req('/studio-daily/rotation', 'POST', complete, a)).status, 200);
+  assert.equal((await req('/studio-daily/rotation', 'POST', complete, a)).status, 200);
+  assert.equal(
+    (await req('/studio-daily/rotation', 'POST', { ...complete, requestId: randomUUID() }, a))
+      .status,
+    409,
+  );
+  let saved = await (await req('/studio-daily', 'GET', undefined, a)).json();
+  assert.equal(saved.value.rotation.history.length, 1);
+  assert.equal(saved.value.rotation.currentDate, '2026-11-18');
+  const original = structuredClone(saved.value.rotation.history);
+  assert.equal(
+    (
+      await req(
+        '/studio-daily/rotation',
+        'POST',
+        {
+          requestId: randomUUID(),
+          version: 2,
+          value: { action: 'correctLast', actual: '2026-11-17' },
+        },
+        a,
+      )
+    ).status,
+    200,
+  );
+  saved = await (await req('/studio-daily', 'GET', undefined, a)).json();
+  assert.deepEqual(saved.value.rotation.history, original);
+  assert.equal(saved.value.rotation.currentDate, '2026-11-20');
+  const legacy = { ...saved.value };
+  delete legacy.rotation;
+  assert.equal(
+    (await req('/studio-daily', 'PUT', { requestId: randomUUID(), version: 3, value: legacy }, a))
+      .status,
+    200,
+  );
+  saved = await (await req('/studio-daily', 'GET', undefined, a)).json();
+  assert.deepEqual(saved.value.rotation.history, original);
+  assert.equal(
+    (
+      await req(
+        '/studio-daily',
+        'PUT',
+        {
+          requestId: randomUUID(),
+          version: 4,
+          value: { ...saved.value, rotation: { ...saved.value.rotation, history: [] } },
+        },
+        a,
+      )
+    ).status,
+    400,
+  );
+});
+
+test('a role label cannot grant founder permissions and editing text preserves legacy schedule fields', async () => {
+  const f = await fixtureAccounts();
+  // This guarded helper only connects to the dedicated localhost *_test database.
+  await fixtureQuery("UPDATE account SET role='owner' WHERE id=$1", [f.employeeId]);
+  const staff = await login(f.employee, f.password),
+    founder = await login(f.login, f.password);
+  assert.equal((await (await req('/studio-daily', 'GET', undefined, staff)).json()).owner, false);
+  const value = emptyStudio();
+  value.rules = [
+    {
+      id: randomUUID(),
+      text: '旧要求',
+      enabled: false,
+      people: [],
+      weekdays: [1, 3],
+      from: '2026-01-01',
+      to: '2026-12-31',
+    },
+  ];
+  value.weekly[1] = [f.employeeId];
+  value.exceptions = [{ date: '2026-11-16', people: [] }];
+  value.cleaning = '保留旧说明';
+  const put = { requestId: randomUUID(), version: 0, value };
+  assert.equal((await req('/studio-daily', 'PUT', put, staff)).status, 403);
+  assert.equal(
+    (
+      await req(
+        '/studio-daily/rotation',
+        'POST',
+        {
+          requestId: randomUUID(),
+          version: 0,
+          value: { action: 'complete', actual: '2026-11-15' },
+        },
+        staff,
+      )
+    ).status,
+    403,
+  );
+  assert.equal((await req('/studio-daily', 'PUT', put, founder)).status, 200);
+  value.rules[0].text = '修改工作要求文字';
+  assert.equal(
+    (await req('/studio-daily', 'PUT', { requestId: randomUUID(), version: 1, value }, founder))
+      .status,
+    200,
+  );
+  const saved = await (await req('/studio-daily', 'GET', undefined, founder)).json();
+  assert.deepEqual(saved.value, value);
 });
