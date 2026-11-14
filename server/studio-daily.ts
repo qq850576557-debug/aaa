@@ -6,10 +6,12 @@ import { transaction } from './db';
 import { ApiError, audit, hash } from './store';
 import { canonical } from '../src/lib/history';
 import { studioSettings, emptyStudio, studioDay, ruleActive } from '../src/lib/studio-daily';
+import { assertStudioDailyReady } from './database-readiness';
 export function studioDailyRoutes(app: Express) {
   app.get('/api/studio-daily', async (req: AuthRequest, res, next) => {
     try {
       const result = await transaction(async (c) => {
+        await assertStudioDailyReady(c);
         const row = (
           await c.query(
             'SELECT version,value,updated_at AS "updatedAt" FROM studio_daily WHERE workspace_id=$1',
@@ -55,8 +57,16 @@ export function studioDailyRoutes(app: Express) {
         .strict()
         .parse(req.body);
       const result = await transaction(async (c) => {
+        await assertStudioDailyReady(c);
         const a = req.actor!;
-        await c.query('SELECT id FROM cloud_workspace WHERE id=$1 FOR UPDATE', [a.workspaceId]);
+        // Reuse the existing writable workspace lock row; cloud_workspace is SELECT-only
+        // for the production app role. FOR UPDATE there would fail with SQLSTATE 42501.
+        const locked = await c.query(
+          'SELECT revision FROM workspace_state WHERE workspace_id=$1 FOR UPDATE',
+          [a.workspaceId],
+        );
+        if (locked.rowCount !== 1)
+          throw new ApiError(503, '工作空间状态未就绪；输入内容保留，请联系管理员');
         const digest = hash(canonical(rotation ? { rotation, body: b } : b));
         const receipt = (
           await c.query(

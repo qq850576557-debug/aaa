@@ -1,4 +1,5 @@
-import {studioDailyRoutes} from './studio-daily';
+import { studioDailyRoutes } from './studio-daily';
+import { runningRelease } from './release';
 import { photoGeocodeRoutes } from './photo-geocode';
 import { createMiniPhotoGateway } from './miniprogram-photo';
 import { sitePhotoRoutes } from './site-photos';
@@ -9,7 +10,7 @@ import {
   type PresenceLease,
 } from '../src/lib/presence-state';
 import { cloudHistoryRoutes, captureRestoreBackup, persistRestoreBackup } from './cloud-history';
-import { databaseFailure, logDatabaseFailure } from './database-readiness';
+import { databaseFailure, logDatabaseFailure, assertStudioDailyReady } from './database-readiness';
 import { mentionRoutes } from './mentions';
 import { upgradePreviewRoutes } from './upgrade-preview';
 import { sendWorkspaceState } from './workspace-response';
@@ -131,7 +132,20 @@ export function createApp() {
   app.get('/api/health', async (_req, res, next) => {
     try {
       await pool.query('SELECT 1');
-      res.json({ ok: true, environment: config.APP_ENV, workspaceSaveProtocol: 2 });
+      let studioDaily = false;
+      try {
+        await assertStudioDailyReady(pool);
+        studioDaily = true;
+      } catch {
+        /* Core website stays available; deployment must check this capability. */
+      }
+      res.json({
+        ok: true,
+        environment: config.APP_ENV,
+        workspaceSaveProtocol: 2,
+        release: runningRelease,
+        capabilities: { studioDaily },
+      });
     } catch (e) {
       next(e);
     }

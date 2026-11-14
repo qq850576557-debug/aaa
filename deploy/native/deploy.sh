@@ -13,6 +13,7 @@ PROMOTED=0
 PREVIOUS=
 NODE=
 RELEASE=
+NGINX_PREVIOUS=
 fail() { printf 'ERROR: %s\n' "$*" >&2; return 1; }
 # BEGIN CHUNMO TLS FUNCTIONS (also exercised by the isolated TLS tests)
 tls_openssl() { OPENSSL_CONF="$tls_config" openssl "$@"; }
@@ -156,16 +157,22 @@ on_error() {
   local code=$? line=$1
   trap - ERR
   printf 'Deployment stopped (phase=%s, line=%s, exit=%s). No database reset/down-migration performed.\n' "$PHASE" "$line" "$code" >&2
-  if [[ -n "$NODE" && -n "$RELEASE" && -f "$RELEASE/dist-deploy/ops.mjs" && -f "$CONF/control.json" ]]; then
+  if [[ ${READ_ONLY_SMOKE:-0} != 1 && -n "$NODE" && -n "$RELEASE" && -f "$RELEASE/dist-deploy/ops.mjs" && -f "$CONF/control.json" ]]; then
     (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs cleanup "$CONF") || true
   fi
   if [[ $PROMOTED == 1 ]]; then
     if [[ -n "$PREVIOUS" ]]; then
-      ln -s "$PREVIOUS" "$BASE/.rollback-next.$$"
-      mv -Tf "$BASE/.rollback-next.$$" "$BASE/current"
-      systemctl restart chunmo-staging-api chunmo-staging-web || true
-      if [[ $PREVIOUS != "$RELEASE" ]]; then printf 'Previous code release restored. Database migration was NOT reversed; inspect compatibility.\n' >&2
-      else printf 'Current release retained; no distinct previous code release exists. Database was not reversed.\n' >&2; fi
+      if ln -s "$PREVIOUS" "$BASE/.rollback-next.$$" && mv -Tf "$BASE/.rollback-next.$$" "$BASE/current" &&
+        { if [[ -n "$NGINX_PREVIOUS" && -f "$NGINX_PREVIOUS" ]]; then
+            cp "$NGINX_PREVIOUS" "$BASE/.nginx-rollback.$$" && chmod 0644 "$BASE/.nginx-rollback.$$" && mv -Tf "$BASE/.nginx-rollback.$$" "$BASE/nginx.conf";
+          else true; fi; } &&
+        systemctl restart chunmo-staging-api chunmo-staging-web &&
+        systemctl is-active --quiet chunmo-staging-api chunmo-staging-web &&
+        curl --silent --fail --max-time 15 --cacert "$TLS/ca.crt" https://localhost:8443/api/health >/dev/null; then
+        printf 'PASS previous release selected and HTTPS healthy. Database was NOT reversed.\n' >&2
+      else
+        printf 'ROLLBACK_HEALTH_FAILED: recovery not confirmed; retain backups and inspect services in Workbench.\n' >&2
+      fi
     else
       systemctl stop chunmo-staging-web chunmo-staging-api || true
     fi
@@ -225,10 +232,15 @@ fi
 REMOTE=$(git -C "$SOURCE_REPO" remote get-url origin)
 [[ $REMOTE == https://github.com/qq850576557-debug/aaa.git || $REMOTE == git@github.com:qq850576557-debug/aaa.git ]] || fail 'Unexpected origin or embedded credentials; configure a clean authenticated remote.'
 REF=HEAD
+READ_ONLY_SMOKE=0
+CODE_ONLY=0
 case ${1:-} in
   '') ;;
   --update) git -C "$SOURCE_REPO" fetch origin feat/chunmo-project-manager; REF=origin/feat/chunmo-project-manager ;;
-  --ref) [[ ${2:-} =~ ^[a-f0-9]{40}$ ]] || fail '--ref requires a full commit hash'; REF=$2 ;;
+  --ref) [[ ${2:-} =~ ^[a-f0-9]{40}$ ]] || fail '--ref requires a full commit hash'; REF=$2
+    for option in "${@:3}"; do
+      case $option in --read-only-smoke) READ_ONLY_SMOKE=1 ;; --code-only) CODE_ONLY=1; READ_ONLY_SMOKE=1 ;; *) fail 'Unknown deployment option' ;; esac
+    done ;;
   *) fail 'Usage: deploy.sh [--update | --ref FULL_COMMIT]' ;;
 esac
 COMMIT=$(git -C "$SOURCE_REPO" rev-parse "$REF^{commit}")
@@ -237,11 +249,11 @@ git -C "$SOURCE_REPO" merge-base --is-ancestor "$COMMIT" origin/feat/chunmo-proj
 if command -v getenforce >/dev/null && [[ $(getenforce) == Enforcing ]]; then
   fail 'SELinux is Enforcing. Review required nginx file/network policy with your administrator before deployment; installer will not disable SELinux or broadly grant network access.'
 fi
-if ! command -v nginx >/dev/null; then dnf -y install nginx; fi
+if ! command -v nginx >/dev/null; then [[ $CODE_ONLY == 0 ]] || fail 'Code-only update requires existing nginx'; dnf -y install nginx; fi
 install -d -o root -g root -m 0755 /var/lib/chunmo-acme /var/lib/chunmo-acme/.well-known /var/lib/chunmo-acme/.well-known/acme-challenge
 NGINX=$(command -v nginx)
 for user in chunmo-build chunmo-staging-api chunmo-staging-web; do
-  if ! id "$user" >/dev/null 2>&1; then useradd --system --user-group --create-home --home-dir "/var/lib/$user" --shell /sbin/nologin "$user"; fi
+  if ! id "$user" >/dev/null 2>&1; then [[ $CODE_ONLY == 0 ]] || fail 'Code-only update requires existing service identities'; useradd --system --user-group --create-home --home-dir "/var/lib/$user" --shell /sbin/nologin "$user"; fi
   [[ $(id -u "$user") -ne 0 ]] || fail 'Service accounts must not be root.'
   [[ $(getent passwd "$user" | cut -d: -f6) == "/var/lib/$user" && $(getent passwd "$user" | cut -d: -f7) == /sbin/nologin ]] || fail 'Existing service account is not a managed non-login identity.'
   [[ $(id -G "$user" | wc -w) == 1 ]] || fail 'Service accounts must not have extra group privileges.'
@@ -299,6 +311,11 @@ else
 fi
 (cd "$RELEASE" && "$NODE" scripts/verify-release.mjs && "$NODE" scripts/verify-native.mjs --production)
 PHASE=database
+# BEGIN DATABASE CONFIG
+if [[ $CODE_ONLY == 1 ]]; then
+  [[ -L $BASE/current && -f $CONF/control.json ]] || fail 'Code-only update requires an existing managed installation'
+  (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs studio-db-ready "$CONF")
+else
 "$NODE" "$RELEASE/dist-deploy/ops.mjs" config "$CONF"
 "$NODE" "$RELEASE/dist-deploy/ops.mjs" cluster-input "$CONF" | runuser -u postgres -- "$NODE" "$RELEASE/dist-deploy/admin.mjs" cluster
 HBA=$(sql 'SHOW hba_file')
@@ -307,6 +324,8 @@ command -v restorecon >/dev/null && restorecon "$HBA" || true
 [[ $(sql "SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL") == 0 ]] || fail 'HBA validation failed; original copy is in protected config directory.'
 sql 'SELECT pg_reload_conf()' >/dev/null
 sleep 1
+fi
+# END DATABASE CONFIG
 # BEGIN CURRENT RELEASE CHECK
 if [[ -L $BASE/current ]]; then
   PREVIOUS=$(readlink -e "$BASE/current")
@@ -325,13 +344,19 @@ if [[ -n $PREVIOUS && $PREVIOUS != "$RELEASE" ]]; then
   (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs backup "$CONF" "$BACKUPS" "$DUMP")
 fi
 # END CURRENT RELEASE CHECK
-(cd "$RELEASE" && "$NODE" dist-deploy/admin.mjs migrate "$CONF" && "$NODE" dist-deploy/admin.mjs owner "$CONF")
+if [[ $CODE_ONLY == 0 ]]; then
+  (cd "$RELEASE" && "$NODE" dist-deploy/admin.mjs migrate "$CONF" && "$NODE" dist-deploy/admin.mjs owner "$CONF")
+fi
 printf 'NODE_BIN=%q\nPG_DUMP_BIN=%q\nPG_RESTORE_BIN=%q\nPG_ADMIN_SOCKET=%q\n' "$NODE" "$DUMP" "$RESTORE" "$PG_ADMIN_SOCKET" > "$CONF/tools.env"
 chmod 0600 "$CONF/tools.env"
 PHASE=tls
 install -d -o root -g chunmo-staging-web -m 0750 "$TLS"
-tls_manage_pair normal
-tls_finish_permissions
+if [[ $CODE_ONLY == 1 ]]; then
+  [[ -r $TLS/ca.crt && -r $TLS/server.crt && -r $TLS/server.key ]] || fail 'Code-only update requires retained TLS files'
+else
+  tls_manage_pair normal
+  tls_finish_permissions
+fi
 PHASE=services
 for unit in chunmo-staging-api chunmo-staging-web chunmo-staging-backup chunmo-staging-health; do
   if [[ -f /etc/systemd/system/$unit.service ]] && ! grep -q '^# Managed by chunmo native staging deploy' /etc/systemd/system/"$unit".service; then fail "Unmanaged unit exists: $unit"; fi
@@ -347,6 +372,11 @@ systemd-analyze verify /etc/systemd/system/chunmo-staging-*.service /etc/systemd
 python3 "$RELEASE/deploy/native/prepare-web-state.py"
 "$NODE" "$RELEASE/dist-deploy/ops.mjs" nginx "$BASE/current" "$TLS" /var/lib/chunmo-staging-web > "$BASE/nginx.conf.next"
 chmod 0644 "$BASE/nginx.conf.next"
+if [[ -f "$BASE/nginx.conf" ]]; then
+  NGINX_PREVIOUS=$(mktemp "$BACKUPS/nginx-before.XXXXXXXX")
+  cp "$BASE/nginx.conf" "$NGINX_PREVIOUS"
+  chmod 0600 "$NGINX_PREVIOUS"
+fi
 ln -s "$RELEASE" "$BASE/.current-next.$$"
 mv -Tf "$BASE/.current-next.$$" "$BASE/current"
 PROMOTED=1
@@ -358,13 +388,22 @@ systemctl restart chunmo-staging-api chunmo-staging-web
 PHASE=internal-validation
 for attempt in $(seq 1 30); do if curl --silent --fail --cacert "$TLS/ca.crt" https://localhost:8443/api/health >/dev/null; then break; fi; sleep 1; done
 curl --silent --show-error --fail --cacert "$TLS/ca.crt" https://localhost:8443/api/health >/dev/null
-(cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs smoke "$CONF" https://localhost:8443 "$TLS/ca.crt")
+if [[ $READ_ONLY_SMOKE == 1 ]]; then
+  (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs read-only-smoke "$CONF" https://localhost:8443 "$TLS/ca.crt")
+else
+  (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs smoke "$CONF" https://localhost:8443 "$TLS/ca.crt")
+fi
 systemctl restart chunmo-staging-api
 for attempt in $(seq 1 30); do if curl --silent --fail --cacert "$TLS/ca.crt" https://localhost:8443/api/health >/dev/null; then break; fi; sleep 1; done
-(cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs after-restart "$CONF" https://localhost:8443 "$TLS/ca.crt")
+if [[ $READ_ONLY_SMOKE == 1 ]]; then
+  (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs read-only-smoke "$CONF" https://localhost:8443 "$TLS/ca.crt")
+else
+  (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs after-restart "$CONF" https://localhost:8443 "$TLS/ca.crt")
+fi
 ARCHIVE=$(cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs backup "$CONF" "$BACKUPS" "$DUMP" | sed -n 's/^Encrypted consistent database backup complete: //p')
 [[ -f $ARCHIVE ]] || fail 'Backup did not produce an authenticated archive.'
 (cd "$RELEASE" && "$NODE" dist-deploy/ops.mjs restore-check "$CONF" "$ARCHIVE" "$RESTORE")
+bash "$RELEASE/deploy/native/health.sh"
 systemctl enable --now chunmo-staging-backup.timer chunmo-staging-health.timer
 PHASE=complete
 printf 'PASS INTERNAL deployment %s. Not approved for formal launch.\n' "$COMMIT"

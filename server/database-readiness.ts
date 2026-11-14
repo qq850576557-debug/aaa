@@ -7,7 +7,46 @@ export const requiredMigrations = [
   '012_legacy_classification.sql',
   '013_cloud_versions.sql',
   '014_mentions.sql',
+  '015_studio_daily.sql',
 ];
+
+function studioNotReady() {
+  return Object.assign(
+    Error('Studio daily schema, receipt protection or runtime grants incomplete'),
+    { code: 'STUDIO_DAILY_NOT_READY' },
+  );
+}
+
+/** Read-only checks as the caller's real DB role; never reads business rows. */
+export async function assertStudioDailyReady(db: pg.Pool | pg.Client) {
+  const migration = await db.query(
+    "SELECT checksum FROM schema_migration WHERE name='015_studio_daily.sql'",
+  );
+  if (
+    migration.rows[0]?.checksum !==
+    'd505a4398e6562f44f3b47cd420c6cf7999b6038eebed9f28ff29d3bd377e523'
+  )
+    throw studioNotReady();
+  await db.query(
+    'SELECT workspace_id,version,value,updated_by,updated_at FROM studio_daily LIMIT 0',
+  );
+  await db.query(
+    'SELECT workspace_id,request_id,actor_id,body_hash,version FROM studio_daily_submission LIMIT 0',
+  );
+  const q = await db.query(`SELECT
+    has_table_privilege(current_user,'studio_daily','SELECT') AND
+    has_table_privilege(current_user,'studio_daily','INSERT') AND
+    has_table_privilege(current_user,'studio_daily','UPDATE') AND
+    has_table_privilege(current_user,'studio_daily_submission','SELECT') AND
+    has_table_privilege(current_user,'studio_daily_submission','INSERT') AND
+    has_table_privilege(current_user,'workspace_state','SELECT') AND
+    has_table_privilege(current_user,'workspace_state','UPDATE') AND
+    has_table_privilege(current_user,'audit_event','INSERT') AND
+    EXISTS(SELECT 1 FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE t.tgrelid='studio_daily_submission'::regclass AND t.tgname='studio_daily_submission_immutable'
+      AND t.tgtype=27 AND t.tgenabled IN ('O','A') AND p.proname='immutable_audit_event' AND n.nspname='public') AS ready`);
+  if (!q.rows[0]?.ready) throw studioNotReady();
+}
 
 export async function assertDatabaseReady(db: pg.Pool | pg.Client) {
   const applied = await db.query('SELECT name FROM schema_migration');
@@ -41,12 +80,13 @@ export async function assertDatabaseReady(db: pg.Pool | pg.Client) {
     throw Error(
       'Database runtime grants incomplete; apply reviewed runtime grants before API startup',
     );
+  await assertStudioDailyReady(db);
 }
 
 export function databaseFailure(error: unknown) {
   const code = (error as { code?: unknown } | null)?.code;
   if (typeof code !== 'string') return null;
-  if (['42P01', '42703', '42501', '42883'].includes(code))
+  if (['42P01', '42703', '42501', '42883', 'STUDIO_DAILY_NOT_READY'].includes(code))
     return {
       code: 'DATABASE_SCHEMA_NOT_READY',
       error: '服务端数据库升级或授权未完成，请联系管理员；现有数据和草稿未覆盖',

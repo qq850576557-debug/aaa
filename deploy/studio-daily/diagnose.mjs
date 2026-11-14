@@ -42,8 +42,16 @@ export async function databaseReport(db) {
         'SELECT current_user AS name,rolsuper AS superuser,rolbypassrls AS bypassrls FROM pg_roles WHERE rolname=current_user',
       )
     ).rows[0];
+    result.sharedWriteDependencies = (
+      await db.query(`SELECT
+      has_table_privilege(current_user,'cloud_workspace','UPDATE') AS "oldLockHasUpdate",
+      has_table_privilege(current_user,'workspace_state','SELECT') AND has_table_privilege(current_user,'workspace_state','UPDATE') AS "canonicalLockReady",
+      has_table_privilege(current_user,'audit_event','INSERT') AS "auditInsertReady"`)
+    ).rows[0];
     result.ready =
       result.checksumMatches &&
+      result.sharedWriteDependencies.canonicalLockReady &&
+      result.sharedWriteDependencies.auditInsertReady &&
       ['SELECT', 'INSERT', 'UPDATE'].every((p) => result.tables.studio_daily.permissions[p]) &&
       ['SELECT', 'INSERT'].every((p) => result.tables.studio_daily_submission.permissions[p]) &&
       ['O', 'A'].includes(result.receiptTrigger?.enabled) &&

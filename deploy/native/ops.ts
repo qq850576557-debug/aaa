@@ -34,6 +34,8 @@ import {
   type Deployment,
 } from './shared';
 import { createWorkspace } from '../../server/store';
+import { assertStudioDailyReady } from '../../server/database-readiness';
+import { requireStudioHealth } from './studio-health';
 import { newProject, defaultTrades, emptyData, prepareWorkspace } from '../../src/lib/model';
 const hashFile = async (file: string) => {
   const h = createHash('sha256');
@@ -486,6 +488,59 @@ export async function smoke(configDir: string, origin: string, ca: string) {
     await db.end();
   }
 }
+/** Production acceptance without synthetic accounts/projects/requirements. */
+export async function studioDatabaseReady(configDir: string) {
+  const db = await connection(config(configDir), 'app');
+  try {
+    await db.query('BEGIN READ ONLY');
+    await assertStudioDailyReady(db);
+  } finally {
+    await db.query('ROLLBACK').catch(() => {});
+    await db.end();
+  }
+  console.log(
+    'PASS existing studio database schema and app grants; no migration or privilege changes.',
+  );
+}
+export async function readOnlySmoke(configDir: string, origin: string, ca: string) {
+  const db = await connection(config(configDir), 'app');
+  const { call, agent } = http(origin, ca, readPublicHTTPS(configDir)?.origin ?? origin);
+  try {
+    await db.query('BEGIN READ ONLY');
+    await assertStudioDailyReady(db);
+    await db.query('ROLLBACK');
+    requireStudioHealth(await call('/health'));
+    need(
+      (await call('/health')).value.release === readFileSync('.verified-build', 'utf8').trim(),
+      'running API matches pinned release',
+    );
+    need((await call('/studio-daily')).status === 401, 'studio anonymous denial');
+    writeFileSync(
+      join(configDir, 'verification.json'),
+      JSON.stringify({
+        at: new Date().toISOString(),
+        passed: true,
+        checks: [
+          'TLS',
+          'studio schema/checksum',
+          'runtime grants',
+          'receipt trigger',
+          'module health',
+          'authentication boundary',
+        ],
+        syntheticBusinessWrites: false,
+      }),
+      { mode: 0o600 },
+    );
+    console.log(
+      'PASS read-only deployment acceptance; no synthetic employees/projects or studio settings written.',
+    );
+  } finally {
+    await db.query('ROLLBACK').catch(() => {});
+    await db.end();
+    agent.destroy();
+  }
+}
 export async function afterRestart(configDir: string, origin: string, ca: string) {
   const p = JSON.parse(readFileSync(join(configDir, 'probe-pending.json'), 'utf8')),
     { call, agent } = http(origin, ca, readPublicHTTPS(configDir)?.origin ?? origin);
@@ -551,6 +606,8 @@ async function main() {
   else if (op === 'restore-check')
     await restoreCheck(path, a, b, (name, c) => peer('restore-db', c, name));
   else if (op === 'smoke') await smoke(path, a, b);
+  else if (op === 'read-only-smoke') await readOnlySmoke(path, a, b);
+  else if (op === 'studio-db-ready') await studioDatabaseReady(path);
   else if (op === 'after-restart') await afterRestart(path, a, b);
   else if (op === 'cleanup') await cleanup(path);
   else throw Error('Unsupported operation');

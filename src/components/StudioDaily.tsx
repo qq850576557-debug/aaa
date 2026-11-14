@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Modal } from './Modal';
 import { PeoplePicker, type StudioUser } from './StudioKit';
-import { BriefPanel } from './BriefPanel';
+import { useBriefExpansion } from './BriefPanel';
 import { ruleActive, duty, studioWeek, type StudioSettings } from '../lib/studio-daily';
 import {
   changeRotation,
@@ -20,6 +20,7 @@ type Result = {
   day: string;
 };
 export function StudioDaily({ cloud }: { cloud: boolean }) {
+  const [rulesExpanded, setRulesExpanded] = useBriefExpansion('studio-rules');
   const [state, setState] = useState<Result | null>(null),
     [mode, setMode] = useState(''),
     [error, setError] = useState(''),
@@ -47,8 +48,9 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
   async function load() {
     try {
       const r = await fetch('/api/studio-daily');
-      if (!r.ok) throw Error('工作室日常读取失败');
-      setState(await r.json());
+      const body = await r.json();
+      if (!r.ok) throw Error(body.error || '工作室日常读取失败');
+      setState(body);
       setError('');
     } catch (e) {
       setError((e as Error).message);
@@ -188,27 +190,43 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
         </div>
       )}
       <div className="sd-grid">
-        <div className="sd-card sd-rules">
-          <BriefPanel
-            title="每日必做"
-            testId="studio-rules"
-            items={active.map((r) => (
-              <div className="sd-rule-line" key={r.id}>
-                <span className="sd-dot" />
-                <p>{r.text}</p>
-              </div>
-            ))}
-            actions={
-              state?.owner ? (
-                <button className="sd-secondary" onClick={() => openRule()}>
-                  管理每日必做
-                </button>
-              ) : null
-            }
-          />
-        </div>
+        <section className="sd-card sd-rules" data-testid="studio-rules">
+          <header className="sd-card-head">
+            <h2>
+              每日必做 <span className="sd-count">{active.length}</span>
+            </h2>
+            <button
+              className="sd-secondary"
+              aria-expanded={rulesExpanded}
+              aria-label={`${rulesExpanded ? '收起' : '展开'}每日必做`}
+              onClick={() => setRulesExpanded((v) => !v)}
+            >
+              {rulesExpanded ? '收起' : '展开'}
+            </button>
+          </header>
+          <div className="sd-card-content">
+            {rulesExpanded &&
+              (active.length ? (
+                active.map((r) => (
+                  <div className="sd-rule-line" key={r.id}>
+                    <span className="sd-dot" />
+                    <p>{r.text}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="sd-empty">暂无工作要求</p>
+              ))}
+          </div>
+          <footer className="sd-card-foot">
+            {state?.owner && (
+              <button className="sd-secondary" onClick={() => openRule()}>
+                管理每日必做
+              </button>
+            )}
+          </footer>
+        </section>
         <section className="sd-card sd-duty">
-          <header>
+          <header className="sd-card-head">
             <h2>卫生值日</h2>
             <div className="sd-actions">
               <button
@@ -227,33 +245,40 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
               )}
             </div>
           </header>
-          {rotation ? (
-            <>
-              <div className="sd-caption">当前轮值 · 每{rotation.interval}天轮换</div>
-              <strong className="sd-person">{name(next[0].person)}</strong>
-              <p>计划打扫　{next[0].planned}</p>
-              <div className="sd-next">
-                下一位：{name(next[1].person)}
-                <span>{next[1].planned} · 计划</span>
-              </div>
-              {!!rotation.history.length && (
-                <small>
-                  最近完成：{name(rotation.history.at(-1)!.person)} ·{' '}
-                  {effectiveActual(rotation, rotation.history.at(-1)!)}
-                </small>
-              )}
-            </>
-          ) : (
-            <>
-              <p>暂无轮换安排</p>
-              {state && (
-                <small>
-                  原周排班：今日 {duty(state.value, state.day).map(name).join('、') || '暂无安排'}
-                  ；明日 {duty(state.value, plus(state.day, 1)).map(name).join('、') || '暂无安排'}
-                </small>
-              )}
-            </>
-          )}
+          <div className="sd-card-content">
+            {rotation ? (
+              <>
+                <p className="sd-caption">当前轮值 · 每{rotation.interval}天轮换</p>
+                <strong className="sd-person">{name(next[0].person)}</strong>
+                <p>计划打扫　{next[0].planned}</p>
+                <div className="sd-next">
+                  下一位：{name(next[1].person)}
+                  <span>{next[1].planned} · 计划</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="sd-empty">暂无轮换安排</p>
+                {state && (
+                  <small>
+                    原周排班：今日 {duty(state.value, state.day).map(name).join('、') || '暂无安排'}
+                    ；明日{' '}
+                    {duty(state.value, plus(state.day, 1)).map(name).join('、') || '暂无安排'}
+                  </small>
+                )}
+              </>
+            )}
+          </div>
+          <footer className="sd-card-foot">
+            {rotation?.history.length ? (
+              <small>
+                最近完成：{name(rotation.history.at(-1)!.person)} ·{' '}
+                {effectiveActual(rotation, rotation.history.at(-1)!)}
+              </small>
+            ) : (
+              <small>{rotation ? `每${rotation.interval}天一人` : '尚未开始轮换'}</small>
+            )}
+          </footer>
         </section>
       </div>
       {mode && (
@@ -301,7 +326,9 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
                       key={r.id}
                       onClick={() => openRule(r.id)}
                     >
-                      {r.text}
+                      <span className="sd-rule-title" title={r.text}>
+                        {r.text}
+                      </span>
                     </button>
                   ))}
                 </aside>
@@ -368,7 +395,7 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
                     onChange={(e) => setAction(e.target.value)}
                     disabled={busy}
                   >
-                    <option value="configure">设置轮换安排</option>
+                    <option value="configure">{rotation ? '调整轮换计划' : '首次设置轮换'}</option>
                     <option value="complete" disabled={!rotation}>
                       记录本轮完成
                     </option>
@@ -402,24 +429,16 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
                         </select>
                       </label>
                       <label>
-                        起始日期
+                        {rotation ? '当前轮次计划日期' : '起始日期'}
                         <input
                           className="sd-input"
                           type="date"
-                          value={start}
+                          aria-label={rotation ? '当前轮次计划日期' : '起始日期'}
+                          value={rotation ? planned : start}
                           onChange={(e) => {
-                            setStart(e.target.value);
+                            if (!rotation) setStart(e.target.value);
                             setPlanned(e.target.value);
                           }}
-                        />
-                      </label>
-                      <label>
-                        当前轮次计划日期
-                        <input
-                          className="sd-input"
-                          type="date"
-                          value={planned}
-                          onChange={(e) => setPlanned(e.target.value)}
                         />
                       </label>
                     </div>

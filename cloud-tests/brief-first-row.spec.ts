@@ -148,6 +148,9 @@ test('empty and single-item panels keep their content and have no reserved colla
   await page.getByRole('button', { name: '收起明日提醒', exact: true }).click();
   await expect(page.getByTestId('today-panel')).toContainText('今日暂无待办事项');
   await expect(page.getByTestId('today-panel').locator('.count')).toHaveText('0');
-  expect((await page.getByTestId('today-panel').boundingBox())!.height).toBeLessThan(240);
+  const emptyHeight = (await page.getByTestId('today-panel').boundingBox())!.height;
+  const singleHeight = (await page.getByTestId('tomorrow-panel').boundingBox())!.height;
+  expect(emptyHeight).toBeLessThan(380);
+  expect(Math.abs(emptyHeight - singleHeight)).toBeLessThanOrEqual(2);
   await assertFirstRow(page, 'tomorrow-panel', 1);
 });

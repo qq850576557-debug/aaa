@@ -1,6 +1,16 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import './brief-row.css';
 const runtimeExpansion = new Map<string, boolean>();
+export function useBriefExpansion(key: string) {
+  const [expanded, setExpanded] = useState(() => runtimeExpansion.get(key) ?? true);
+  const update = (value: boolean | ((previous: boolean) => boolean)) =>
+    setExpanded((previous) => {
+      const next = typeof value === 'function' ? value(previous) : value;
+      runtimeExpansion.set(key, next);
+      return next;
+    });
+  return [expanded, update] as const;
+}
 export function BriefPanel({
   title,
   items,
@@ -25,7 +35,7 @@ export function BriefPanel({
   collapseToFirstRow?: boolean;
 }) {
   const content = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(() => runtimeExpansion.get(testId || title) ?? true);
+  const [expanded, setExpanded] = useBriefExpansion(testId || title);
   useLayoutEffect(() => {
     const grid = content.current;
     if (!grid || !collapseToFirstRow || expanded || !items.length) return;
@@ -84,10 +94,7 @@ export function BriefPanel({
           aria-expanded={expanded}
           onClick={() => {
             if (content.current) content.current.scrollTop = 0;
-            setExpanded((v) => {
-              runtimeExpansion.set(testId || title, !v);
-              return !v;
-            });
+            setExpanded((v) => !v);
           }}
         >
           {expanded ? '收起' : '展开'}

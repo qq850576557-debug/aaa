@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 systemctl is-active --quiet chunmo-staging-api chunmo-staging-web
-curl --fail --silent --show-error --max-time 10 --cacert /etc/pki/chunmo-staging/ca.crt https://localhost:8443/api/health | /usr/bin/python3 -c 'import sys,json; assert json.load(sys.stdin)["ok"] is True'
+EXPECTED_RELEASE=$(cat /opt/chunmo-staging/current/.verified-build)
+[[ $EXPECTED_RELEASE =~ ^[a-f0-9]{40}$ ]]
+EXPECTED_INDEX=$(sha256sum /opt/chunmo-staging/current/dist/index.html | cut -d' ' -f1)
+curl --fail --silent --show-error --max-time 10 --cacert /etc/pki/chunmo-staging/ca.crt https://localhost:8443/api/health | /usr/bin/python3 -c 'import sys,json; r=json.load(sys.stdin); assert r["ok"] is True and r.get("capabilities",{}).get("studioDaily") is True and r.get("release")==sys.argv[1]' "$EXPECTED_RELEASE"
+ACTUAL_INDEX=$(curl --fail --silent --show-error --max-time 10 --cacert /etc/pki/chunmo-staging/ca.crt https://localhost:8443/ | sha256sum | cut -d' ' -f1)
+[[ $ACTUAL_INDEX == "$EXPECTED_INDEX" ]] || { echo 'Frontend differs from selected release.' >&2; exit 1; }
 openssl x509 -checkend 1209600 -noout -in /etc/pki/chunmo-staging/server.crt
 printf 'PASS private HTTPS health and TLS validity.\n'
 if [[ -f /etc/chunmo-staging/public-https.json ]]; then
@@ -11,7 +16,9 @@ if [[ -f /etc/chunmo-staging/public-https.json ]]; then
   if [[ -n ${PUBLIC[2]:-} ]]; then CURL_TRUST=(--cacert "${PUBLIC[2]}" --capath "${PUBLIC[2]%/*}"); fi
   HOST=${PUBLIC[0]#https://}; HOST=${HOST%:15001}
   PORT=443; [[ ${PUBLIC[0]} != *:15001 ]] || PORT=15001
-  curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 10 --resolve "$HOST:$PORT:127.0.0.1" "${PUBLIC[0]}/api/health" | /usr/bin/python3 -c 'import sys,json; assert json.load(sys.stdin)["ok"] is True'
+  curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 10 --resolve "$HOST:$PORT:127.0.0.1" "${PUBLIC[0]}/api/health" | /usr/bin/python3 -c 'import sys,json; r=json.load(sys.stdin); assert r["ok"] is True and r.get("capabilities",{}).get("studioDaily") is True and r.get("release")==sys.argv[1]' "$EXPECTED_RELEASE"
+  ACTUAL_INDEX=$(curl "${CURL_TRUST[@]}" --fail --silent --show-error --max-time 10 --resolve "$HOST:$PORT:127.0.0.1" "${PUBLIC[0]}/" | sha256sum | cut -d' ' -f1)
+  [[ $ACTUAL_INDEX == "$EXPECTED_INDEX" ]] || { echo 'Public frontend differs from selected release.' >&2; exit 1; }
   openssl x509 -checkend 86400 -noout -in "${PUBLIC[1]}"
   printf 'PASS public HTTPS health (24-hour certificate expiry warning threshold).\n'
 fi

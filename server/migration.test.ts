@@ -5,7 +5,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { emptyData, newProject } from '../src/lib/model';
 import { migrate } from './migrate';
-import { assertDatabaseReady } from './database-readiness';
+import { assertDatabaseReady, assertStudioDailyReady } from './database-readiness';
 
 test('010-only deployment reproduces missing record fields/tables and refuses new API until additive upgrade', async () => {
   const raw = process.env.MIGRATION_DATABASE_URL!;
@@ -77,10 +77,25 @@ test('010-only deployment reproduces missing record fields/tables and refuses ne
     await migrate(target.toString());
     await migrate(target.toString());
     await assertDatabaseReady(db);
+    // Dedicated disposable database only: prove 014 is insufficient, and detect trigger damage.
+    await db.query('BEGIN');
+    await db.query("DELETE FROM schema_migration WHERE name='015_studio_daily.sql'");
+    await assert.rejects(assertStudioDailyReady(db), /Studio daily/);
+    await db.query('ROLLBACK');
+    await db.query(
+      'ALTER TABLE studio_daily_submission DISABLE TRIGGER studio_daily_submission_immutable',
+    );
+    try {
+      await assert.rejects(assertStudioDailyReady(db), /Studio daily/);
+    } finally {
+      await db.query(
+        'ALTER TABLE studio_daily_submission ENABLE TRIGGER studio_daily_submission_immutable',
+      );
+    }
     const role = new URL(process.env.DATABASE_URL!).username;
     assert.match(role, /^[a-z_][a-z0-9_]*$/);
     await db.query(
-      `GRANT SELECT ON schema_migration,work_record,legacy_record_link,workspace_history_revision,record_version,cloud_restore_backup,mention_notification TO "${role}"`,
+      `GRANT SELECT ON schema_migration,work_record,legacy_record_link,workspace_history_revision,record_version,cloud_restore_backup,mention_notification,studio_daily,studio_daily_submission TO "${role}"`,
     );
     await db.query(`SET ROLE "${role}"`);
     try {
@@ -96,11 +111,31 @@ test('010-only deployment reproduces missing record fields/tables and refuses ne
     await db.query(`GRANT INSERT ON mention_notification TO "${role}"`);
     await db.query(`GRANT UPDATE(read_at) ON mention_notification TO "${role}"`);
     await db.query(`GRANT USAGE ON SEQUENCE mention_notification_id_seq TO "${role}"`);
+    await db.query(`GRANT INSERT,UPDATE ON studio_daily TO "${role}"`);
+    await db.query(`GRANT INSERT ON studio_daily_submission TO "${role}"`);
+    await db.query(`GRANT SELECT ON cloud_workspace TO "${role}"`);
+    await db.query(`GRANT SELECT,UPDATE ON workspace_state TO "${role}"`);
+    await db.query(`GRANT INSERT ON audit_event TO "${role}"`);
     await db.query(`SET ROLE "${role}"`);
     try {
       await assertDatabaseReady(db);
+      await assert.rejects(
+        db.query('SELECT id FROM cloud_workspace LIMIT 1 FOR UPDATE'),
+        (e: any) => e.code === '42501',
+      );
+      await db.query(
+        "SELECT revision FROM workspace_state WHERE workspace_id='inventory-studio' FOR UPDATE",
+      );
     } finally {
       await db.query('RESET ROLE');
+    }
+    await db.query(`REVOKE INSERT ON studio_daily_submission FROM "${role}"`);
+    await db.query(`SET ROLE "${role}"`);
+    try {
+      await assert.rejects(assertStudioDailyReady(db), /Studio daily/);
+    } finally {
+      await db.query('RESET ROLE');
+      await db.query(`GRANT INSERT ON studio_daily_submission TO "${role}"`);
     }
     console.log('Retained isolated readiness-validation database: ' + name);
   } finally {

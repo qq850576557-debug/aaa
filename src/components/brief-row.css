@@ -1,21 +1,63 @@
-/* Only the desktop workspace's two reminder panels opt in to this behavior. */
-.app-shell .workspace-brief.agenda-brief .brief-panel.brief-first-row {
+/* Desktop reminder structure: extra height belongs only to the content track. */
+.app-shell.homepage .workspace-brief.agenda-brief .brief-panel.brief-first-row {
+  display: grid;
   height: auto !important;
-  grid-template-rows: auto auto auto auto !important;
+  grid-template-rows: 36px 20px minmax(0, 1fr) auto !important;
+  gap: 10px;
+  padding: 16px;
+  align-content: stretch;
 }
-.app-shell .workspace-brief.agenda-brief .brief-first-row .brief-content {
+.app-shell.homepage .workspace-brief.agenda-brief .brief-first-row .brief-heading {
+  margin: 0;
+  min-height: 36px;
+  align-items: center;
+}
+.app-shell.homepage .workspace-brief.agenda-brief .brief-first-row .brief-heading h2 {
+  margin: 0;
+  line-height: 24px;
+}
+.app-shell.homepage .workspace-brief.agenda-brief .brief-first-row .brief-toggle {
+  translate: none !important;
+  transform: none !important;
+  scale: 1 !important;
+  height: 32px;
+  min-height: 32px;
+  line-height: 20px;
+  padding: 6px 10px;
+}
+.app-shell.homepage .workspace-brief.agenda-brief .brief-first-row .brief-date {
+  margin: 0;
+  line-height: 20px;
+}
+.app-shell.homepage .workspace-brief.agenda-brief .brief-first-row .brief-content {
   height: auto !important;
   min-height: 0;
   max-height: none !important;
   overflow: visible !important;
   transition: none;
+  padding: 0;
+  margin: 0;
+  align-content: start;
+  align-items: start;
 }
-.app-shell .workspace-brief.agenda-brief .brief-first-row .brief-content > [hidden] {
+.app-shell.homepage .workspace-brief.agenda-brief .brief-first-row .brief-content > [hidden] {
   display: none !important;
 }
-.app-shell .workspace-brief.agenda-brief .brief-first-row:not(.brief-expanded) {
+.app-shell.homepage .workspace-brief.agenda-brief .brief-first-row .brief-actions {
+  margin: 0;
+  padding-top: 10px;
+  min-height: 42px;
+  align-items: center;
+}
+.app-shell.homepage .workspace-brief.agenda-brief .brief-first-row:not(.brief-expanded) {
   min-height: 0 !important;
 }
-.app-shell .workspace-brief.agenda-brief:has(> .brief-first-row:not(.brief-expanded)) {
+.app-shell.homepage .workspace-brief.agenda-brief {
+  align-items: stretch;
+}
+.app-shell.homepage
+  .workspace-brief.agenda-brief:has(> .brief-first-row.brief-expanded):has(
+    > .brief-first-row:not(.brief-expanded)
+  ) {
   align-items: start;
 }
