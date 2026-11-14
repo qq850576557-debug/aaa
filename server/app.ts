@@ -1,3 +1,4 @@
+import {studioDailyRoutes} from './studio-daily';
 import { photoGeocodeRoutes } from './photo-geocode';
 import { createMiniPhotoGateway } from './miniprogram-photo';
 import { sitePhotoRoutes } from './site-photos';
@@ -188,6 +189,7 @@ export function createApp() {
   });
   purchaseRoutes(app);
   recordRoutes(app);
+  studioDailyRoutes(app);
   sitePhotoRoutes(app);
   photoGeocodeRoutes(app);
   mentionRoutes(app);

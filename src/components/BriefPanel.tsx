@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
+const runtimeExpansion = new Map<string, boolean>();
 export function BriefPanel({
   title,
   items,
@@ -9,7 +10,6 @@ export function BriefPanel({
   date,
   id,
   caption,
-  previewLimit = 3,
 }: {
   title: string;
   items: ReactNode[];
@@ -23,7 +23,7 @@ export function BriefPanel({
   previewLimit?: number;
 }) {
   const content = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => runtimeExpansion.get(testId || title) ?? true);
   return (
     <section
       className={`panel workbench-card brief-panel ${expanded ? 'brief-expanded' : ''} ${className}`}
@@ -33,16 +33,18 @@ export function BriefPanel({
       <header className="brief-heading">
         <h2>
           {title}
-          {items.length > 0 && <span className="count"> {items.length}</span>}
+          <span className="count"> {items.length}</span>
         </h2>
         <button
           className="brief-toggle"
           aria-label={`${expanded ? '收起' : '展开'}${title}`}
           aria-expanded={expanded}
-          disabled={!items.length}
           onClick={() => {
             if (content.current) content.current.scrollTop = 0;
-            setExpanded((v) => !v);
+            setExpanded((v) => {
+              runtimeExpansion.set(testId || title, !v);
+              return !v;
+            });
           }}
         >
           {expanded ? '收起' : '展开'}
@@ -51,23 +53,14 @@ export function BriefPanel({
       {(date || caption) && (
         <div className="brief-date">{date ? <time dateTime={date}>{date}</time> : caption}</div>
       )}
-      <div className="brief-content" ref={content}>
-        {items.length ? (
-          expanded ? (
-            items
-          ) : (
-            items.slice(0, previewLimit)
-          )
-        ) : (
-          <p className="brief-empty">{emptyText}</p>
-        )}
-      </div>
-      <footer className="brief-actions">
-        {actions}
-        {items.length > previewLimit && !expanded && (
-          <small>另有 {items.length - previewLimit} 条</small>
-        )}
-      </footer>
+      {expanded && (
+        <>
+          <div className="brief-content" ref={content}>
+            {items.length ? items : <p className="brief-empty">{emptyText}</p>}
+          </div>
+          <footer className="brief-actions">{actions}</footer>
+        </>
+      )}
     </section>
   );
 }

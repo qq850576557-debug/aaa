@@ -129,13 +129,13 @@ export async function grants(c: Deployment) {
     await db.query(`GRANT SELECT,INSERT,UPDATE,DELETE ON assessment_recorder TO ${app}`);
     await db.query(`GRANT SELECT,INSERT,UPDATE ON daily_assessment TO ${app}`);
     await db.query(
-      `GRANT SELECT,INSERT ON assessment_history,assessment_submission,material_event,material_history,purchase_action,transfer_submission,record_history,record_submission,workspace_history_revision,cloud_restore_backup,legacy_migration_batch,legacy_record_link TO ${app}`,
+      `GRANT SELECT,INSERT ON studio_daily_submission,assessment_history,assessment_submission,material_event,material_history,purchase_action,transfer_submission,record_history,record_submission,workspace_history_revision,cloud_restore_backup,legacy_migration_batch,legacy_record_link TO ${app}`,
     );
     await db.query(
       `GRANT SELECT,INSERT,UPDATE,DELETE ON material_operator,department,account_note,account_avatar,card_avatar TO ${app}`,
     );
     await db.query(
-      `GRANT SELECT,INSERT,UPDATE ON material_item,material_project_meta,material_context,material_alert,member_card,purchase_record,material_transfer,work_record TO ${app}`,
+      `GRANT SELECT,INSERT,UPDATE ON studio_daily,material_item,material_project_meta,material_context,material_alert,member_card,purchase_record,material_transfer,work_record TO ${app}`,
     );
     await db.query(
       `GRANT USAGE,SELECT ON SEQUENCE record_history_id_seq,legacy_record_link_id_seq TO ${app}`,

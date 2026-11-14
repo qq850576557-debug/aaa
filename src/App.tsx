@@ -1,3 +1,4 @@
+import {StudioDaily} from './components/StudioDaily';
 import { MOBILE_QUERY, mobileRequested } from './mobile/mode';
 import { useShanghaiDay } from './mobile/useShanghaiDay';
 import { MobileAssistant } from './mobile/MobileAssistant';
@@ -1439,6 +1440,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                     </div>
                   )}
                   <OngoingProjects projects={projects} date={now} onSelect={selectProject} />
+                  <StudioDaily cloud={isCloud} />
                   {dailyPanels()}
                 </>
               ) : (

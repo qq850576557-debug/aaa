@@ -1,0 +1,82 @@
+.studio-daily {
+  margin: 18px 0;
+}
+.studio-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(240px, 3fr);
+  gap: 14px;
+}
+.studio-rule {
+  padding: 12px;
+  border: 1px solid #dce5dc;
+  border-radius: 10px;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.studio-rule small {
+  display: block;
+  color: #64756a;
+}
+.studio-editor {
+  border: 0;
+  min-width: 0;
+}
+.studio-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 70px;
+}
+.studio-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 10px 0;
+}
+.studio-editor label {
+  margin-right: 10px;
+}
+.studio-description {
+  white-space: pre-wrap;
+}
+.agenda-brief .agenda-item[data-purchase-status],
+.app-shell .agenda-brief .agenda-item[data-purchase-status='已完成'] {
+  background: var(--project-surface, #f3f5f2) !important;
+  border-color: var(--project-border, #dce5dc) !important;
+}
+.app-shell .agenda-brief .agenda-item-main {
+  background: transparent !important;
+}
+.agenda-brief .agenda-item.done {
+  opacity: 0.72;
+}
+.agenda-brief .brief-content {
+  max-height: none !important;
+  overflow: visible !important;
+  flex-wrap: wrap;
+}
+.agenda-brief .brief-expanded .brief-content {
+  max-height: none !important;
+}
+@media (max-width: 1000px) {
+  .studio-columns {
+    grid-template-columns: 1fr;
+  }
+}
+.app-shell .workspace-brief.agenda-brief .agenda-item[data-purchase-status] {
+  background: var(--project-surface, #f3f5f2) !important;
+  border-color: var(--project-border, #dce5dc) !important;
+}
+.app-shell .workspace-brief.agenda-brief .agenda-item[data-purchase-status] .agenda-item-main {
+  background: var(--project-surface, #f3f5f2) !important;
+}
+.app-shell .workspace-brief.agenda-brief .brief-content {
+  max-height: none !important;
+  overflow: visible !important;
+  flex-wrap: wrap !important;
+}
+.app-shell .workspace-brief.agenda-brief .agenda-item[data-agenda-project=''] {
+  background: #f3f5f2 !important;
+  border-color: #dce5dc !important;
+}
+.studio-columns{align-items:start}.studio-columns .brief-panel{min-height:0}.studio-columns .brief-content{display:block;max-height:none}.studio-columns>section>header{display:flex;align-items:center;flex-wrap:wrap;gap:10px}.studio-columns>section>header h2{margin:0;font-size:17px}
