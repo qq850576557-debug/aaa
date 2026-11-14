@@ -1,0 +1,21 @@
+/* Only the desktop workspace's two reminder panels opt in to this behavior. */
+.app-shell .workspace-brief.agenda-brief .brief-panel.brief-first-row {
+  height: auto !important;
+  grid-template-rows: auto auto auto auto !important;
+}
+.app-shell .workspace-brief.agenda-brief .brief-first-row .brief-content {
+  height: auto !important;
+  min-height: 0;
+  max-height: none !important;
+  overflow: visible !important;
+  transition: none;
+}
+.app-shell .workspace-brief.agenda-brief .brief-first-row .brief-content > [hidden] {
+  display: none !important;
+}
+.app-shell .workspace-brief.agenda-brief .brief-first-row:not(.brief-expanded) {
+  min-height: 0 !important;
+}
+.app-shell .workspace-brief.agenda-brief:has(> .brief-first-row:not(.brief-expanded)) {
+  align-items: start;
+}

@@ -1,4 +1,4 @@
-import {StudioDaily} from './components/StudioDaily';
+import { StudioDaily } from './components/StudioDaily';
 import { MOBILE_QUERY, mobileRequested } from './mobile/mode';
 import { useShanghaiDay } from './mobile/useShanghaiDay';
 import { MobileAssistant } from './mobile/MobileAssistant';
@@ -876,7 +876,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           key={'today:' + (p?.id || 'all')}
           title="今日事项"
           testId="today-panel"
-          previewLimit={allSitesOverview ? 4 : 3}
+          collapseToFirstRow
           id="project-today"
           className="today-panel"
           emptyText={
@@ -905,7 +905,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           key={'tomorrow:' + (p?.id || 'all')}
           title="明日提醒"
           testId="tomorrow-panel"
-          previewLimit={allSitesOverview ? 4 : 3}
+          collapseToFirstRow
           id="project-tomorrow"
           className="tomorrow-panel"
           emptyText={
