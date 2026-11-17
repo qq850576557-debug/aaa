@@ -1,13 +1,10 @@
 /* Desktop reminder theme; old studio editor styles were removed in V3.1. */
-.app-shell .workspace-brief.agenda-brief .agenda-item[data-purchase-status] {
+.app-shell.homepage .workspace-brief.agenda-brief .agenda-item {
   background: var(--project-surface, #f3f5f2) !important;
   border-color: var(--project-border, #dce5dc) !important;
 }
-.app-shell .workspace-brief.agenda-brief .agenda-item-main {
+.app-shell.homepage .workspace-brief.agenda-brief .agenda-item-main {
   background: transparent !important;
-}
-.app-shell .workspace-brief.agenda-brief .agenda-item[data-purchase-status] .agenda-item-main {
-  background: var(--project-surface, #f3f5f2) !important;
 }
 .app-shell .workspace-brief.agenda-brief .agenda-item.done {
   opacity: 0.72;

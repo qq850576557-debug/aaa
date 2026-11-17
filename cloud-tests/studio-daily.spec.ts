@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { fixtureAccounts, fixtureQuery } from '../server/test-fixtures';
 import { pool, privatePool } from '../server/db';
 import { mkdir } from 'node:fs/promises';
+import { studioDay, studioWeek } from '../src/lib/studio-daily';
+import { plus } from '../src/lib/model';
 test.afterAll(async () => {
   await pool.end();
   await privatePool.end();
@@ -11,6 +13,8 @@ test('desktop founder manages simple requirements and rotation; staff can only r
   browser,
 }) => {
   const f = await fixtureAccounts(2);
+  const day = studioDay(),
+    completed = plus(day, -1);
   await fixtureQuery('UPDATE account SET display_name=$1 WHERE id=$2', [
     '测试员工 A',
     f.employeeId,
@@ -67,22 +71,24 @@ test('desktop founder manages simple requirements and rotation; staff can only r
   await modal.getByLabel('测试员工 A', { exact: true }).check();
   await modal.getByLabel('测试员工 B', { exact: true }).check();
   await modal.getByLabel('轮换周期', { exact: true }).selectOption('3');
-  await modal.getByLabel('起始日期', { exact: true }).fill('2026-11-16');
-  await expect(modal.locator('.sd-preview')).toContainText('2026-11-19');
+  await modal.getByLabel('起始日期', { exact: true }).fill(day);
+  await expect(modal.locator('.sd-preview')).toContainText(plus(day, 3));
   await modal.screenshot({ path: dir + '/duty-manager.png' });
   await modal.getByRole('button', { name: '确认预览并保存', exact: true }).click();
   await expect(modal).toHaveCount(0);
   await expect(page.locator('.sd-duty')).toContainText('每3天轮换');
   await page.getByRole('button', { name: '编辑值日', exact: true }).click();
   await modal.getByLabel('本次操作', { exact: true }).selectOption('complete');
-  await modal.getByLabel('实际完成日期', { exact: true }).fill('2026-11-15');
-  await expect(modal.locator('.sd-preview')).toContainText('2026-11-18');
+  await modal.getByLabel('实际完成日期', { exact: true }).fill(completed);
+  await expect(modal.locator('.sd-preview')).toContainText(plus(completed, 3));
   await modal.getByRole('button', { name: '确认预览并保存', exact: true }).click();
   await expect(modal).toHaveCount(0);
   await page.screenshot({ path: dir + '/home.png', fullPage: true });
   await page.getByRole('button', { name: '查看排班', exact: true }).click();
   const schedule = page.getByRole('dialog', { name: '值日排班', exact: true });
-  await expect(schedule).toContainText('2026-11-15 · 已完成');
+  if (completed < studioWeek(day)[0])
+    await schedule.getByRole('button', { name: '上周', exact: true }).click();
+  await expect(schedule).toContainText(completed + ' · 已完成');
   await schedule.screenshot({ path: dir + '/schedule.png' });
   await page.keyboard.press('Escape');
   await expect(schedule).toHaveCount(0);

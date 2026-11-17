@@ -178,7 +178,7 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
   }
   if (!cloud) return <section className="panel">工作室日常需登录云端账号后使用。</section>;
   const active = (state?.value.rules || []).filter((r) => ruleActive(r, state!.day));
-  const next = rotation ? rotationPreview(rotation, 2) : [];
+  const next = rotation ? rotationPreview(rotation, 3) : [];
   const week = state ? studioWeek(plus(state.day, weekOffset * 7)) : [];
   return (
     <section className="studio-ui sd-section">
@@ -528,7 +528,12 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
                         ),
                       ),
                     )
-                      .filter((p) => p.planned >= week[0] && p.planned <= week[6])
+                      .filter(
+                        (p) =>
+                          p.planned >= week[0] &&
+                          p.planned <= week[6] &&
+                          !next.some((n) => n.person === p.person && n.planned === p.planned),
+                      )
                       .map((p, i) => (
                         <div className="sd-schedule-row" key={i}>
                           <strong>{name(p.person)}</strong>
@@ -536,18 +541,16 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
                           <span>{p.current ? '当前轮次' : '计划'}</span>
                         </div>
                       ))}
-                    {(next[0].planned < week[0] || next[0].planned > week[6]) && (
-                      <>
-                        <h3>当前轮次</h3>
-                        <p>
-                          {name(next[0].person)} · {next[0].planned}（计划）
-                        </p>
-                      </>
-                    )}
-                    <h3>近期下一轮</h3>
-                    <p>
-                      {name(next[1].person)} · {next[1].planned}（计划）
-                    </p>
+                    <section className="sd-upcoming" aria-label="近期三轮值日">
+                      <h3>近期轮值</h3>
+                      {next.map((p, i) => (
+                        <div className="sd-schedule-row" key={i}>
+                          <strong>{name(p.person)}</strong>
+                          <time dateTime={p.planned}>{p.planned}</time>
+                          <span>{['当前轮次', '下一轮', '下下轮'][i]}</span>
+                        </div>
+                      ))}
+                    </section>
                   </>
                 ) : (
                   week.map((d) => (

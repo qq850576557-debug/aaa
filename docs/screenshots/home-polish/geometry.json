@@ -1,0 +1,54 @@
+[
+  {
+    "width": 1280,
+    "top": 0,
+    "bottom": 0,
+    "overflow": false,
+    "previewDelta": 0,
+    "scheduleDelta": 0,
+    "cardColors": [
+      "rgb(230, 247, 237)",
+      "rgb(230, 238, 247)",
+      "rgb(247, 239, 230)"
+    ]
+  },
+  {
+    "width": 1440,
+    "top": 0,
+    "bottom": 0,
+    "overflow": false,
+    "previewDelta": 0,
+    "scheduleDelta": 0,
+    "cardColors": [
+      "rgb(230, 247, 237)",
+      "rgb(230, 238, 247)",
+      "rgb(247, 239, 230)"
+    ]
+  },
+  {
+    "width": 1920,
+    "top": 0,
+    "bottom": 0,
+    "overflow": false,
+    "previewDelta": 0,
+    "scheduleDelta": 0,
+    "cardColors": [
+      "rgb(230, 247, 237)",
+      "rgb(230, 238, 247)",
+      "rgb(247, 239, 230)"
+    ]
+  },
+  {
+    "width": 2560,
+    "top": 0,
+    "bottom": 0,
+    "overflow": false,
+    "previewDelta": 0,
+    "scheduleDelta": 0,
+    "cardColors": [
+      "rgb(230, 247, 237)",
+      "rgb(230, 238, 247)",
+      "rgb(247, 239, 230)"
+    ]
+  }
+]
