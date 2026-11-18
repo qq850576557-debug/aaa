@@ -1466,7 +1466,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                     </div>
                   )}
                   <OngoingProjects projects={projects} date={now} onSelect={selectProject} />
-                  <StudioDaily cloud={isCloud} />
+                  <StudioDaily cloud={isCloud} compact={desktopV1} />
                   {dailyPanels()}
                 </>
               ) : (

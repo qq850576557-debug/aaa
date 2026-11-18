@@ -179,12 +179,13 @@
   background: transparent;
   box-shadow: none;
 }
-.ui-v1.app-shell .ui-v1-overview-toolbar > div:first-child {
+.ui-v1.app-shell .workspace-content > .ui-v1-overview-toolbar > div:first-child {
   display: block;
   min-width: 0;
 }
 .ui-v1.app-shell .ui-v1-overview-toolbar .heading-actions {
   display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
   gap: 6px;
   margin: 0;
@@ -305,6 +306,9 @@
   min-height: 37px;
   padding-top: 4px;
 }
+.ui-v1.app-shell[data-view='overview'] .sd-card-foot[data-empty] {
+  border-top-color: transparent;
+}
 
 :root[data-desktop-ui='v1'] .personal-card-dialog .member-card-content h3,
 :root[data-desktop-ui='v1'] .personal-card-dialog .member-card-english,
@@ -386,6 +390,7 @@
   border-color: #ffffff94 !important;
 }
 .ui-v1.app-shell.homepage .workspace-brief.agenda-brief.overview-agenda .agenda-item-main {
+  grid-template-rows: auto auto;
   padding: 0;
   gap: 2px;
 }
@@ -429,6 +434,11 @@
   color: var(--project-ink, var(--cm-muted));
   white-space: nowrap;
 }
+.ui-v1.app-shell.homepage .workspace-brief.agenda-brief.overview-agenda .agenda-item-actions {
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 0;
+}
 .ui-v1.app-shell.homepage
   .workspace-brief.agenda-brief.overview-agenda
   .agenda-item-actions
@@ -438,12 +448,12 @@
   border-radius: var(--cm-pill);
   font-size: var(--cm-small);
 }
-@container (min-width: 500px) {
+@container (min-width: 536px) {
   .ui-v1.app-shell.homepage .workspace-brief.agenda-brief.overview-agenda .brief-content {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
-@container (max-width: 290px) {
+@container (max-width: 330px) {
   .ui-v1.app-shell.homepage .workspace-brief.agenda-brief.overview-agenda .brief-content {
     grid-template-columns: minmax(0, 1fr);
   }

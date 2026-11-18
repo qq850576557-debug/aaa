@@ -19,7 +19,7 @@ type Result = {
   owner: boolean;
   day: string;
 };
-export function StudioDaily({ cloud }: { cloud: boolean }) {
+export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compact?: boolean }) {
   const [rulesExpanded, setRulesExpanded] = useBriefExpansion('studio-rules');
   const [state, setState] = useState<Result | null>(null),
     [mode, setMode] = useState(''),
@@ -269,15 +269,18 @@ export function StudioDaily({ cloud }: { cloud: boolean }) {
               </>
             )}
           </div>
-          <footer className="sd-card-foot">
+          <footer
+            className="sd-card-foot"
+            data-empty={compact && rotation && !rotation.history.length ? '' : undefined}
+          >
             {rotation?.history.length ? (
               <small>
                 最近完成：{name(rotation.history.at(-1)!.person)} ·{' '}
                 {effectiveActual(rotation, rotation.history.at(-1)!)}
               </small>
-            ) : (
+            ) : !compact || !rotation ? (
               <small>{rotation ? `每${rotation.interval}天一人` : '尚未开始轮换'}</small>
-            )}
+            ) : null}
           </footer>
         </section>
       </div>

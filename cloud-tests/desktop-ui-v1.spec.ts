@@ -158,6 +158,20 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   const past = page.getByTestId('today-panel').locator('.agenda-item-actions time').first();
   await expect(past).toBeVisible();
   await expect(past).toHaveText(plus(studioDay(), -1));
+  const alignment = await past.evaluate((date) => {
+    const status = date.previousElementSibling!.getBoundingClientRect();
+    const due = date.getBoundingClientRect();
+    const today = date.closest('.agenda-item')!.getBoundingClientRect();
+    const tomorrow = document
+      .querySelector('[data-testid=tomorrow-panel] .agenda-item')!
+      .getBoundingClientRect();
+    return Math.max(
+      Math.abs((status.top + status.bottom - due.top - due.bottom) / 2),
+      Math.abs(today.height - tomorrow.height),
+      Math.abs(today.top - tomorrow.top),
+    );
+  });
+  expect(alignment).toBeLessThanOrEqual(2);
   await page.screenshot({ path: join(output, 'home.png'), fullPage: true });
 
   const open = page.getByRole('button', { name: '编辑值日', exact: true });
@@ -290,6 +304,15 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   await page.getByRole('button', { name: '提醒中心' }).click();
   await expect(page).toHaveURL(/ui=legacy/);
   await expect(page.locator('.app-shell')).not.toHaveClass(/ui-v1/);
+
+  await page.setViewportSize({ width: 900, height: 1000 });
+  await page.goto('/');
+  await expect(page.locator('.app-shell')).toHaveClass(/ui-v1/);
+  const compact = await page.locator('.overview-stat').evaluateAll((cards) => ({
+    rows: new Set(cards.map((card) => card.getBoundingClientRect().top)).size,
+    overflow: document.documentElement.scrollWidth > innerWidth,
+  }));
+  expect(compact).toEqual({ rows: 1, overflow: false });
 
   expect(errors).toEqual([]);
   await writeFile(
