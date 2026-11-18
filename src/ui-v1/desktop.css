@@ -482,6 +482,15 @@
   .ui-v1.app-shell main.workspace-content {
     padding-top: 44px;
   }
+  .ui-v1.app-shell .sidebar-save-status > button {
+    min-width: 0;
+    padding-inline: 4px;
+    overflow-wrap: anywhere;
+  }
+  .ui-v1.app-shell .sidebar-save-status .save-confirmed-time {
+    min-width: 0;
+    white-space: normal;
+  }
 }
 @media (max-width: 900px) {
   .ui-v1.app-shell {

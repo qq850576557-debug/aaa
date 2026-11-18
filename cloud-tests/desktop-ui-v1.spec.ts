@@ -286,6 +286,7 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   });
   await open.click();
   await expect(dialog).toHaveCSS('backdrop-filter', 'blur(18px) saturate(1.05)');
+  await expect(page.locator('.main-shell')).toHaveCSS('filter', /blur\(7px\)/);
   await expect(layer).toHaveCount(0);
   await page.screenshot({ path: join(output, 'frosted-fallback.png') });
   await page.keyboard.press('Escape');
@@ -296,6 +297,7 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   await open.click();
   await expect(dialog).toHaveCSS('background-color', 'rgb(251, 250, 244)');
   await expect(dialog).toHaveCSS('backdrop-filter', 'none');
+  await expect(page.locator('.main-shell')).toHaveCSS('filter', 'none');
   await page.keyboard.press('Escape');
 
   await page.goto('/?ui=legacy');
@@ -313,6 +315,10 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
     overflow: document.documentElement.scrollWidth > innerWidth,
   }));
   expect(compact).toEqual({ rows: 1, overflow: false });
+  const clipped = await page
+    .locator('.sidebar-save-status > button')
+    .evaluate((button) => button.scrollWidth > button.clientWidth);
+  expect(clipped).toBe(false);
 
   expect(errors).toEqual([]);
   await writeFile(

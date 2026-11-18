@@ -17,7 +17,12 @@
 }
 :root[data-desktop-ui='v1'] .modal.cm-glass::backdrop {
   background: rgb(60 79 68 / 17%);
-  backdrop-filter: blur(7px) brightness(0.94) saturate(0.91);
+}
+/* Firefox does not paint backdrop-filter on the native dialog backdrop. */
+:root[data-desktop-ui='v1']:has(.modal.cm-glass:modal:not([data-cm-glass]))
+  .app-shell.ui-v1
+  > :is(.sidebar, .main-shell) {
+  filter: blur(7px) brightness(0.94) saturate(0.91);
 }
 :root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='liquid'] {
   background: transparent;
@@ -118,6 +123,11 @@
   background: rgb(60 79 68 / 17%);
 }
 @media (prefers-reduced-transparency: reduce) {
+  :root[data-desktop-ui='v1']:has(.modal.cm-glass:modal:not([data-cm-glass]))
+    .app-shell.ui-v1
+    > :is(.sidebar, .main-shell) {
+    filter: none;
+  }
   :root[data-desktop-ui='v1'] .modal.cm-glass {
     backdrop-filter: none;
     background: #fbfaf4;
