@@ -1,4 +1,5 @@
 import { inCloud } from '../lib/cloud';
+import { desktopV1Enabled } from '../ui-v1/mode';
 import { PurchaseDateHistory } from './PurchaseDateHistory';
 import { useEditorJournal } from '../lib/useEditorJournal';
 import { useId, useRef, useState, useEffect, type FormEvent, type ReactNode } from 'react';
@@ -398,7 +399,9 @@ export function Editor({
       <Modal
         inline={embedded}
         title={`${isNew ? '新建' : '编辑'}${labels[kind]}`}
-        subtitle={kind === 'trade' ? undefined : '每一处细节，都让项目更有序。'}
+        subtitle={
+          kind === 'trade' || desktopV1Enabled() ? undefined : '每一处细节，都让项目更有序。'
+        }
         onClose={close}
         anchor={edit.anchor}
         wide={kind !== 'trade' && kind !== 'project'}

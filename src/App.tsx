@@ -1,5 +1,6 @@
 import { StudioDaily } from './components/StudioDaily';
 import { MOBILE_QUERY, mobileRequested } from './mobile/mode';
+import { desktopV1Enabled } from './ui-v1/mode';
 import { useShanghaiDay } from './mobile/useShanghaiDay';
 import { MobileAssistant } from './mobile/MobileAssistant';
 import { PeoplePanel } from './components/PeoplePanel';
@@ -305,6 +306,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     explicitProject ??
     (!mobile && (view === 'overview' || view === 'project-detail') ? undefined : projects[0]);
   const allSitesOverview = view === 'overview';
+  const desktopV1 = !mobile && desktopV1Enabled();
   useLayoutEffect(() => {
     if (ready && view === 'project-detail' && !explicitProject)
       navigate({ view: 'overview', projectId: '' }, { replace: true, guard: false });
@@ -786,7 +788,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   function go(v: View) {
     navigate({ view: v, projectId: '' });
   }
-  function agendaItem(item: AgendaEntry) {
+  function agendaItem(item: AgendaEntry, panelDate?: string) {
     if (
       item.kind === 'legacy' &&
       ['overview', 'project-detail', 'schedule', 'completed'].includes(view)
@@ -796,6 +798,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           key={'legacy:' + item.id}
           item={item}
           compact
+          panelDate={panelDate}
           projectName={
             data.projects.find((project) => project.id === item.projectId)?.name ?? '历史项目'
           }
@@ -821,6 +824,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         key={item.kind + ':' + item.id}
         item={item}
         compact={['overview', 'project-detail', 'schedule', 'completed'].includes(view)}
+        panelDate={panelDate}
         projectInFooter={view === 'reminders' && item.kind === 'record'}
         projectName={
           data.projects.find((project) => project.id === item.projectId)?.name || '历史项目'
@@ -887,7 +891,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 : '今日暂无待办事项'
           }
           date={agenda.date}
-          items={agenda.today.map(agendaItem)}
+          items={agenda.today.map((item) =>
+            agendaItem(item, desktopV1 && allSitesOverview ? agenda.date : undefined),
+          )}
           actions={
             <>
               <button className="text-btn" onClick={() => noteEditor()}>
@@ -916,7 +922,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 : '明日暂无安排'
           }
           date={agenda.tomorrowDate}
-          items={agenda.tomorrow.map(agendaItem)}
+          items={agenda.tomorrow.map((item) =>
+            agendaItem(item, desktopV1 && allSitesOverview ? agenda.tomorrowDate : undefined),
+          )}
           actions={
             <button className="text-btn" onClick={() => noteEditor(undefined, agenda.tomorrowDate)}>
               <Plus size={14} />
@@ -976,7 +984,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             </h2>
             <span>{records.length} 项 · 未来15天及逾期</span>
           </div>
-          <div className="reminder-record-grid">{records.map(agendaItem)}</div>
+          <div className="reminder-record-grid">{records.map((item) => agendaItem(item))}</div>
           {!records.length && (
             <Empty small title="暂无待处理事项" text="显示未来15天及逾期的未完成事项。" />
           )}
@@ -1028,7 +1036,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             <div className="section-heading">
               <h2>其他业务提醒 · 历史记录待分类</h2>
             </div>
-            {legacy.map(agendaItem)}
+            {legacy.map((item) => agendaItem(item))}
           </section>
         )}
       </div>
@@ -1039,7 +1047,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       projects={data.projects}
       scope={cloudUser?.workspaceId || 'local'}
       projectId={p?.id}
-      className={`app-shell${mobile ? ' mobile-mode' : view === 'overview' || view === 'project-detail' ? ' homepage' : ''}`}
+      className={`app-shell${mobile ? ' mobile-mode' : view === 'overview' || view === 'project-detail' ? ' homepage' : ''}${desktopV1 ? ' ui-v1' : ''}`}
       data-view={view}
     >
       {mobile ? (
@@ -1097,10 +1105,15 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 go('overview');
               }}
             >
-              {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉空间设计 Logo" />}
+              {BRAND_LOGO_SRC && (
+                <img
+                  src={desktopV1 ? '/brand/source/chunmo-original-circle.png' : BRAND_LOGO_SRC}
+                  alt="春茉空间设计 Logo"
+                />
+              )}
               <div>
                 <strong className="brand-name">{BRAND_NAME}</strong>
-                <span className="brand-slogan">{BRAND_SLOGAN}</span>
+                {!desktopV1 && <span className="brand-slogan">{BRAND_SLOGAN}</span>}
               </div>
             </a>
             <nav>
@@ -1304,11 +1317,13 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 </div>
               )}
               <div
-                className={`page-heading workbench-page-heading ${view === 'records' ? 'board-page-heading' : ''} ${compactPage ? 'compact-page-heading' : ''}`}
+                className={`page-heading workbench-page-heading ${view === 'records' ? 'board-page-heading' : ''} ${compactPage ? 'compact-page-heading' : ''}${desktopV1 && allSitesOverview ? ' ui-v1-overview-toolbar' : ''}`}
               >
                 <div>
-                  {!compactPage && <div className="eyebrow">RENOVATION WORKSPACE</div>}
-                  <h1>
+                  {!compactPage && !desktopV1 && (
+                    <div className="eyebrow">RENOVATION WORKSPACE</div>
+                  )}
+                  <h1 className={desktopV1 && allSitesOverview ? 'sr-only' : undefined}>
                     {view === 'records'
                       ? '事项管理'
                       : view === 'overview' || view === 'project-detail'
@@ -1334,7 +1349,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                         }))}
                       />
                     )
-                  ) : (
+                  ) : !desktopV1 ? (
                     <p>
                       {view === 'records'
                         ? '围绕项目，记录节点、现场进展与每一次跟进。'
@@ -1344,6 +1359,17 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                             ? '统一管理人员档案与项目分配。'
                             : '及时关注待办与风险，让计划保持在轨道上。'}
                     </p>
+                  ) : null}
+                  {desktopV1 && allSitesOverview && (
+                    <CompactStats
+                      layout="cards"
+                      scope="全部工地统计"
+                      items={workspaceMetrics.map((s) => ({
+                        ...s,
+                        attention: s.label === '已逾期采购' && s.value > 0,
+                        onClick: () => selectMetric(s),
+                      }))}
+                    />
                   )}
                 </div>
                 <div className="heading-actions">
@@ -1376,7 +1402,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                   )}
                 </div>
               </div>
-              {allSitesOverview && (
+              {allSitesOverview && !desktopV1 && (
                 <CompactStats
                   layout="cards"
                   scope="全部工地统计"
@@ -1643,11 +1669,13 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                   )}
                 </>
               )}
-              <footer className="page-footer">
-                <span>SJD · 春茉空间设计</span>
+              {(!desktopV1 || !allSitesOverview) && (
+                <footer className="page-footer">
+                  <span>SJD · 春茉空间设计</span>
 
-                <span>{isCloud ? '本地优先 · 云端自动同步' : '本地存储 · 不自动同步'}</span>
-              </footer>
+                  <span>{isCloud ? '本地优先 · 云端自动同步' : '本地存储 · 不自动同步'}</span>
+                </footer>
+              )}
             </main>
           </div>
         </>
@@ -1849,11 +1877,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             <h3>当日事项与提醒</h3>
             {agenda.items
               .filter((item) => item.date === day && item.kind !== 'purchase')
-              .map(agendaItem)}
+              .map((item) => agendaItem(item))}
             <h3>采购截止</h3>
             {agenda.items
               .filter((item) => item.date === day && item.kind === 'purchase')
-              .map(agendaItem)}
+              .map((item) => agendaItem(item))}
           </div>
           <footer className="modal-foot">
             <button onClick={() => setDay(null)}>关闭</button>

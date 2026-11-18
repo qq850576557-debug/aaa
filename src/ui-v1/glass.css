@@ -1,0 +1,129 @@
+:root[data-desktop-ui='v1'] .modal.cm-glass {
+  --cm-glass-paper: rgb(254 252 244 / 86%);
+  --cm-glass-control: rgb(255 254 250 / 94%);
+  border-radius: var(--cm-radius-panel);
+  border-color: rgb(255 255 255 / 65%);
+  background: #fbfaf4;
+  box-shadow:
+    0 18px 46px rgb(25 49 40 / 20%),
+    0 3px 12px rgb(25 49 40 / 8%);
+  color: var(--cm-ink);
+}
+@supports (backdrop-filter: blur(1px)) {
+  :root[data-desktop-ui='v1'] .modal.cm-glass {
+    background: var(--cm-glass-paper);
+    backdrop-filter: blur(18px) saturate(1.05);
+  }
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass::backdrop {
+  background: rgb(60 79 68 / 17%);
+  backdrop-filter: blur(7px) brightness(0.94) saturate(0.91);
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='liquid'] {
+  background: transparent;
+  border-color: transparent;
+  backdrop-filter: none;
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='liquid']::backdrop {
+  background: transparent;
+  backdrop-filter: none;
+}
+:root[data-desktop-ui='v1']
+  .modal.cm-glass
+  :is(input:not([type='checkbox']):not([type='radio']), select, textarea) {
+  background-color: var(--cm-glass-control);
+  color: var(--cm-ink);
+  border-color: #244e4238;
+  font-size: var(--cm-text);
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass :is(input, select, textarea):focus-visible {
+  outline-color: var(--cm-green);
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass .modal-head {
+  background: rgb(254 252 244 / 62%);
+  border-bottom-color: transparent;
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass .modal-head h2 {
+  color: var(--cm-ink);
+  font-size: var(--cm-section);
+  line-height: var(--cm-heading-line);
+  font-weight: var(--cm-semibold);
+  letter-spacing: -0.025em;
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass .modal-head p {
+  color: var(--cm-muted);
+  font-size: var(--cm-caption);
+}
+:root[data-desktop-ui='v1']
+  .modal.cm-glass
+  :is(.modal-foot .primary, button[type='submit'].primary) {
+  background: var(--cm-green) !important;
+  color: white !important;
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass :is(.modal-foot button, .modal-head .icon-btn) {
+  border-radius: var(--cm-pill);
+}
+.cm-glass-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 79;
+  pointer-events: none;
+  --cm-glass-scene-blur: 7px;
+}
+.cm-glass-layer[data-kind='blocking'] {
+  z-index: 150;
+}
+.cm-glass-layer > svg {
+  position: absolute;
+  pointer-events: none;
+}
+.cm-glass-optic {
+  position: absolute;
+  left: var(--cm-glass-x);
+  top: var(--cm-glass-y);
+  width: var(--cm-glass-width);
+  height: var(--cm-glass-height);
+  border-radius: var(--cm-glass-radius);
+  backdrop-filter: var(--cm-glass-filter);
+}
+.cm-glass-optic > :is(i, b) {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.cm-glass-optic > i {
+  background: var(--cm-glass-light) center / 100% 100% no-repeat;
+  mix-blend-mode: soft-light;
+}
+.cm-glass-optic > b {
+  background: rgb(254 252 244 / var(--cm-glass-opacity));
+  mask: var(--cm-glass-tint) center / 100% 100% no-repeat;
+}
+.cm-glass-scene,
+.cm-glass-scene::after,
+.cm-glass-copy {
+  position: absolute;
+  inset: 0;
+}
+.cm-glass-scene {
+  clip-path: var(--cm-glass-aperture);
+}
+.cm-glass-copy {
+  overflow: hidden;
+  background: var(--cm-bg);
+  filter: blur(var(--cm-glass-scene-blur)) brightness(0.94) saturate(0.91);
+}
+.cm-glass-scene::after {
+  content: '';
+  background: rgb(60 79 68 / 17%);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-desktop-ui='v1'] .modal.cm-glass {
+    backdrop-filter: none;
+    background: #fbfaf4;
+  }
+  :root[data-desktop-ui='v1'] .modal.cm-glass::backdrop {
+    backdrop-filter: none;
+    background: #43594e5c;
+  }
+}

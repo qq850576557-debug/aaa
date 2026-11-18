@@ -12,6 +12,7 @@ export function AgendaItem({
   compact = false,
   onDelete,
   projectInFooter = false,
+  panelDate,
 }: {
   item: Item;
   projectName: string;
@@ -22,8 +23,10 @@ export function AgendaItem({
   compact?: boolean;
   onDelete?: () => void;
   projectInFooter?: boolean;
+  panelDate?: string;
 }) {
   const category = item.kind === 'purchase' ? '采购' : '事项';
+  const date = <time dateTime={item.date}>{item.date || '未设日期'}</time>;
   return (
     <ProjectSurface
       projectId={item.projectId}
@@ -38,12 +41,15 @@ export function AgendaItem({
         disabled={busy}
         onClick={onOpen}
         aria-label={`打开${category}：${item.title}`}
+        title={panelDate ? item.title : undefined}
       >
         <strong>{item.title}</strong>
         <span className="agenda-item-meta">
           <span className={`agenda-category category-${item.kind}`}>{category}</span>
-          {!projectInFooter && <span>{projectName}</span>}
-          <time dateTime={item.date}>{item.date || '未设日期'}</time>
+          {!projectInFooter && (
+            <span title={panelDate ? projectName : undefined}>{projectName}</span>
+          )}
+          {!panelDate && date}
           <span className="status-tag">{item.status}</span>
         </span>
       </button>
@@ -62,6 +68,7 @@ export function AgendaItem({
           <Check size={15} />
           <span>{busy ? '保存中' : compact ? item.status : item.done ? '已完成' : '完成'}</span>
         </button>
+        {panelDate && item.date !== panelDate && date}
         {onDelete && (
           <>
             <button disabled={busy} onClick={onOpen}>

@@ -9,6 +9,7 @@ import './workbench.css';
 import './buttons.css';
 import './overview.css';
 import './components/photo-editor.css';
+import './ui-v1/desktop.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <CloudGate />

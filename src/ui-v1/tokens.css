@@ -1,0 +1,76 @@
+@font-face {
+  font-family: 'Chunmo Inter';
+  src: url('/fonts/ui-v1/inter-latin.woff2') format('woff2');
+  font-weight: 400 650;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0100-017F, U+2000-206F, U+20AC, U+2122, U+2212, U+FEFF;
+}
+@font-face {
+  font-family: 'Chunmo Noto Sans SC';
+  src: url('/fonts/ui-v1/noto-sans-sc-ui.woff2') format('woff2');
+  font-weight: 400 650;
+  font-style: normal;
+  font-display: swap;
+}
+:root[data-desktop-ui='v1'] {
+  --cm-green: #244e42;
+  --cm-ink: #23342c;
+  --cm-muted: #59695f;
+  --cm-bg: #e8ebe4;
+  --cm-canvas: #eff0eb;
+  --cm-paper: #f8f9f4;
+  --cm-white: #fffefa;
+  --cm-line: #e3e7df;
+  --cm-soft: #edf1e8;
+  --cm-hover: #e1e9dc;
+  --cm-sage: #e6eddf;
+  --cm-sand: #f4e9d8;
+  --cm-blue: #e5edf0;
+  --cm-lime: #d9e8a6;
+  --cm-space-1: 4px;
+  --cm-space-2: 8px;
+  --cm-space-3: 12px;
+  --cm-space-4: 16px;
+  --cm-space-5: 24px;
+  --cm-radius-card: 28px;
+  --cm-radius-item: 14px;
+  --cm-radius-panel: 30px;
+  --cm-pill: 999px;
+  --cm-shadow: 0 10px 35px #293f3010;
+  --cm-font:
+    'Chunmo Inter', 'Chunmo Noto Sans SC', 'Noto Sans SC', 'Noto Sans CJK SC', 'PingFang SC',
+    'Microsoft YaHei', system-ui, sans-serif;
+  --cm-text: 14px;
+  --cm-small: 12px;
+  --cm-caption: 13px;
+  --cm-section: 17px;
+  --cm-page: 28px;
+  --cm-number: 29px;
+  --cm-normal: 400;
+  --cm-medium: 500;
+  --cm-semibold: 600;
+  --cm-body-line: 1.58;
+  --cm-heading-line: 1.4;
+  --cm-number-tracking: -0.035em;
+  --cm-duty-glow:
+    radial-gradient(ellipse at 104% -25%, #527b59b5 0%, transparent 67%),
+    radial-gradient(ellipse at 55% 140%, #3c6a55ae 0%, transparent 74%),
+    linear-gradient(135deg, var(--cm-green), #213f35 83%);
+}
+:root[data-desktop-ui='v1'] body {
+  font-family: var(--cm-font);
+  font-size: var(--cm-text);
+  font-weight: var(--cm-normal);
+  line-height: var(--cm-body-line);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+:root[data-desktop-ui='v1'] body :is(button, input, select, textarea) {
+  font-family: inherit;
+  font-variant-numeric: inherit;
+}
+:root[data-desktop-ui='v1']
+  .ui-v1
+  :is(time, .date-label, .count, .overview-stat strong, .compact-stat strong, .stat-card > strong) {
+  font-variant-numeric: tabular-nums lining-nums;
+}

@@ -6,6 +6,7 @@ import { loginInputSchema } from '../lib/login';
 import { passwordSchema, PASSWORD_MIN, PASSWORD_MAX } from '../lib/password';
 import { BRAND_LOGO_SRC, BRAND_NAME, BRAND_INITIALS, BRAND_SLOGAN } from '../lib/brand';
 import './login.css';
+import { desktopV1Enabled } from '../ui-v1/mode';
 
 // A storage/URL flag can never enable local mode in the production build.
 const localDevelopment = import.meta.env.DEV && import.meta.env.VITE_ALLOW_LOCAL === 'true';
@@ -20,11 +21,16 @@ export function CloudGate() {
   useEffect(() => {
     const media = matchMedia(MOBILE_QUERY);
     const title = () => {
+      if (desktopV1Enabled()) document.documentElement.dataset.desktopUi = 'v1';
+      else delete document.documentElement.dataset.desktopUi;
       if (mobileRequested()) document.title = '春茉后台管理（手机版）';
     };
     title();
     media.addEventListener('change', title);
-    return () => media.removeEventListener('change', title);
+    return () => {
+      media.removeEventListener('change', title);
+      delete document.documentElement.dataset.desktopUi;
+    };
   }, []);
   const prior = useRef<CloudUser | null>(null);
   const authorized = useRef(false),

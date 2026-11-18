@@ -156,7 +156,7 @@ for (const width of [1280, 1440, 1920])
       }),
     );
     expect(new Set(rects.map((r) => r.y)).size).toBe(1);
-    expect(rects.every((r) => r.height >= 64 && r.height <= 90)).toBe(true);
+    expect(rects.every((r) => r.height >= 43 && r.height <= 64)).toBe(true);
     const shortcuts = page.locator('.ongoing-project-card');
     const ongoing = d.projects.filter(
       (p) => !isHistorical(p) && projectStatus(p.status) === '施工中',
@@ -195,14 +195,13 @@ for (const width of [1280, 1440, 1920])
     expect(todayBox!.y).toBeGreaterThan(studioBox!.y + studioBox!.height);
     expect(Math.abs(todayBox!.y - tomorrowBox!.y)).toBeLessThan(1);
     expect(Math.abs(todayBox!.height - tomorrowBox!.height)).toBeLessThan(1);
-    expect(todayBox!.height).toBeGreaterThanOrEqual(354);
     const firstTile = page.getByTestId('today-panel').locator('.agenda-item').first();
     const tileBox = await firstTile.boundingBox();
-    expect(tileBox!.width).toBeGreaterThanOrEqual(200);
+    expect(tileBox!.width).toBeGreaterThanOrEqual(175);
     expect(tileBox!.width).toBeLessThanOrEqual(340);
     expect(
       await firstTile.locator('strong').evaluate((node) => getComputedStyle(node).fontSize),
-    ).toBe('15px');
+    ).toBe('13px');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );

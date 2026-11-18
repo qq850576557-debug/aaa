@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { desktopV1Enabled } from '../ui-v1/mode';
 export type Anchor = { x: number; y: number; element?: HTMLElement };
 export function Modal({
   title,
@@ -29,6 +30,7 @@ export function Modal({
   animateClose?: boolean;
 }) {
   const [closing, setClosing] = useState(false);
+  const glass = !inline && desktopV1Enabled();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestClose = useRef(onClose);
   latestClose.current = onClose;
@@ -130,11 +132,28 @@ export function Modal({
       if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, []);
+  useEffect(() => {
+    if (!glass || anchor || placement !== 'center' || !ref.current) return;
+    const dialog = ref.current;
+    let cancelled = false;
+    let detach: (() => void) | undefined;
+    void import('../ui-v1/glass')
+      .then(({ attachGlass }) => {
+        if (!cancelled) detach = attachGlass(dialog, blocking);
+      })
+      .catch(() => {
+        // The ordinary glass treatment remains usable if enhanced optics cannot load.
+      });
+    return () => {
+      cancelled = true;
+      detach?.();
+    };
+  }, [glass, anchor, blocking, placement]);
   if (inline) return <section className={`inline-form ${className}`}>{children}</section>;
   return (
     <dialog
       ref={ref}
-      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${closing ? 'closing' : ''} ${className}`}
+      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${closing ? 'closing' : ''} ${glass ? 'cm-glass' : ''} ${className}`}
       aria-modal={blocking}
       aria-labelledby={headingId}
       onCancel={(e) => {
