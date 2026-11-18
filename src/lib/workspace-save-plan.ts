@@ -97,6 +97,58 @@ export function withholdResources(
   }
   return out;
 }
+/** A confirmed personnel tombstone ends retries for that record, while other
+ * draft intent continues to use its original three-way merge baseline. */
+export function retireDeletedPeople(base: Data, local: Data, remote: Data, holds: SaveHold[]) {
+  const currentPeople = new Map((remote.people ?? []).map((person) => [person.id, person]));
+  const basePeople = new Map((base.people ?? []).map((person) => [person.id, person]));
+  const rejected = new Set(
+    holds
+      .filter(
+        (hold) =>
+          hold.kind === 'validation' &&
+          hold.collection === 'people' &&
+          hold.reason.startsWith('已删除的记录不能通过旧草稿、普通保存或备份导入重新出现'),
+      )
+      .map((hold) => hold.id),
+  );
+  const retired = (local.people ?? []).filter((person) => {
+    const cloud = currentPeople.get(person.id),
+      before = basePeople.get(person.id);
+    if (cloud && !cloud.deleted) return false;
+    if (rejected.has(person.id)) return true;
+    return before && (!cloud || !person.deleted) && !same(before, person);
+  });
+  if (!retired.length) return;
+  const ids = new Set(retired.map((person) => person.id));
+  const removed = new Set([...ids].filter((id) => !currentPeople.has(id)));
+  const resources = retired.map(({ id }) => ({ collection: 'people' as const, id }));
+  const rebase = (source: Data) => {
+    const next = withholdResources(source, remote, resources);
+    next.people = next.people?.map((person) => {
+      if (!person.identityLink || !removed.has(person.identityLink.personId)) return person;
+      const identityLink = currentPeople.get(person.id)?.identityLink;
+      return { ...person, identityLink };
+    });
+    for (const collection of ['projects', 'trades', 'tasks'] as const) {
+      const cloudRows = new Map(remote[collection].map((row) => [row.id, row]));
+      const rows = source[collection].map((row) => {
+        const existing = (cloudRows.get(row.id)?.staffIds ?? []).filter((id) => ids.has(id));
+        const before = row.staffIds ?? [];
+        const staffIds = before.filter((id) => !ids.has(id) || existing.includes(id));
+        staffIds.push(...existing.filter((id) => !before.includes(id)));
+        return same(before, staffIds) ? row : { ...row, staffIds };
+      });
+      Object.assign(next, { [collection]: rows });
+    }
+    return next;
+  };
+  return {
+    base: rebase(base),
+    data: rebase(local),
+    holds: holds.filter((hold) => hold.collection !== 'people' || !ids.has(hold.id)),
+  };
+}
 /** Advance untouched records together with their baseline. A pending record's
  * old fields must not be rebased under local edits and mistaken for new intent. */
 export function reconcileWorkspaceView(base: Data, local: Data, remote: Data) {

@@ -179,9 +179,9 @@ test('desktop project surfaces, aligned three-round preview and gradient duty ca
       };
     });
     expect(duty.background).toContain('gradient');
-    expect(duty.color).toBe('rgb(255, 255, 255)');
+    expect(duty.color).toBe('rgb(36, 78, 66)');
     for (const b of duty.buttons) {
-      expect(b.color).toBe('rgb(255, 255, 255)');
+      expect(b.color).toBe('rgb(36, 78, 66)');
       expect(b.background).toMatch(/^rgba/);
     }
     await page.getByRole('button', { name: '编辑值日', exact: true }).click();

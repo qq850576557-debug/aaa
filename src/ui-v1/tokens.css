@@ -53,10 +53,16 @@
   --cm-body-line: 1.58;
   --cm-heading-line: 1.4;
   --cm-number-tracking: -0.035em;
+  --cm-frame-x: clamp(12px, 1.2vw, 30px);
+  --cm-frame-y: clamp(10px, 1.05vw, 24px);
+  --cm-workspace-gutter: clamp(16px, 1.48vw, 32px);
+  --cm-nav-row: 43px;
+  --cm-nav-gap: 8px;
   --cm-duty-glow:
-    radial-gradient(ellipse at 104% -25%, #527b59b5 0%, transparent 67%),
-    radial-gradient(ellipse at 55% 140%, #3c6a55ae 0%, transparent 74%),
-    linear-gradient(135deg, var(--cm-green), #213f35 83%);
+    radial-gradient(ellipse at 2% -25%, #ffffffdf, transparent 67%),
+    radial-gradient(ellipse at 101% 98%, #d8edbd9c, transparent 63%),
+    radial-gradient(ellipse at 75% -10%, #eff4cc9c, transparent 56%),
+    linear-gradient(140deg, #eaf2e2 4%, #e4efdb 52%, #d5e7c8 100%);
 }
 :root[data-desktop-ui='v1'] body {
   font-family: var(--cm-font);

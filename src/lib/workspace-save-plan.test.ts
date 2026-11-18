@@ -6,6 +6,7 @@ import {
   withholdResources,
   releaseCorrectedHolds,
   reconcileWorkspaceView,
+  retireDeletedPeople,
 } from './workspace-save-plan';
 const fixture = () => {
   const d = emptyData();
@@ -203,4 +204,30 @@ it('a merged server index shifted by a peer insertion still isolates the invalid
   expect(plan.data.purchases.find((p) => p.id === 'purchase')?.mentionIds).toBeUndefined();
   expect(plan.data.purchases.some((p) => p.id === 'peer-purchase')).toBe(true);
   expect(local.purchases[0].mentionIds).toEqual(['disabled-account']);
+});
+
+it('retires a deleted person and stale links without touching other validation holds or live people', () => {
+  const base = fixture(),
+    local = structuredClone(base),
+    remote = structuredClone(base);
+  remote.people = [];
+  local.people![0].notes = '留作恢复副本';
+  local.people!.push({
+    ...local.people![0],
+    id: 'new',
+    name: '新师傅',
+    identityLink: { personId: 'old', reason: '旧草稿中的关联' },
+  });
+  local.projects[0].staffIds = ['old', 'new'];
+  const holds = holdsForFailure(base, local, '新人员资料仍需核对', [
+    { path: ['data', 'people', 1], code: 'custom', message: '资料需核对' },
+  ]);
+  const retired = retireDeletedPeople(base, local, remote, holds)!;
+  expect(retired.data.people).toMatchObject([{ id: 'new', name: '新师傅' }]);
+  expect(retired.data.people![0].identityLink).toBeUndefined();
+  expect(retired.data.projects[0].staffIds).toEqual(['new']);
+  expect(retired.holds).toEqual(holds);
+  expect(() => parseBackup(retired.data)).not.toThrow();
+  expect(local.people![1].identityLink?.personId).toBe('old');
+  expect(retireDeletedPeople(base, local, base, holds)).toBeUndefined();
 });

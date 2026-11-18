@@ -172,7 +172,28 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
     );
   });
   expect(alignment).toBeLessThanOrEqual(2);
-  await page.screenshot({ path: join(output, 'home.png'), fullPage: true });
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  const wide = await page.locator('.app-shell').evaluate((shell) => {
+    const rect = shell.getBoundingClientRect();
+    const nav = shell.querySelector('.sidebar nav')!;
+    const row = nav.querySelector('button')!.getBoundingClientRect();
+    return {
+      width: rect.width,
+      frame: rect.left,
+      navHeight: row.height,
+      navGap: parseFloat(getComputedStyle(nav).gap),
+      overflow: document.documentElement.scrollWidth > innerWidth,
+    };
+  });
+  expect(wide.width).toBeGreaterThan(1840);
+  expect(wide.frame).toBeGreaterThanOrEqual(14);
+  expect(wide.navHeight).toBeGreaterThanOrEqual(42);
+  expect(wide.navGap).toBeGreaterThanOrEqual(8);
+  expect(wide.overflow).toBe(false);
+  await page.screenshot({ path: join(output, 'home-wide.png'), fullPage: true });
+  await page.locator('.sidebar').screenshot({ path: join(output, 'sidebar.png') });
+  await page.locator('.sd-duty').screenshot({ path: join(output, 'duty-light.png') });
+  await page.setViewportSize({ width: 1440, height: 1000 });
 
   const open = page.getByRole('button', { name: '编辑值日', exact: true });
   const dialog = page.getByRole('dialog', { name: '编辑值日' });
@@ -184,6 +205,22 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
         'click',
         () => {
           performance.mark('ui-v1-open');
+          const start = performance.now();
+          const frames: number[] = [];
+          let firstVisible = 0,
+            last = start;
+          function tick(now: number) {
+            frames.push(Math.max(0, now - last));
+            last = now;
+            const dialog = document.querySelector<HTMLDialogElement>('dialog.sd-modal[open]');
+            if (!firstVisible && dialog && Number(getComputedStyle(dialog).opacity) > 0.1)
+              firstVisible = performance.now() - start;
+            if (now - start < 310) requestAnimationFrame(tick);
+            else
+              for (const [name, detail] of Object.entries({ frames, firstVisible }))
+                performance.mark('ui-v1-' + name, { detail });
+          }
+          requestAnimationFrame(tick);
           const observer = new MutationObserver(() => {
             if (!document.querySelector('dialog[data-cm-glass="liquid"]')) return;
             observer.disconnect();
@@ -204,10 +241,19 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
     await expect
       .poll(() => page.evaluate(() => performance.getEntriesByName('ui-v1-frame').length))
       .toBe(i + 1);
+    await expect
+      .poll(() => page.evaluate(() => performance.getEntriesByName('ui-v1-frames').length))
+      .toBe(i + 1);
     timings.push(
       await page.evaluate(() => ({
         layer: performance.getEntriesByName('ui-v1-liquid').at(-1)!.duration,
         frame: performance.getEntriesByName('ui-v1-frame').at(-1)!.duration,
+        initial: (performance.getEntriesByName('ui-v1-firstVisible').at(-1)! as PerformanceMark)
+          .detail as number,
+        maxGap: Math.max(
+          ...((performance.getEntriesByName('ui-v1-frames').at(-1)! as PerformanceMark)
+            .detail as number[]),
+        ),
       })),
     );
     if (i < 3) {
@@ -217,6 +263,10 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   }
   expect(Math.max(...timings.map(({ layer }) => layer)), JSON.stringify(timings)).toBeLessThan(500);
   expect(Math.max(...timings.map(({ frame }) => frame)), JSON.stringify(timings)).toBeLessThan(700);
+  expect(timings.every(({ initial }) => initial > 0)).toBe(true);
+  await expect(dialog).toHaveCSS('animation-duration', '0.14s');
+  await expect(layer.locator('feDisplacementMap')).toHaveCount(1);
+  await expect(layer.locator('.app-shell')).toHaveCount(0);
   await expect(dialog.locator('select').first()).toHaveCSS(
     'background-color',
     'rgba(255, 254, 250, 0.94)',
@@ -260,7 +310,7 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   expect(rimDelta).toBeLessThan(0.15);
   await blur.evaluate((style) => style.parentNode?.removeChild(style));
 
-  // Change only the real app shell. The visual copy must follow the altered scene.
+  // Changes to the real page must propagate without a copied scene.
   await page.locator('#root .sd-duty').evaluate((card) => {
     (card as HTMLElement).style.setProperty(
       '--cm-duty-glow',
@@ -285,8 +335,8 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
       args[1]?.startsWith('url(') ? false : supports(...(args as [string, string]));
   });
   await open.click();
-  await expect(dialog).toHaveCSS('backdrop-filter', 'blur(18px) saturate(1.05)');
-  await expect(page.locator('.main-shell')).toHaveCSS('filter', /blur\(7px\)/);
+  await expect(dialog).toHaveCSS('backdrop-filter', 'blur(7px)');
+  await expect(page.locator('.main-shell')).toHaveCSS('filter', 'blur(5px)');
   await expect(layer).toHaveCount(0);
   await page.screenshot({ path: join(output, 'frosted-fallback.png') });
   await page.keyboard.press('Escape');
@@ -298,6 +348,13 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   await expect(dialog).toHaveCSS('background-color', 'rgb(251, 250, 244)');
   await expect(dialog).toHaveCSS('backdrop-filter', 'none');
   await expect(page.locator('.main-shell')).toHaveCSS('filter', 'none');
+  await page.keyboard.press('Escape');
+
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+  await page.goto('/?glass=lite');
+  await open.click();
+  await expect(dialog).toHaveAttribute('data-cm-glass', 'frosted');
+  await expect(layer).toHaveCount(0);
   await page.keyboard.press('Escape');
 
   await page.goto('/?ui=legacy');
@@ -326,9 +383,12 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
     JSON.stringify(
       {
         faces,
-        timingsMs: timings.map(({ layer, frame }) => ({
+        wide,
+        timingsMs: timings.map(({ layer, frame, initial, maxGap }) => ({
           layer: Math.round(layer),
           frame: Math.round(frame),
+          initial: Math.round(initial),
+          maxGap: Math.round(maxGap),
         })),
         edgeDelta,
         coreDelta,

@@ -31,6 +31,7 @@ export function Modal({
 }) {
   const [closing, setClosing] = useState(false);
   const glass = !inline && desktopV1Enabled();
+  const optical = glass && !anchor && placement === 'center';
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestClose = useRef(onClose);
   latestClose.current = onClose;
@@ -133,7 +134,7 @@ export function Modal({
     };
   }, []);
   useEffect(() => {
-    if (!glass || anchor || placement !== 'center' || !ref.current) return;
+    if (!optical || !ref.current) return;
     const dialog = ref.current;
     let cancelled = false;
     let detach: (() => void) | undefined;
@@ -143,16 +144,18 @@ export function Modal({
       })
       .catch(() => {
         // The ordinary glass treatment remains usable if enhanced optics cannot load.
+        if (!cancelled) dialog.dataset.cmGlass = 'frosted';
       });
     return () => {
       cancelled = true;
       detach?.();
     };
-  }, [glass, anchor, blocking, placement]);
+  }, [optical, blocking]);
   if (inline) return <section className={`inline-form ${className}`}>{children}</section>;
   return (
     <dialog
       ref={ref}
+      data-cm-glass={glass && !optical ? 'frosted' : undefined}
       className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${closing ? 'closing' : ''} ${glass ? 'cm-glass' : ''} ${className}`}
       aria-modal={blocking}
       aria-labelledby={headingId}

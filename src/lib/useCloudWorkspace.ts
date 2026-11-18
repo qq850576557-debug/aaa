@@ -29,6 +29,7 @@ import {
   resourceKey,
   resourceValue,
   reconcileWorkspaceView,
+  retireDeletedPeople,
   type SaveHold,
 } from './workspace-save-plan';
 export type SaveConflict = {
@@ -191,6 +192,27 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         try {
           if (!inFlight.current) {
             const s = baseline.current!;
+            const retired = retireDeletedPeople(
+              viewBase.current,
+              current.current,
+              s.data,
+              holds.current,
+            );
+            if (retired) {
+              const seq = sequence.current;
+              const u = profile.current!;
+              // Archive the original slot before dropping any intent, and never
+              // replace edits made while that durable copy was being written.
+              await journal.current;
+              await retainCloudDraftSnapshot(u.workspaceId, u.id, tab.current);
+              if (!alive.current) return;
+              if (seq !== sequence.current) continue;
+              viewBase.current = retired.base;
+              current.current = retired.data;
+              holds.current = retired.holds;
+              setData(retired.data);
+              await stash();
+            }
             const plan = planWorkspaceSave(
               viewBase.current,
               current.current,

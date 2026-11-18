@@ -1,28 +1,42 @@
 :root[data-desktop-ui='v1'] .modal.cm-glass {
-  --cm-glass-paper: rgb(254 252 244 / 86%);
+  --cm-glass-paper: rgb(254 252 244 / 90%);
   --cm-glass-control: rgb(255 254 250 / 94%);
   border-radius: var(--cm-radius-panel);
   border-color: rgb(255 255 255 / 65%);
   background: #fbfaf4;
-  box-shadow:
-    0 18px 46px rgb(25 49 40 / 20%),
-    0 3px 12px rgb(25 49 40 / 8%);
+  box-shadow: 0 13px 32px rgb(25 49 40 / 19%);
   color: var(--cm-ink);
+  animation: cm-glass-enter 140ms ease-out;
+}
+@keyframes cm-glass-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+:root[data-desktop-ui='v1'] .modal.cm-glass.closing {
+  animation: none;
 }
 @supports (backdrop-filter: blur(1px)) {
-  :root[data-desktop-ui='v1'] .modal.cm-glass {
+  :root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='frosted'] {
     background: var(--cm-glass-paper);
-    backdrop-filter: blur(18px) saturate(1.05);
+    backdrop-filter: blur(7px);
   }
 }
 :root[data-desktop-ui='v1'] .modal.cm-glass::backdrop {
   background: rgb(60 79 68 / 17%);
 }
 /* Firefox does not paint backdrop-filter on the native dialog backdrop. */
-:root[data-desktop-ui='v1']:has(.modal.cm-glass:modal:not([data-cm-glass]))
+:root[data-desktop-ui='v1']:has(.modal.cm-glass[data-cm-glass='frosted']:modal):not(
+    :has(.modal.cm-glass[data-cm-glass='liquid']:modal)
+  )
   .app-shell.ui-v1
   > :is(.sidebar, .main-shell) {
-  filter: blur(7px) brightness(0.94) saturate(0.91);
+  filter: blur(5px);
 }
 :root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='liquid'] {
   background: transparent;
@@ -73,7 +87,7 @@
   inset: 0;
   z-index: 79;
   pointer-events: none;
-  --cm-glass-scene-blur: 7px;
+  --cm-glass-scene-blur: 5px;
 }
 .cm-glass-layer[data-kind='blocking'] {
   z-index: 150;
@@ -91,43 +105,43 @@
   border-radius: var(--cm-glass-radius);
   backdrop-filter: var(--cm-glass-filter);
 }
-.cm-glass-optic > :is(i, b) {
+.cm-glass-optic::before,
+.cm-glass-optic > b {
   position: absolute;
   inset: 0;
   border-radius: inherit;
 }
-.cm-glass-optic > i {
-  background: var(--cm-glass-light) center / 100% 100% no-repeat;
-  mix-blend-mode: soft-light;
+.cm-glass-optic::before {
+  content: '';
+  background:
+    radial-gradient(ellipse at 0 0, rgb(255 255 255 / 36%), transparent 41%),
+    radial-gradient(ellipse at 106% 112%, rgb(205 225 177 / 25%), transparent 46%);
 }
 .cm-glass-optic > b {
   background: rgb(254 252 244 / var(--cm-glass-opacity));
   mask: var(--cm-glass-tint) center / 100% 100% no-repeat;
 }
-.cm-glass-scene,
-.cm-glass-scene::after,
-.cm-glass-copy {
+.cm-glass-scene {
   position: absolute;
   inset: 0;
-}
-.cm-glass-scene {
   clip-path: var(--cm-glass-aperture);
-}
-.cm-glass-copy {
-  overflow: hidden;
-  background: var(--cm-bg);
-  filter: blur(var(--cm-glass-scene-blur)) brightness(0.94) saturate(0.91);
-}
-.cm-glass-scene::after {
-  content: '';
+  backdrop-filter: blur(var(--cm-glass-scene-blur));
   background: rgb(60 79 68 / 17%);
 }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-desktop-ui='v1'] .modal.cm-glass {
+    animation: none;
+  }
+}
 @media (prefers-reduced-transparency: reduce) {
-  :root[data-desktop-ui='v1']:has(.modal.cm-glass:modal:not([data-cm-glass]))
+  :root[data-desktop-ui='v1']:has(.modal.cm-glass[data-cm-glass='frosted']:modal):not(
+      :has(.modal.cm-glass[data-cm-glass='liquid']:modal)
+    )
     .app-shell.ui-v1
     > :is(.sidebar, .main-shell) {
     filter: none;
   }
+  :root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='frosted'],
   :root[data-desktop-ui='v1'] .modal.cm-glass {
     backdrop-filter: none;
     background: #fbfaf4;

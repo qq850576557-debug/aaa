@@ -1,73 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false"><defs>
-        <filter
-          id="chunmo-glass-lens"
-          filterUnits="userSpaceOnUse"
-          x="0"
-          y="0"
-          color-interpolation-filters="sRGB"
-        >
-          <feGaussianBlur
-            id="glass-roughness"
-            in="SourceGraphic"
-            stdDeviation="3.4"
-            edgeMode="duplicate"
-            result="surface"
-          />
-          <feImage
-            id="glass-displacement"
-            x="0"
-            y="0"
-            preserveAspectRatio="none"
-            result="normalMap"
-          />
-          <feDisplacementMap
-            in="surface"
-            in2="normalMap"
-            scale="68"
-            xChannelSelector="R"
-            yChannelSelector="G"
-            result="warm"
-          />
-          <feDisplacementMap
-            in="surface"
-            in2="normalMap"
-            scale="64"
-            xChannelSelector="R"
-            yChannelSelector="G"
-            result="mid"
-          />
-          <feDisplacementMap
-            in="surface"
-            in2="normalMap"
-            scale="60"
-            xChannelSelector="R"
-            yChannelSelector="G"
-            result="cool"
-          />
-          <feColorMatrix in="warm" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="r" />
-          <feColorMatrix in="mid" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="g" />
-          <feColorMatrix in="cool" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="b" />
-          <feBlend in="r" in2="g" mode="screen" result="rg" />
-          <feBlend in="rg" in2="b" mode="screen" result="refracted" />
-          <feGaussianBlur
-            id="glass-centre-frost"
-            in="refracted"
-            stdDeviation="9.52"
-            edgeMode="duplicate"
-            result="centreSoft"
-          />
-          <feImage
-            id="glass-interior-map"
-            x="0"
-            y="0"
-            preserveAspectRatio="none"
-            result="tintMask"
-          />
-          <feComponentTransfer in="tintMask" result="coreMask">
-            <feFuncA type="linear" slope="1.51515" intercept="-0.51515" />
-          </feComponentTransfer>
-          <feComposite in="centreSoft" in2="coreMask" operator="in" result="matteCore" />
-          <feComposite in="refracted" in2="coreMask" operator="out" result="polishedEdge" />
-          <feComposite in="matteCore" in2="polishedEdge" operator="arithmetic" k2="1" k3="1" />
-        </filter>
-</defs></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="chunmo-glass-lens" filterUnits="userSpaceOnUse" x="0" y="0" color-interpolation-filters="sRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.4" edgeMode="duplicate" result="surface"/>
+      <feImage x="0" y="0" preserveAspectRatio="none" result="normalMap"/>
+      <feDisplacementMap in="surface" in2="normalMap" scale="64" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+  </defs>
+</svg>
