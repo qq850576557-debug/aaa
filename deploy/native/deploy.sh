@@ -234,17 +234,39 @@ REMOTE=$(git -C "$SOURCE_REPO" remote get-url origin)
 REF=HEAD
 READ_ONLY_SMOKE=0
 CODE_ONLY=0
+UI_V1=0
 case ${1:-} in
   '') ;;
   --update) git -C "$SOURCE_REPO" fetch origin feat/chunmo-project-manager; REF=origin/feat/chunmo-project-manager ;;
   --ref) [[ ${2:-} =~ ^[a-f0-9]{40}$ ]] || fail '--ref requires a full commit hash'; REF=$2
     for option in "${@:3}"; do
-      case $option in --read-only-smoke) READ_ONLY_SMOKE=1 ;; --code-only) CODE_ONLY=1; READ_ONLY_SMOKE=1 ;; *) fail 'Unknown deployment option' ;; esac
+      case $option in --read-only-smoke) READ_ONLY_SMOKE=1 ;; --code-only) CODE_ONLY=1; READ_ONLY_SMOKE=1 ;; --ui-v1) UI_V1=1 ;; *) fail 'Unknown deployment option' ;; esac
     done ;;
   *) fail 'Usage: deploy.sh [--update | --ref FULL_COMMIT]' ;;
 esac
 COMMIT=$(git -C "$SOURCE_REPO" rev-parse "$REF^{commit}")
-git -C "$SOURCE_REPO" merge-base --is-ancestor "$COMMIT" origin/feat/chunmo-project-manager || fail 'Commit is outside the feature branch history.'
+# BEGIN RELEASE REF GUARD
+if [[ $UI_V1 == 1 ]]; then
+  [[ $CODE_ONLY == 1 ]] || fail 'UI V1 requires --ref FULL_COMMIT --code-only --ui-v1.'
+  git -C "$SOURCE_REPO" merge-base --is-ancestor "$COMMIT" refs/remotes/origin/feat/chunmo-ui-v1-desktop || fail 'Commit is outside the UI V1 branch history.'
+  [[ -L $BASE/current ]] || fail 'UI V1 requires an existing release symlink.'
+  INSTALLED=$(readlink -e "$BASE/current")
+  INSTALLED_REF=${INSTALLED##*/}
+  [[ $INSTALLED == "$BASE/releases/$INSTALLED_REF" && $INSTALLED_REF =~ ^[a-f0-9]{7,40}$ ]] || fail 'Unrecognized running release for UI V1.'
+  INSTALLED_COMMIT=$(git -C "$SOURCE_REPO" rev-parse --verify "$INSTALLED_REF^{commit}")
+  printf 'Running release: %s\n' "$INSTALLED_COMMIT"
+  git -C "$SOURCE_REPO" merge-base --is-ancestor "$INSTALLED_COMMIT" "$COMMIT" || fail 'UI V1 would replace a newer or divergent running release.'
+  git -C "$SOURCE_REPO" diff --quiet "$INSTALLED_COMMIT" "$COMMIT" -- server scripts package.json package-lock.json vite.config.ts deploy \
+     ':(exclude)deploy/native/deploy.sh' ':(exclude)deploy/native/ui-v1-ref.test.ts' || fail 'Running backend or deployment baseline differs. UI V1 stopped before build or switch.'
+  if [[ $INSTALLED_COMMIT == "$COMMIT" ]]; then
+    bash "$BASE/current/deploy/native/health.sh"
+    printf 'PASS UI V1 release already active: %s\n' "$COMMIT"
+    exit 0
+  fi
+else
+  git -C "$SOURCE_REPO" merge-base --is-ancestor "$COMMIT" origin/feat/chunmo-project-manager || fail 'Commit is outside the feature branch history.'
+fi
+# END RELEASE REF GUARD
 [[ $(df -Pk /opt | awk 'NR==2 {print $4}') -ge 2097152 ]] || fail 'At least2GiB free space required; no automatic cleanup.'
 if command -v getenforce >/dev/null && [[ $(getenforce) == Enforcing ]]; then
   fail 'SELinux is Enforcing. Review required nginx file/network policy with your administrator before deployment; installer will not disable SELinux or broadly grant network access.'
