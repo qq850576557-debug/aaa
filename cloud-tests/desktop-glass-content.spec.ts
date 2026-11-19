@@ -87,7 +87,9 @@ test('desktop glass separates visible account and nested foreground; rectangular
   const ownTrigger = page.getByRole('button', { name: '打开我的个人名片', exact: true });
   await ownTrigger.click();
   const own = page.getByRole('dialog', { name: '我的个人名片', exact: true });
-  await expect(own).toHaveAttribute('data-cm-glass', 'liquid');
+  await expect(own).toHaveAttribute('data-cm-glass', 'frosted');
+  for (const label of ['账号设置', '部门管理', '更换照片'])
+    await expect(own.getByRole('button', { name: label, exact: true })).toHaveCount(0);
   await assertForeground(own);
   const photo = own.locator('.member-card-photo img');
   await expect(photo).toBeVisible();
@@ -105,6 +107,7 @@ test('desktop glass separates visible account and nested foreground; rectangular
       ratio: box.width / box.height,
       imageRatio: img.naturalWidth / img.naturalHeight,
       top: box.top,
+      gap: modal.querySelector('.member-card-content')!.getBoundingClientRect().top - box.bottom,
       controls: controls.map((r) => ({ y: r.y, bottom: r.bottom, left: r.left, right: r.right })),
       modalRight: modal.getBoundingClientRect().right,
       radii: [img, img.parentElement!, img.closest('button')!].map(
@@ -116,9 +119,9 @@ test('desktop glass separates visible account and nested foreground; rectangular
   expect(bounds.ratio).toBeCloseTo(bounds.imageRatio, 3);
   expect(bounds.radii).toEqual(['0px', '0px', '0px']);
   expect(bounds.clip).toBe('none');
-  expect(bounds.controls).toHaveLength(3);
+  expect(Math.abs(bounds.gap)).toBeLessThanOrEqual(2);
+  expect(bounds.controls).toHaveLength(1);
   expect(Math.max(...bounds.controls.map((r) => r.bottom))).toBeLessThanOrEqual(bounds.top + 1);
-  expect(Math.abs(bounds.controls[0].y - bounds.controls[1].y)).toBeLessThanOrEqual(2);
   expect(bounds.modalRight - bounds.controls.at(-1)!.right).toBeLessThan(24);
   const photoPixels = PNG.sync.read(await photo.screenshot());
   const pixel = (x: number, y: number) =>
@@ -150,24 +153,11 @@ test('desktop glass separates visible account and nested foreground; rectangular
     }),
   );
   await save('personal-card');
-  await own.getByRole('button', { name: '部门管理' }).hover();
-  await expect(own.getByRole('button', { name: '部门管理' })).toHaveCSS('border-radius', '999px');
-  await save('card-tools-hover');
-  await own.getByRole('button', { name: '部门管理' }).click();
-  const dept = page.getByRole('dialog', { name: '部门管理', exact: true });
-  await assertForeground(dept);
-  await dept.getByRole('button', { name: '新增部门' }).click();
-  const deptEdit = page.getByRole('dialog', { name: '新增部门', exact: true });
-  await assertForeground(deptEdit);
-  await deptEdit.getByLabel('部门名称', { exact: true }).fill('测试设计部');
-  await save('department-form');
-  await deptEdit.getByRole('button', { name: '关闭浮窗' }).click();
-  await dept.getByRole('button', { name: '关闭浮窗' }).click();
   await own.getByRole('button', { name: /查看.*名片照片大图/ }).click();
   const preview = page.getByRole('dialog', { name: '名片照片预览' });
-  await expect(preview).toHaveAttribute('data-cm-glass', 'liquid');
+  await expect(preview).toHaveAttribute('data-cm-glass', 'frosted');
   await assertForeground(preview);
-  await expect(page.locator('.cm-glass-layer:visible')).toHaveCount(1);
+  await expect(page.locator('.cm-glass-layer')).toHaveCount(0);
   await expect(preview.getByRole('img', { name: '春茉验收负责人的名片照片' })).toBeVisible();
   await save('nested-photo-preview');
   await page.keyboard.press('Escape');
@@ -175,6 +165,8 @@ test('desktop glass separates visible account and nested foreground; rectangular
   await own.getByRole('button', { name: /编辑.*名片/ }).click();
   const cardForm = page.getByRole('dialog', { name: /编辑名片 ·/ });
   await assertForeground(cardForm);
+  await cardForm.getByRole('button', { name: '更换照片', exact: true }).hover();
+  await save('personal-card-editor');
   await cardForm.getByRole('button', { name: '选择入职日期' }).click();
   const dateMenu = page.getByRole('dialog', { name: '入职日期日历' });
   await expect(dateMenu).toBeVisible();
@@ -184,7 +176,9 @@ test('desktop glass separates visible account and nested foreground; rectangular
   await expect(dateMenu).toBeHidden();
   await expect(cardForm).toBeVisible();
   await cardForm.getByRole('button', { name: '关闭浮窗' }).click();
-  await own.getByRole('button', { name: '账号设置' }).click();
+  await own.getByRole('button', { name: '关闭浮窗' }).click();
+  await expect(ownTrigger).toBeFocused();
+  await page.getByRole('button', { name: '账号管理', exact: true }).click();
   const account = page.getByRole('dialog', { name: '账号管理', exact: true });
   await assertForeground(account);
   await expect(account.getByLabel('我的展示名称', { exact: true })).toHaveValue('春茉验收负责人');
@@ -198,6 +192,18 @@ test('desktop glass separates visible account and nested foreground; rectangular
     await expect(account.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
     await assertForeground(account);
     await save('account-' + tab);
+    if (tab === '账号通讯录') {
+      await account.getByRole('button', { name: '部门管理' }).click();
+      const dept = page.getByRole('dialog', { name: '部门管理', exact: true });
+      await assertForeground(dept);
+      await dept.getByRole('button', { name: '新增部门' }).click();
+      const deptEdit = page.getByRole('dialog', { name: '新增部门', exact: true });
+      await assertForeground(deptEdit);
+      await deptEdit.getByLabel('部门名称', { exact: true }).fill('测试设计部');
+      await save('department-form');
+      await deptEdit.getByRole('button', { name: '关闭浮窗' }).click();
+      await dept.getByRole('button', { name: '关闭浮窗' }).click();
+    }
   }
   await page.keyboard.press('Escape');
   await expect(account).toHaveCount(0);

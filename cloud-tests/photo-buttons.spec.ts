@@ -39,17 +39,23 @@ for (const width of [1440, 390])
     await page.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
     const card = page.getByRole('dialog', { name: '我的个人名片', exact: true });
     await expect(card.getByText('名片头像设置', { exact: true })).toHaveCount(0);
-    await expect(card.locator('input[type=file]')).toHaveCount(1);
+    const editor = width > 700 ? page.getByRole('dialog', { name: /编辑名片 ·/ }) : card;
+    if (width > 700) {
+      await expect(card.locator('input[type=file]')).toHaveCount(0);
+      await card.getByRole('button', { name: /编辑.*名片/ }).click();
+      await editor.getByLabel('名片英文名').fill('Unsaved draft');
+    }
+    await expect(editor.locator('input[type=file]')).toHaveCount(1);
     const low = await sharp({
       create: { width: 1080, height: 719, channels: 3, background: '#8c9c83' },
     })
       .png()
       .toBuffer();
-    await card
+    await editor
       .getByLabel('选择名片头像', { exact: true })
       .setInputFiles({ name: 'low.png', mimeType: 'image/png', buffer: low });
-    await expect(card.getByRole('alert')).toContainText('短边至少为720px');
-    for (const name of ['账号设置', '部门管理']) {
+    await expect(editor.getByRole('alert')).toContainText('短边至少为720px');
+    for (const name of width > 700 ? [] : ['账号设置', '部门管理']) {
       const button = await card.getByRole('button', { name, exact: true }).boundingBox(),
         alert = await card.getByRole('alert').boundingBox();
       expect(button!.y + button!.height <= alert!.y || alert!.y + alert!.height <= button!.y).toBe(
@@ -69,7 +75,9 @@ for (const width of [1440, 390])
       .jpeg({ quality: 90 })
       .toBuffer();
     const picker = page.waitForEvent('filechooser');
-    await card.getByRole('button', { name: '点击更换名片照片', exact: true }).click();
+    await editor
+      .getByRole('button', { name: width > 700 ? '更换照片' : '点击更换名片照片', exact: true })
+      .click();
     await (await picker).setFiles({ name: 'high.jpg', mimeType: 'image/jpeg', buffer: original });
     const crop = page.getByRole('dialog', { name: '调整头像照片', exact: true });
     await expect(crop).toBeVisible();
@@ -107,9 +115,18 @@ for (const width of [1440, 390])
     expect(await frame.locator('img').getAttribute('style')).toBe(transform);
     await crop.getByRole('button', { name: '保存头像', exact: true }).click();
     await expect(crop).toHaveCount(0);
-    await expect(card.getByRole('status').filter({ hasText: '头像已保存' })).toContainText(
+    await expect(editor.getByRole('status').filter({ hasText: '头像已保存' })).toContainText(
       '头像已保存',
     );
+    if (width > 700) {
+      await expect(editor.getByLabel('名片英文名')).toHaveValue('Unsaved draft');
+      await expect(
+        (await (await api('/member-cards')).json()).cards.find(
+          ({ id }: { id: string }) => id === f.id,
+        ).englishName,
+      ).not.toBe('Unsaved draft');
+      await editor.getByRole('button', { name: '关闭浮窗' }).click();
+    }
     expect(requests).toBe(2);
     await expect(card.locator('.member-card-photo img')).toHaveAttribute('src', /card-avatar/);
     const identityAfter = await (await api('/auth/session')).json();

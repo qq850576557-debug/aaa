@@ -1,9 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" aria-hidden="true" focusable="false">
   <defs>
     <filter id="chunmo-glass-lens" filterUnits="userSpaceOnUse" x="0" y="0" color-interpolation-filters="sRGB">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="2.4" edgeMode="duplicate" result="surface"/>
       <feImage x="0" y="0" preserveAspectRatio="none" result="normalMap"/>
-      <feDisplacementMap in="surface" in2="normalMap" scale="64" xChannelSelector="R" yChannelSelector="G"/>
+      <feDisplacementMap in="SourceGraphic" in2="normalMap" scale="64" xChannelSelector="R" yChannelSelector="G"/>
     </filter>
   </defs>
 </svg>

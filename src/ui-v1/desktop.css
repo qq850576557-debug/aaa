@@ -22,23 +22,6 @@
   flex: 0 0 auto;
   margin-inline-start: auto;
 }
-:root[data-desktop-ui='v1'] .personal-card-dialog .modal-head-compact > .personal-card-actions {
-  position: static;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: auto;
-  height: auto;
-  clip-path: none;
-  overflow: visible;
-}
-:root[data-desktop-ui='v1'] .personal-card-actions > button {
-  min-height: 34px;
-  padding: 5px 10px;
-  border-radius: var(--cm-pill);
-  white-space: nowrap;
-  font-size: var(--cm-caption);
-}
 :root[data-desktop-ui='v1'] .member-cards-section .member-card {
   overflow: visible;
 }
@@ -76,11 +59,12 @@
   border-radius: 0;
   object-fit: contain;
 }
-:root[data-desktop-ui='v1'] .member-card-photo .member-photo-edit {
-  position: static;
-  margin: 7px 10px 7px auto;
+:root[data-desktop-ui='v1'] .member-card-photo-field {
+  padding: 8px 16px 0;
 }
-
+:root[data-desktop-ui='v1'] .member-card-photo-field .card-photo-upload > button {
+  border-radius: var(--cm-pill);
+}
 .ui-v1.app-shell {
   --green: var(--cm-green);
   --ui-background: var(--cm-canvas);
@@ -287,10 +271,10 @@
   box-shadow: none;
 }
 .ui-v1.app-shell .overview-stat {
-  flex-direction: row;
-  justify-content: space-between;
-  align-items: center;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: max-content 1px minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: clamp(6px, 0.75vw, 12px);
   min-height: 43px;
   padding: 8px 10px;
   border: 0;
@@ -301,6 +285,20 @@
   font-weight: var(--cm-normal);
   text-align: left;
   box-shadow: none;
+}
+.ui-v1.app-shell .overview-stat strong {
+  grid-area: 1 / 1;
+}
+.ui-v1.app-shell .overview-stat::after {
+  content: '';
+  grid-area: 1 / 2;
+  align-self: center;
+  height: 15px;
+  background: #dfe5dc;
+}
+.ui-v1.app-shell .overview-stat span {
+  grid-area: 1 / 3;
+  line-height: var(--cm-heading-line);
 }
 .ui-v1.app-shell .overview-stat:hover {
   background: var(--cm-soft) !important;
@@ -373,6 +371,19 @@
   border-radius: var(--cm-pill);
   font-weight: var(--cm-medium);
   font-size: var(--cm-small);
+}
+.ui-v1.app-shell[data-view='overview'] .sd-rules {
+  background: var(--cm-rules-glow);
+  box-shadow: inset 0 0 0 1px #ffffffbd;
+}
+.ui-v1.app-shell[data-view='overview'] .sd-rules .sd-rule-line p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+:root[data-desktop-ui='v1'] .sd-rules-full .sd-rule-line p {
+  overflow-wrap: anywhere;
 }
 .ui-v1.app-shell[data-view='overview'] .sd-duty {
   --sd-muted: #4b624d;

@@ -84,9 +84,9 @@ for (const width of [1440, 390])
         .click({ timeout: 15000 });
       await expect(own).toBeVisible();
       await expect(own.locator('.member-card-photo img')).toHaveAttribute('src', source!);
-      await expect(
-        own.getByRole('button', { name: '点击更换名片照片', exact: true }),
-      ).toBeVisible();
+      await expect(own.getByRole('button', { name: '点击更换名片照片', exact: true })).toHaveCount(
+        width > 700 ? 0 : 1,
+      );
       await own.getByRole('button', { name: '关闭浮窗', exact: true }).click();
       await a
         .locator(`.online-accounts [data-account-id="${f.employeeId}"]`)

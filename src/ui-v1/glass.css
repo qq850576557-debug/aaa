@@ -3,7 +3,7 @@
   --cm-glass-control: rgb(255 254 250 / 94%);
   border-radius: var(--cm-radius-panel);
   border-color: rgb(255 255 255 / 65%);
-  background: #fbfaf4;
+  background: var(--cm-glass-paper);
   box-shadow: 0 13px 32px rgb(25 49 40 / 19%);
   color: var(--cm-ink);
   animation: cm-glass-enter 140ms ease-out;
@@ -21,24 +21,35 @@
 :root[data-desktop-ui='v1'] .modal.cm-glass.closing {
   animation: none;
 }
-:root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='frosted'] {
-  background: var(--cm-glass-paper);
-}
-:root[data-desktop-ui='v1'] .modal.cm-glass.floating-panel[data-cm-glass='frosted'] {
+:root[data-desktop-ui='v1'] .modal.cm-glass.floating-panel {
   --cm-glass-paper: rgb(254 252 244 / 98%);
 }
+:root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass-enhanced] {
+  --cm-glass-paper: rgb(254 252 244 / 78%);
+  background: radial-gradient(
+    ellipse closest-side,
+    var(--cm-glass-paper) 86%,
+    rgb(254 252 244 / 44%)
+  );
+}
 :root[data-desktop-ui='v1'] .modal.cm-glass::backdrop {
+  background: transparent;
+  backdrop-filter: none;
+}
+/* One stationary scene below the native top layer, shared by nested modals. */
+:root[data-desktop-ui='v1']:has(.modal.cm-glass:modal) body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  pointer-events: none;
   background: rgb(60 79 68 / 17%);
-  backdrop-filter: none;
+  backdrop-filter: blur(5px);
 }
-:root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='liquid'] {
-  background: transparent;
-  border-color: transparent;
-  backdrop-filter: none;
-}
-:root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass-backdrop]::backdrop {
-  background: transparent;
-  backdrop-filter: none;
+@supports not selector(body:has(dialog:modal)) {
+  :root[data-desktop-ui='v1'] .modal.cm-glass::backdrop {
+    background: rgb(60 79 68 / 17%);
+  }
 }
 :root[data-desktop-ui='v1']
   .modal.cm-glass
@@ -80,7 +91,6 @@
   inset: 0;
   z-index: 150;
   pointer-events: none;
-  --cm-glass-scene-blur: 5px;
 }
 .cm-glass-layer[data-closing] {
   opacity: 0;
@@ -98,38 +108,29 @@
   height: var(--cm-glass-height);
   border-radius: var(--cm-glass-radius);
   backdrop-filter: var(--cm-glass-filter);
+  mask: var(--cm-glass-edge) center / 100% 100% no-repeat;
+  animation: cm-glass-rim-in 180ms ease-out;
 }
-.cm-glass-optic::before,
-.cm-glass-optic > b {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
+@keyframes cm-glass-rim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .cm-glass-optic::before {
   content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   background:
     radial-gradient(ellipse at 0 0, rgb(255 255 255 / 36%), transparent 41%),
     radial-gradient(ellipse at 106% 112%, rgb(205 225 177 / 25%), transparent 46%);
 }
-.cm-glass-optic > b {
-  background: rgb(254 252 244 / var(--cm-glass-opacity));
-  mask: var(--cm-glass-tint) center / 100% 100% no-repeat;
-}
-.cm-glass-scene {
-  position: absolute;
-  inset: 0;
-  clip-path: var(--cm-glass-aperture);
-  backdrop-filter: blur(var(--cm-glass-scene-blur));
-  background: rgb(60 79 68 / 17%);
-}
-.cm-glass-layer[data-mode='frosted'] .cm-glass-optic {
-  display: none;
-}
-.cm-glass-layer[data-mode='frosted'] .cm-glass-scene {
-  clip-path: none;
-}
 @media (prefers-reduced-motion: reduce) {
-  :root[data-desktop-ui='v1'] .modal.cm-glass {
+  :root[data-desktop-ui='v1'] .modal.cm-glass,
+  .cm-glass-optic {
     animation: none;
   }
   .cm-glass-layer[data-closing] {
@@ -137,17 +138,17 @@
   }
 }
 @media (prefers-reduced-transparency: reduce) {
-  .cm-glass-scene {
+  :root[data-desktop-ui='v1']:has(.modal.cm-glass:modal) body::after {
     backdrop-filter: none;
     background: #43594e5c;
   }
-  :root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass='frosted'],
   :root[data-desktop-ui='v1'] .modal.cm-glass {
-    backdrop-filter: none;
     background: #fbfaf4;
   }
-  :root[data-desktop-ui='v1'] .modal.cm-glass:not([data-cm-glass-backdrop])::backdrop {
-    backdrop-filter: none;
-    background: #43594e5c;
+  :root[data-desktop-ui='v1'] .modal.cm-glass[data-cm-glass-enhanced] {
+    background: #fbfaf4;
+  }
+  .cm-glass-layer {
+    display: none;
   }
 }

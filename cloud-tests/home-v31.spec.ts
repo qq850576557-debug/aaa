@@ -282,7 +282,9 @@ for (const width of [1280, 1440, 1920, 2560])
         await modal.getByRole('button', { name: '保存', exact: true }).click();
         await expect(modal).toHaveCount(0);
         await page.reload();
-        await expect(page.getByTestId('studio-rules')).toContainText('新增验收要求');
+        await page.getByRole('button', { name: '展开查看', exact: true }).click();
+        await expect(modal).toContainText('新增验收要求');
+        await page.keyboard.press('Escape');
         await page.getByRole('button', { name: '编辑值日', exact: true }).click();
         await modalFits(page);
         const duty = page.getByRole('dialog', { name: '编辑值日', exact: true });
@@ -300,7 +302,9 @@ for (const width of [1280, 1440, 1920, 2560])
         await api(page, '/auth/logout', 'POST', {});
         await page.reload();
         await login(page, f.login, f.password);
-        await expect(page.getByTestId('studio-rules')).toContainText('新增验收要求');
+        await page.getByRole('button', { name: '展开查看', exact: true }).click();
+        await expect(modal).toContainText('新增验收要求');
+        await page.keyboard.press('Escape');
         await expect(page.locator('.sd-duty')).toContainText('每7天');
         const context = await browser.newContext({
           baseURL: new URL(page.url()).origin,
@@ -308,8 +312,11 @@ for (const width of [1280, 1440, 1920, 2560])
         });
         const staff = await context.newPage();
         await login(staff, f.employee, f.password);
-        await expect(staff.getByTestId('studio-rules')).toContainText('新增验收要求');
-        await expect(staff.getByTestId('studio-rules')).not.toContainText('只分配给乙');
+        await staff.getByRole('button', { name: '展开查看', exact: true }).click();
+        const staffRules = staff.getByRole('dialog', { name: '每日必做', exact: true });
+        await expect(staffRules).toContainText('新增验收要求');
+        await expect(staffRules).not.toContainText('只分配给乙');
+        await staff.keyboard.press('Escape');
         await expect(staff.getByRole('button', { name: '管理每日必做', exact: true })).toHaveCount(
           0,
         );

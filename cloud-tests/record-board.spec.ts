@@ -287,18 +287,22 @@ for (const width of [1440, 390])
     await page.reload();
     const before = await (await context.request.get('/api/auth/session')).json();
     await page.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
+    const card = page.getByRole('dialog', { name: '我的个人名片', exact: true });
+    const editor = width > 700 ? page.getByRole('dialog', { name: /编辑名片 ·/ }) : card;
+    if (width > 700) await card.getByRole('button', { name: /编辑.*名片/ }).click();
     const picker = page.waitForEvent('filechooser');
-    await page.getByRole('button', { name: '点击更换名片照片', exact: true }).click();
+    await editor
+      .getByRole('button', { name: width > 700 ? '更换照片' : '点击更换名片照片', exact: true })
+      .click();
     const chooser = await picker;
     await chooser.setFiles({ name: 'card.png', mimeType: 'image/png', buffer: image(150, 90) });
-    const card = page.getByRole('dialog', { name: '我的个人名片', exact: true });
-    await expect(
-      page.getByRole('dialog', { name: '调整头像照片', exact: true }).locator('img'),
-    ).toBeVisible();
-    await card.getByRole('button', { name: '保存头像', exact: true }).click();
-    await expect(card.getByRole('status').filter({ hasText: '头像已保存' })).toContainText(
+    const cropper = page.getByRole('dialog', { name: '调整头像照片', exact: true });
+    await expect(cropper.locator('img')).toBeVisible();
+    await cropper.getByRole('button', { name: '保存头像', exact: true }).click();
+    await expect(editor.getByRole('status').filter({ hasText: '头像已保存' })).toContainText(
       '头像已保存',
     );
+    if (width > 700) await editor.getByRole('button', { name: '关闭浮窗' }).click();
     const after = await (await context.request.get('/api/auth/session')).json();
     expect(after.user.avatarVersion).toBe(before.user.avatarVersion);
     expect(after.user.cardAvatarVersion).toBeTruthy();
@@ -316,7 +320,10 @@ for (const width of [1440, 390])
       'src',
       new RegExp(after.user.cardAvatarVersion),
     );
-    await card.getByRole('button', { name: '账号设置', exact: true }).click();
+    if (width > 700) {
+      await card.getByRole('button', { name: '关闭浮窗' }).click();
+      await page.getByRole('button', { name: '账号管理', exact: true }).click();
+    } else await card.getByRole('button', { name: '账号设置', exact: true }).click();
     await page.getByRole('button', { name: '退出登录', exact: true }).click();
     await login(page, f.employee, f.password);
     await page.getByRole('button', { name: '打开我的个人名片', exact: true }).click();

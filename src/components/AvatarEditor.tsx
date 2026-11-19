@@ -14,12 +14,14 @@ export function AvatarEditor({
   kind = 'system',
   inputRef,
   aspect = 1,
+  showCardAction = false,
 }: {
   user: CloudUser;
   onUpdated: (user: CloudUser) => void;
   kind?: 'system' | 'card';
   inputRef?: RefObject<HTMLInputElement | null>;
   aspect?: number;
+  showCardAction?: boolean;
 }) {
   const [photo, setPhoto] = useState<PhotoSource | null>(null),
     [error, setError] = useState(''),
@@ -152,6 +154,11 @@ export function AvatarEditor({
     return (
       <div className="card-photo-upload">
         {input}
+        {showCardAction && (
+          <button type="button" disabled={busy} onClick={() => fileInput.current?.click()}>
+            更换照片
+          </button>
+        )}
         {messages}
         {cropper}
       </div>

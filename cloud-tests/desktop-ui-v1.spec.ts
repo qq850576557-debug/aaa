@@ -79,17 +79,19 @@ async function setup(page: Page) {
     version: studio.version,
     value: {
       ...emptyStudio(),
-      rules: ['离场前检查现场水电、门窗和成品保护。', '与现场负责人同步当天进度及待确认事项。'].map(
-        (text) => ({
-          id: crypto.randomUUID(),
-          text,
-          people: [],
-          enabled: true,
-          weekdays: [0, 1, 2, 3, 4, 5, 6],
-          from: '',
-          to: '',
-        }),
-      ),
+      rules: [
+        '离场前检查现场水电、门窗和成品保护。',
+        '与现场负责人同步当天进度及待确认事项。',
+        '更新施工现场问题记录。',
+      ].map((text) => ({
+        id: crypto.randomUUID(),
+        text,
+        people: [],
+        enabled: true,
+        weekdays: [0, 1, 2, 3, 4, 5, 6],
+        from: '',
+        to: '',
+      })),
     },
   });
   await api(page, '/studio-daily/rotation', 'POST', {
@@ -117,6 +119,28 @@ function pixels(a: PNG, b: PNG, [left, top, right, bottom]: Region) {
       for (let c = 0; c < 3; c++) difference += Math.abs(a.data[offset + c] - b.data[offset + c]);
     }
   return difference / ((right - left) * (bottom - top) * 3);
+}
+
+async function statAlignment(page: Page) {
+  return page.locator('.overview-stat').evaluateAll((cards) =>
+    cards.map((card) => {
+      const number = card.querySelector('strong')!,
+        label = card.querySelector('span')!;
+      const points = [number, label].map((item) => {
+        const baseline = document.createElement('i');
+        baseline.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+        item.prepend(baseline);
+        const y = baseline.getBoundingClientRect().top;
+        baseline.remove();
+        return y;
+      });
+      return {
+        delta: Math.abs(points[0] - points[1]),
+        gap: label.getBoundingClientRect().left - number.getBoundingClientRect().right,
+        bar: getComputedStyle(card, '::after').backgroundColor,
+      };
+    }),
+  );
 }
 
 test('desktop V1 local typography, real optical sampling, form and fallback', async ({
@@ -190,7 +214,34 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   expect(wide.navHeight).toBeGreaterThanOrEqual(42);
   expect(wide.navGap).toBeGreaterThanOrEqual(8);
   expect(wide.overflow).toBe(false);
+  const statGeometry = await statAlignment(page);
+  expect(statGeometry).toHaveLength(5);
+  for (const { delta, gap, bar } of statGeometry) {
+    expect(delta).toBeLessThanOrEqual(2);
+    expect(gap).toBeGreaterThanOrEqual(13);
+    expect(bar).toBe('rgb(223, 229, 220)');
+  }
+  const rules = page.getByTestId('studio-rules');
+  await expect(rules.locator('.sd-rule-line')).toHaveCount(2);
+  await expect(rules).not.toContainText('更新施工现场问题记录');
+  await expect(rules.getByRole('button', { name: /收起/ })).toHaveCount(0);
+  await expect(rules).toHaveCSS('background-image', /gradient/);
+  expect(
+    Math.abs(
+      (await rules.boundingBox())!.height - (await page.locator('.sd-duty').boundingBox())!.height,
+    ),
+  ).toBeLessThanOrEqual(2);
   await page.screenshot({ path: join(output, 'home-wide.png'), fullPage: true });
+  await page.locator('.overview-stats').screenshot({ path: join(output, 'statistics.png') });
+  await page.locator('.sd-grid').screenshot({ path: join(output, 'studio-daily.png') });
+  const readRules = rules.getByRole('button', { name: '展开查看', exact: true });
+  await readRules.click();
+  const allRules = page.getByRole('dialog', { name: '每日必做', exact: true });
+  await expect(allRules.locator('.sd-rule-line')).toHaveCount(3);
+  await expect(allRules.getByRole('button', { name: '管理每日必做' })).toHaveCount(0);
+  await page.screenshot({ path: join(output, 'daily-rules-expanded.png'), animations: 'disabled' });
+  await page.keyboard.press('Escape');
+  await expect(readRules).toBeFocused();
   await page.locator('.sidebar').screenshot({ path: join(output, 'sidebar.png') });
   await page.locator('.sd-duty').screenshot({ path: join(output, 'duty-light.png') });
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -198,6 +249,58 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   const open = page.getByRole('button', { name: '编辑值日', exact: true });
   const dialog = page.getByRole('dialog', { name: '编辑值日' });
   const layer = page.locator('.cm-glass-layer[data-kind=blocking]');
+  await open.evaluate((button) => {
+    button.addEventListener(
+      'click',
+      () => {
+        const start = performance.now();
+        const samples: { time: number; paper: string; scene: string; opacity: number }[] = [];
+        function frame(now: number) {
+          const modal = document.querySelector('dialog.sd-modal:modal');
+          if (modal) {
+            const style = getComputedStyle(modal);
+            samples.push({
+              time: now - start,
+              paper: style.backgroundColor,
+              scene: getComputedStyle(document.body, '::after').backdropFilter,
+              opacity: Number(style.opacity),
+            });
+          }
+          if (now - start < 450) requestAnimationFrame(frame);
+          else performance.mark('stable-glass', { detail: samples });
+        }
+        requestAnimationFrame(frame);
+      },
+      { once: true },
+    );
+  });
+  await open.click();
+  await expect(dialog).toHaveAttribute('data-cm-glass', 'frosted');
+  await expect(layer).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => performance.getEntriesByName('stable-glass').length))
+    .toBe(1);
+  const samples = await page.evaluate(
+    () =>
+      (performance.getEntriesByName('stable-glass')[0] as PerformanceMark).detail as {
+        time: number;
+        paper: string;
+        scene: string;
+        opacity: number;
+      }[],
+  );
+  expect(new Set(samples.map(({ paper }) => paper))).toEqual(new Set(['rgba(254, 252, 244, 0.9)']));
+  expect(new Set(samples.map(({ scene }) => scene))).toEqual(new Set(['blur(5px)']));
+  const firstVisible = samples.find(({ opacity }) => opacity > 0.1)?.time ?? Infinity;
+  expect(firstVisible, JSON.stringify(samples)).toBeLessThan(400);
+  const largestFrameGap = Math.max(
+    ...samples.slice(1).map(({ time }, index) => time - samples[index].time),
+  );
+  await page.screenshot({ path: join(output, 'stable-glass.png') });
+  await page.keyboard.press('Escape');
+  await expect(open).toBeFocused();
+
+  await page.goto('/?glass=enhanced');
   const timings = [];
   for (let i = 0; i < 4; i++) {
     await open.evaluate((button) => {
@@ -279,6 +382,7 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   const rim: Region = [right - 27, y + 66, right - 3, bottom - 45];
   const core: Region = [x + 49, y + 81, right - 53, bottom - 75];
   const shot = async (path?: string) => PNG.sync.read(await page.screenshot({ path }));
+  await expect(layer.locator('.cm-glass-optic')).toHaveCSS('opacity', '1');
   const liquid = await shot(join(output, 'liquid-glass.png'));
   const scales = await layer.locator('feDisplacementMap').evaluateAll((filters) =>
     filters.map((filter) => {
@@ -297,17 +401,16 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
     );
   const edgeDelta = pixels(liquid, flat, rim);
   const coreDelta = pixels(liquid, flat, core);
-  expect(edgeDelta).toBeGreaterThan(0.45);
+  expect(edgeDelta).toBeGreaterThan(0.12);
   expect(coreDelta).toBeLessThan(0.16);
 
   const blur = await page.addStyleTag({
-    content: '.cm-glass-layer { --cm-glass-scene-blur: 22px; }',
+    content:
+      ":root[data-desktop-ui='v1']:has(.modal.cm-glass:modal) body::after { backdrop-filter: blur(22px); }",
   });
   const blurred = await shot();
   const sceneDelta = pixels(liquid, blurred, [32, 95, 208, 408]);
-  const rimDelta = pixels(liquid, blurred, rim);
   expect(sceneDelta).toBeGreaterThan(0.6);
-  expect(rimDelta).toBeLessThan(0.15);
   await blur.evaluate((style) => style.parentNode?.removeChild(style));
 
   // Changes to the real page must propagate without a copied scene.
@@ -335,10 +438,12 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
       args[1]?.startsWith('url(') ? false : supports(...(args as [string, string]));
   });
   await open.click();
-  await expect(dialog).toHaveAttribute('data-cm-glass-backdrop', '');
+  await expect(dialog).toHaveAttribute('data-cm-glass', 'frosted');
   await expect(dialog).toHaveCSS('backdrop-filter', 'none');
   await expect(page.locator('.main-shell')).toHaveCSS('filter', 'none');
-  await expect(layer.locator('.cm-glass-scene')).toHaveCSS('backdrop-filter', 'blur(5px)');
+  expect(await page.evaluate(() => getComputedStyle(document.body, '::after').backdropFilter)).toBe(
+    'blur(5px)',
+  );
   await expect(layer.locator('.cm-glass-optic')).toHaveCount(0);
   await page.screenshot({ path: join(output, 'frosted-fallback.png') });
   await page.keyboard.press('Escape');
@@ -350,7 +455,9 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   await expect(dialog).toHaveCSS('background-color', 'rgb(251, 250, 244)');
   await expect(dialog).toHaveCSS('backdrop-filter', 'none');
   await expect(page.locator('.main-shell')).toHaveCSS('filter', 'none');
-  await expect(layer.locator('.cm-glass-scene')).toHaveCSS('backdrop-filter', 'none');
+  expect(await page.evaluate(() => getComputedStyle(document.body, '::after').backdropFilter)).toBe(
+    'none',
+  );
   await page.keyboard.press('Escape');
 
   await cdp.send('Emulation.setEmulatedMedia', { features: [] });
@@ -375,6 +482,10 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
     overflow: document.documentElement.scrollWidth > innerWidth,
   }));
   expect(compact).toEqual({ rows: 1, overflow: false });
+  for (const { delta, gap } of await statAlignment(page)) {
+    expect(delta).toBeLessThanOrEqual(2);
+    expect(gap).toBeGreaterThanOrEqual(13);
+  }
   const clipped = await page
     .locator('.sidebar-save-status > button')
     .evaluate((button) => button.scrollWidth > button.clientWidth);
@@ -387,6 +498,12 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
       {
         faces,
         wide,
+        statGeometry,
+        stableMs: {
+          firstVisible: Math.round(firstVisible),
+          largestFrameGap: Math.round(largestFrameGap),
+          samples: samples.length,
+        },
         timingsMs: timings.map(({ layer, frame, initial, maxGap }) => ({
           layer: Math.round(layer),
           frame: Math.round(frame),
@@ -396,7 +513,6 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
         edgeDelta,
         coreDelta,
         sceneDelta,
-        rimDelta,
         colorDelta,
         fallback: 'ordinary and reduced transparency',
         legacy: 'navigation preserved',

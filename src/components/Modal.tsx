@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
-import { desktopV1Enabled } from '../ui-v1/mode';
+import { desktopV1Enabled, enhancedGlassEnabled } from '../ui-v1/mode';
 export type Anchor = { x: number; y: number; element?: HTMLElement };
 export function Modal({
   title,
@@ -15,13 +15,13 @@ export function Modal({
   animateClose = false,
   inline = false,
   topAligned = false,
-  headerActions,
   compactHeader = false,
+  enhancedGlass = false,
 }: {
   inline?: boolean;
   topAligned?: boolean;
-  headerActions?: ReactNode;
   compactHeader?: boolean;
+  enhancedGlass?: boolean;
   title: string;
   subtitle?: string;
   children: ReactNode;
@@ -35,8 +35,13 @@ export function Modal({
 }) {
   const [closing, setClosing] = useState(false);
   const glass = !inline && desktopV1Enabled();
-  const glassBackdrop = glass && blocking;
-  const optical = glassBackdrop && !anchor && placement === 'center';
+  const optical =
+    glass &&
+    blocking &&
+    enhancedGlass &&
+    !anchor &&
+    placement === 'center' &&
+    enhancedGlassEnabled();
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestClose = useRef(onClose);
   latestClose.current = onClose;
@@ -58,6 +63,7 @@ export function Modal({
     if (blocking) {
       d.showModal();
       document.body.style.overflow = 'hidden';
+      if (glass) document.dispatchEvent(new Event('chunmo:glass-stack'));
     } else d.show();
     const initial = anchor?.element?.getBoundingClientRect();
     const position = () => {
@@ -134,18 +140,21 @@ export function Modal({
       document.removeEventListener('click', outside, true);
       document.removeEventListener('keydown', escape);
       d.close();
-      if (blocking) document.body.style.overflow = oldOverflow;
+      if (blocking) {
+        document.body.style.overflow = oldOverflow;
+        if (glass) document.dispatchEvent(new Event('chunmo:glass-stack'));
+      }
       if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, []);
   useEffect(() => {
-    if (!glassBackdrop || !ref.current) return;
+    if (!optical || !ref.current) return;
     const dialog = ref.current;
     let cancelled = false;
     let detach: (() => void) | undefined;
     void import('../ui-v1/glass')
       .then(({ attachGlass }) => {
-        if (!cancelled) detach = attachGlass(dialog, optical);
+        if (!cancelled) detach = attachGlass(dialog);
       })
       .catch(() => {
         // The ordinary glass treatment remains usable if enhanced optics cannot load.
@@ -155,12 +164,13 @@ export function Modal({
       cancelled = true;
       detach?.();
     };
-  }, [glassBackdrop, optical]);
+  }, [optical]);
   if (inline) return <section className={`inline-form ${className}`}>{children}</section>;
   return (
     <dialog
       ref={ref}
-      data-cm-glass={glass && !glassBackdrop ? 'frosted' : undefined}
+      data-cm-glass={glass ? 'frosted' : undefined}
+      data-cm-glass-enhanced={optical ? '' : undefined}
       className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${closing ? 'closing' : ''} ${glass ? 'cm-glass' : ''} ${className}`}
       aria-modal={blocking}
       aria-labelledby={headingId}
@@ -181,7 +191,6 @@ export function Modal({
           <h2 id={headingId}>{title}</h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
-        {headerActions}
         <button className="icon-btn" aria-label="关闭浮窗" onClick={() => closeRef.current()}>
           <X size={20} />
         </button>

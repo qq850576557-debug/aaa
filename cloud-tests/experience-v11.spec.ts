@@ -240,14 +240,22 @@ for (const width of [1440, 390]) {
       await p.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
       m = p.getByRole('dialog', { name: '我的个人名片', exact: true });
       await expect(m.getByText('名片头像设置', { exact: true })).toHaveCount(0);
-      await m
+      const editCard = width > 700 ? p.getByRole('dialog', { name: /编辑名片 ·/ }) : m;
+      if (width > 700) await m.getByRole('button', { name: /编辑.*名片/ }).click();
+      await editCard
         .getByLabel('选择名片头像', { exact: true })
         .setInputFiles({ name: 'card.png', mimeType: 'image/png', buffer: png(220) });
-      await m.getByRole('button', { name: '保存头像', exact: true }).click();
+      const cropCard = p.getByRole('dialog', { name: '调整头像照片' });
+      await cropCard.getByRole('button', { name: '保存头像', exact: true }).click();
+      await expect(cropCard).toHaveCount(0);
+      if (width > 700) await editCard.getByRole('button', { name: '关闭浮窗' }).click();
       await expect(m.locator('.member-card-photo img')).toHaveAttribute('src', /card-avatar/);
       const card = await m.locator('.member-card-photo img').getAttribute('src');
       await expect(p.locator('.current-account img')).toHaveAttribute('src', system!);
-      await m.getByRole('button', { name: '账号设置', exact: true }).click();
+      if (width > 700) {
+        await m.getByRole('button', { name: '关闭浮窗' }).click();
+        await p.getByRole('button', { name: '账号管理', exact: true }).click();
+      } else await m.getByRole('button', { name: '账号设置', exact: true }).click();
       await expect(p.getByRole('dialog', { name: '账号管理', exact: true })).toBeVisible();
       await p.getByRole('button', { name: '关闭浮窗', exact: true }).click();
       await api(c, '/auth/logout', 'POST', {});

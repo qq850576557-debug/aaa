@@ -127,8 +127,12 @@ for (const width of [1440, 390, 320])
       const card = page.getByRole('dialog', { name: '我的个人名片', exact: true });
       await expect(card).toBeVisible();
       expect(await card.evaluate((e) => e.matches(':modal'))).toBe(true);
+      const photoEditor = width > 700 ? page.getByRole('dialog', { name: /编辑名片 ·/ }) : card;
+      if (width > 700) await card.getByRole('button', { name: /编辑.*名片/ }).click();
       const chooser = page.waitForEvent('filechooser');
-      await card.getByRole('button', { name: '点击更换名片照片', exact: true }).click();
+      await photoEditor
+        .getByRole('button', { name: width > 700 ? '更换照片' : '点击更换名片照片', exact: true })
+        .click();
       await (
         await chooser
       ).setFiles({
@@ -136,11 +140,11 @@ for (const width of [1440, 390, 320])
         mimeType: 'image/png',
         buffer: photo(1600, 1000),
       });
-      await expect(
-        page.getByRole('dialog', { name: '调整头像照片', exact: true }).locator('img'),
-      ).toBeVisible();
-      await card.getByRole('button', { name: '保存头像', exact: true }).click();
-      await expect(card.getByText('头像已保存', { exact: true })).toBeVisible();
+      const crop = page.getByRole('dialog', { name: '调整头像照片', exact: true });
+      await expect(crop.locator('img')).toBeVisible();
+      await crop.getByRole('button', { name: '保存头像', exact: true }).click();
+      await expect(photoEditor.getByText('头像已保存', { exact: true })).toBeVisible();
+      if (width > 700) await photoEditor.getByRole('button', { name: '关闭浮窗' }).click();
       await expect(card.locator('.member-photo-preview .account-avatar')).toHaveAttribute(
         'data-image-state',
         'loaded',
@@ -172,9 +176,12 @@ for (const width of [1440, 390, 320])
       expect(geo[1].y).toBeGreaterThanOrEqual(geo[0].y + geo[0].h);
       expect(Math.abs(geo[0].w - geo[1].w)).toBeLessThan(1);
       expect((await card.boundingBox())!.width).toBeLessThanOrEqual(360);
-      expect(
-        await card.evaluate((e) => getComputedStyle(e, '::backdrop').backdropFilter),
-      ).toContain('blur');
+      const blur = await card.evaluate((e) =>
+        e.classList.contains('cm-glass')
+          ? getComputedStyle(document.body, '::after').backdropFilter
+          : getComputedStyle(e, '::backdrop').backdropFilter,
+      );
+      expect(blur).toContain('blur');
       expect(await card.evaluate((e) => getComputedStyle(e).filter)).toBe('none');
       const type = await card
         .locator('.member-card-content h3,.member-card-english,.member-card-department')
@@ -219,7 +226,10 @@ for (const width of [1440, 390, 320])
       await page.mouse.click(2, 400);
       await expect(card).toHaveCount(0);
       await page.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
-      await card.getByRole('button', { name: '账号设置', exact: true }).click();
+      if (width > 700) {
+        await card.getByRole('button', { name: '关闭浮窗' }).click();
+        await page.getByRole('button', { name: '账号管理', exact: true }).click();
+      } else await card.getByRole('button', { name: '账号设置', exact: true }).click();
       await expect(page.getByRole('dialog', { name: '账号管理', exact: true })).toBeVisible();
       const workspaceAfter = await (await api(context, '/workspace')).json();
       expect(workspaceAfter.data).toEqual(before.data);
@@ -233,10 +243,17 @@ for (const width of [1440, 390, 320])
       );
       await op.getByRole('button', { name: '打开我的个人名片', exact: true }).click();
       const ownerCard = op.getByRole('dialog', { name: '我的个人名片', exact: true });
-      await ownerCard.getByRole('button', { name: '部门管理', exact: true }).click();
+      const ownerAccount = op.getByRole('dialog', { name: '账号管理', exact: true });
+      if (width > 700) {
+        await ownerCard.getByRole('button', { name: '关闭浮窗' }).click();
+        await op.getByRole('button', { name: '账号管理', exact: true }).click();
+        await ownerAccount.getByRole('tab', { name: '账号通讯录' }).click();
+      }
+      const ownerTools = width > 700 ? ownerAccount : ownerCard;
+      await ownerTools.getByRole('button', { name: '部门管理', exact: true }).click();
       await expect(op.getByRole('dialog', { name: '部门管理', exact: true })).toBeVisible();
       await op.keyboard.press('Escape');
-      await expect(ownerCard).toBeVisible();
+      await expect(ownerTools).toBeVisible();
     } finally {
       await owner.close();
     }

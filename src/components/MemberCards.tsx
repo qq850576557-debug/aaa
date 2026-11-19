@@ -1,6 +1,5 @@
 import { presenceLabel, type PresenceStatus } from '../lib/presence-state';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { cloudApi, type CloudUser } from '../lib/cloud';
 import {
   cardEdit,
@@ -22,7 +21,8 @@ export function MemberCards({
   onlyId,
   onPhotoClick,
   headerAction,
-  headerTarget,
+  hideHeader = false,
+  photoEditor,
   readOnly = false,
   onlineStatus,
 }: {
@@ -30,7 +30,8 @@ export function MemberCards({
   onlyId?: string;
   onPhotoClick?: (aspect: number) => void;
   headerAction?: ReactNode;
-  headerTarget?: HTMLDivElement | null;
+  hideHeader?: boolean;
+  photoEditor?: ReactNode;
   readOnly?: boolean;
   onlineStatus?: boolean | PresenceStatus;
   onSaved: (card: MemberCard) => Promise<void>;
@@ -144,13 +145,12 @@ export function MemberCards({
   );
   return (
     <section className="member-cards-section" aria-label="员工名片">
-      {!readOnly && headerTarget === undefined && (
+      {!readOnly && !hideHeader && (
         <div className="section-heading">
           <h3>团队名片</h3>
           {headerButtons}
         </div>
       )}
-      {!readOnly && headerTarget && createPortal(headerButtons, headerTarget)}
       <div className="member-cards-grid">
         {cards
           .filter((card) => !onlyId || card.id === onlyId)
@@ -242,6 +242,9 @@ export function MemberCards({
           onClose={() => !busy && setEditing(null)}
           className="member-card-editor"
         >
+          {editing.id === user.id && photoEditor && (
+            <div className="member-card-photo-field">{photoEditor}</div>
+          )}
           <form onSubmit={save}>
             <div className="modal-body form-grid">
               <label>
@@ -302,7 +305,8 @@ export function MemberCards({
                 onChange={(joinedOn) => setDraft({ ...draft, joinedOn })}
               />
               <p className="muted span2">
-                入职日期仅本人和负责人可见。姓名用于展示，不改变登录账号、角色或项目关联。名片头像在本人浮动名片中单独修改，与系统在线头像互不覆盖。
+                入职日期仅本人和负责人可见。姓名用于展示，不改变登录账号、角色或项目关联。
+                {!photoEditor && '名片头像在本人浮动名片中单独修改，与系统在线头像互不覆盖。'}
               </p>
               {error && (
                 <p className="error span2" role="alert">

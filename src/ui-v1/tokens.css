@@ -58,6 +58,9 @@
   --cm-workspace-gutter: clamp(16px, 1.48vw, 32px);
   --cm-nav-row: 43px;
   --cm-nav-gap: 8px;
+  --cm-rules-glow:
+    radial-gradient(ellipse at 0% 0%, #fffffd, transparent 80%),
+    linear-gradient(120deg, #fafbf4 10%, #f3f6ec 67%, #ebf2e3);
   --cm-duty-glow:
     radial-gradient(ellipse at 2% -25%, #ffffffdf, transparent 67%),
     radial-gradient(ellipse at 101% 98%, #d8edbd9c, transparent 63%),

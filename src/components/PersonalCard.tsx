@@ -8,8 +8,7 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
   const desktop = desktopV1Enabled();
   const [profile, setProfile] = useState(user),
     [error, setError] = useState(''),
-    [aspect, setAspect] = useState(1.43),
-    [actions, setActions] = useState<HTMLDivElement | null>(null);
+    [aspect, setAspect] = useState(1.43);
   const photoInput = useRef<HTMLInputElement>(null);
   return (
     <Modal
@@ -19,40 +18,57 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
       blocking
       animateClose
       compactHeader={desktop}
-      headerActions={
-        desktop ? <div ref={setActions} className="personal-card-actions" /> : undefined
-      }
+      enhancedGlass
     >
       <div className="modal-body">
-        <AvatarEditor
-          user={profile}
-          kind="card"
-          onUpdated={setProfile}
-          inputRef={photoInput}
-          aspect={aspect}
-        />
+        {!desktop && (
+          <AvatarEditor
+            user={profile}
+            kind="card"
+            onUpdated={setProfile}
+            inputRef={photoInput}
+            aspect={aspect}
+          />
+        )}
         <MemberCards
-          headerTarget={desktop ? actions : undefined}
+          hideHeader={desktop}
+          photoEditor={
+            desktop ? (
+              <AvatarEditor
+                user={profile}
+                kind="card"
+                onUpdated={setProfile}
+                aspect={1.43}
+                showCardAction
+              />
+            ) : undefined
+          }
           headerAction={
-            <button
-              onClick={() => {
-                onClose();
-                window.dispatchEvent(new Event('chunmo-open-account-settings'));
-              }}
-            >
-              账号设置
-            </button>
+            !desktop ? (
+              <button
+                onClick={() => {
+                  onClose();
+                  window.dispatchEvent(new Event('chunmo-open-account-settings'));
+                }}
+              >
+                账号设置
+              </button>
+            ) : undefined
           }
           user={profile}
           onlyId={user.id}
-          onPhotoClick={(ratio) => {
-            setAspect(desktop ? 1.43 : ratio);
-            const input = photoInput.current;
-            if (!input) return;
-            const details = input.closest('details');
-            if (details) details.open = true;
-            input.click();
-          }}
+          onPhotoClick={
+            desktop
+              ? undefined
+              : (ratio) => {
+                  setAspect(ratio);
+                  const input = photoInput.current;
+                  if (!input) return;
+                  const details = input.closest('details');
+                  if (details) details.open = true;
+                  input.click();
+                }
+          }
           onSaved={async () => {
             try {
               const fresh = await cloudSession();

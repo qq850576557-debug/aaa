@@ -178,6 +178,14 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
   }
   if (!cloud) return <section className="panel">工作室日常需登录云端账号后使用。</section>;
   const active = (state?.value.rules || []).filter((r) => ruleActive(r, state!.day));
+  const visibleRules = compact ? active.slice(0, 2) : active;
+  const ruleLines = (rules: typeof active) =>
+    rules.map((r) => (
+      <div className="sd-rule-line" key={r.id}>
+        <span className="sd-dot" aria-hidden="true" />
+        <p>{r.text}</p>
+      </div>
+    ));
   const next = rotation ? rotationPreview(rotation, 3) : [];
   const week = state ? studioWeek(plus(state.day, weekOffset * 7)) : [];
   return (
@@ -195,27 +203,30 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
             <h2>
               每日必做 <span className="sd-count">{active.length}</span>
             </h2>
-            <button
-              className="sd-secondary"
-              aria-expanded={rulesExpanded}
-              aria-label={`${rulesExpanded ? '收起' : '展开'}每日必做`}
-              onClick={() => setRulesExpanded((v) => !v)}
-            >
-              {rulesExpanded ? '收起' : '展开'}
-            </button>
+            {compact ? (
+              active.length > 0 && (
+                <button
+                  className="sd-secondary"
+                  aria-haspopup="dialog"
+                  onClick={() => setMode('view')}
+                >
+                  展开查看
+                </button>
+              )
+            ) : (
+              <button
+                className="sd-secondary"
+                aria-expanded={rulesExpanded}
+                aria-label={`${rulesExpanded ? '收起' : '展开'}每日必做`}
+                onClick={() => setRulesExpanded((v) => !v)}
+              >
+                {rulesExpanded ? '收起' : '展开'}
+              </button>
+            )}
           </header>
           <div className="sd-card-content">
-            {rulesExpanded &&
-              (active.length ? (
-                active.map((r) => (
-                  <div className="sd-rule-line" key={r.id}>
-                    <span className="sd-dot" />
-                    <p>{r.text}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="sd-empty">暂无工作要求</p>
-              ))}
+            {(compact || rulesExpanded) &&
+              (active.length ? ruleLines(visibleRules) : <p className="sd-empty">暂无工作要求</p>)}
           </div>
           <footer className="sd-card-foot">
             {state?.owner && (
@@ -286,20 +297,22 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
       </div>
       {mode && (
         <Modal
-          title={mode === 'rules' ? '每日必做' : mode === 'duty' ? '编辑值日' : '值日排班'}
+          title={mode === 'duty' ? '编辑值日' : mode === 'schedule' ? '值日排班' : '每日必做'}
           className="studio-ui sd-modal"
           blocking
+          enhancedGlass={mode === 'duty'}
           wide={mode === 'rules'}
           onClose={() => {
             if (!busy) setMode('');
           }}
         >
           <div className="modal-body">
-            {error && mode !== 'schedule' && (
+            {error && (mode === 'rules' || mode === 'duty') && (
               <p className="sd-error" role="alert">
                 {error}
               </p>
             )}
+            {mode === 'view' && <div className="sd-rules-full">{ruleLines(active)}</div>}
             {mode === 'rules' && state?.owner && (
               <fieldset
                 disabled={busy}
