@@ -134,13 +134,38 @@ async function statAlignment(page: Page) {
         baseline.remove();
         return y;
       });
+      const box = card.getBoundingClientRect();
+      const numberBox = number.getBoundingClientRect();
+      const labelBox = label.getBoundingClientRect();
+      const bar = getComputedStyle(card, '::before');
       return {
         delta: Math.abs(points[0] - points[1]),
-        gap: label.getBoundingClientRect().left - number.getBoundingClientRect().right,
-        bar: getComputedStyle(card, '::after').backgroundColor,
+        gap: labelBox.left - numberBox.right,
+        left: box.left,
+        right: box.right,
+        width: box.width,
+        centerDelta: Math.abs((labelBox.right + numberBox.left - box.left - box.right) / 2),
+        bar: bar.content === 'none' ? null : [bar.left, bar.width, bar.backgroundColor],
+        insideBar: getComputedStyle(card, '::after').content,
       };
     }),
   );
+}
+
+async function assertStatAlignment(page: Page) {
+  const stats = await statAlignment(page);
+  expect(stats).toHaveLength(5);
+  for (const [index, group] of stats.entries()) {
+    expect(group.delta).toBeLessThanOrEqual(2);
+    expect(group.gap).toBeGreaterThanOrEqual(6);
+    expect(group.gap).toBeLessThanOrEqual(11);
+    expect(group.centerDelta).toBeLessThanOrEqual(2);
+    expect(Math.abs(group.width - stats[0].width)).toBeLessThanOrEqual(1);
+    expect(group.bar).toEqual(index === 0 ? null : ['0px', '1px', 'rgb(223, 229, 220)']);
+    expect(group.insideBar).toBe('none');
+    if (index > 0) expect(group.left).toBe(stats[index - 1].right);
+  }
+  return stats;
 }
 
 test('desktop V1 local typography, real optical sampling, form and fallback', async ({
@@ -214,13 +239,7 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   expect(wide.navHeight).toBeGreaterThanOrEqual(42);
   expect(wide.navGap).toBeGreaterThanOrEqual(8);
   expect(wide.overflow).toBe(false);
-  const statGeometry = await statAlignment(page);
-  expect(statGeometry).toHaveLength(5);
-  for (const { delta, gap, bar } of statGeometry) {
-    expect(delta).toBeLessThanOrEqual(2);
-    expect(gap).toBeGreaterThanOrEqual(13);
-    expect(bar).toBe('rgb(223, 229, 220)');
-  }
+  const statGeometry = await assertStatAlignment(page);
   const rules = page.getByTestId('studio-rules');
   await expect(rules.locator('.sd-rule-line')).toHaveCount(2);
   await expect(rules).not.toContainText('更新施工现场问题记录');
@@ -233,6 +252,21 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   ).toBeLessThanOrEqual(2);
   await page.screenshot({ path: join(output, 'home-wide.png'), fullPage: true });
   await page.locator('.overview-stats').screenshot({ path: join(output, 'statistics.png') });
+  const ongoingMetric = page.getByRole('button', { name: /^施工中的项目：/ });
+  const idleColor = await ongoingMetric.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await ongoingMetric.hover({ position: { x: 5, y: 19 } });
+  await expect(ongoingMetric).not.toHaveCSS('background-color', idleColor);
+  await expect(ongoingMetric).toHaveCSS('translate', 'none');
+  await ongoingMetric.click({ position: { x: 5, y: 19 } });
+  await expect(ongoingMetric).toHaveAttribute('aria-pressed', 'true');
+  await expect(page).toHaveURL(/projects=ongoing/);
+  await page.mouse.move(0, 0);
+  await expect(ongoingMetric).not.toHaveCSS('background-color', idleColor);
+  await page
+    .locator('.overview-stats')
+    .screenshot({ path: join(output, 'statistics-selected.png') });
+  await page.goBack();
+  await expect(ongoingMetric).toHaveAttribute('aria-pressed', 'false');
   await page.locator('.sd-grid').screenshot({ path: join(output, 'studio-daily.png') });
   const readRules = rules.getByRole('button', { name: '展开查看', exact: true });
   await readRules.click();
@@ -482,10 +516,7 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
     overflow: document.documentElement.scrollWidth > innerWidth,
   }));
   expect(compact).toEqual({ rows: 1, overflow: false });
-  for (const { delta, gap } of await statAlignment(page)) {
-    expect(delta).toBeLessThanOrEqual(2);
-    expect(gap).toBeGreaterThanOrEqual(13);
-  }
+  await assertStatAlignment(page);
   const clipped = await page
     .locator('.sidebar-save-status > button')
     .evaluate((button) => button.scrollWidth > button.clientWidth);

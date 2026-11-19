@@ -369,9 +369,6 @@
   min-height: 38px;
   font-size: 13px;
 }
-.homepage .schedule-section .date-picker-compact .date-field {
-  width: 158px;
-}
 .homepage .schedule-section .date-picker-compact input {
   font-size: 13px;
 }
@@ -647,9 +644,6 @@
   .homepage .schedule-section .date-picker-compact .date-field {
     height: 44px;
     min-height: 44px;
-  }
-  .homepage .schedule-section .date-picker-compact .date-field {
-    width: 152px;
   }
   .homepage .schedule-section .date-picker-compact input {
     font-size: 16px;

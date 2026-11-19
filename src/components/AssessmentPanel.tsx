@@ -722,6 +722,7 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
                     <h3>{projectName}</h3>
                     <DateField
                       label={`${projectName}打卡日期`}
+                      hideLabel
                       value={date}
                       max={now}
                       required

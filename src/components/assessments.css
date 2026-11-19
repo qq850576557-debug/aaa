@@ -448,17 +448,17 @@ button.assessment-person-name {
 .assessment-filters {
   grid-template-columns: repeat(2, minmax(180px, 280px));
 }
+.assessment-site-card > header > div {
+  min-width: 0;
+}
 .assessment-site-card > header .date-field {
-  width: 148px;
-  margin-top: 4px;
+  --date-button-width: 42px;
+  width: 210px;
+  max-width: 100%;
+  margin-top: 6px;
 }
-.assessment-site-card > header label {
-  font-size: 0;
-}
-.assessment-site-card > header input {
-  font-size: 12px;
-  height: 29px;
-  min-height: 29px;
+.assessment-site-card > header .date-field > input {
+  font-size: 14px;
 }
 .assessment-hint {
   min-height: 21px;

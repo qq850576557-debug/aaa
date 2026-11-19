@@ -4,6 +4,8 @@ import { fixture } from '../tests/helpers';
 import { pool, privatePool } from '../server/db';
 import { assessmentToday } from '../src/lib/assessments';
 import { plus } from '../src/lib/model';
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 const origin = 'http://127.0.0.1:5180';
 test.afterAll(async () => {
   if (!pool.ended) await pool.end();
@@ -59,6 +61,89 @@ async function enter(p: Page) {
   await p.getByRole('button', { name: '人员管理', exact: true }).click();
   await expect(p.getByRole('region', { name: '师傅每日考核', exact: true })).toBeVisible();
 }
+test('assessment dates keep the full ISO value and a separate calendar button at desktop widths', async ({
+  page,
+  context,
+}, info) => {
+  await page.setViewportSize({ width: 1680, height: 950 });
+  const f = await fixtureAccounts();
+  await login(page, f.login, f.password);
+  const d = dataset();
+  d.projects[0].name = '镜鉴未来府9-4-602室';
+  d.projects[1].name = '钱江湾花园2-3-102室';
+  d.projects.push({ ...d.projects[1], id: 'third-site', name: '金基晓庐8-1-1202室' });
+  expect((await api(context, '/workspace', 'PUT', { revision: 0, data: d })).status()).toBe(200);
+  await page.reload();
+  await enter(page);
+  const fields = page.locator('.assessment-site-card > header .date-field');
+  await expect(fields).toHaveCount(3);
+  await page.evaluate(() => document.fonts.ready);
+  const readGeometry = () =>
+    fields.evaluateAll((elements) =>
+      elements.map((field) => {
+        const input = field.querySelector('input')!;
+        const button = field.querySelector('button')!;
+        const style = getComputedStyle(input);
+        const canvas = document.createElement('canvas').getContext('2d')!;
+        canvas.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        const textWidth = canvas.measureText(input.value).width;
+        const available =
+          input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        const text = input.getBoundingClientRect();
+        const trigger = button.getBoundingClientRect();
+        return {
+          width: field.getBoundingClientRect().width,
+          value: input.value,
+          y: text.top,
+          enoughRoom: available - textWidth,
+          separation: trigger.left - text.right,
+          sameHeight: Math.abs(text.height - trigger.height),
+          triggerWidth: trigger.width,
+        };
+      }),
+    );
+  const output = process.env.CHUNMO_DATE_LAYOUT_SCREENSHOTS || info.outputDir;
+  await mkdir(output, { recursive: true });
+  for (const width of [1680, 900]) {
+    await page.setViewportSize({ width, height: 950 });
+    const measurements = await readGeometry();
+    for (const {
+      width: fieldWidth,
+      value,
+      enoughRoom,
+      separation,
+      sameHeight,
+      triggerWidth,
+    } of measurements) {
+      expect(fieldWidth).toBeGreaterThanOrEqual(200);
+      expect(value).toBe(assessmentToday());
+      expect(enoughRoom).toBeGreaterThan(4);
+      expect(separation).toBeGreaterThanOrEqual(0);
+      expect(sameHeight).toBeLessThanOrEqual(1);
+      expect(triggerWidth).toBeGreaterThanOrEqual(40);
+    }
+    if (width === 1680) {
+      expect(
+        Math.max(...measurements.map(({ y }) => y)) - Math.min(...measurements.map(({ y }) => y)),
+      ).toBeLessThanOrEqual(2);
+      await page
+        .locator('.assessment-sites')
+        .screenshot({ path: join(output, 'assessment-dates.png') });
+    }
+  }
+  const trigger = card(page).getByRole('button', { name: '选择镜鉴未来府9-4-602室打卡日期' });
+  await trigger.click();
+  const calendar = page.getByRole('dialog', { name: '镜鉴未来府9-4-602室打卡日期日历' });
+  await expect(calendar).toBeVisible();
+  await page.screenshot({ path: join(output, 'assessment-calendar.png') });
+  const yesterday = plus(assessmentToday(), -1);
+  await calendar.getByRole('button', { name: '选择 ' + yesterday, exact: true }).click();
+  await expect(calendar).toBeHidden();
+  await expect(trigger).toBeFocused();
+  await expect(card(page).locator('header input')).toHaveValue(yesterday);
+  await expect(card(page, 'second-site').locator('header input')).toHaveValue(assessmentToday());
+});
+
 for (const width of [1280, 1440])
   test(`daily project cards ${width}: Shanghai dates, three slots, searchable identities, extra rows, side summary and cross-project saved statistics`, async ({
     browser,

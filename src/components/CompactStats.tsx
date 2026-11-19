@@ -3,6 +3,7 @@ export type CompactStat = {
   name: string;
   value: number;
   attention?: boolean;
+  selected?: boolean;
   onClick: () => void;
 };
 
@@ -27,6 +28,7 @@ export function CompactStats({
           key={item.label}
           className={`${layout === 'cards' ? 'overview-stat' : 'compact-stat'}${item.attention ? ' attention' : ''}`}
           aria-label={`${item.label}：${item.value}`}
+          aria-pressed={item.selected}
           onClick={item.onClick}
         >
           <span>{layout === 'cards' ? item.label : item.name}</span>

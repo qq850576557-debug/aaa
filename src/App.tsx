@@ -1367,6 +1367,12 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                       items={workspaceMetrics.map((s) => ({
                         ...s,
                         attention: s.label === '已逾期采购' && s.value > 0,
+                        selected:
+                          s.label === '项目总数'
+                            ? showAllProjects
+                            : s.label === '施工中的项目'
+                              ? projectStatusFilter
+                              : undefined,
                         onClick: () => selectMetric(s),
                       }))}
                     />

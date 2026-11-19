@@ -2818,24 +2818,6 @@ nav button {
   font-size: 14px;
   margin-top: 10px;
 }
-.date-field {
-  display: flex;
-  position: relative;
-}
-.date-field input {
-  padding-right: 40px;
-  font-variant-numeric: tabular-nums;
-}
-.date-field > button {
-  position: absolute;
-  right: 3px;
-  top: 3px;
-  bottom: 3px;
-  border: 0;
-  background: transparent;
-  min-height: 30px;
-  padding: 6px;
-}
 .calendar-popover {
   position: fixed;
   margin: 0;
@@ -3327,12 +3309,6 @@ nav button {
   .form-grid textarea {
     font-size: 15px;
     padding: 10px 9px;
-  }
-  .form-field .date-field input {
-    padding-right: 35px;
-  }
-  .date-field button {
-    padding: 4px;
   }
   .color-controls {
     grid-template-columns: 1fr;
