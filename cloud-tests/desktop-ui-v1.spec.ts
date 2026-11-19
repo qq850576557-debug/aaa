@@ -335,9 +335,11 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
       args[1]?.startsWith('url(') ? false : supports(...(args as [string, string]));
   });
   await open.click();
-  await expect(dialog).toHaveCSS('backdrop-filter', 'blur(7px)');
-  await expect(page.locator('.main-shell')).toHaveCSS('filter', 'blur(5px)');
-  await expect(layer).toHaveCount(0);
+  await expect(dialog).toHaveAttribute('data-cm-glass-backdrop', '');
+  await expect(dialog).toHaveCSS('backdrop-filter', 'none');
+  await expect(page.locator('.main-shell')).toHaveCSS('filter', 'none');
+  await expect(layer.locator('.cm-glass-scene')).toHaveCSS('backdrop-filter', 'blur(5px)');
+  await expect(layer.locator('.cm-glass-optic')).toHaveCount(0);
   await page.screenshot({ path: join(output, 'frosted-fallback.png') });
   await page.keyboard.press('Escape');
 
@@ -348,13 +350,14 @@ test('desktop V1 local typography, real optical sampling, form and fallback', as
   await expect(dialog).toHaveCSS('background-color', 'rgb(251, 250, 244)');
   await expect(dialog).toHaveCSS('backdrop-filter', 'none');
   await expect(page.locator('.main-shell')).toHaveCSS('filter', 'none');
+  await expect(layer.locator('.cm-glass-scene')).toHaveCSS('backdrop-filter', 'none');
   await page.keyboard.press('Escape');
 
   await cdp.send('Emulation.setEmulatedMedia', { features: [] });
   await page.goto('/?glass=lite');
   await open.click();
   await expect(dialog).toHaveAttribute('data-cm-glass', 'frosted');
-  await expect(layer).toHaveCount(0);
+  await expect(layer.locator('.cm-glass-optic')).toHaveCount(0);
   await page.keyboard.press('Escape');
 
   await page.goto('/?ui=legacy');

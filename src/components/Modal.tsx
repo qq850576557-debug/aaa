@@ -15,9 +15,13 @@ export function Modal({
   animateClose = false,
   inline = false,
   topAligned = false,
+  headerActions,
+  compactHeader = false,
 }: {
   inline?: boolean;
   topAligned?: boolean;
+  headerActions?: ReactNode;
+  compactHeader?: boolean;
   title: string;
   subtitle?: string;
   children: ReactNode;
@@ -31,7 +35,8 @@ export function Modal({
 }) {
   const [closing, setClosing] = useState(false);
   const glass = !inline && desktopV1Enabled();
-  const optical = glass && !anchor && placement === 'center';
+  const glassBackdrop = glass && blocking;
+  const optical = glassBackdrop && !anchor && placement === 'center';
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestClose = useRef(onClose);
   latestClose.current = onClose;
@@ -134,13 +139,13 @@ export function Modal({
     };
   }, []);
   useEffect(() => {
-    if (!optical || !ref.current) return;
+    if (!glassBackdrop || !ref.current) return;
     const dialog = ref.current;
     let cancelled = false;
     let detach: (() => void) | undefined;
     void import('../ui-v1/glass')
       .then(({ attachGlass }) => {
-        if (!cancelled) detach = attachGlass(dialog, blocking);
+        if (!cancelled) detach = attachGlass(dialog, optical);
       })
       .catch(() => {
         // The ordinary glass treatment remains usable if enhanced optics cannot load.
@@ -150,12 +155,12 @@ export function Modal({
       cancelled = true;
       detach?.();
     };
-  }, [optical, blocking]);
+  }, [glassBackdrop, optical]);
   if (inline) return <section className={`inline-form ${className}`}>{children}</section>;
   return (
     <dialog
       ref={ref}
-      data-cm-glass={glass && !optical ? 'frosted' : undefined}
+      data-cm-glass={glass && !glassBackdrop ? 'frosted' : undefined}
       className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${closing ? 'closing' : ''} ${glass ? 'cm-glass' : ''} ${className}`}
       aria-modal={blocking}
       aria-labelledby={headingId}
@@ -171,11 +176,12 @@ export function Modal({
           closeRef.current();
       }}
     >
-      <header className="modal-head">
-        <div>
+      <header className={`modal-head${compactHeader ? ' modal-head-compact' : ''}`}>
+        <div className={compactHeader ? 'sr-only' : undefined}>
           <h2 id={headingId}>{title}</h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
+        {headerActions}
         <button className="icon-btn" aria-label="关闭浮窗" onClick={() => closeRef.current()}>
           <X size={20} />
         </button>

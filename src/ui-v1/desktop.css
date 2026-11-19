@@ -1,6 +1,86 @@
 @import './tokens.css';
 @import './glass.css';
 
+:root[data-desktop-ui='v1'] .modal.personal-card-dialog > .modal-head-compact {
+  position: relative;
+  inset: auto;
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+  padding: 8px 12px;
+  gap: 6px;
+  pointer-events: auto;
+}
+:root[data-desktop-ui='v1'] .personal-card-dialog .modal-head-compact > .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+:root[data-desktop-ui='v1'] .personal-card-dialog .modal-head-compact > .icon-btn {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+:root[data-desktop-ui='v1'] .personal-card-dialog .modal-head-compact > .personal-card-actions {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: auto;
+  clip-path: none;
+  overflow: visible;
+}
+:root[data-desktop-ui='v1'] .personal-card-actions > button {
+  min-height: 34px;
+  padding: 5px 10px;
+  border-radius: var(--cm-pill);
+  white-space: nowrap;
+  font-size: var(--cm-caption);
+}
+:root[data-desktop-ui='v1'] .member-cards-section .member-card {
+  overflow: visible;
+}
+:root[data-desktop-ui='v1'] .member-cards-section .member-card-photo {
+  height: auto;
+  aspect-ratio: auto;
+}
+:root[data-desktop-ui='v1'] .member-cards-section .member-photo-preview {
+  height: auto;
+  overflow: visible;
+  border-radius: 0;
+  --button-soft: transparent;
+  --button-soft-hover: #e6eee6;
+}
+:root[data-desktop-ui='v1'] .member-photo-preview .account-avatar--card {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: auto;
+  border-radius: 0;
+  overflow: visible;
+}
+:root[data-desktop-ui='v1']
+  .member-photo-preview
+  .account-avatar--card:not([data-image-state='loaded']) {
+  min-height: 126px;
+  align-content: center;
+}
+:root[data-desktop-ui='v1'] .member-photo-preview .account-avatar--card img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: min(48dvh, 440px);
+  border-radius: 0;
+  object-fit: contain;
+}
+:root[data-desktop-ui='v1'] .member-card-photo .member-photo-edit {
+  position: static;
+  margin: 7px 10px 7px auto;
+}
+
 .ui-v1.app-shell {
   --green: var(--cm-green);
   --ui-background: var(--cm-canvas);
@@ -86,6 +166,11 @@
 .ui-v1.app-shell .sidebar .workspace-nav-heading {
   gap: 6px;
 }
+.ui-v1.app-shell .sidebar .workspace-nav-heading > button:first-child {
+  gap: 7px;
+  padding-inline: 9px;
+  white-space: nowrap;
+}
 .ui-v1.app-shell .sidebar .workspace-nav-heading > button:last-child {
   padding: 6px;
 }
@@ -125,6 +210,7 @@
   padding: 7px 0;
   margin-inline: var(--cm-workspace-gutter);
   background: var(--cm-canvas);
+  backdrop-filter: none;
   border: 0;
 }
 .ui-v1.app-shell main.workspace-content {

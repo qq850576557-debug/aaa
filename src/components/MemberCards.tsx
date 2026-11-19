@@ -1,5 +1,6 @@
 import { presenceLabel, type PresenceStatus } from '../lib/presence-state';
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cloudApi, type CloudUser } from '../lib/cloud';
 import {
   cardEdit,
@@ -21,6 +22,7 @@ export function MemberCards({
   onlyId,
   onPhotoClick,
   headerAction,
+  headerTarget,
   readOnly = false,
   onlineStatus,
 }: {
@@ -28,6 +30,7 @@ export function MemberCards({
   onlyId?: string;
   onPhotoClick?: (aspect: number) => void;
   headerAction?: ReactNode;
+  headerTarget?: HTMLDivElement | null;
   readOnly?: boolean;
   onlineStatus?: boolean | PresenceStatus;
   onSaved: (card: MemberCard) => Promise<void>;
@@ -124,24 +127,30 @@ export function MemberCards({
       setBusy(false);
     }
   }
+  const headerButtons = (
+    <>
+      {headerAction}
+      {user.owner && (
+        <button
+          onClick={() => {
+            setManage(true);
+            setError('');
+          }}
+        >
+          部门管理
+        </button>
+      )}
+    </>
+  );
   return (
     <section className="member-cards-section" aria-label="员工名片">
-      {!readOnly && (
+      {!readOnly && headerTarget === undefined && (
         <div className="section-heading">
           <h3>团队名片</h3>
-          {headerAction}
-          {user.owner && (
-            <button
-              onClick={() => {
-                setManage(true);
-                setError('');
-              }}
-            >
-              部门管理
-            </button>
-          )}
+          {headerButtons}
         </div>
       )}
+      {!readOnly && headerTarget && createPortal(headerButtons, headerTarget)}
       <div className="member-cards-grid">
         {cards
           .filter((card) => !onlyId || card.id === onlyId)

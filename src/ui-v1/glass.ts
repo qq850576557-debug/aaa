@@ -96,36 +96,29 @@ function aperture(rect: DOMRect, radius: number) {
 
 /** Native dialog owns focus and the entrance. The two paint layers sample the
  * live scene after the transform settles, without cloning or blurring the DOM. */
-export function attachGlass(dialog: HTMLDialogElement, blocking: boolean) {
-  const context = supportsRefraction() ? document.createElement('canvas').getContext('2d') : null;
+export function attachGlass(dialog: HTMLDialogElement, optical: boolean) {
+  const context =
+    optical && supportsRefraction() ? document.createElement('canvas').getContext('2d') : null;
   const entrance = Promise.allSettled(
     dialog.getAnimations().map((animation) => animation.finished),
   );
   let disposed = false;
-  if (!context) {
-    void entrance.then(() => {
-      if (!disposed) dialog.dataset.cmGlass = 'frosted';
-    });
-    return () => {
-      disposed = true;
-      delete dialog.dataset.cmGlass;
-    };
-  }
   const layer = document.createElement('div');
   layer.className = 'cm-glass-layer';
-  layer.dataset.kind = blocking ? 'blocking' : 'floating';
+  layer.dataset.kind = 'blocking';
   layer.ariaHidden = 'true';
   layer.inert = true;
   layer.hidden = true;
   layer.innerHTML =
-    lensSource +
-    '<div class="cm-glass-optic"><b></b></div>' +
-    (blocking ? '<div class="cm-glass-scene"></div>' : '');
-  const lens = layer.querySelector('filter')!;
-  const warp = lens.querySelector('feImage')!;
-  lens.id = 'cm-glass-' + ++serial;
-  layer.style.setProperty('--cm-glass-filter', 'url("#' + lens.id + '")');
-  layer.style.setProperty('--cm-glass-opacity', String(material.opacity));
+    (context ? lensSource + '<div class="cm-glass-optic"><b></b></div>' : '') +
+    '<div class="cm-glass-scene"></div>';
+  const lens = layer.querySelector('filter');
+  const warp = lens?.querySelector('feImage');
+  if (lens) {
+    lens.id = 'cm-glass-' + ++serial;
+    layer.style.setProperty('--cm-glass-filter', 'url("#' + lens.id + '")');
+    layer.style.setProperty('--cm-glass-opacity', String(material.opacity));
+  }
   document.body.append(layer);
   active.add(dialog);
   let generation = 0;
@@ -134,18 +127,21 @@ export function attachGlass(dialog: HTMLDialogElement, blocking: boolean) {
   let ready = false;
   let entered = false;
 
-  function show(liquid: boolean) {
-    layer.hidden = !liquid;
-    dialog.dataset.cmGlass = liquid ? 'liquid' : 'frosted';
+  function show(mode: 'liquid' | 'frosted') {
+    const foreground = frontmost();
+    layer.hidden = !foreground;
+    layer.dataset.mode = mode;
+    dialog.dataset.cmGlass = mode;
+    dialog.toggleAttribute('data-cm-glass-backdrop', foreground);
   }
-  function usable() {
+  function frontmost() {
     const top = [...active].filter((item) => item.open && item.matches(':modal')).at(-1);
-    return desktopV1Enabled() && !reduced.matches && dialog.open && (!top || top === dialog);
+    return !disposed && desktopV1Enabled() && top === dialog;
   }
   function paint() {
     frame = 0;
-    if (!usable()) {
-      show(false);
+    if (!frontmost() || !context || !lens || !warp || reduced.matches) {
+      show('frosted');
       return;
     }
     const rect = dialog.getBoundingClientRect();
@@ -163,12 +159,12 @@ export function attachGlass(dialog: HTMLDialogElement, blocking: boolean) {
       radius,
     }))
       layer.style.setProperty('--cm-glass-' + key, value + 'px');
-    if (blocking) layer.style.setProperty('--cm-glass-aperture', aperture(rect, radius));
+    layer.style.setProperty('--cm-glass-aperture', aperture(rect, radius));
     const width = Math.round(rect.width),
       height = Math.round(rect.height);
     const key = [width, height, radius].join(':');
     if (key === size) {
-      if (ready) show(true);
+      if (ready) show('liquid');
       return;
     }
     size = key;
@@ -177,7 +173,7 @@ export function attachGlass(dialog: HTMLDialogElement, blocking: boolean) {
     try {
       let mapsForSize = textures.get(key);
       if (!mapsForSize) {
-        mapsForSize = maps(context!, width, height, radius);
+        mapsForSize = maps(context, width, height, radius);
         if (textures.size >= 4) textures.delete(textures.keys().next().value!);
         textures.set(key, mapsForSize);
       }
@@ -195,13 +191,13 @@ export function attachGlass(dialog: HTMLDialogElement, blocking: boolean) {
           warp.setAttribute('href', vector);
           layer.style.setProperty('--cm-glass-tint', 'url("' + tint + '")');
           ready = true;
-          if (usable()) show(true);
+          if (frontmost() && !reduced.matches) show('liquid');
         })
         .catch(() => {
-          if (task === generation) show(false);
+          if (!disposed && task === generation) show('frosted');
         });
     } catch {
-      show(false);
+      show('frosted');
     }
   }
   function schedule() {
@@ -209,6 +205,10 @@ export function attachGlass(dialog: HTMLDialogElement, blocking: boolean) {
   }
   const dimensions = new ResizeObserver(schedule);
   dimensions.observe(dialog);
+  const closing = new MutationObserver(() =>
+    layer.toggleAttribute('data-closing', dialog.classList.contains('closing')),
+  );
+  closing.observe(dialog, { attributes: true, attributeFilter: ['class'] });
   window.addEventListener('resize', schedule);
   window.addEventListener('scroll', schedule, { passive: true });
   reduced.addEventListener('change', schedule);
@@ -223,11 +223,13 @@ export function attachGlass(dialog: HTMLDialogElement, blocking: boolean) {
     cancelAnimationFrame(frame);
     active.delete(dialog);
     dimensions.disconnect();
+    closing.disconnect();
     window.removeEventListener('resize', schedule);
     window.removeEventListener('scroll', schedule);
     reduced.removeEventListener('change', schedule);
     document.removeEventListener(updated, schedule);
     delete dialog.dataset.cmGlass;
+    dialog.removeAttribute('data-cm-glass-backdrop');
     layer.remove();
     document.dispatchEvent(new Event(updated));
   };

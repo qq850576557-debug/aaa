@@ -3,10 +3,13 @@ import { Modal } from './Modal';
 import { MemberCards } from './MemberCards';
 import { AvatarEditor } from './AvatarEditor';
 import { cloudSession, type CloudUser } from '../lib/cloud';
+import { desktopV1Enabled } from '../ui-v1/mode';
 export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () => void }) {
+  const desktop = desktopV1Enabled();
   const [profile, setProfile] = useState(user),
     [error, setError] = useState(''),
-    [aspect, setAspect] = useState(1.43);
+    [aspect, setAspect] = useState(1.43),
+    [actions, setActions] = useState<HTMLDivElement | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
   return (
     <Modal
@@ -15,6 +18,10 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
       onClose={onClose}
       blocking
       animateClose
+      compactHeader={desktop}
+      headerActions={
+        desktop ? <div ref={setActions} className="personal-card-actions" /> : undefined
+      }
     >
       <div className="modal-body">
         <AvatarEditor
@@ -25,6 +32,7 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
           aspect={aspect}
         />
         <MemberCards
+          headerTarget={desktop ? actions : undefined}
           headerAction={
             <button
               onClick={() => {
@@ -38,7 +46,7 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
           user={profile}
           onlyId={user.id}
           onPhotoClick={(ratio) => {
-            setAspect(ratio);
+            setAspect(desktop ? 1.43 : ratio);
             const input = photoInput.current;
             if (!input) return;
             const details = input.closest('details');

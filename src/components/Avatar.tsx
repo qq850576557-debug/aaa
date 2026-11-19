@@ -39,7 +39,7 @@ export function Avatar({
       : '');
   const avatar = (
     <span
-      className="account-avatar"
+      className={kind === 'card' ? 'account-avatar account-avatar--card' : 'account-avatar'}
       role={label ? 'img' : undefined}
       aria-label={label}
       data-image-state={

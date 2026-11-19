@@ -5,6 +5,7 @@ import { PersonalCard } from './PersonalCard';
 import type { CloudUser } from '../lib/cloud';
 import type { OnlineAccount } from './CollaborationBar';
 import './photo-editor.css';
+import { desktopV1Enabled } from '../ui-v1/mode';
 export function OnlineCard({
   account,
   user,
@@ -24,6 +25,7 @@ export function OnlineCard({
       onClose={onClose}
       blocking
       animateClose
+      compactHeader={desktopV1Enabled()}
     >
       <div className="modal-body">
         <MemberCards

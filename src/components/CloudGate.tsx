@@ -21,9 +21,14 @@ export function CloudGate() {
   useEffect(() => {
     const media = matchMedia(MOBILE_QUERY);
     const title = () => {
+      const mobile = mobileRequested();
       if (desktopV1Enabled()) document.documentElement.dataset.desktopUi = 'v1';
       else delete document.documentElement.dataset.desktopUi;
-      if (mobileRequested()) document.title = '春茉后台管理（手机版）';
+      if (mobile) document.title = '春茉后台管理（手机版）';
+      for (const icon of document.querySelectorAll<HTMLLinkElement>('link[data-mobile-icon]')) {
+        const href = mobile ? icon.dataset.mobileIcon! : '/brand/favicon-32.png';
+        if (icon.getAttribute('href') !== href) icon.href = href;
+      }
     };
     title();
     media.addEventListener('change', title);

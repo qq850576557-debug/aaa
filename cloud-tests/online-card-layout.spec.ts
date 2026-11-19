@@ -76,7 +76,7 @@ for (const width of [1440, 390])
       const photo = own.locator('.member-card-photo img');
       await expect(photo).toBeVisible();
       const source = await photo.getAttribute('src');
-      const photoBox = (await own.locator('.member-card-photo').boundingBox())!;
+      const photoBox = (await own.locator('.member-photo-preview').boundingBox())!;
       await expect(own).toContainText('Steven');
       await own.getByRole('button', { name: '关闭浮窗', exact: true }).click();
       await b
@@ -100,7 +100,7 @@ for (const width of [1440, 390])
       await expect(colleague).toContainText('在线');
       await expect(colleague.locator('.member-card-edit,.member-photo-edit')).toHaveCount(0);
       await expect(colleague.getByRole('button', { name: '部门管理', exact: true })).toHaveCount(0);
-      const box = (await colleague.locator('.member-card-photo').boundingBox())!;
+      const box = (await colleague.locator('.member-photo-preview').boundingBox())!;
       expect(box.width).toBeCloseTo(photoBox.width, 0);
       expect(box.height).toBeCloseTo(photoBox.height, 0);
       await a.screenshot({ path: `/tmp/online-card-photo-${width}.png` });

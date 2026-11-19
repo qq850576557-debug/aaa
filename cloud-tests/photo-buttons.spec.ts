@@ -119,7 +119,9 @@ for (const width of [1440, 390])
       dimensions = await sharp(bytes).metadata();
     expect(bytes.length).toBeLessThanOrEqual(524288);
     expect(dimensions.width).toBeGreaterThanOrEqual(720);
-    const photoRatio = await card.locator('.member-card-photo').evaluate((e) => {
+    const photo = card.locator(width > 700 ? '.member-card-photo img' : '.member-card-photo');
+    await expect(photo).toBeVisible();
+    const photoRatio = await photo.evaluate((e) => {
       const b = e.getBoundingClientRect();
       return b.width / b.height;
     });
@@ -161,10 +163,10 @@ for (const width of [1440, 390])
           .filter((e) => e.getBoundingClientRect().width > 0)
           .map((e) => {
             const own = getComputedStyle(e).backgroundColor;
-            // Identity entries and the unified trade edit/drag targets share a surface.
-            // Accept its surface only when it actually contains the whole button;
-            // every other control must still supply its own visible background.
-            const group = e.closest('.current-account[aria-label="当前登录账号"],.trade-info-card');
+            // These controls share the surface of their containing tile or group.
+            const group = e.closest(
+              '.current-account[aria-label="当前登录账号"],.trade-info-card,.overview-stats,.agenda-item',
+            );
             const b = e.getBoundingClientRect(),
               g = group?.getBoundingClientRect();
             const shared =
