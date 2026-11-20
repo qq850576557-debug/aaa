@@ -1,0 +1,31 @@
+<import src="../../portal.wxml" />
+<view wx:if="{{ready}}" class="portal" style="padding-top: {{statusTop + 44}}px">
+  <view class="portal-wrap">
+    <template is="navigation" data="{{title: '采购清单'}}" />
+    <template is="load-state" data="{{error: error, loading: loading}}" />
+    <block wx:if="{{project}}">
+      <text class="list-project">{{project.title}}</text>
+      <view class="state-tabs">
+        <button
+          wx:for="{{statuses}}"
+          wx:key="id"
+          class="state-tab {{state === item.id ? 'active-tab' : ''}}"
+          data-state="{{item.id}}"
+          bindtap="showState"
+          aria-role="tab"
+          aria-selected="{{state === item.id}}"
+        >
+          <text>{{item.label}}</text>
+          <text class="tab-count">{{item.count}}</text>
+        </button>
+      </view>
+      <block wx:for="{{rows}}" wx:key="id"
+        ><template is="purchase-row" data="{{item: item}}"
+      /></block>
+      <view wx:if="{{!rows.length}}" class="portal-card empty-state">
+        {{state === 'pending' ? '暂无待采购事项' : state === 'bought' ? '暂无已购买事项' :
+        '暂无已完成事项'}}
+      </view>
+    </block>
+  </view>
+</view>

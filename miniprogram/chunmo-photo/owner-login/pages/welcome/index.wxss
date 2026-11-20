@@ -11,29 +11,25 @@
   margin-top: clamp(69px, calc(26.6vh - 51px), 194px);
 }
 .brand-slogan {
-  width: 148px;
-  height: 19px;
-  margin-top: clamp(28px, calc(8.4vh - 22px), 50px);
-}
-.brand-rule {
-  width: 24px;
-  height: 1px;
-  margin-top: clamp(20px, calc(5vh - 12px), 34px);
-  background: #7c8b81;
+  margin-top: 12px;
+  color: #415c4a;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
 }
 .welcome-actions {
-  margin-top: clamp(47px, calc(29vh - 72px), 177px);
+  margin-top: clamp(60px, calc(27vh - 51px), 177px);
 }
 .employee-link {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 8px;
   min-height: 44px;
-  margin: 16px auto 0;
-  padding: 7px 18px;
+  margin: 7px auto 0;
+  padding: 6px 15px;
   color: #58625b;
-  font-size: 14px;
+  font-size: 12px;
   letter-spacing: 0.06em;
 }
 .owner-consent {
@@ -42,8 +38,8 @@
   justify-content: center;
   gap: 0;
   margin-top: auto;
-  padding-top: 12px;
-  font-size: 12px;
+  padding-top: 10px;
+  font-size: 10px;
   line-height: 1.6;
   color: #626763;
 }
@@ -59,8 +55,8 @@
 .consent-dot {
   box-sizing: border-box;
   position: relative;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border: 1px solid #7a867d;
   border-radius: 50%;
 }
@@ -71,10 +67,10 @@
 .consented .consent-dot::after {
   content: '';
   position: absolute;
-  width: 7px;
-  height: 4px;
-  top: 4px;
-  left: 3px;
+  width: 6px;
+  height: 3px;
+  top: 3px;
+  left: 2.5px;
   border-bottom: 1.5px solid white;
   border-left: 1.5px solid white;
   transform: rotate(-45deg);

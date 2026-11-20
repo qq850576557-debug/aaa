@@ -1,26 +1,33 @@
-const { startPreview } = require('../../preview');
+const { startPreview, routes, showPolicy } = require('../../preview');
+const { begin, modes } = require('../../fixture-store');
 
 Page({
-  data: { ready: false, statusTop: 24, agreed: false, feedback: '' },
-  onLoad() {
-    startPreview(this);
+  data: { ready: false, statusTop: 24, agreed: false, feedback: '', busy: false, mode: 'review' },
+  onLoad(options = {}) {
+    if (startPreview(this) && modes.includes(options.mode)) this.setData({ mode: options.mode });
   },
   toggleAgreement() {
     this.setData({ agreed: !this.data.agreed, feedback: '' });
   },
   quickLogin() {
-    this.setData({
-      feedback: this.data.agreed ? '手机号验证将在后续阶段接入' : '请先阅读并勾选协议及隐私指引',
+    if (!this.data.ready || this.data.busy) return;
+    if (!this.data.agreed) {
+      this.setData({ feedback: '请先阅读并勾选协议及隐私指引' });
+      return;
+    }
+    if (!begin(this.data.mode)) {
+      this.setData({ feedback: '暂无访问授权，请联系春茉。' });
+      return;
+    }
+    this.setData({ busy: true });
+    wx.redirectTo({
+      url: routes.home,
+      success: () => wx.showToast({ title: '正在查看演示数据', icon: 'none' }),
+      fail: () => this.setData({ busy: false, feedback: '暂时无法打开，请重试。' }),
     });
   },
   openEmployee() {
     wx.navigateTo({ url: '/owner-login/pages/employee/index' });
   },
-  showPolicy(event) {
-    wx.showModal({
-      title: event.currentTarget.dataset.title,
-      content: '正式内容待春茉确认，本页用于登录界面验收。',
-      showCancel: false,
-    });
-  },
+  showPolicy,
 });

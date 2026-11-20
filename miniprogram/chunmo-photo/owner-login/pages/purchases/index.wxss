@@ -1,0 +1,38 @@
+@import '../../portal.wxss';
+
+.list-project {
+  display: block;
+  margin: 0 2px 12px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.state-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3px;
+  margin-bottom: 13px;
+  border-radius: 15px;
+  background: #ebf0e9;
+}
+.portal .state-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 3px;
+  min-height: 39px;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--portal-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.portal .state-tab.active-tab {
+  background: var(--portal-paper);
+  color: var(--portal-ink);
+  font-weight: 600;
+}
+.tab-count {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}

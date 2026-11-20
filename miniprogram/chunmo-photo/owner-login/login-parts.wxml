@@ -6,26 +6,17 @@
       mode="aspectFit"
       aria-hidden="{{true}}"
     />
-    <view class="brand-lettering">
-      <image
-        class="brand-name"
-        src="/owner-login/assets/brand-name.png"
-        mode="aspectFit"
-        aria-label="春茉空间设计"
-      />
-      <text class="brand-initials">SJD</text>
-    </view>
+    <image
+      class="brand-name"
+      src="/owner-login/assets/brand-name.png"
+      mode="aspectFit"
+      aria-label="春茉空间设计"
+    />
   </view>
 </template>
 
-<template name="plush">
-  <image
-    class="plush-fabric"
-    src="/owner-login/assets/short-pile.jpg"
-    mode="aspectFill"
-    aria-hidden="{{true}}"
-  />
-  <view class="plush-label">
+<template name="sign-in">
+  <view class="sign-in-label">
     <image
       wx:if="{{quick}}"
       class="quick-icon"
@@ -33,7 +24,6 @@
       mode="aspectFit"
       aria-hidden="{{true}}"
     />
-    <view wx:if="{{quick}}" class="quick-divider" aria-hidden="{{true}}"></view>
     <text>{{quick ? '微信快捷登录' : '登录'}}</text>
   </view>
 </template>

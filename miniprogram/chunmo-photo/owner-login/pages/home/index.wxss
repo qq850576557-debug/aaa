@@ -1,0 +1,100 @@
+@import '../../portal.wxss';
+
+.residence-top,
+.residence-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.residence-logo {
+  width: 31px;
+  height: 33px;
+}
+.portal .profile-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--portal-paper);
+}
+.profile-button-icon {
+  width: 18px;
+  height: 18px;
+}
+.residence-name {
+  margin: 18px 0 16px;
+}
+.residence-name > view {
+  min-width: 0;
+}
+.residence-name .small-button {
+  flex-shrink: 0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.phase-label {
+  display: inline-block;
+  margin-top: 7px;
+  color: var(--portal-muted);
+  font-size: 11px;
+}
+.portal .pending-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 123px;
+  padding: 14px 19px;
+  border-radius: 23px;
+  background: var(--portal-wash);
+  text-align: left;
+}
+.portal .pending-card.pending-pressed {
+  background: var(--portal-pressed);
+}
+.pending-title {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.pending-quantity {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 12px;
+}
+.pending-number {
+  font-size: 39px;
+  font-weight: 500;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.pending-arrow {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  background: #f3f7ee;
+}
+.quick-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 10px;
+}
+.quick-cards .portal-row {
+  min-height: 60px;
+  margin: 0;
+}
+.quick-count {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: var(--portal-muted);
+}

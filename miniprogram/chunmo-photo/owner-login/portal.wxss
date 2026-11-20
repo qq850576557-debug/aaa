@@ -1,0 +1,217 @@
+@import './font.wxss';
+
+page {
+  background: #f5f7f3;
+}
+.portal {
+  --portal-ink: #254437;
+  --portal-muted: #536a5e;
+  --portal-paper: #fff;
+  --portal-wash: #e5efe2;
+  --portal-line: #e7eee5;
+  --portal-pressed: #dce8d8;
+  --portal-radius: 20px;
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 0 20px 26px;
+  padding-bottom: calc(26px + env(safe-area-inset-bottom));
+  color: var(--portal-ink);
+  background: #f5f7f3;
+  font:
+    13px/1.55 'Chunmo Login UI',
+    -apple-system,
+    'PingFang SC',
+    'Microsoft YaHei',
+    sans-serif;
+}
+.portal button,
+.portal input,
+.portal textarea {
+  font-family: inherit;
+}
+.portal button {
+  margin: 0;
+  color: inherit;
+}
+.portal button::after {
+  border: 0;
+}
+.portal-wrap {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.portal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-bottom: 14px;
+  padding-bottom: 2px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.portal-back,
+.nav-space {
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+}
+.portal-back {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 6px;
+  background: transparent;
+}
+.portal-arrow {
+  box-sizing: border-box;
+  display: block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-top: 1.3px solid currentColor;
+  border-right: 1.3px solid currentColor;
+  transform: rotate(45deg);
+  opacity: 0.8;
+}
+.portal-arrow-back {
+  transform: rotate(-135deg);
+}
+.portal-card {
+  box-sizing: border-box;
+  margin: 0 0 12px;
+  border-radius: var(--portal-radius);
+  background: var(--portal-paper);
+}
+.portal-heading {
+  display: block;
+  font-size: 22px;
+  line-height: 1.28;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.portal-muted {
+  color: var(--portal-muted);
+}
+.portal-section-title {
+  display: block;
+  margin: 20px 0 9px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.portal .small-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  color: var(--portal-ink);
+  background: var(--portal-wash);
+  font-size: 12px;
+  font-weight: 500;
+}
+.portal .small-button.row-pressed,
+.portal .portal-row.row-pressed,
+.portal .purchase-row.row-pressed {
+  background: var(--portal-pressed);
+}
+.portal-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 9px 14px;
+  border-radius: 16px;
+  background: var(--portal-paper);
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.portal-row + .portal-row {
+  margin-top: 6px;
+}
+.load-state {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  color: var(--portal-muted);
+}
+.state-title {
+  color: var(--portal-ink);
+  font-weight: 600;
+}
+.empty-state {
+  padding: 16px;
+  color: var(--portal-muted);
+}
+.portal .purchase-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+  padding: 13px 15px;
+  border-radius: 16px;
+  background: var(--portal-paper);
+  text-align: left;
+}
+.portal .purchase-row + .purchase-row {
+  margin-top: 8px;
+}
+.purchase-row-detail {
+  flex: 1;
+  min-width: 0;
+}
+.purchase-row-title {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.purchase-row-description {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--portal-muted);
+}
+.purchase-row-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 5px;
+}
+.purchase-date {
+  font-size: 11px;
+  color: var(--portal-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.due-tag {
+  padding: 1px 6px;
+  border-radius: 20px;
+  color: #795144;
+  background: #f7eee7;
+  font-size: 10px;
+}
+@media (max-width: 335px) {
+  .portal {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+}

@@ -40,12 +40,10 @@ CHUNMO_WECHAT_TOOLS=/你的隔离工具目录 node scripts/verify-miniprogram.mj
 
 详见仓库 [交付及真机验收说明](../../docs/wechat-photo-v1-delivery.md)。命令行编译、模拟相册回调和 Chromium 像素检查，都不等于微信开发者工具/真实手机通过。
 
-## 业主登录 UI 预览
+## 业主 UI 隔离预览
 
-阶段二本次交付包括品牌入口与员工账号密码两张布局。微信开发者工具导入本目录，新增自定义编译模式，启动页面填写 `owner-login/pages/welcome/index`。可在同一预览内进入账号密码页，检查勾选、按压、输入和密码显示切换。
+在微信开发者工具导入本目录，新增自定义编译模式，启动页面填写 `owner-login/pages/welcome/index`。勾选协议后通过「微信快捷登录」进入业主演示，也可以打开员工账号密码预览。演示可查看采购清单、确认及修改购买、撤销确认、查看公司已完成的采购、切换住宅和退出。
 
-开发版和体验版的预览反馈使用本地数据。登录验证及正式协议内容在后续对应阶段验收。正式版本打开预览路径会返回现有员工入口。
+编译模式的启动参数可用 `mode=single` 检查单住宅，`mode=empty` 检查空数据，`mode=offline` 检查失败和重试，`mode=denied` 检查未授权。开发版和体验版在内存使用演示数据，正式版本打开这些路径会返回现有员工入口。登录验证、正式协议及实际公司的采购反馈属于后续联调验收。
 
-品牌图形源为仓库 `public/brand/source/chunmo-original-circle.png`。展示字样来自 `src/lib/brand.ts`，品牌名和标语按仓库方正启体离线生成图像。表单文案使用与桌面相同版本的 Noto Sans SC 本地子集，字形来源为 [Google Fonts Noto Sans SC 2.004-H2](https://github.com/google/fonts/tree/869789e84da92782c144d83d69b64cec54905b5f/ofl/notosanssc)。
-
-短绒表面使用约 26 KiB 的本地纹理。按压改变比例、绒面和文字位置，手指松开后回弹。相机、相册及地图权限由现有员工流程处理。
+品牌线稿取仓库 `public/brand/chunmo-plant.png`，只转换背景透明度和导出尺寸。公司名来自 `src/lib/brand.ts`，由仓库方正启体渲染。标语和界面文字使用与桌面同版的离线 Noto Sans SC 子集。 [Google Fonts Noto Sans SC 2.004-H2](https://github.com/google/fonts/tree/869789e84da92782c144d83d69b64cec54905b5f/ofl/notosanssc)

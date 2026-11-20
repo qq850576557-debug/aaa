@@ -2,23 +2,18 @@
 <view wx:if="{{ready}}" class="owner-login welcome-login" style="padding-top: {{statusTop}}px">
   <view class="welcome-brand">
     <template is="brand" />
-    <image
-      class="brand-slogan"
-      src="/owner-login/assets/brand-slogan.png"
-      mode="aspectFit"
-      aria-label="功能与美×共生"
-    />
-    <view class="brand-rule" aria-hidden="{{true}}"></view>
+    <text class="brand-slogan">功能与美共生</text>
   </view>
   <view class="owner-content welcome-actions">
     <button
-      class="plush-button"
-      hover-class="plush-pressed"
+      class="sign-in-button"
+      hover-class="sign-in-pressed"
       hover-start-time="0"
       hover-stay-time="110"
+      disabled="{{busy}}"
       bindtap="quickLogin"
     >
-      <template is="plush" data="{{quick: true}}" />
+      <template is="sign-in" data="{{quick: true}}" />
     </button>
     <button class="owner-link employee-link" hover-class="owner-link-down" bindtap="openEmployee">
       <text>账号密码登录</text>

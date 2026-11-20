@@ -80,13 +80,13 @@
       </button>
     </view>
     <button
-      class="plush-button staff-submit"
-      hover-class="plush-pressed"
+      class="sign-in-button staff-submit"
+      hover-class="sign-in-pressed"
       hover-start-time="0"
       hover-stay-time="110"
       form-type="submit"
     >
-      <template is="plush" data="{{quick: false}}" />
+      <template is="sign-in" data="{{quick: false}}" />
     </button>
     <view wx:if="{{feedback}}" class="feedback" role="status">{{feedback}}</view>
   </form>

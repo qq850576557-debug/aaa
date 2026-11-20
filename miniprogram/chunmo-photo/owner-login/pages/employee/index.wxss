@@ -25,17 +25,18 @@
 }
 .staff-form {
   min-width: 0;
-  margin-top: clamp(36px, calc(16vh - 43px), 94px);
+  max-width: 252px;
+  margin-top: clamp(32px, calc(13vh - 35px), 74px);
 }
 .staff-field {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 14px;
-  height: 52px;
-  padding: 0 13px 0 19px;
+  gap: 8px;
+  height: 37px;
+  padding: 0 10px 0 13px;
   border: 1px solid #e5e9e5;
-  border-radius: 20px;
+  border-radius: 13px;
   background: #fff;
   transition: border-color 200ms ease;
 }
@@ -43,34 +44,34 @@
   border-color: #9bb3a4;
 }
 .staff-field + .staff-field {
-  margin-top: 20px;
+  margin-top: 12px;
 }
 .field-icon {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 .staff-input {
   flex: 1 1 auto;
   min-width: 0;
-  height: 48px;
+  height: 35px;
   color: #244e42;
-  font-size: 16px;
+  font-size: 12px;
 }
 .staff-placeholder {
   color: #818983;
 }
 .password-toggle {
-  width: 44px;
-  height: 44px;
-  flex: 0 0 44px;
+  width: 36px;
+  height: 37px;
+  flex: 0 0 36px;
   display: grid;
   place-items: center;
   padding: 0;
   margin: 0 -7px 0 0;
 }
 .staff-submit {
-  margin-top: clamp(32px, calc(11vh - 26px), 72px);
+  margin-top: clamp(22px, calc(8vh - 14px), 50px);
 }
 .staff-keyboard .staff-brand {
   margin-top: 7px;

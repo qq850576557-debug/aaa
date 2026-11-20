@@ -9,7 +9,14 @@
   "subPackages": [
     {
       "root": "owner-login",
-      "pages": ["pages/welcome/index", "pages/employee/index"]
+      "pages": [
+        "pages/welcome/index",
+        "pages/employee/index",
+        "pages/home/index",
+        "pages/purchases/index",
+        "pages/purchase/index",
+        "pages/profile/index"
+      ]
     }
   ],
   "window": {

@@ -1,0 +1,46 @@
+@import '../../portal.wxss';
+
+.profile-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 15px;
+}
+.profile-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--portal-wash);
+}
+.profile-icon-image {
+  width: 19px;
+  height: 19px;
+}
+.profile-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+}
+.profile-summary .portal-muted {
+  font-size: 11px;
+}
+.residence-option-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.portal .active-residence {
+  background: var(--portal-wash);
+}
+.current-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.profile-settings {
+  margin-top: 17px;
+}
+.portal .profile-logout {
+  justify-content: center;
+  margin-top: 13px;
+}

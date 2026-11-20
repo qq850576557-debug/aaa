@@ -1,0 +1,59 @@
+<import src="../../portal.wxml" />
+<view wx:if="{{ready}}" class="portal" style="padding-top: {{statusTop + 44}}px">
+  <view class="portal-wrap">
+    <template is="navigation" data="{{title: '个人中心'}}" />
+    <view class="portal-card profile-summary">
+      <view class="profile-icon"
+        ><image
+          class="profile-icon-image"
+          src="/owner-login/assets/account.png"
+          mode="aspectFit"
+          aria-hidden="{{true}}"
+      /></view>
+      <view
+        ><text class="profile-name">演示业主</text><text class="portal-muted">业主身份</text></view
+      >
+    </view>
+    <template is="load-state" data="{{error: error, loading: loading}}" />
+    <block wx:if="{{project}}">
+      <text class="portal-section-title">{{projects.length > 1 ? '切换住宅' : '当前住宅'}}</text>
+      <block wx:if="{{projects.length > 1}}">
+        <button
+          wx:for="{{projects}}"
+          wx:key="id"
+          class="portal-row residence-option {{item.id === project.id ? 'active-residence' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="chooseProject"
+          aria-selected="{{item.id === project.id}}"
+          hover-class="row-pressed"
+        >
+          <text class="residence-option-label">{{item.title}}</text>
+          <text wx:if="{{item.id === project.id}}" class="current-tag">使用中</text>
+          <view wx:else class="portal-arrow" aria-hidden="{{true}}"></view>
+        </button>
+      </block>
+      <view wx:else class="portal-row">{{project.title}}</view>
+    </block>
+    <view class="profile-settings">
+      <button
+        class="portal-row"
+        data-title="用户协议"
+        bindtap="showPolicy"
+        hover-class="row-pressed"
+      >
+        <text>用户协议</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
+      </button>
+      <button
+        class="portal-row"
+        data-title="隐私保护指引"
+        bindtap="showPolicy"
+        hover-class="row-pressed"
+      >
+        <text>隐私保护指引</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
+      </button>
+      <button class="portal-row profile-logout" bindtap="logOut" hover-class="row-pressed">
+        退出登录
+      </button>
+    </view>
+  </view>
+</view>
