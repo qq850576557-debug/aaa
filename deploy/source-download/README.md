@@ -38,3 +38,11 @@ Codex环境没有Aliyun SSH权限，不能据本地测试声称网站已发布�
 
 
 1.2.2最新源码待发布：76eff49f26e0c564a233a725cc50cd87cece3470，chunmo-wechat-photo-v122-76eff49.zip，684983字节，SHA256 4c3bee0d39edc62b3073337f5f4f3f5ab56116c3036f65feff89e2d0aece6213。账号和密码拆分独立页面；第三方键盘仍需iPhone实测。不更新API/sidecar/数据库。Workbench输出PASS后才确认新下载地址可用。
+
+## 春茉业主小程序开发者工具测试包
+
+`owner_preview.py` 从固定提交 `12102f8635650dc5abd78756e2dfef4c64904e26` 生成独立演示工程。解压后导入 `chunmo-owner-preview` 文件夹。使用游客 AppID，编译后直接打开业主登录页。
+
+运行 `python3 deploy/source-download/owner_preview.py --repo . --output /tmp/chunmo-owner-preview-wechat.zip` 可本地核对。ZIP 为 232813 字节，SHA-256 为 `ae694b060a03fed0a4ab7f181268b20e4bc64973fca31a5cf56b5ac9bf43ce77`。
+
+Workbench 使用 `--repo /opt/chunmo-source --publish` 只发布[业主端测试包](https://chmsj.cn/download/releases/wechat-owner-preview-12102f8/chunmo-owner-preview-wechat.zip)。旧版源码及 APK 地址继续使用原配置。实际下载和服务验证通过后输出 PASS。Nginx 检查或下载验证失败时恢复原路由与配置，备份位置在输出中可查。
