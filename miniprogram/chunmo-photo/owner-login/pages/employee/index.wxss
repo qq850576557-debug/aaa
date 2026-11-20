@@ -1,0 +1,83 @@
+@import '../../login.wxss';
+
+.staff-login {
+  padding-bottom: 32px;
+  padding-bottom: calc(32px + env(safe-area-inset-bottom));
+}
+.staff-nav {
+  height: 48px;
+}
+.back-button {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  margin-left: -12px;
+  display: grid;
+  place-items: center;
+}
+.back-button .arrow-mark {
+  width: 11px;
+  height: 11px;
+  transform: rotate(-135deg);
+}
+.staff-brand {
+  margin-top: clamp(34px, calc(22vh - 95px), 114px);
+}
+.staff-form {
+  min-width: 0;
+  margin-top: clamp(36px, calc(16vh - 43px), 94px);
+}
+.staff-field {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 52px;
+  padding: 0 13px 0 19px;
+  border: 1px solid #e5e9e5;
+  border-radius: 20px;
+  background: #fff;
+  transition: border-color 200ms ease;
+}
+.staff-field:focus-within {
+  border-color: #9bb3a4;
+}
+.staff-field + .staff-field {
+  margin-top: 20px;
+}
+.field-icon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.staff-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 48px;
+  color: #244e42;
+  font-size: 16px;
+}
+.staff-placeholder {
+  color: #818983;
+}
+.password-toggle {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  margin: 0 -7px 0 0;
+}
+.staff-submit {
+  margin-top: clamp(32px, calc(11vh - 26px), 72px);
+}
+.staff-keyboard .staff-brand {
+  margin-top: 7px;
+}
+.staff-keyboard .staff-form {
+  margin-top: 22px;
+}
+.staff-keyboard .staff-submit {
+  margin-top: 20px;
+}

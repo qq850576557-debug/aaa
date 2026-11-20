@@ -1,0 +1,93 @@
+<import src="../../login-parts.wxml" />
+<view
+  wx:if="{{ready}}"
+  class="owner-login staff-login {{keyboardOpen ? 'staff-keyboard' : ''}}"
+  style="padding-top: {{statusTop}}px"
+>
+  <view class="owner-content staff-nav">
+    <button
+      class="owner-link back-button"
+      hover-class="owner-link-down"
+      aria-label="返回登录首页"
+      bindtap="back"
+    >
+      <view class="arrow-mark" aria-hidden="{{true}}"></view>
+    </button>
+  </view>
+  <view class="staff-brand">
+    <template is="brand" />
+  </view>
+  <form class="owner-content staff-form" bindsubmit="submit">
+    <view class="staff-field">
+      <image
+        class="field-icon"
+        src="/owner-login/assets/account.png"
+        mode="aspectFit"
+        aria-hidden="{{true}}"
+      />
+      <input
+        class="staff-input"
+        type="text"
+        value="{{account}}"
+        placeholder="请输入账号"
+        placeholder-class="staff-placeholder"
+        aria-label="员工账号"
+        maxlength="80"
+        confirm-type="next"
+        cursor-spacing="24"
+        bindinput="accountInput"
+        bindconfirm="focusPassword"
+        bindkeyboardheightchange="keyboardChange"
+        bindblur="keyboardBlur"
+      />
+    </view>
+    <view class="staff-field">
+      <image
+        class="field-icon"
+        src="/owner-login/assets/lock.png"
+        mode="aspectFit"
+        aria-hidden="{{true}}"
+      />
+      <input
+        class="staff-input"
+        type="text"
+        value="{{password}}"
+        password="{{!showPassword}}"
+        focus="{{passwordFocused}}"
+        placeholder="请输入密码"
+        placeholder-class="staff-placeholder"
+        aria-label="员工密码"
+        maxlength="128"
+        confirm-type="done"
+        cursor-spacing="24"
+        bindinput="passwordInput"
+        bindconfirm="submit"
+        bindkeyboardheightchange="keyboardChange"
+        bindblur="passwordBlur"
+      />
+      <button
+        class="owner-link password-toggle"
+        hover-class="owner-link-down"
+        aria-label="{{showPassword ? '隐藏密码' : '显示密码'}}"
+        bindtap="togglePassword"
+      >
+        <image
+          class="field-icon"
+          src="{{showPassword ? '/owner-login/assets/eye.png' : '/owner-login/assets/eye-off.png'}}"
+          mode="aspectFit"
+          aria-hidden="{{true}}"
+        />
+      </button>
+    </view>
+    <button
+      class="plush-button staff-submit"
+      hover-class="plush-pressed"
+      hover-start-time="0"
+      hover-stay-time="110"
+      form-type="submit"
+    >
+      <template is="plush" data="{{quick: false}}" />
+    </button>
+    <view wx:if="{{feedback}}" class="feedback" role="status">{{feedback}}</view>
+  </form>
+</view>

@@ -39,3 +39,13 @@ CHUNMO_WECHAT_TOOLS=/你的隔离工具目录 node scripts/verify-miniprogram.mj
 ```
 
 详见仓库 [交付及真机验收说明](../../docs/wechat-photo-v1-delivery.md)。命令行编译、模拟相册回调和 Chromium 像素检查，都不等于微信开发者工具/真实手机通过。
+
+## 业主登录 UI 预览
+
+阶段二本次交付包括品牌入口与员工账号密码两张布局。微信开发者工具导入本目录，新增自定义编译模式，启动页面填写 `owner-login/pages/welcome/index`。可在同一预览内进入账号密码页，检查勾选、按压、输入和密码显示切换。
+
+开发版和体验版的预览反馈使用本地数据。登录验证及正式协议内容在后续对应阶段验收。正式版本打开预览路径会返回现有员工入口。
+
+品牌图形源为仓库 `public/brand/source/chunmo-original-circle.png`。展示字样来自 `src/lib/brand.ts`，品牌名和标语按仓库方正启体离线生成图像。表单文案使用与桌面相同版本的 Noto Sans SC 本地子集，字形来源为 [Google Fonts Noto Sans SC 2.004-H2](https://github.com/google/fonts/tree/869789e84da92782c144d83d69b64cec54905b5f/ofl/notosanssc)。
+
+短绒表面使用约 26 KiB 的本地纹理。按压改变比例、绒面和文字位置，手指松开后回弹。相机、相册及地图权限由现有员工流程处理。

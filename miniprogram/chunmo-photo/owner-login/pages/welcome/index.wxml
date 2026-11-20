@@ -1,0 +1,51 @@
+<import src="../../login-parts.wxml" />
+<view wx:if="{{ready}}" class="owner-login welcome-login" style="padding-top: {{statusTop}}px">
+  <view class="welcome-brand">
+    <template is="brand" />
+    <image
+      class="brand-slogan"
+      src="/owner-login/assets/brand-slogan.png"
+      mode="aspectFit"
+      aria-label="功能与美×共生"
+    />
+    <view class="brand-rule" aria-hidden="{{true}}"></view>
+  </view>
+  <view class="owner-content welcome-actions">
+    <button
+      class="plush-button"
+      hover-class="plush-pressed"
+      hover-start-time="0"
+      hover-stay-time="110"
+      bindtap="quickLogin"
+    >
+      <template is="plush" data="{{quick: true}}" />
+    </button>
+    <button class="owner-link employee-link" hover-class="owner-link-down" bindtap="openEmployee">
+      <text>账号密码登录</text>
+      <view class="arrow-mark" aria-hidden="{{true}}"></view>
+    </button>
+    <view wx:if="{{feedback}}" class="feedback" role="status">{{feedback}}</view>
+  </view>
+  <view class="owner-content owner-consent">
+    <button
+      class="owner-link consent-button {{agreed ? 'consented' : ''}}"
+      hover-class="owner-link-down"
+      aria-role="checkbox"
+      aria-checked="{{agreed}}"
+      aria-label="同意用户协议和隐私保护指引"
+      bindtap="toggleAgreement"
+    >
+      <view class="consent-dot" aria-hidden="{{true}}"></view>
+    </button>
+    <view class="consent-copy">
+      <text bindtap="toggleAgreement">我已阅读并同意</text>
+      <text class="policy-link" aria-role="link" data-title="用户协议" bindtap="showPolicy"
+        >《用户协议》</text
+      >
+      <text>和</text>
+      <text class="policy-link" aria-role="link" data-title="隐私保护指引" bindtap="showPolicy"
+        >《隐私保护指引》</text
+      >
+    </view>
+  </view>
+</view>

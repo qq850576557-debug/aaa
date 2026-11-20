@@ -6,6 +6,12 @@
     "pages/camera/index",
     "pages/results/index"
   ],
+  "subPackages": [
+    {
+      "root": "owner-login",
+      "pages": ["pages/welcome/index", "pages/employee/index"]
+    }
+  ],
   "window": {
     "navigationBarTitleText": "春茉工地拍照",
     "navigationBarBackgroundColor": "#f7f8f4",
