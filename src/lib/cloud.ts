@@ -46,6 +46,7 @@ async function sendApi<T = Record<string, unknown>>(
 ): Promise<T> {
   const requestOwner = verifiedOwner();
   const saving =
+    (path.startsWith('/owner-purchases/') && method === 'POST') ||
     (path === '/workspace' && method === 'PUT') ||
     (path === '/assessments/batch' && method === 'POST') ||
     (path.startsWith('/site-photos') && method !== 'GET') ||

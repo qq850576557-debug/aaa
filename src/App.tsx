@@ -64,6 +64,7 @@ import {
   Users,
 } from 'lucide-react';
 import { PurchaseCard } from './components/PurchaseCard';
+import { useOwnerPurchaseIndex } from './components/OwnerPurchaseControls';
 import { CompactStats } from './components/CompactStats';
 import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
 import { HistoryPanel } from './components/HistoryPanel';
@@ -154,6 +155,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     cloudUser,
     reloadCloud,
     changeDeadline,
+    createOwnerPurchase,
     hasUnsavedChanges,
     saveConflict,
     resolveSaveConflict,
@@ -249,6 +251,12 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [showAllProjects, setShowAllProjects] = useState(route.projects === 'all');
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [purchaseProject, setPurchaseProject] = useState('');
+  const { index: ownerPurchases, refresh: refreshOwnerPurchases } = useOwnerPurchaseIndex(
+    !mobile &&
+      isCloud &&
+      ready &&
+      (edit?.kind === 'purchase' || ['purchases', 'reminders', 'project-detail'].includes(view)),
+  );
   const { notices, notify, dismiss } = useNotices();
   useEffect(() => {
     const open = (event: Event) => {
@@ -772,6 +780,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         purchaseDue(a, data).localeCompare(purchaseDue(b, data)),
     );
   function purchaseCard(x: Purchase) {
+    const collaboration = ownerPurchases.items.find(
+      ({ id, projectId }) => id === x.id && projectId === x.projectId,
+    );
     return (
       <PurchaseCard
         key={x.id}
@@ -782,7 +793,23 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         onDelete={() => deleteEntity({ kind: 'purchase', value: x })}
         canReopen={!isCloud || !!cloudUser?.owner}
         showProject={view === 'reminders' || view === 'purchases'}
-        onStatus={(status) => save('purchase', { ...x, due: purchaseDue(x, data), status })}
+        ownerBadge={
+          collaboration?.bought && !collaboration?.complete
+            ? '业主已购买 · 待公司复核'
+            : collaboration?.published
+              ? '已向业主发布'
+              : undefined
+        }
+        onStatus={(status) => {
+          if (
+            collaboration?.published &&
+            purchaseComplete(x) !== purchaseComplete({ ...x, status })
+          ) {
+            purchaseEditor(x);
+            return;
+          }
+          save('purchase', { ...x, due: purchaseDue(x, data), status });
+        }}
       />
     );
   }
@@ -961,6 +988,12 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       ),
     );
     const legacy = items.filter((x) => x.kind === 'legacy' && !x.done && x.date <= now);
+    const review = ownerPurchases.items
+      .filter(
+        (x) => x.bought && !x.complete && (!metricFilter || !selected || x.projectId === selected),
+      )
+      .flatMap(({ id }) => data.purchases.filter((purchase) => purchase.id === id));
+
     return (
       <div className="reminder-center reminder-columns">
         {metricFilter && (
@@ -1029,6 +1062,18 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             <Empty small title="暂无采购提醒" text="采购记录将按截止日期显示在这里。" />
           )}
         </section>
+        {!!review.length && !metricFilter && (
+          <section className="panel reminder-section procurement-workspace">
+            <div className="section-heading">
+              <h2>
+                <Package size={18} />
+                业主购买反馈
+              </h2>
+              <span>{review.length} 项待公司复核</span>
+            </div>
+            <div className="purchase-list">{review.map(purchaseCard)}</div>
+          </section>
+        )}
         {!!legacy.length && (
           <section
             className="panel reminder-section"
@@ -1799,6 +1844,22 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           data={data}
           onDeadlineChange={
             !isCloud || cloudUser?.owner ? (p) => setDeadlineChange(p.id) : undefined
+          }
+          ownerPurchase={
+            !mobile && isCloud && edit.kind === 'purchase' && ownerPurchases.projects.length
+              ? {
+                  projects: ownerPurchases.projects,
+                  founder: !!cloudUser?.owner,
+                  published: ownerPurchases.items.some(
+                    ({ id, projectId, published }) =>
+                      id === edit.value.id &&
+                      projectId === (edit.value as Purchase).projectId &&
+                      published,
+                  ),
+                  create: createOwnerPurchase,
+                  refresh: refreshOwnerPurchases,
+                }
+              : undefined
           }
           onClose={() => setEdit(null)}
           onSave={save}

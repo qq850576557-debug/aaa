@@ -135,3 +135,62 @@ test('owner fixtures scope purchases, preserve edits, and gate status changes', 
   assert.equal(store.snapshot().projects.length, 1);
   assert.deepEqual(store.snapshot().groups.pending, []);
 });
+
+test('verified owner reloads only the selected residence and retries the same feedback request', async (t) => {
+  const api = require('../owner-login/owner-session');
+  const backup = { session: api.session, purchases: api.purchases, feedback: api.feedback };
+  t.after(() => {
+    store.end();
+    Object.assign(api, backup);
+  });
+  const owner = { id: 'owner', name: '测试业主' };
+  const projects = [
+    { id: 'a', title: '测试住宅 A', phase: '施工中' },
+    { id: 'b', title: '测试住宅 B', phase: '施工中' },
+  ];
+  const feedback = { brand: 'A', model: 'M', note: 'https://example.com/item' };
+  let replies = 0;
+  let committed = false;
+  const sends = [];
+  const reads = [];
+  api.session = async () => ({ owner, projects, purchasesEnabled: true });
+  api.purchases = async (project) => {
+    reads.push(project);
+    return {
+      items: [
+        {
+          id: project + '-item',
+          title: '测试灯具',
+          due: '2026-12-01',
+          state: project === 'a' && committed ? 'bought' : 'pending',
+          version: 'current',
+          feedback,
+        },
+      ],
+    };
+  };
+  api.feedback = async (project, id, payload) => {
+    sends.push({ project, id, payload });
+    committed = true;
+    if (++replies === 1) throw Object.assign(Error('网络异常'), { statusCode: 0 });
+    return { ok: true };
+  };
+  store.beginVerified({ owner, projects, purchasesEnabled: true });
+  await Promise.all([store.refreshVerified(), store.refreshVerified()]);
+  assert.deepEqual(reads, ['a']);
+  await assert.rejects(() => store.update('a-item', 'a', 'current', feedback), /网络异常/);
+  assert.equal(store.snapshot().groups.pending.length, 1);
+  await store.update('a-item', 'a', 'current', feedback);
+  assert.deepEqual(sends[0], sends[1]);
+  await store.refreshVerified();
+  assert.equal(store.snapshot().groups.bought[0].id, 'a-item');
+  store.choose('b');
+  await store.refreshVerified();
+  assert.equal(store.snapshot().groups.pending[0].id, 'b-item');
+  assert.throws(() => store.update('a-item', 'a', 'current', feedback), /不可见/);
+  api.session = async () => {
+    throw Object.assign(Error('授权已撤销'), { statusCode: 403 });
+  };
+  await assert.rejects(store.refreshVerified, /撤销/);
+  assert.equal(store.isVerified(), false);
+});

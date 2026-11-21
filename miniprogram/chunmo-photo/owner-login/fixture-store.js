@@ -92,19 +92,20 @@ function begin(mode = 'review', now = Date.now()) {
   return true;
 }
 
-function beginVerified({ owner, projects }) {
+function beginVerified({ owner, projects, purchasesEnabled }) {
   if (!owner?.id || !Array.isArray(projects) || !projects.length)
     throw Error('暂无访问授权，请联系春茉');
+  const sameOwner = session?.owner.id === owner.id;
   const active =
-    session?.owner.id === owner.id && projects.some(({ id }) => id === session.active)
-      ? session.active
-      : projects[0].id;
-  const avatar = session?.owner.id === owner.id ? session.owner.avatar : '';
+    sameOwner && projects.some(({ id }) => id === session.active) ? session.active : projects[0].id;
+  const avatar = sameOwner ? session.owner.avatar : '';
   session = {
     owner: { id: owner.id, name: owner.name, avatar },
     active,
     projects,
     records: Object.fromEntries(projects.map(({ id }) => [id, []])),
+    pendingFeedback: sameOwner ? session.pendingFeedback : new Map(),
+    purchasesEnabled: purchasesEnabled === true,
     today: dateAt(0, Date.now()),
     offline: false,
     verified: true,
@@ -115,19 +116,70 @@ function isVerified() {
   return session?.verified === true;
 }
 
-async function refreshVerified() {
-  if (!isVerified()) return;
+let refreshing;
+function refreshVerified() {
+  if (!isVerified()) return Promise.resolve();
+  if (refreshing?.session === session) return refreshing.promise;
   const previous = session;
-  try {
-    const result = await ownerSession.session();
-    if (session !== previous) return;
-    if (!result) throw Error('业主登录已失效，请重新进入');
-    beginVerified(result);
-  } catch (error) {
-    if (session !== previous) return;
-    if (error.statusCode === 401 || error.statusCode === 403) end();
-    throw error;
+  const promise = (async () => {
+    try {
+      const result = await ownerSession.session();
+      if (session !== previous) return;
+      if (!result) throw Object.assign(Error('业主登录已失效，请重新进入'), { statusCode: 401 });
+      beginVerified(result);
+      if (refreshing?.promise === promise) refreshing.session = session;
+      if (session.purchasesEnabled) await refreshPurchases();
+    } catch (error) {
+      if ([401, 403].includes(error.statusCode) && session?.owner.id === previous.owner.id) end();
+      throw error;
+    } finally {
+      if (refreshing?.promise === promise) refreshing = undefined;
+    }
+  })();
+  refreshing = { session: previous, promise };
+  return promise;
+}
+
+async function refreshPurchases() {
+  const activeSession = current();
+  if (!activeSession.purchasesEnabled) return;
+  const project = activeSession.active;
+  const { items } = await ownerSession.purchases(project);
+  if (session === activeSession) activeSession.records[project] = items;
+}
+
+function feedbackRequest(project, id, version, action, fields) {
+  const activeSession = current();
+  const key = JSON.stringify([project, id, version, action, fields]);
+  let requestId = activeSession.pendingFeedback.get(key);
+  if (!requestId) {
+    // This is a retry identifier, not an authentication credential.
+    requestId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (part) => {
+      const digit = Math.floor(Math.random() * 16);
+      return (part === 'x' ? digit : (digit & 3) | 8).toString(16);
+    });
+    activeSession.pendingFeedback.set(key, requestId);
+    if (activeSession.pendingFeedback.size > 30)
+      activeSession.pendingFeedback.delete(activeSession.pendingFeedback.keys().next().value);
   }
+  return ownerSession
+    .feedback(project, id, {
+      requestId,
+      version,
+      action,
+      ...(fields ? { feedback: fields } : {}),
+    })
+    .then(
+      () => {
+        activeSession.pendingFeedback.delete(key);
+      },
+      (error) => {
+        if (error.statusCode >= 400 && error.statusCode < 500)
+          activeSession.pendingFeedback.delete(key);
+        if (error.statusCode === 401 && session?.owner.id === activeSession.owner.id) end();
+        throw error;
+      },
+    );
 }
 
 function current() {
@@ -188,7 +240,9 @@ function update(id, projectId, version, draft) {
     if (typeof draft[key] !== 'string' || draft[key].length > max)
       throw Error('购买信息过长，请缩短后重试');
   }
-  item.feedback = Object.fromEntries(Object.keys(limits).map((key) => [key, draft[key].trim()]));
+  const fields = Object.fromEntries(Object.keys(limits).map((key) => [key, draft[key].trim()]));
+  if (isVerified()) return feedbackRequest(projectId, id, version, 'purchase', fields);
+  item.feedback = fields;
   item.state = 'bought';
   item.version++;
 }
@@ -196,6 +250,7 @@ function update(id, projectId, version, draft) {
 function revoke(id, projectId, version) {
   const item = itemInProject(id, projectId, version);
   if (item.state !== 'bought') throw Error('该采购尚未确认购买');
+  if (isVerified()) return feedbackRequest(projectId, id, version, 'withdraw');
   item.state = 'pending';
   item.version++;
 }
@@ -220,6 +275,7 @@ module.exports = {
   beginVerified,
   isVerified,
   refreshVerified,
+  refreshPurchases,
   snapshot,
   choose,
   ownerIdentity,

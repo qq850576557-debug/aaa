@@ -27,6 +27,20 @@ Page({
   },
   onShow() {
     if (!this.data.ready) return;
+    if (store.isVerified()) {
+      this.setData({ loading: true, error: '', rows: [] });
+      void store.refreshVerified().then(
+        () => this.renderSnapshot(),
+        (error) => {
+          this.setData({ loading: false, error: error.message });
+          if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+        },
+      );
+      return;
+    }
+    this.renderSnapshot();
+  },
+  renderSnapshot() {
     try {
       const { project, groups } = store.snapshot();
       const visible = {
@@ -52,7 +66,7 @@ Page({
     const { state } = event.currentTarget.dataset;
     if (valid(state) && this.data.state !== state) {
       this.setData({ state });
-      this.onShow();
+      this.renderSnapshot();
     }
   },
   retry() {

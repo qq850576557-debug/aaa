@@ -71,4 +71,19 @@ async function logout() {
   await request('/auth/logout', 'POST', {}, token).catch(() => {});
 }
 
-module.exports = { enabled, login, session, logout };
+function purchaseRequest(project, suffix, method, body) {
+  const token = enabled() && wx.getStorageSync(storageKey);
+  if (!token) return Promise.reject(new SessionError('业主登录已失效', 401));
+  return request(
+    '/projects/' + encodeURIComponent(project) + '/purchases' + suffix,
+    method,
+    body,
+    token,
+  );
+}
+
+const purchases = (project) => purchaseRequest(project, '', 'GET');
+const feedback = (project, id, body) =>
+  purchaseRequest(project, '/' + encodeURIComponent(id) + '/feedback', 'POST', body);
+
+module.exports = { enabled, login, session, logout, purchases, feedback };

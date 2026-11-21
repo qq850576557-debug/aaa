@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import express from 'express';
 import test from 'node:test';
 import pg from 'pg';
 import { createApp } from './app';
+import { config } from './config';
 import { pool, privatePool } from './db';
 import { hash } from './store';
 import { migrate } from './migrate';
 import { officialOwnerWechat } from './owner-wechat';
+import { emptyData, newProject } from '../src/lib/model';
+import { emptyHistory } from '../src/lib/history';
 
 test('official adapter binds the verified phone to the configured app and never accepts a client phone', async () => {
   const appId = 'wx1111111111111111';
@@ -87,8 +93,60 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
     'GRANT SELECT ON account,auth_session,cloud_workspace,account_avatar,card_avatar TO ' +
       staff.username,
   );
-  await admin.query('GRANT SELECT,UPDATE,DELETE ON project TO ' + staff.username);
-  await admin.query('GRANT INSERT ON audit_event TO ' + staff.username);
+  const migration = await readFile('server/proposed/017_owner_purchase.sql', 'utf8');
+  const grants = await readFile('server/proposed/017_owner_purchase_grants.sql', 'utf8');
+  const migrationClient = await admin.connect();
+  try {
+    await migrationClient.query('BEGIN');
+    await migrationClient.query(migration);
+    await migrationClient.query(
+      grants
+        .replaceAll(':"staff_role"', staff.username)
+        .replaceAll(':"owner_role"', ownerDb.username),
+    );
+    await migrationClient.query(
+      "INSERT INTO owner_portal.purchase_migration(filename,sha256) VALUES('017_owner_purchase.sql',$1),('017_owner_purchase_grants.sql',$2)",
+      [hash(migration), hash(grants)],
+    );
+    await migrationClient.query('COMMIT');
+  } catch (error) {
+    await migrationClient.query('ROLLBACK');
+    throw error;
+  } finally {
+    migrationClient.release();
+  }
+  const migrationRows = await admin.query(
+    'SELECT filename,sha256 FROM owner_portal.purchase_migration ORDER BY filename COLLATE "C"',
+  );
+  assert.deepEqual(migrationRows.rows, [
+    { filename: '017_owner_purchase.sql', sha256: hash(migration) },
+    { filename: '017_owner_purchase_grants.sql', sha256: hash(grants) },
+  ]);
+  await admin.query(
+    'GRANT SELECT,INSERT,UPDATE,DELETE ON workspace_state,assignment,purchase,purchase_record,project,task,trade,memo,person TO ' +
+      staff.username,
+  );
+  await admin.query(
+    'GRANT SELECT,INSERT ON audit_event,purchase_action,workspace_history_revision TO ' +
+      staff.username,
+  );
+  await admin.query(
+    'GRANT SELECT,INSERT ON legacy_record_link,mention_notification TO ' + staff.username,
+  );
+  await admin.query('GRANT USAGE ON SEQUENCE mention_notification_id_seq TO ' + staff.username);
+  await admin.query(
+    'GRANT SELECT ON studio_daily,studio_daily_submission,work_record,record_history,daily_assessment,assessment_history,assessment_recorder,department,member_card TO ' +
+      staff.username,
+  );
+  await admin.query('GRANT SELECT ON schema_migration TO ' + staff.username);
+  await admin.query('GRANT INSERT,UPDATE ON studio_daily TO ' + staff.username);
+  await admin.query('GRANT INSERT ON studio_daily_submission TO ' + staff.username);
+  process.env.CHUNMO_OWNER_PORTAL_ENABLED = '1';
+  process.env.CHUNMO_OWNER_PURCHASE_ENABLED = '1';
+  t.after(() => {
+    delete process.env.CHUNMO_OWNER_PORTAL_ENABLED;
+    delete process.env.CHUNMO_OWNER_PURCHASE_ENABLED;
+  });
 
   await admin.query(`BEGIN;
     INSERT INTO cloud_workspace VALUES ('w','模拟工作室','founder'),('other','外部','external');
@@ -121,6 +179,8 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       },
     },
   });
+  const artifacts = process.env.CHUNMO_OWNER_BROWSER_ARTIFACTS;
+  if (artifacts) app.use(express.static('dist'));
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(
@@ -128,6 +188,11 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   );
   const binding = server.address() as import('node:net').AddressInfo;
   const base = 'http://127.0.0.1:' + binding.port;
+  const savedOrigin = config.APP_ORIGIN;
+  config.APP_ORIGIN = base;
+  t.after(() => {
+    config.APP_ORIGIN = savedOrigin;
+  });
   async function request(
     path: string,
     method = 'GET',
@@ -140,7 +205,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       method,
       headers: {
         'Content-Type': 'application/json',
-        Origin: 'http://127.0.0.1:5173',
+        Origin: base,
         ...(staffToken
           ? {
               Cookie: 'chunmo_session=' + staffToken,
@@ -241,14 +306,301 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
     () => runtime.query('SELECT phone_sealed FROM owner_portal.member'),
     (e: any) => e.code === '42501',
   );
+  await t.test(
+    'existing and new purchases publish safely and synchronize through completion',
+    async () => {
+      const original = {
+        id: 'existing',
+        projectId: 'p1',
+        name: '内部采购',
+        notes: 'PRIVATE-DETAIL',
+        due: '2026-12-09',
+        taskId: '',
+        leadDays: 0,
+        status: '待采购' as const,
+        owner: 'PRIVATE-STAFF',
+      };
+      const fixtures = {
+        ...emptyData(),
+        projects: [
+          { ...newProject(), id: 'p1', name: '一号住宅' },
+          { ...newProject(), id: 'p2', name: '二号住宅' },
+        ],
+        purchases: [original],
+      };
+      await admin.query("INSERT INTO workspace_state VALUES('w',0,$1,$2)", [
+        JSON.stringify(fixtures),
+        JSON.stringify(emptyHistory()),
+      ]);
+      await admin.query("INSERT INTO purchase VALUES('w','existing','p1',NULL,$1)", [
+        JSON.stringify(original),
+      ]);
+      await pool.query("UPDATE project SET payload=$1 WHERE workspace_id='w' AND id='p1'", [
+        JSON.stringify(fixtures.projects[0]),
+      ]);
+
+      const desktop = '/owner-purchases/p1/existing';
+      const phone = projects + '/p1/purchases';
+      const postPhone = phone + '/existing/feedback';
+      const feed = (p = phone, bearer = tokenA) => request(p, 'GET', undefined, '', bearer);
+      const read = () =>
+        request(desktop, 'GET', undefined, founder).then((r) => {
+          assert.equal(r.status, 200, JSON.stringify(r.body));
+          return r.body.item;
+        });
+      const change = (body: object, actor = founder) => request(desktop, 'POST', body, actor);
+      const published = {
+        responsibility: 'owner',
+        published: true,
+        title: '业主端灯具',
+        description: '经确认的对外说明',
+        specification: '规格 A',
+        quantity: '2',
+        reference: 'https://example.com/store',
+      };
+      const write = async (action: string, fields: object, actor = founder) =>
+        change(
+          { action, ...fields, version: (await read()).version, requestId: randomUUID() },
+          actor,
+        );
+      assert.deepEqual((await feed()).body.items, []);
+      assert.equal((await feed(phone, '')).status, 401);
+      assert.equal((await feed(projects + '/p2/purchases', tokenB)).status, 404);
+      assert.equal((await request(desktop, 'GET', undefined, '', tokenA)).status, 401);
+      assert.equal((await request(desktop, 'GET', undefined, employee)).status, 403);
+      assert.equal(
+        (await request('/owner-purchases/secret/existing', 'GET', undefined, founder)).status,
+        403,
+      );
+      assert.equal((await write('publication', { publication: published }, employee)).status, 403);
+      assert.equal(
+        (await write('publication', { publication: { ...published, responsibility: 'company' } }))
+          .status,
+        400,
+      );
+      if (artifacts) {
+        await mkdir(artifacts, { recursive: true });
+        const { chromium } = await import('@playwright/test');
+        const browser = await chromium.launch({
+          executablePath: '/usr/bin/chromium',
+          args: ['--no-sandbox'],
+        });
+        try {
+          const open = async (
+            credential: string,
+            width: number,
+            reducedMotion: 'no-preference' | 'reduce',
+          ) => {
+            const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion });
+            page.setDefaultTimeout(10000);
+            await page
+              .context()
+              .addCookies([{ name: 'chunmo_session', value: credential, url: base + '/api' }]);
+            await page.addInitScript(() => sessionStorage.setItem('chunmo-space', 'cloud'));
+            await page.goto(base);
+            await page.getByRole('button', { name: '采购管理', exact: true }).click();
+            await page.getByRole('button', { name: '编辑采购内部采购' }).click();
+            return page;
+          };
+          const normal = await open(founder, 1440, 'no-preference');
+          await normal.getByText('业主采购协同', { exact: true }).click();
+          await normal.getByLabel('采购责任方').selectOption('owner');
+          await normal.getByLabel('对外采购名称').fill(published.title);
+          await normal.getByLabel('对外采购说明').fill(published.description);
+          await normal.getByLabel('对外规格 / 尺寸').fill(published.specification);
+          await normal.getByLabel('对外数量').fill(published.quantity);
+          await normal.getByLabel('参考资料链接（选填）').fill(published.reference);
+          await normal.getByLabel('向业主发布').check();
+          const coordinates = await Promise.all([
+            normal.getByLabel('对外规格 / 尺寸').boundingBox(),
+            normal.getByLabel('对外数量').boundingBox(),
+          ]);
+          assert.ok(
+            coordinates[0] &&
+              coordinates[1] &&
+              Math.abs(coordinates[0].y - coordinates[1].y) <= 2 &&
+              coordinates[0].x + coordinates[0].width <= coordinates[1].x,
+            JSON.stringify(coordinates),
+          );
+          await normal.getByRole('button', { name: '确认发布' }).hover();
+          await normal.getByRole('button', { name: '确认发布' }).focus();
+          await normal.evaluate(() => document.fonts.ready);
+          await normal.screenshot({ path: join(artifacts, '01-desktop-publication.png') });
+          await normal.getByRole('button', { name: '确认发布' }).click();
+          await normal
+            .locator('.owner-purchase-controls')
+            .getByText('已保存', { exact: true })
+            .waitFor();
+          await normal.close();
+          const lowMotion = await open(founder, 1280, 'reduce');
+          await lowMotion.getByText('业主采购协同', { exact: true }).click();
+          await lowMotion.getByRole('button', { name: '代为确认购买' }).click();
+          await lowMotion.getByLabel('购买备注').fill('测试商品链接 https://example.com/item');
+          await lowMotion.getByLabel('购买备注').focus();
+          assert.equal(
+            await lowMotion
+              .getByLabel('购买备注')
+              .evaluate((node) => getComputedStyle(node).filter),
+            'none',
+          );
+          await lowMotion.screenshot({ path: join(artifacts, '02-desktop-purchase-feedback.png') });
+          await lowMotion.getByRole('button', { name: '取消', exact: true }).last().click();
+          const limited = await open(employee, 1280, 'no-preference');
+          assert.equal(await limited.getByText('业主采购协同', { exact: true }).count(), 0);
+          await limited.close();
+        } finally {
+          await browser.close();
+        }
+      } else {
+        assert.equal((await write('publication', { publication: published })).status, 200);
+      }
+      await admin.query("INSERT INTO project_permission VALUES('w','p1','employee',true)");
+      assert.equal((await request(desktop, 'GET', undefined, employee)).status, 200);
+      assert.equal((await request(staffApi(), 'GET', undefined, employee)).status, 403);
+      assert.equal(
+        (await request('/owner-purchases/p2/existing', 'GET', undefined, employee)).status,
+        403,
+      );
+      let record = (await feed()).body.items[0];
+      assert.equal(record.title, published.title);
+      assert.equal(record.due, original.due);
+      assert.equal(record.state, 'pending');
+      assert.ok(!JSON.stringify(record).includes('PRIVATE-'));
+      assert.deepEqual(Object.keys(record).sort(), [
+        'description',
+        'due',
+        'feedback',
+        'id',
+        'quantity',
+        'reference',
+        'returnReason',
+        'specification',
+        'state',
+        'title',
+        'version',
+      ]);
+      assert.equal((await write('finish', {})).status, 409);
+      const confirm = {
+        action: 'purchase',
+        requestId: randomUUID(),
+        version: record.version,
+        feedback: { brand: '品牌', model: 'A-01', note: 'https://example.com/item' },
+      };
+      const respond = (body: object, bearer = tokenA, route = postPhone) =>
+        request(route, 'POST', body, '', bearer);
+      assert.equal(
+        (await respond(confirm, tokenB, projects + '/p2/purchases/existing/feedback')).status,
+        404,
+      );
+      const otherConfirm = { ...confirm, requestId: randomUUID() };
+      const competing = await Promise.all([respond(confirm), respond(otherConfirm, tokenB)]);
+      assert.deepEqual(competing.map((r) => r.status).sort(), [200, 409]);
+      const firstWon = competing[0].status === 200;
+      assert.equal(
+        (await respond(firstWon ? confirm : otherConfirm, firstWon ? tokenA : tokenB)).status,
+        200,
+      );
+      assert.equal((await read()).model, 'A-01');
+      record = (await feed()).body.items[0];
+      assert.equal(record.state, 'bought');
+      const withdraw = { action: 'withdraw', requestId: randomUUID(), version: record.version };
+      assert.equal((await respond(withdraw)).status, 200);
+      assert.equal((await respond(withdraw)).status, 200);
+      assert.equal((await feed()).body.items[0].state, 'pending');
+      assert.equal((await write('purchase', { feedback: confirm.feedback }, employee)).status, 200);
+      assert.equal((await read()).feedbackActor, 'employee');
+      assert.equal((await write('return', { reason: '请重新核对尺寸' }, employee)).status, 200);
+      record = (await feed()).body.items[0];
+      assert.equal(record.returnReason, '请重新核对尺寸');
+      assert.equal(
+        (await respond({ ...confirm, requestId: randomUUID(), version: record.version })).status,
+        200,
+      );
+      assert.equal(
+        (await write('publication', { publication: { ...published, published: false } })).status,
+        200,
+      );
+      assert.deepEqual((await feed()).body.items, []);
+      assert.equal((await respond(withdraw)).status, 404);
+      assert.equal((await write('publication', { publication: published })).status, 200);
+      assert.equal((await feed()).body.items[0].state, 'bought');
+      const dbState = (await request('/workspace', 'GET', undefined, founder)).body;
+      const updated = await request(
+        '/workspace',
+        'PUT',
+        {
+          revision: dbState.revision,
+          data: {
+            ...dbState.data,
+            purchases: [{ ...dbState.data.purchases[0], due: '2026-12-08' }],
+          },
+        },
+        founder,
+      );
+      assert.equal(updated.status, 200, JSON.stringify(updated.body));
+      assert.equal((await feed()).body.items[0].due, '2026-12-08');
+      assert.equal((await feed()).body.items[0].state, 'bought');
+      const done = await write('finish', {}, employee);
+      assert.equal(done.status, 200, JSON.stringify(done.body));
+      record = (await feed()).body.items[0];
+      assert.equal(record.state, 'complete');
+      assert.equal(
+        (await respond({ ...confirm, requestId: randomUUID(), version: record.version })).status,
+        409,
+      );
+      assert.equal((await write('reopen', { reason: '计划变更' }, employee)).status, 403);
+      const reopened = await write('reopen', { reason: '计划变更' });
+      assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
+      assert.equal((await feed()).body.items[0].state, 'pending');
+
+      const canonical = (await request('/workspace', 'GET', undefined, founder)).body;
+      const creation = {
+        action: 'create',
+        requestId: randomUUID(),
+        revision: canonical.revision,
+        purchase: { ...original, id: 'new-purchase', name: '第二笔' },
+        publication: published,
+      };
+      const endpoint = '/owner-purchases/p1/new-purchase';
+      const created = await request(endpoint, 'POST', creation, founder);
+      assert.equal(created.status, 200, JSON.stringify(created.body));
+      assert.ok(
+        created.body.workspace.data.purchases.some((p: { id: string }) => p.id === 'new-purchase'),
+      );
+      assert.equal((await request(endpoint, 'POST', creation, founder)).status, 200);
+      assert.equal((await feed()).body.items.length, 2);
+      for (const table of [
+        'owner_portal.purchase_collaboration',
+        'owner_portal.purchase_staff',
+        'owner_portal.purchase_event',
+      ])
+        await assert.rejects(
+          () => runtime.query('SELECT * FROM ' + table),
+          (error: any) => error.code === '42501',
+        );
+      await assert.rejects(() =>
+        admin.query("DELETE FROM owner_portal.purchase_event WHERE workspace_id='w'"),
+      );
+      await pool.query("DELETE FROM purchase WHERE workspace_id='w' AND id='new-purchase'");
+      await admin.query("INSERT INTO purchase VALUES('w','new-purchase','p1',NULL,$1)", [
+        JSON.stringify(creation.purchase),
+      ]);
+      assert.equal((await feed()).body.items.length, 1);
+      assert.equal(
+        (
+          await admin.query(
+            "SELECT count(*)::int AS count FROM owner_portal.purchase_event WHERE workspace_id='w'",
+          )
+        ).rows[0].count,
+        11,
+      );
+    },
+  );
   const list = (await request(staffApi(), 'GET', undefined, founder)).body.members;
   assert.equal(list.find((row: { name: string }) => row.name === '甲').maskedPhone, '*******0001');
   assert.ok(!JSON.stringify(list).includes('13900000001'));
   const id = list.find((row: { name: string }) => row.name === '甲').id;
-  assert.equal(
-    (await request(staffApi() + '/members/' + id, 'DELETE', {}, founder)).status,
-    200,
-  );
+  assert.equal((await request(staffApi() + '/members/' + id, 'DELETE', {}, founder)).status, 200);
   assert.deepEqual(
     (await request(projects, 'GET', undefined, '', tokenA)).body.projects.map(
       (row: { id: string }) => row.id,

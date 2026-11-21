@@ -1,6 +1,8 @@
 import { useLocalWorkspace } from './useWorkspace';
 import { useCloudWorkspace } from './useCloudWorkspace';
 import { inCloud, type CloudUser } from './cloud';
+import type { Purchase } from './model';
+import type { OwnerPublication } from './owner-purchases';
 export function useWorkspace(initialUser?: CloudUser) {
   const cloud = inCloud(),
     local = useLocalWorkspace(!cloud),
@@ -14,6 +16,7 @@ export function useWorkspace(initialUser?: CloudUser) {
         cloudUser: null,
         reloadCloud: async () => {},
         changeDeadline: async (_id: string, _date: string, _reason: string) => {},
+        createOwnerPurchase: async (_purchase: Purchase, _publication: OwnerPublication) => {},
         saveConflict: null,
         resolveSaveConflict: async (_choices: import('./workspace-merge').MergeChoices) => {},
         dismissSaveConflict: () => {},

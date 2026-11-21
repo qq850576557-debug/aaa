@@ -4,7 +4,8 @@ import { deletedDraftView } from './deleted-draft-view';
 import { makeWorkspaceDelta } from './workspace-delta';
 import { savedFeedback } from '../components/SaveFeedback';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { emptyData, parseBackup, prepareWorkspace, type Data } from './model';
+import { emptyData, parseBackup, prepareWorkspace, type Data, type Purchase } from './model';
+import { ownerPurchasePath, type OwnerPublication } from './owner-purchases';
 import { canonical, emptyHistory, validateHistory } from './history';
 import { cloudApi, cloudSession, CloudError, type CloudState, type CloudUser } from './cloud';
 import {
@@ -657,6 +658,45 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     },
     [apply],
   );
+  const ownerPurchaseReceipt = useRef<{ key: string; requestId: string; revision: number }>(
+    undefined,
+  );
+  const createOwnerPurchase = useCallback(
+    async (purchase: Purchase, publication: OwnerPublication) => {
+      if (pending.current || blocked.current || !baseline.current)
+        throw Error('请先完成云端保存或处理冲突');
+      const key = JSON.stringify({ purchase, publication });
+      if (ownerPurchaseReceipt.current?.key !== key)
+        ownerPurchaseReceipt.current = {
+          key,
+          requestId: crypto.randomUUID(),
+          revision: baseline.current.revision,
+        };
+      const { requestId, revision } = ownerPurchaseReceipt.current;
+      pending.current = true;
+      exclusive.current = true;
+      setStatus('正在保存');
+      try {
+        const result = await cloudApi<{ workspace: CloudState }>(
+          ownerPurchasePath(purchase.projectId, purchase.id),
+          'POST',
+          { action: 'create', requestId, revision, purchase, publication },
+        );
+        apply(validState(result.workspace));
+        ownerPurchaseReceipt.current = undefined;
+        savedFeedback('owner-purchase-' + requestId, 'workspace');
+      } catch (error) {
+        if (error instanceof CloudError && error.status >= 400 && error.status < 500)
+          ownerPurchaseReceipt.current = undefined;
+        setStatus('采购保存未确认');
+        throw error;
+      } finally {
+        pending.current = false;
+        exclusive.current = false;
+      }
+    },
+    [apply],
+  );
   const reloadCloud = useCallback(async () => {
     if (interacting()) throw Error('请先关闭编辑弹窗；当前表单内容未被替换。');
     await working.current;
@@ -814,6 +854,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     cloudUser: user,
     reloadCloud,
     changeDeadline,
+    createOwnerPurchase,
     saveConflict,
     resolveSaveConflict,
     dismissSaveConflict: () => setSaveConflict(null),

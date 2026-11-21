@@ -5,8 +5,9 @@ import { z } from 'zod';
 import { owner, randomToken, type AuthRequest } from './auth';
 import { config } from './config';
 import { transaction } from './db';
-import { ApiError, audit } from './store';
+import { ApiError, audit, ownerPurchasesEnabled } from './store';
 import { officialOwnerWechat, type OwnerWechat } from './owner-wechat';
+import { ownerPurchaseRoutes } from './owner-purchase';
 
 const prefix = '/api/mini-owner/v1';
 const projectId = z.string().min(1).max(100);
@@ -216,7 +217,12 @@ export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
       ]);
       return { id: row.id, name: row.label };
     });
-    res.json({ token: accessToken, owner: person, projects: (await projects(person.id)).rows });
+    res.json({
+      token: accessToken,
+      owner: person,
+      projects: (await projects(person.id)).rows,
+      ...(ownerPurchasesEnabled() ? { purchasesEnabled: true } : {}),
+    });
   });
   router.post('/auth/logout', async (req, res) => {
     const member = await current(req);
@@ -227,7 +233,11 @@ export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     const member = await current(req);
     const list = (await projects(member.id)).rows;
     if (!list.length) throw new ApiError(403, '暂无访问授权，请联系春茉');
-    res.json({ owner: { id: member.id, name: member.label }, projects: list });
+    res.json({
+      owner: { id: member.id, name: member.label },
+      projects: list,
+      ...(ownerPurchasesEnabled() ? { purchasesEnabled: true } : {}),
+    });
   });
   router.get('/projects', async (req, res) => {
     const member = await current(req);
@@ -235,6 +245,7 @@ export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     if (!list.length) throw new ApiError(403, '暂无访问授权，请联系春茉');
     res.json({ projects: list });
   });
+  if (ownerPurchasesEnabled()) ownerPurchaseRoutes(router, db, current);
   router.use(() => {
     throw new ApiError(404, '接口不存在');
   });

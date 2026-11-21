@@ -14,6 +14,7 @@ Page({
     sheet: false,
     draft: store.blankFeedback,
     draftError: '',
+    saving: false,
     keyboardHeight: 0,
     focusedField: '',
   },
@@ -21,7 +22,21 @@ Page({
     if (store.open(this)) this.setData({ id: String(options.id || '') });
   },
   onShow() {
-    if (!this.data.ready) return;
+    if (!this.data.ready || this.data.saving) return;
+    if (store.isVerified()) {
+      this.setData({ loading: true, error: '', item: null, unavailable: false });
+      void store.refreshVerified().then(
+        () => this.renderSnapshot(),
+        (error) => {
+          this.setData({ loading: false, error: error.message });
+          if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+        },
+      );
+      return;
+    }
+    this.renderSnapshot();
+  },
+  renderSnapshot() {
     try {
       const { project, groups } = store.snapshot();
       const item = Object.values(groups)
@@ -55,7 +70,7 @@ Page({
       });
   },
   closeSheet() {
-    if (!this.data.sheet) return;
+    if (!this.data.sheet || this.data.saving) return;
     this.setData({
       sheet: false,
       keyboardHeight: 0,
@@ -79,7 +94,11 @@ Page({
   },
   confirm() {
     const { item, project, draft, sheet } = this.data;
-    if (!sheet || !item || !project) return;
+    if (!sheet || !item || !project || this.data.saving) return;
+    if (store.isVerified()) {
+      void this.saveVerified('purchase', item, project, draft);
+      return;
+    }
     try {
       store.update(item.id, project.id, item.version, draft);
       this.closeSheet();
@@ -89,15 +108,47 @@ Page({
       this.setData({ draftError: error.message });
     }
   },
+  async saveVerified(action, item, project, draft) {
+    this.setData({ saving: true, draftError: '' });
+    try {
+      if (action === 'purchase') await store.update(item.id, project.id, item.version, draft);
+      else await store.revoke(item.id, project.id, item.version);
+    } catch (error) {
+      this.setData({ saving: false });
+      if (!store.isVerified()) {
+        wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+      } else if ([404, 409].includes(error.statusCode)) {
+        this.closeSheet();
+        this.onShow();
+        wx.showToast({ title: error.message, icon: 'none' });
+      } else if (action === 'purchase') {
+        this.setData({ draftError: error.message });
+      } else {
+        wx.showToast({ title: error.message, icon: 'none' });
+      }
+      return;
+    }
+    this.setData({ saving: false });
+    this.closeSheet();
+    this.onShow();
+    wx.showToast({
+      title: action === 'purchase' ? '购买信息已保存' : '已恢复待采购',
+      icon: 'none',
+    });
+  },
   cancelPurchase() {
     const { item, project } = this.data;
-    if (item?.state !== 'bought' || !project) return;
+    if (item?.state !== 'bought' || !project || this.data.saving) return;
     wx.showModal({
       title: '撤销购买确认',
       content: '撤销后，此项会回到待采购。',
       confirmText: '撤销',
       success: ({ confirm }) => {
-        if (!confirm) return;
+        if (!confirm || this.data.saving) return;
+        if (store.isVerified()) {
+          void this.saveVerified('withdraw', item, project);
+          return;
+        }
         try {
           store.revoke(item.id, project.id, item.version);
           this.onShow();

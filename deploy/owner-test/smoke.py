@@ -28,7 +28,12 @@ try:
     assert api("/auth/session")["user"]["owner"] is True
     projects = api("/workspace")["data"]["projects"]
     assert len(projects) == 2 and all("（测试）" in item["name"] for item in projects)
-    assert api("/projects/" + projects[0]["id"] + "/owner-access") == {"enabled": False, "members": []}
+    if sys.argv[2:] == ["--upgrade"]:
+        result = api("/owner-purchases")
+        assert {row["id"] for row in result["projects"]} == {p["id"] for p in projects}
+        assert isinstance(result["items"], list)
+    else:
+        assert api("/projects/" + projects[0]["id"] + "/owner-access") == {"enabled": False, "members": []}
 except (URLError, ValueError, KeyError, TypeError, AssertionError):
     raise SystemExit("测试账号或初始授权状态校验失败")
-print("隔离负责人登录、两个测试住宅和默认授权关闭已核验")
+print("隔离负责人登录及测试采购接口已核验" if sys.argv[2:] else "隔离负责人登录、两个测试住宅和默认授权关闭已核验")

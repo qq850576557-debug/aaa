@@ -15,6 +15,8 @@ import {
   prepareWorkspace,
   purchaseCeiling,
   purchaseDue,
+  purchaseComplete,
+  type Purchase,
   rawPurchaseDue,
   type Data,
 } from '../src/lib/model';
@@ -225,6 +227,34 @@ export async function audit(
     ],
   );
 }
+export function ownerPurchasesEnabled() {
+  return (
+    process.env.CHUNMO_OWNER_PORTAL_ENABLED === '1' &&
+    process.env.CHUNMO_OWNER_PURCHASE_ENABLED === '1'
+  );
+}
+
+export async function lockOwnerPurchases(c: Db, workspace: string) {
+  await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,16))', [workspace]);
+}
+
+async function guardCollaborativeCompletion(
+  c: Db,
+  actor: Actor,
+  old: Purchase,
+  next: Purchase,
+  authorizedId?: string,
+) {
+  if (authorizedId === old.id || purchaseComplete(old) === purchaseComplete(next)) return;
+  const result = await c.query(
+    `SELECT 1 FROM owner_portal.purchase_collaboration
+     WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3 AND published`,
+    [actor.workspaceId, old.projectId, old.id],
+  );
+  if (result.rowCount)
+    throw new ApiError(409, '已向业主发布的采购请在「业主采购协同」中确认完成或重新开启');
+}
+
 export async function commit(
   c: Db,
   a: Actor,
@@ -237,6 +267,7 @@ export async function commit(
     importHistory?: History;
     importing?: boolean;
     deadlineChange?: { id: string; date: string; reason: string };
+    ownerPurchaseAction?: string;
   },
 ) {
   const prior = opts?.prior ?? (await getState(c, a.workspaceId, 'UPDATE'));
@@ -378,6 +409,16 @@ export async function commit(
       'INSERT INTO workspace_history_revision VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
       [a.workspaceId, r.id, revision],
     );
+  if (ownerPurchasesEnabled()) {
+    await lockOwnerPurchases(c, a.workspaceId);
+    const previousPurchases = new Map(
+      prior.data.purchases.map((purchase) => [purchase.id, purchase]),
+    );
+    for (const next of result.data.purchases) {
+      const old = previousPurchases.get(next.id);
+      if (old) await guardCollaborativeCompletion(c, a, old, next, opts?.ownerPurchaseAction);
+    }
+  }
   await trackPurchases(c, a, prior.data, result.data, !!(opts?.importing || opts?.restoreId));
   if (!opts?.importing && !opts?.restoreId)
     for (const [index, p] of result.data.purchases.entries()) {

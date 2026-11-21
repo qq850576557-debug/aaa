@@ -31,6 +31,7 @@ import { parseWorkspaceInput, WorkspaceValidationError } from './workspace-valid
 import { transferRoutes } from './transfers';
 import { recordRoutes } from './records';
 import { purchaseRoutes } from './purchases';
+import { staffOwnerPurchaseRoutes } from './owner-purchase';
 import { materialRoutes } from './materials';
 import { memberCardRoutes } from './member-cards';
 import { assessmentRoutes } from './assessments';
@@ -44,7 +45,15 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { pool, transaction } from './db';
 import { config } from './config';
-import { ApiError, getState, commit, hash, mergeImport, audit } from './store';
+import {
+  ApiError,
+  getState,
+  commit,
+  hash,
+  mergeImport,
+  audit,
+  ownerPurchasesEnabled,
+} from './store';
 import {
   authenticate,
   owner,
@@ -153,7 +162,10 @@ export function createApp({
         environment: config.APP_ENV,
         workspaceSaveProtocol: 2,
         release: runningRelease,
-        capabilities: { studioDaily },
+        capabilities: {
+          studioDaily,
+          ...(ownerPortal && ownerPurchasesEnabled() ? { ownerPurchases: true } : {}),
+        },
       });
     } catch (e) {
       next(e);
@@ -211,6 +223,7 @@ export function createApp({
     next();
   });
   staffOwnerRoutes(app, ownerPortal);
+  if (ownerPortal && ownerPurchasesEnabled()) staffOwnerPurchaseRoutes(app);
   purchaseRoutes(app);
   recordRoutes(app);
   studioDailyRoutes(app);

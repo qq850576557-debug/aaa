@@ -1,6 +1,12 @@
 import { inCloud } from '../lib/cloud';
 import { desktopV1Enabled } from '../ui-v1/mode';
 import { PurchaseDateHistory } from './PurchaseDateHistory';
+import {
+  defaultPublication,
+  OwnerPublicationFields,
+  OwnerPurchaseControls,
+} from './OwnerPurchaseControls';
+import type { OwnerPublication, OwnerPurchaseProject } from '../lib/owner-purchases';
 import { useEditorJournal } from '../lib/useEditorJournal';
 import { useId, useRef, useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
@@ -52,8 +58,16 @@ export function Editor({
   embedded = false,
   onDirtyChange,
   onDraftChange,
+  ownerPurchase,
 }: {
   intro?: ReactNode;
+  ownerPurchase?: {
+    projects: OwnerPurchaseProject[];
+    published: boolean;
+    founder: boolean;
+    create: (purchase: Purchase, publication: OwnerPublication) => Promise<void>;
+    refresh: () => void;
+  };
   embedded?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   onDraftChange?: (value: Entity) => void;
@@ -85,6 +99,8 @@ export function Editor({
   const colorChanged = useRef(false);
   const uid = useId();
   const [discard, setDiscard] = useState(false);
+  const [ownerDraft, setOwnerDraft] = useState<{ project: string; fields: OwnerPublication }>();
+  const [savingOwnerPurchase, setSavingOwnerPurchase] = useState(false);
   const dirty = JSON.stringify(v) !== JSON.stringify(initial);
   const journal = useEditorJournal(
     `editor:${edit.kind}:${data[({ project: 'projects', trade: 'trades', task: 'tasks', purchase: 'purchases', note: 'notes' } as const)[edit.kind]]?.some((x: any) => x.id === edit.value.id) ? edit.value.id : 'new'}`,
@@ -93,7 +109,12 @@ export function Editor({
     dirty,
   );
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
-  const close = () => (dirty ? setDiscard(true) : onClose());
+  const close = () => {
+    if (!savingOwnerPurchase) {
+      if (dirty || ownerDraft) setDiscard(true);
+      else onClose();
+    }
+  };
   const [again, setAgain] = useState(false);
   const change = (key: string, value: unknown) =>
     set((old) => ({
@@ -150,6 +171,7 @@ export function Editor({
           kind === 'purchase' && key === 'status' ? String(v.status) : undefined
         }
         required={key === 'projectId'}
+        disabled={kind === 'purchase' && key === 'status' && ownerPurchase?.published}
         value={
           key === 'dependency'
             ? String((v.dependsOn as string[] | undefined)?.[0] ?? '')
@@ -219,8 +241,11 @@ export function Editor({
     note: noteSchema,
     purchase: purchaseSchema,
   };
-  function submit(e: FormEvent) {
+  const ownerProject = ownerPurchase?.projects.find(({ id }) => id === v.projectId);
+  const publication = ownerDraft?.project === v.projectId ? ownerDraft?.fields : undefined;
+  async function submit(e: FormEvent) {
     e.preventDefault();
+    if (savingOwnerPurchase) return;
     try {
       const payload = { ...v };
       if (['project', 'trade', 'task'].includes(kind) && v.personnel) {
@@ -232,14 +257,30 @@ export function Editor({
       }
       if (kind === 'note' && !payload.taskId) delete payload.taskId;
       const value = schemas[kind].parse(payload);
-      onSave(kind, value, { colorChanged: kind === 'trade' && colorChanged.current });
+      if (kind === 'purchase' && isNew && ownerProject && ownerPurchase && publication) {
+        const purchase = value as Purchase;
+        const title =
+          publication.title.trim() || (publication.responsibility === 'owner' ? '' : purchase.name);
+        if (!title) throw Error('请确认对外采购名称');
+        setSavingOwnerPurchase(true);
+        await ownerPurchase.create(purchase, { ...publication, title });
+        ownerPurchase.refresh();
+      } else {
+        onSave(kind, value, { colorChanged: kind === 'trade' && colorChanged.current });
+      }
       if (again && kind === 'task' && onContinue) {
         onContinue(value as Task);
       } else onClose();
     } catch (err) {
       setError(
-        err instanceof z.ZodError ? err.issues.map((x) => x.message).join('；') : String(err),
+        err instanceof z.ZodError
+          ? err.issues.map((x) => x.message).join('；')
+          : err instanceof Error
+            ? err.message
+            : String(err),
       );
+    } finally {
+      setSavingOwnerPurchase(false);
     }
   }
   const labels = {
@@ -388,6 +429,37 @@ export function Editor({
         </div>
         {select('status', '采购状态', [...purchaseStatuses])}
         {area('notes', '详细备注（可选）')}
+        {ownerPurchase &&
+          ownerProject &&
+          (isNew ? (
+            <details
+              className="span2 owner-purchase-controls"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && event.target instanceof HTMLInputElement)
+                  event.preventDefault();
+              }}
+            >
+              <summary>业主采购协同</summary>
+              <OwnerPublicationFields
+                value={publication ?? defaultPublication(String(v.name ?? ''))}
+                due={String(v.due ?? '')}
+                enabled={ownerProject.enabled}
+                busy={savingOwnerPurchase}
+                onChange={(fields) => setOwnerDraft({ project: ownerProject.id, fields })}
+              />
+            </details>
+          ) : (
+            edit.kind === 'purchase' &&
+            v.projectId === edit.value.projectId && (
+              <OwnerPurchaseControls
+                project={ownerProject.id}
+                id={edit.value.id}
+                founder={ownerPurchase.founder}
+                dirty={dirty}
+                onChanged={ownerPurchase.refresh}
+              />
+            )
+          ))}
         {!isNew && (
           <p className="purchase-date-help span2">日期可提前或延期，保存后逐次保留记录。</p>
         )}
@@ -506,7 +578,7 @@ export function Editor({
                 新增时间段
               </button>
             )}
-            <button type="submit" className="primary">
+            <button type="submit" className="primary" disabled={savingOwnerPurchase}>
               {again ? '保存并继续' : '保存'}
             </button>
           </footer>

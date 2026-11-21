@@ -28,6 +28,14 @@
         <text class="detail-card-title">采购说明</text>
         <text class="detail-description">{{item.description}}</text>
       </view>
+      <view wx:if="{{item.reference}}" class="portal-card detail-card">
+        <text class="detail-card-title">参考资料</text>
+        <text selectable="{{true}}" class="detail-description">{{item.reference}}</text>
+      </view>
+      <view wx:if="{{item.returnReason}}" class="portal-card detail-card">
+        <text class="detail-card-title">调整说明</text>
+        <text class="detail-description">{{item.returnReason}}</text>
+      </view>
       <view wx:if="{{item.state !== 'pending'}}" class="portal-card detail-card">
         <text class="detail-card-title">购买信息</text>
         <view class="detail-meta"
@@ -46,13 +54,13 @@
         >
       </view>
       <view wx:if="{{item.state !== 'complete'}}" class="detail-actions">
-        <button class="detail-primary" bindtap="openSheet" hover-class="row-pressed">
+        <button class="detail-primary" bindtap="openSheet" disabled="{{saving}}" hover-class="row-pressed">
           {{item.state === 'bought' ? '修改购买信息' : '已购买'}}
         </button>
         <button
           wx:if="{{item.state === 'bought'}}"
           class="detail-secondary"
-          bindtap="cancelPurchase"
+          bindtap="cancelPurchase" disabled="{{saving}}"
         >
           撤销购买确认
         </button>
@@ -123,8 +131,8 @@
         <text wx:if="{{draftError}}" class="draft-error" aria-role="alert">{{draftError}}</text>
       </scroll-view>
       <view class="sheet-actions">
-        <button class="detail-secondary" bindtap="closeSheet">取消</button>
-        <button class="detail-primary" bindtap="confirm">
+        <button class="detail-secondary" bindtap="closeSheet" disabled="{{saving}}">取消</button>
+        <button class="detail-primary" bindtap="confirm" disabled="{{saving}}" loading="{{saving}}">
           {{item.state === 'bought' ? '保存修改' : '确认已购买'}}
         </button>
       </view>

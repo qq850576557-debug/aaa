@@ -19,6 +19,7 @@ export function PurchaseCard({
   onDelete,
   canReopen = true,
   showProject = true,
+  ownerBadge,
 }: {
   purchase: Purchase;
   data: Data;
@@ -28,6 +29,7 @@ export function PurchaseCard({
   onDelete?: () => void;
   canReopen?: boolean;
   showProject?: boolean;
+  ownerBadge?: string;
 }) {
   const due = purchaseDue(p, data),
     done = purchaseComplete(p);
@@ -68,6 +70,9 @@ export function PurchaseCard({
       <div className="purchase-main">
         <div className="purchase-card-title">
           <strong>{p.name}</strong>
+          {ownerBadge && (
+            <span className="purchase-project-tag owner-purchase-badge">{ownerBadge}</span>
+          )}
         </div>
         <div className="purchase-meta">
           <small>

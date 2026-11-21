@@ -1,0 +1,64 @@
+.owner-purchase-controls {
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--line, #dce4dd);
+  border-radius: 14px;
+}
+.owner-purchase-controls > summary {
+  cursor: pointer;
+}
+.owner-purchase-controls[open] > summary {
+  margin-bottom: 12px;
+}
+.owner-purchase-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.owner-publish-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: end;
+  min-height: 36px;
+}
+.owner-publish-check input[type='checkbox'] {
+  width: auto;
+}
+.owner-purchase-preview {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  background: var(--surface-soft, #eef3ee);
+  border-radius: 14px;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.owner-purchase-preview p,
+.owner-purchase-hint {
+  margin: 0;
+}
+.owner-purchase-preview button {
+  justify-self: start;
+}
+.owner-purchase-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 8px 0;
+}
+.owner-purchase-badge {
+  width: fit-content;
+}
+dialog.modal.purchase-editor:has(.owner-purchase-controls) {
+  width: min(560px, calc(100vw - 24px));
+}
+:root[data-desktop-ui='v1'] .purchase-editor.cm-glass:has(.owner-purchase-controls) > .modal-head {
+  background: var(--cm-glass-fallback, #faf9f4);
+}
+.owner-purchase-fields label.owner-publish-check {
+  flex-direction: row;
+  align-items: center;
+}

@@ -23,6 +23,7 @@ Page(
     onShow() {
       if (!this.data.ready) return;
       if (store.isVerified()) {
+        this.setData({ project: null, recent: [], loading: true, error: '' });
         void store.refreshVerified().then(
           () => this.renderSnapshot(),
           (error) => {
