@@ -1,40 +1,68 @@
 <import src="../../portal.wxml" />
-<view wx:if="{{ready}}" class="portal" style="padding-top: {{statusTop + 44}}px">
-  <view class="portal-wrap">
+<view wx:if="{{ready}}" class="portal profile-page" style="padding-top: {{statusTop + 44}}px">
+  <view class="portal-wrap profile-wrap" aria-hidden="{{cropOpen || privacyVisible}}">
     <template is="navigation" data="{{title: '个人中心'}}" />
-    <view class="portal-card profile-summary">
-      <view class="profile-icon"
-        ><image
-          class="profile-icon-image"
+    <template is="load-state" data="{{error: error, loading: loading}}" />
+    <view wx:if="{{owner}}" class="portal-card profile-summary">
+      <button
+        class="profile-avatar"
+        bindtap="chooseAvatar"
+        disabled="{{avatarLoading}}"
+        aria-label="更换头像"
+        hover-class="profile-pressed"
+      >
+        <image
+          wx:if="{{owner.avatar}}"
+          class="profile-avatar-photo"
+          src="{{owner.avatar}}"
+          mode="aspectFill"
+          aria-hidden="{{true}}"
+        />
+        <image
+          wx:else
+          class="profile-avatar-icon"
           src="/owner-login/assets/account.png"
           mode="aspectFit"
           aria-hidden="{{true}}"
-      /></view>
-      <view
-        ><text class="profile-name">演示业主</text><text class="portal-muted">业主身份</text></view
-      >
+        />
+        <text class="avatar-edit-mark" aria-hidden="{{true}}">+</text>
+      </button>
+      <view class="profile-identity">
+        <text class="profile-name">{{owner.name}}</text>
+        <text class="portal-muted">业主身份</text>
+        <text wx:if="{{project}}" class="profile-residence">{{project.title}}</text>
+      </view>
     </view>
-    <template is="load-state" data="{{error: error, loading: loading}}" />
-    <block wx:if="{{project}}">
-      <text class="portal-section-title">{{projects.length > 1 ? '切换住宅' : '当前住宅'}}</text>
+    <view class="profile-settings portal-card">
       <block wx:if="{{projects.length > 1}}">
         <button
-          wx:for="{{projects}}"
-          wx:key="id"
-          class="portal-row residence-option {{item.id === project.id ? 'active-residence' : ''}}"
-          data-id="{{item.id}}"
-          bindtap="chooseProject"
-          aria-selected="{{item.id === project.id}}"
+          class="portal-row"
+          bindtap="toggleProjects"
+          aria-expanded="{{switchOpen}}"
           hover-class="row-pressed"
         >
-          <text class="residence-option-label">{{item.title}}</text>
-          <text wx:if="{{item.id === project.id}}" class="current-tag">使用中</text>
-          <view wx:else class="portal-arrow" aria-hidden="{{true}}"></view>
+          <text>切换住宅</text>
+          <view
+            class="portal-arrow {{switchOpen ? 'switch-open' : ''}}"
+            aria-hidden="{{true}}"
+          ></view>
         </button>
+        <view wx:if="{{switchOpen}}" class="profile-projects">
+          <button
+            wx:for="{{projects}}"
+            wx:key="id"
+            class="portal-row residence-option {{item.id === project.id ? 'active-residence' : ''}}"
+            data-id="{{item.id}}"
+            bindtap="chooseProject"
+            aria-selected="{{item.id === project.id}}"
+            hover-class="row-pressed"
+          >
+            <text class="residence-option-label">{{item.title}}</text>
+            <text wx:if="{{item.id === project.id}}" class="current-tag">使用中</text>
+            <view wx:else class="portal-arrow" aria-hidden="{{true}}"></view>
+          </button>
+        </view>
       </block>
-      <view wx:else class="portal-row">{{project.title}}</view>
-    </block>
-    <view class="profile-settings">
       <button
         class="portal-row"
         data-title="用户协议"
@@ -51,9 +79,85 @@
       >
         <text>隐私保护指引</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
-      <button class="portal-row profile-logout" bindtap="logOut" hover-class="row-pressed">
-        退出登录
+      <button class="portal-row" bindtap="logOut" hover-class="row-pressed">
+        <text>退出登录</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
+    </view>
+    <view class="profile-footer">
+      <image
+        class="profile-footer-logo"
+        src="/owner-login/assets/brand-logo.png"
+        mode="aspectFit"
+        aria-hidden="{{true}}"
+      />
+      <text>春茉空间设计</text>
+    </view>
+  </view>
+  <view wx:if="{{cropOpen}}" class="avatar-overlay">
+    <view class="avatar-backdrop" bindtap="closeCrop" catchtouchmove="stop"></view>
+    <view class="avatar-dialog" aria-role="dialog" aria-label="裁切头像">
+      <text class="avatar-title">裁切头像</text>
+      <text class="avatar-hint">拖动照片或调整缩放</text>
+      <view class="avatar-frame">
+        <canvas
+          id="avatar-canvas"
+          type="2d"
+          class="avatar-canvas"
+          aria-label="正方形头像预览"
+          bindtouchstart="gestureStart"
+          catchtouchmove="gestureMove"
+          bindtouchend="gestureEnd"
+          bindtouchcancel="gestureEnd"
+        />
+      </view>
+      <view class="avatar-scale">
+        <text>缩放</text>
+        <slider
+          aria-label="缩放"
+          min="1"
+          max="{{maxZoom}}"
+          step="0.01"
+          value="1"
+          block-size="16"
+          activeColor="#698e74"
+          backgroundColor="#e5efe2"
+          disabled="{{!cropReady || savingAvatar}}"
+          bindchanging="changeZoom"
+          bindchange="changeZoom"
+        />
+      </view>
+      <view class="avatar-actions">
+        <button class="small-button" bindtap="closeCrop" disabled="{{savingAvatar}}">取消</button>
+        <button
+          class="small-button avatar-save"
+          bindtap="saveAvatar"
+          disabled="{{!cropReady || savingAvatar}}"
+          loading="{{savingAvatar}}"
+        >
+          保存头像
+        </button>
+      </view>
+    </view>
+  </view>
+  <view wx:if="{{privacyVisible}}" class="avatar-overlay">
+    <view class="avatar-backdrop" catchtouchmove="stop"></view>
+    <view class="avatar-dialog" aria-role="dialog" aria-label="头像隐私保护">
+      <text class="avatar-title">头像隐私保护</text>
+      <text class="privacy-copy"
+        >仅使用你从相册选中的照片裁切头像。本次演示的头像保留在当前会话。</text
+      >
+      <button class="privacy-policy-button" bindtap="openAvatarPrivacy">查看隐私保护指引</button>
+      <view class="avatar-actions">
+        <button class="small-button" bindtap="rejectAvatarPrivacy">暂不同意</button>
+        <button
+          id="chunmo-privacy-agree"
+          class="small-button avatar-save"
+          open-type="agreePrivacyAuthorization"
+          bindagreeprivacyauthorization="agreeAvatarPrivacy"
+        >
+          同意并继续
+        </button>
+      </view>
     </view>
   </view>
 </view>

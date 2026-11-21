@@ -13,6 +13,7 @@ Page({
     ready: false,
     statusTop: 24,
     state: 'pending',
+    overdueOnly: false,
     statuses,
     loading: true,
     error: '',
@@ -20,7 +21,9 @@ Page({
     project: null,
   },
   onLoad(options = {}) {
-    if (store.open(this) && valid(options.state)) this.setData({ state: options.state });
+    if (!store.open(this)) return;
+    if (options.overdue === '1') this.setData({ overdueOnly: true });
+    else if (valid(options.state)) this.setData({ state: options.state });
   },
   onShow() {
     if (!this.data.ready) return;
@@ -29,7 +32,9 @@ Page({
       this.setData({
         project,
         statuses: statuses.map((status) => ({ ...status, count: groups[status.id].length })),
-        rows: groups[this.data.state],
+        rows: this.data.overdueOnly
+          ? groups.pending.filter(({ overdue }) => overdue)
+          : groups[this.data.state],
         loading: false,
         error: '',
       });

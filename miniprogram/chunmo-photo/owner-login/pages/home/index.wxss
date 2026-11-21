@@ -1,21 +1,35 @@
 @import '../../portal.wxss';
 
-.residence-top,
-.residence-name {
+.residence-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 13px;
+}
+.residence-heading {
+  min-width: 0;
+  padding-top: 3px;
+}
+.residence-meta {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 5px;
+  min-height: 30px;
 }
-.residence-logo {
-  width: 31px;
-  height: 33px;
+.phase-label {
+  color: var(--portal-muted);
+  font-size: 11px;
 }
 .portal .profile-button {
   display: grid;
   place-items: center;
+  flex: 0 0 44px;
   width: 44px;
   height: 44px;
+  margin-left: auto;
   padding: 0;
   border-radius: 50%;
   background: var(--portal-paper);
@@ -24,21 +38,9 @@
   width: 18px;
   height: 18px;
 }
-.residence-name {
-  margin: 18px 0 16px;
-}
-.residence-name > view {
-  min-width: 0;
-}
-.residence-name .small-button {
-  flex-shrink: 0;
-  font-size: 11px;
-  white-space: nowrap;
-}
-.phase-label {
-  display: inline-block;
-  margin-top: 7px;
-  color: var(--portal-muted);
+.portal .residence-switch {
+  min-height: 30px;
+  padding: 4px 10px;
   font-size: 11px;
 }
 .portal .pending-card {
@@ -47,35 +49,38 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  min-height: 123px;
-  padding: 14px 19px;
-  border-radius: 23px;
+  min-height: 96px;
+  padding: 13px 16px;
+  border-radius: 21px;
   background: var(--portal-wash);
   text-align: left;
 }
 .portal .pending-card.pending-pressed {
   background: var(--portal-pressed);
 }
-.pending-title {
-  display: block;
-  margin-bottom: 2px;
-  font-size: 14px;
-  font-weight: 500;
-}
 .pending-quantity {
   display: flex;
   align-items: baseline;
-  gap: 5px;
-  font-size: 12px;
+  flex-wrap: wrap;
+  column-gap: 7px;
+  font-variant-numeric: tabular-nums;
+}
+.pending-title {
+  font-size: 14px;
+  font-weight: 500;
 }
 .pending-number {
-  font-size: 39px;
-  font-weight: 500;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
+  font-size: 31px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.pending-total {
+  color: var(--portal-muted);
+  font-size: 12px;
 }
 .pending-arrow {
   display: grid;
+  flex: 0 0 32px;
   width: 32px;
   height: 32px;
   place-items: center;
@@ -89,12 +94,43 @@
   margin-top: 10px;
 }
 .quick-cards .portal-row {
-  min-height: 60px;
   margin: 0;
+}
+.quick-cards .overdue-card {
+  align-self: stretch;
+  min-height: 70px;
 }
 .quick-count {
   display: block;
-  margin-top: 2px;
-  font-size: 10px;
+  margin-top: 4px;
   color: var(--portal-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.overdue-count {
+  color: #845540;
+}
+.contact-card {
+  overflow: hidden;
+  min-width: 0;
+  border-radius: 16px;
+  background: var(--portal-paper);
+}
+.contact-card .portal-row {
+  min-height: 36px;
+  padding-bottom: 1px;
+  border-radius: 0;
+}
+.portal .bought-link {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 1px 14px 7px;
+  border-radius: 0;
+  background: var(--portal-paper);
+  color: var(--portal-muted);
+  text-align: left;
+}
+.portal .bought-link.row-pressed {
+  background: var(--portal-pressed);
 }

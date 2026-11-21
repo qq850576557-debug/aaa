@@ -1,6 +1,7 @@
 // The development pages keep an in-memory sample only. No WeChat code, cookie,
 // local storage or network credentials are involved in this fixture store.
 const { startPreview, routes } = require('./preview');
+const reminders = require('./purchase-reminders');
 
 const labels = { pending: '待采购', bought: '已购买', complete: '已完成' };
 const blankFeedback = { brand: '', model: '', note: '' };
@@ -79,7 +80,14 @@ function begin(mode = 'review', now = Date.now()) {
       Object.assign(item, { feedback: { ...blankFeedback, ...item.feedback }, version: 1 });
     }
   }
-  session = { active: projects[0].id, projects, records, today, offline: mode === 'offline' };
+  session = {
+    owner: { name: '演示业主', avatar: '' },
+    active: projects[0].id,
+    projects,
+    records,
+    today,
+    offline: mode === 'offline',
+  };
   return true;
 }
 
@@ -96,17 +104,22 @@ function snapshot() {
     .map((item) => ({
       ...item,
       statusLabel: labels[item.state],
-      overdue: item.state === 'pending' && item.due < s.today,
+      overdue: reminders.level(item, s.today) === 'overdue',
     }));
   const groups = Object.fromEntries(
     Object.keys(labels).map((state) => [state, all.filter((item) => item.state === state)]),
   );
   return copy({
+    owner: s.owner,
     project: s.projects.find((project) => project.id === s.active),
     projects: s.projects,
     groups,
     today: s.today,
   });
+}
+
+function setAvatar(path) {
+  current().owner.avatar = path;
 }
 
 function choose(id) {
@@ -162,6 +175,7 @@ module.exports = {
   begin,
   snapshot,
   choose,
+  setAvatar,
   update,
   revoke,
   open,

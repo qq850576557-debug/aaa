@@ -11,6 +11,8 @@ Page({
     canSwitch: false,
     pendingCount: 0,
     boughtCount: 0,
+    overdueCount: 0,
+    totalCount: 0,
     recent: [],
   },
   onLoad() {
@@ -25,6 +27,8 @@ Page({
         canSwitch: projects.length > 1,
         pendingCount: groups.pending.length,
         boughtCount: groups.bought.length,
+        overdueCount: groups.pending.filter(({ overdue }) => overdue).length,
+        totalCount: groups.pending.length + groups.bought.length + groups.complete.length,
         recent: groups.pending.slice(0, 3),
         error: '',
         loading: false,
@@ -40,6 +44,9 @@ Page({
   pending() {
     go('purchases', '?state=pending');
   },
+  overdue() {
+    go('purchases', '?overdue=1');
+  },
   bought() {
     go('purchases', '?state=bought');
   },
@@ -48,6 +55,9 @@ Page({
   },
   profile() {
     go('profile');
+  },
+  switchResidence() {
+    if (this.data.canSwitch) go('profile', '?switch=1');
   },
   contact() {
     wx.showModal({

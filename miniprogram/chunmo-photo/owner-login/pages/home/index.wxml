@@ -2,12 +2,20 @@
 <view wx:if="{{ready}}" class="portal" style="padding-top: {{statusTop + 44}}px">
   <view class="portal-wrap">
     <view class="residence-top">
-      <image
-        class="residence-logo"
-        src="/owner-login/assets/brand-logo.png"
-        mode="aspectFit"
-        aria-hidden="{{true}}"
-      />
+      <view wx:if="{{project}}" class="residence-heading">
+        <text class="portal-heading">{{project.title}}</text>
+        <view class="residence-meta">
+          <text class="phase-label">{{project.phase}}</text>
+          <button
+            wx:if="{{canSwitch}}"
+            class="small-button residence-switch"
+            bindtap="switchResidence"
+            hover-class="row-pressed"
+          >
+            切换住宅
+          </button>
+        </view>
+      </view>
       <button class="profile-button" aria-label="个人中心" bindtap="profile">
         <image
           class="profile-button-icon"
@@ -19,37 +27,37 @@
     </view>
     <template is="load-state" data="{{error: error, loading: loading}}" />
     <block wx:if="{{project}}">
-      <view class="residence-name">
-        <view>
-          <text class="portal-heading">{{project.title}}</text>
-          <text class="phase-label">{{project.phase}}</text>
-        </view>
-        <button
-          wx:if="{{canSwitch}}"
-          class="small-button"
-          bindtap="profile"
-          hover-class="row-pressed"
-        >
-          切换住宅
-        </button>
-      </view>
       <button class="pending-card" bindtap="pending" hover-class="pending-pressed">
-        <view>
-          <text class="pending-title">待采购</text>
-          <view class="pending-quantity"
-            ><text class="pending-number">{{pendingCount}}</text><text>项</text></view
-          >
+        <view class="pending-quantity">
+          <text class="pending-title">未采购</text>
+          <text class="pending-number">{{pendingCount}}</text>
+          <text class="pending-total">/ 共 {{totalCount}} 项</text>
         </view>
         <view class="pending-arrow"><view class="portal-arrow" aria-hidden="{{true}}"></view></view>
       </button>
       <view class="quick-cards">
-        <button class="portal-row" bindtap="bought" hover-class="row-pressed">
-          <view><text>已购买</text><text class="quick-count">{{boughtCount}} 项</text></view>
+        <button class="portal-row overdue-card" bindtap="overdue" hover-class="row-pressed">
+          <view
+            ><text>已逾期</text
+            ><text class="quick-count {{overdueCount ? 'overdue-count' : ''}}"
+              >{{overdueCount}} 项</text
+            ></view
+          >
           <view class="portal-arrow" aria-hidden="{{true}}"></view>
         </button>
-        <button class="portal-row" bindtap="contact" hover-class="row-pressed">
-          <text>联系春茉</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
-        </button>
+        <view class="contact-card">
+          <button class="portal-row" bindtap="contact" hover-class="row-pressed">
+            <text>联系春茉</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
+          </button>
+          <button
+            class="quick-count bought-link"
+            bindtap="bought"
+            hover-class="row-pressed"
+            aria-label="查看已购买 {{boughtCount}} 项"
+          >
+            已购买 {{boughtCount}} 项
+          </button>
+        </view>
       </view>
       <text class="portal-section-title">近期采购安排</text>
       <block wx:for="{{recent}}" wx:key="id"

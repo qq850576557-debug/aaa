@@ -1,11 +1,11 @@
 <import src="../../portal.wxml" />
 <view wx:if="{{ready}}" class="portal" style="padding-top: {{statusTop + 44}}px">
   <view class="portal-wrap">
-    <template is="navigation" data="{{title: '采购清单'}}" />
+    <template is="navigation" data="{{title: overdueOnly ? '已逾期' : '采购清单'}}" />
     <template is="load-state" data="{{error: error, loading: loading}}" />
     <block wx:if="{{project}}">
       <text class="list-project">{{project.title}}</text>
-      <view class="state-tabs">
+      <view wx:if="{{!overdueOnly}}" class="state-tabs">
         <button
           wx:for="{{statuses}}"
           wx:key="id"
@@ -23,8 +23,8 @@
         ><template is="purchase-row" data="{{item: item}}"
       /></block>
       <view wx:if="{{!rows.length}}" class="portal-card empty-state">
-        {{state === 'pending' ? '暂无待采购事项' : state === 'bought' ? '暂无已购买事项' :
-        '暂无已完成事项'}}
+        {{overdueOnly ? '暂无已逾期采购' : state === 'pending' ? '暂无待采购事项' : state ===
+        'bought' ? '暂无已购买事项' : '暂无已完成事项'}}
       </view>
     </block>
   </view>

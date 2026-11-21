@@ -47,3 +47,9 @@ CHUNMO_WECHAT_TOOLS=/你的隔离工具目录 node scripts/verify-miniprogram.mj
 编译模式的启动参数可用 `mode=single` 检查单住宅，`mode=empty` 检查空数据，`mode=offline` 检查失败和重试，`mode=denied` 检查未授权。开发版和体验版在内存使用演示数据，正式版本打开这些路径会返回现有员工入口。登录验证、正式协议及实际公司的采购反馈属于后续联调验收。
 
 品牌线稿取仓库 `public/brand/chunmo-plant.png`，只转换背景透明度和导出尺寸。公司名来自 `src/lib/brand.ts`，由仓库方正启体渲染。标语和界面文字使用与桌面同版的离线 Noto Sans SC 子集。 [Google Fonts Noto Sans SC 2.004-H2](https://github.com/google/fonts/tree/869789e84da92782c144d83d69b64cec54905b5f/ofl/notosanssc)
+
+业主首页显示未采购数量、全部采购数量和逾期入口。联系卡内可点已购买数量进入原清单。仅有多个获授权住宅时出现切换入口。
+
+个人中心的相册照片可拖动、缩放，裁切为 512×512 的头像。演示头像保留在当前业主会话，切换住宅后仍可查看，退出后清除。微信真机预览需使用有权限的 AppID，并在微信公众平台配置隐私保护指引中的相册用途。当前尚未接通正式头像上传、存储与同步。
+
+`owner-login/purchase-reminders.js` 为后续小程序订阅消息提供计算规则和任务去重键。待采购且距截止日 0–15 天为普通提醒，已逾期为强提醒。未来发送前应核对对应业主及模板的订阅状态，再按业主、住宅、采购、截止日和提醒级别去重。当前演示不会请求订阅或发送消息。
