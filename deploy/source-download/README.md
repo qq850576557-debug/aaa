@@ -51,4 +51,4 @@ Workbench 使用 `--repo /opt/chunmo-source --publish` 只发布[业主端测试
 
 开发态 UI 调整版源码为 `56a5c94d8887389a669893b564e92b9f5df1adf3`。ZIP 为 261732 字节，SHA-256 为 `3fc2aaaf6595d856687dd6747d1778cf552a13adb509f82958eed5ffab235a9c`。[新版测试 ZIP（Workbench PASS 后可用）](https://chmsj.cn/download/releases/wechat-owner-preview-56a5c94/chunmo-owner-preview-wechat.zip)
 
-业主端确认版源码为 `31a3a4b6a6bb1d73b2753feec0b3da44587b3039`。ZIP 为 261775 字节，SHA-256 为 `346863bcc7868efc702d31259f05a515ac3c9387fa4c1cdefe18775a60ec63de`。[确认版测试 ZIP（Workbench PASS 后可用）](https://chmsj.cn/download/releases/wechat-owner-preview-31a3a4b/chunmo-owner-preview-wechat.zip)
+业主端确认版源码为 `4d903830932bc9624fef3200b2eba992c59a473f`。ZIP 为 261774 字节，SHA-256 为 `33eb27824913be9e0b2f424ae2db34e043e70aae3b4415aab9d34be2a1da413f`。[确认版测试 ZIP（Workbench PASS 后可用）](https://chmsj.cn/download/releases/wechat-owner-preview-4d90383/chunmo-owner-preview-wechat.zip)
