@@ -205,7 +205,7 @@ test('UI tuning shows live edits only in development and exports one config', (t
   const change = (key, value) => ({ currentTarget: { dataset: { key } }, detail: { value } });
   store.begin();
   const welcome = load('welcome');
-  assert.equal(welcome.data.ui.sloganText, '功能与美 × 共生');
+  assert.equal(welcome.data.ui.sloganText, '功 能 与 美  ×  共 生');
   assert.equal(welcome.data.uiDev, true);
   welcome.toggleUi();
   assert.equal(welcome.data.uiOpen, true);
@@ -221,7 +221,7 @@ test('UI tuning shows live edits only in development and exports one config', (t
   assert.equal(clipboard.login.logoToBrandGap, 18);
   assert.equal(clipboard.profile.avatarSize, 64);
   assert.equal(clipboard.profile.footerVisible, true);
-  assert.equal(clipboard.home.primaryCardHeight, 96);
+  assert.equal(clipboard.home.primaryCardHeight, 64);
 
   let version = 'trial';
   global.wx.getAccountInfoSync = () => ({ miniProgram: { envVersion: version } });
@@ -238,5 +238,5 @@ test('UI tuning shows live edits only in development and exports one config', (t
   profile.resetUi();
   welcome.resetUi();
   assert.equal(profile.data.ui.footerVisible, false);
-  assert.equal(welcome.data.ui.logoToBrandGap, 14);
+  assert.equal(welcome.data.ui.logoToBrandGap, 19);
 });

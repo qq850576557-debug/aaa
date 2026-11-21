@@ -7,7 +7,7 @@
 >
   <view class="welcome-brand">
     <template is="brand" />
-    <text class="brand-slogan">{{ui.sloganText}}</text>
+    <text class="brand-slogan" space="nbsp">{{ui.sloganText}}</text>
   </view>
   <view class="owner-content welcome-actions">
     <button

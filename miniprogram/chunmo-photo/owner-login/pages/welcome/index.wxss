@@ -17,6 +17,7 @@
   font-size: var(--ui-slogan-font-size);
   font-weight: 400;
   letter-spacing: var(--ui-slogan-letter-spacing);
+  white-space: pre-wrap;
   text-align: center;
 }
 .welcome-actions {
