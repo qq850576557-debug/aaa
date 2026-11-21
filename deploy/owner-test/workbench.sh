@@ -2,7 +2,7 @@
 # Dedicated owner test on the existing ECS. No production deployment scripts.
 set -Eeuo pipefail
 umask 077
-export PATH=/usr/pgsql-17/bin:/usr/local/bin:/usr/bin:/bin
+export PATH=/usr/pgsql-17/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 unset PGHOST PGPORT PGSERVICE PGDATABASE PGUSER PGPASSWORD PGOPTIONS PGSSLMODE
 tools=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 repo=/opt/chunmo-source
@@ -17,6 +17,11 @@ apiunit=chunmo-owner-test-api.service
 marker='# Managed by Chunmo owner-test installer'
 fail() { printf '未完成：%s\n' "$*" >&2; exit 1; }
 [[ $EUID == 0 ]] || fail '请使用 Workbench root 终端'
+for tool in awk curl flock nginx python3 setpriv systemctl; do
+  command -v "$tool" >/dev/null || fail "缺少预检工具 $tool"
+done
+nginx_bin=$(command -v nginx)
+[[ $nginx_bin == /* && -x $nginx_bin ]] || fail 'Nginx 可执行文件路径无效'
 exec 9>/run/lock/chunmo-staging-deploy.lock
 flock -n 9 || fail '已有站点更新或备份正在运行，请稍后重试'
 [[ -f $nginx_config && ! -L $nginx_config ]] || fail '未找到受管理的正式站 Nginx 配置'
@@ -25,7 +30,7 @@ nginx_check() {
   setpriv --reuid=chunmo-staging-web --regid=chunmo-staging-web --init-groups \
     --bounding-set=-all,+net_bind_service --inh-caps=-all,+net_bind_service \
     --ambient-caps=-all,+net_bind_service --no-new-privs -- \
-    "$(command -v nginx)" -t -p /var/lib/chunmo-staging-web/ -c "$1"
+    "$nginx_bin" -t -p /var/lib/chunmo-staging-web/ -c "$1"
 }
 reload_web() {
   systemctl kill --kill-who=main --signal=HUP chunmo-staging-web
@@ -72,9 +77,14 @@ for unit in "$pgunit" "$apiunit"; do
   file=/etc/systemd/system/$unit
   [[ ! -L $file && ( ! -e $file || $(head -n1 "$file") == "$marker" ) ]] || fail '检测到非本工具管理的同名服务'
 done
-if ss -H -ltn | awk '$4 ~ /:(4410|5441)$/ {taken=1} END {exit !taken}'; then
-  fail '测试专用 4410 或 5441 已被使用'
-fi
+check_test_ports() {
+  local listeners busy
+  command -v ss >/dev/null || fail '缺少端口检查工具 ss'
+  listeners=$(ss -H -ltn) || fail '无法读取监听端口，安装停止'
+  busy=$(awk '$4 ~ /:(4410|5441)$/ {print $4}' <<< "$listeners")
+  [[ -z $busy ]] || fail "测试端口已被占用 $busy"
+}
+check_test_ports
 [[ $(df -Pk /opt | awk 'NR==2 {print $4}') -ge 2097152 ]] || fail '/opt 需要至少 2GiB 可用空间'
 cert=$conf/letsencrypt/live/$host
 openssl verify -purpose sslserver -verify_hostname "$host" -untrusted "$cert/chain.pem" "$cert/cert.pem" >/dev/null

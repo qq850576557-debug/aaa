@@ -1,6 +1,6 @@
 # 业主手机号独立联调站
 
-部署目标为 `https://owner-test.chmsj.cn`，业务源码固定在 `bf028df2d314717c99d52ac6911c969472548135`。Workbench 操作从现有开发分支提取已审核的 `deploy/owner-test` 及复用工具，然后运行 `deploy/owner-test/workbench.sh --install`。脚本内置版本、证书、端口、工具、生产健康和配置冲突校验。
+部署目标为 `https://owner-test.chmsj.cn`，业务源码固定在 `bf028df2d314717c99d52ac6911c969472548135`。Workbench 操作从现有开发分支提取已审核的 `deploy/owner-test` 及复用工具，然后运行 `deploy/owner-test/workbench.sh --install`。脚本内置版本、证书、端口、工具、生产健康和配置冲突校验。工具搜索覆盖阿里云系统的 sbin 目录，无法读取监听列表时会在创建测试资源前退出。
 
 独立测试应用监听 `127.0.0.1:4410`，独立 PostgreSQL 17 实例监听 `127.0.0.1:5441`。只在新实例应用 001–015 和 016 候选 SQL。初始化两个虚构住宅及测试负责人，项目业主授权默认关闭。生产数据库、生产发行目录和员工应用的原设置均沿用原路径。测试站使用同一个获批微信 AppID。程序只在本机读取该 AppID 的现有 AppSecret，写入测试服务的 root 专用配置文件。测试 ZIP 只含公开 AppID、测试地址及业主页面。
 
