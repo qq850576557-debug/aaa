@@ -13,10 +13,10 @@ import zipfile
 import publish as source_delivery
 
 
-COMMIT = "12102f8635650dc5abd78756e2dfef4c64904e26"
-RELEASE = "wechat-owner-preview-12102f8"
+COMMIT = "4329db339fa587d67bc631899bfb7e616af74c80"
+RELEASE = "wechat-owner-preview-4329db3"
 FILENAME = "chunmo-owner-preview-wechat.zip"
-SHA256 = "ae694b060a03fed0a4ab7f181268b20e4bc64973fca31a5cf56b5ac9bf43ce77"
+SHA256 = "ab301b0d16a93c1eaa8da900bd7dcfd0aa6c5ce277c9daf050e6c7c869edd27b"
 PROJECT = "chunmo-owner-preview"
 SOURCE_DIR = "miniprogram/chunmo-photo/"
 SOURCE_PATHS = ("owner-login", "app.wxss", "sitemap.json", "project.config.json")
@@ -54,7 +54,30 @@ def build_zip(repo):
     project.update(description="春茉业主小程序 · 测试包", appid="touristappid", projectname=PROJECT)
     project["packOptions"]["ignore"] = [{"type": "file", "value": "README-导入说明.txt"}]
     files["project.config.json"] = json_file(project)
-    files["app.js"] = b"App({});\n"
+    files["app.js"] = b"""App({
+  privacyResolvers: [],
+  onLaunch() {
+    wx.onNeedPrivacyAuthorization?.((resolve) => {
+      const pages = getCurrentPages();
+      const page = pages[pages.length - 1];
+      if (page?.route !== 'owner-login/pages/profile/index') {
+        resolve({ event: 'disagree' });
+        return;
+      }
+      this.privacyResolvers.push(resolve);
+      page.setData({ privacyVisible: true });
+    });
+  },
+  resolvePrivacy(agree) {
+    this.privacyResolvers.splice(0).forEach((resolve) => resolve(
+      agree ? { event: 'agree', buttonId: 'chunmo-privacy-agree' } : { event: 'disagree' },
+    ));
+    const pages = getCurrentPages();
+    const page = pages[pages.length - 1];
+    if (page?.route === 'owner-login/pages/profile/index') page.setData({ privacyVisible: false });
+  },
+});
+"""
     files["app.json"] = json_file({
         "pages": OWNER_PAGES + [BLOCKED_PAGE],
         "window": {
@@ -95,6 +118,7 @@ def build_zip(repo):
         "保留包内游客 AppID。需要选择 AppID 时用测试号，后端服务选不使用云服务。\r\n"
         "点击编译，勾选协议后通过微信快捷登录进入业主演示。\r\n"
         "员工登录界面可用任意测试文字。此包使用演示数据，无需真实账号、手机号或 AppSecret。\r\n"
+        "真机测试请用获授权的 AppID，并先在微信公众平台配置相册用途。\r\n"
         "源码提交：" + COMMIT + "\r\n"
     ).encode("utf-8-sig")
 

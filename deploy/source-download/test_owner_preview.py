@@ -15,7 +15,7 @@ class OwnerPreviewDeliveryTests(unittest.TestCase):
     def test_reviewed_zip_imports_directly_into_guest_devtools(self):
         data = preview.build_zip(test_publish.REPO)
         self.assertEqual(hashlib.sha256(data).hexdigest(), preview.SHA256)
-        self.assertEqual(len(data), 232813)
+        self.assertEqual(len(data), 251519)
         self.assertEqual(data, preview.build_zip(test_publish.REPO))
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             self.assertIsNone(archive.testzip())
@@ -33,6 +33,9 @@ class OwnerPreviewDeliveryTests(unittest.TestCase):
                     self.assertIn(prefix + page + extension, archive.namelist())
             self.assertFalse(any(path.startswith(prefix + "lib/") for path in archive.namelist()))
             self.assertNotIn(prefix + "config.js", archive.namelist())
+            privacy_button = b"chunmo-privacy-agree"
+            self.assertIn(privacy_button, archive.read(prefix + "app.js"))
+            self.assertIn(privacy_button, archive.read(prefix + "owner-login/pages/profile/index.wxml"))
 
     def test_additive_route_keeps_existing_source_and_apk(self):
         p = preview.source_delivery

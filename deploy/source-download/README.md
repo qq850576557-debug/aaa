@@ -46,3 +46,5 @@ Codex环境没有Aliyun SSH权限，不能据本地测试声称网站已发布�
 运行 `python3 deploy/source-download/owner_preview.py --repo . --output /tmp/chunmo-owner-preview-wechat.zip` 可本地核对。ZIP 为 232813 字节，SHA-256 为 `ae694b060a03fed0a4ab7f181268b20e4bc64973fca31a5cf56b5ac9bf43ce77`。
 
 Workbench 使用 `--repo /opt/chunmo-source --publish` 只发布[业主端测试包](https://chmsj.cn/download/releases/wechat-owner-preview-12102f8/chunmo-owner-preview-wechat.zip)。旧版源码及 APK 地址继续使用原配置。实际下载和服务验证通过后输出 PASS。Nginx 检查或下载验证失败时恢复原路由与配置，备份位置在输出中可查。
+
+首页及头像裁切测试包已更新至源码 `4329db339fa587d67bc631899bfb7e616af74c80`。当前 `owner_preview.py` 生成新版独立工程，沿用旧包的导入方法。ZIP 为 251519 字节，SHA-256 为 `ab301b0d16a93c1eaa8da900bd7dcfd0aa6c5ce277c9daf050e6c7c869edd27b`。[新版 ZIP 下载地址（Workbench PASS 后可用）](https://chmsj.cn/download/releases/wechat-owner-preview-4329db3/chunmo-owner-preview-wechat.zip)
