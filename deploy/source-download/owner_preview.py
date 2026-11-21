@@ -13,10 +13,10 @@ import zipfile
 import publish as source_delivery
 
 
-COMMIT = "4329db339fa587d67bc631899bfb7e616af74c80"
-RELEASE = "wechat-owner-preview-4329db3"
+COMMIT = "56a5c94d8887389a669893b564e92b9f5df1adf3"
+RELEASE = "wechat-owner-preview-56a5c94"
 FILENAME = "chunmo-owner-preview-wechat.zip"
-SHA256 = "ab301b0d16a93c1eaa8da900bd7dcfd0aa6c5ce277c9daf050e6c7c869edd27b"
+SHA256 = "3fc2aaaf6595d856687dd6747d1778cf552a13adb509f82958eed5ffab235a9c"
 PROJECT = "chunmo-owner-preview"
 SOURCE_DIR = "miniprogram/chunmo-photo/"
 SOURCE_PATHS = ("owner-login", "app.wxss", "sitemap.json", "project.config.json")
@@ -118,6 +118,7 @@ def build_zip(repo):
         "保留包内游客 AppID。需要选择 AppID 时用测试号，后端服务选不使用云服务。\r\n"
         "点击编译，勾选协议后通过微信快捷登录进入业主演示。\r\n"
         "员工登录界面可用任意测试文字。此包使用演示数据，无需真实账号、手机号或 AppSecret。\r\n"
+        "开发版点击右下角调整 UI，可预览并复制配置。\r\n"
         "真机测试请用获授权的 AppID，并先在微信公众平台配置相册用途。\r\n"
         "源码提交：" + COMMIT + "\r\n"
     ).encode("utf-8-sig")
