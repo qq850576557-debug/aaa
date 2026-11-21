@@ -48,8 +48,22 @@ CHUNMO_WECHAT_TOOLS=/你的隔离工具目录 node scripts/verify-miniprogram.mj
 
 品牌线稿取仓库 `public/brand/chunmo-plant.png`，只转换背景透明度和导出尺寸。公司名来自 `src/lib/brand.ts`，由仓库方正启体渲染。标语和界面文字使用与桌面同版的离线 Noto Sans SC 子集。 [Google Fonts Noto Sans SC 2.004-H2](https://github.com/google/fonts/tree/869789e84da92782c144d83d69b64cec54905b5f/ofl/notosanssc)
 
-业主首页显示未采购数量、全部采购数量和逾期入口。联系卡内可点已购买数量进入原清单。仅有多个获授权住宅时出现切换入口。
+业主首页显示未采购数量、全部采购数量和逾期入口。点击已购买卡可进入清单。仅有多个获授权住宅时出现切换入口。
 
 个人中心的相册照片可拖动、缩放，裁切为 512×512 的头像。演示头像保留在当前业主会话，切换住宅后仍可查看，退出后清除。微信真机预览需使用有权限的 AppID，并在微信公众平台配置隐私保护指引中的相册用途。当前尚未接通正式头像上传、存储与同步。
 
 `owner-login/purchase-reminders.js` 为后续小程序订阅消息提供计算规则和任务去重键。待采购且距截止日 0–15 天为普通提醒，已逾期为强提醒。未来发送前应核对对应业主及模板的订阅状态，再按业主、住宅、采购、截止日和提醒级别去重。当前演示不会请求订阅或发送消息。
+
+### 开发态 UI 调整
+
+通过微信开发者工具启动业主预览。在登录页、采购首页或个人中心点击右下角「调整 UI」。拖动滑块或修改标语及签名开关后，当前页面立即预览。关闭面板保留本次会话修改，点「复制配置」可复制三页 JSON，点「恢复默认」只还原当前页。体验版和正式版无调试入口。正式固化时将确认值写入 `owner-login/ui-dev-tokens.js`。
+
+下表为默认值。尺寸与间距以 px 计，登录页的两项垂直定位以 844px 视口为基准，在小屏自适应。品牌名字形继续使用原字标资产，`brandFontSize` 和 `footerFontSize` 控制字标的渲染高度。
+
+| 页面 | 默认可调参数 |
+| --- | --- |
+| 登录 | `logoTop=174`，`logoWidth=43`，`logoToBrandGap=14`，`brandToSloganGap=12`，`brandFontSize=17`，`sloganFontSize=11`，`sloganLetterSpacing=1.5`，`sloganText="功能与美 × 共生"`，`loginButtonTop=172` |
+| 首页 | `headerTop=44`，`titleBottomGap=13`，`primaryCardHeight=96`，`secondaryCardGap=9`，`sectionTopGap=20` |
+| 个人中心 | `infoCardTop=0`，`infoCardPadding=17`，`avatarSize=58`，`avatarTextGap=15`，`footerVisible=false`，`footerTopGap=26`，`footerFontSize=10` |
+
+首页和已购买清单统一将已购买及已完成纳入已购买统计，保留各自的状态及原有操作权限。近期采购安排只列未购买事项。

@@ -33,6 +33,7 @@
       >
       <view class="purchase-row-meta">
         <text class="purchase-date">{{item.due}}</text>
+        <text class="purchase-status" wx:if="{{showPurchaseStatus}}">{{item.statusLabel}}</text>
         <text class="due-tag" wx:if="{{item.overdue}}">已逾期</text>
       </view>
     </view>

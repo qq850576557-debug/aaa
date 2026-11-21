@@ -38,7 +38,7 @@ function preview(t) {
         done?.();
       };
       page.onLoad(options);
-      page.onShow();
+      page.onShow?.();
       return page;
     },
   };
@@ -52,7 +52,7 @@ test('owner home counts, overdue filter and residence switching follow the activ
   const home = load('home');
   assert.deepEqual(
     [home.data.pendingCount, home.data.totalCount, home.data.overdueCount, home.data.boughtCount],
-    [3, 5, 1, 1],
+    [3, 5, 1, 2],
   );
   home.overdue();
   assert.match(navigation.pop(), /overdue=1$/);
@@ -65,7 +65,7 @@ test('owner home counts, overdue filter and residence switching follow the activ
   assert.match(navigation.pop(), /state=bought$/);
   assert.deepEqual(
     load('purchases', { state: 'bought' }).data.rows.map((row) => row.id),
-    ['sink'],
+    ['floor', 'sink'],
   );
   home.switchResidence();
   assert.match(navigation.pop(), /profile\/index\?switch=1$/);
@@ -78,7 +78,7 @@ test('owner home counts, overdue filter and residence switching follow the activ
   list.onShow();
   assert.deepEqual(
     [home.data.pendingCount, home.data.totalCount, home.data.overdueCount, home.data.boughtCount],
-    [2, 5, 0, 2],
+    [2, 5, 0, 3],
   );
   assert.deepEqual(list.data.rows, []);
   const purchased = store.snapshot().groups.bought.find(({ id }) => id === 'lighting');
@@ -101,6 +101,9 @@ test('owner home counts, overdue filter and residence switching follow the activ
   assert.equal(single.data.switchOpen, false);
   home.switchResidence();
   assert.equal(navigation.length, 0);
+  const offline = (store.begin('offline', fixtureDate), load('profile'));
+  assert.ok(offline.data.error);
+  assert.equal(offline.data.owner.name, '演示业主');
 });
 
 test('avatar chooses from album, renders and exports a square, preserving previous avatar on cancel or failure', async (t) => {
@@ -191,4 +194,49 @@ test('reminders use a fifteen-day boundary and dedupe by recipient, residence, d
   const overdue = plan('owner-a', 'project-a', soon, '2026-12-07');
   assert.equal(overdue.priority, 'overdue');
   assert.notEqual(first.dedupeKey, overdue.dedupeKey);
+});
+
+test('UI tuning shows live edits only in development and exports one config', (t) => {
+  const { load } = preview(t);
+  let clipboard;
+  global.wx.setClipboardData = ({ data }) => {
+    clipboard = JSON.parse(data);
+  };
+  const change = (key, value) => ({ currentTarget: { dataset: { key } }, detail: { value } });
+  store.begin();
+  const welcome = load('welcome');
+  assert.equal(welcome.data.ui.sloganText, '功能与美 × 共生');
+  assert.equal(welcome.data.uiDev, true);
+  welcome.toggleUi();
+  assert.equal(welcome.data.uiOpen, true);
+  welcome.changeUi(change('logoToBrandGap', 18));
+  assert.match(welcome.data.uiStyle, /--ui-logo-to-brand-gap:18px/);
+  assert.equal(load('welcome').data.ui.logoToBrandGap, 18);
+
+  const profile = load('profile');
+  assert.equal(profile.data.ui.footerVisible, false);
+  profile.changeUi(change('footerVisible', true));
+  profile.changeUi(change('avatarSize', 64));
+  profile.copyUi();
+  assert.equal(clipboard.login.logoToBrandGap, 18);
+  assert.equal(clipboard.profile.avatarSize, 64);
+  assert.equal(clipboard.profile.footerVisible, true);
+  assert.equal(clipboard.home.primaryCardHeight, 96);
+
+  let version = 'trial';
+  global.wx.getAccountInfoSync = () => ({ miniProgram: { envVersion: version } });
+  const trial = load('profile');
+  assert.equal(trial.data.uiDev, false);
+  assert.equal(trial.data.ui.footerVisible, false);
+  trial.changeUi(change('avatarSize', 70));
+  assert.equal(trial.data.ui.avatarSize, 58);
+  version = 'release';
+  const release = load('profile');
+  assert.equal(release.data.ready, false);
+  assert.equal(release.data.uiDev, false);
+  version = 'develop';
+  profile.resetUi();
+  welcome.resetUi();
+  assert.equal(profile.data.ui.footerVisible, false);
+  assert.equal(welcome.data.ui.logoToBrandGap, 14);
 });

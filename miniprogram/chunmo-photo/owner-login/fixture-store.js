@@ -118,8 +118,13 @@ function snapshot() {
   });
 }
 
+function ownerIdentity() {
+  return session ? copy(session.owner) : null;
+}
+
 function setAvatar(path) {
-  current().owner.avatar = path;
+  if (!session) throw Error('请重新进入业主预览');
+  session.owner.avatar = path;
 }
 
 function choose(id) {
@@ -175,6 +180,7 @@ module.exports = {
   begin,
   snapshot,
   choose,
+  ownerIdentity,
   setAvatar,
   update,
   revoke,

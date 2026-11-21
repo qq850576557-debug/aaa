@@ -1,11 +1,12 @@
 @import '../../portal.wxss';
+@import '../../ui-tuning.wxss';
 
 .residence-top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 13px;
+  margin-bottom: var(--ui-title-bottom-gap);
 }
 .residence-heading {
   min-width: 0;
@@ -49,7 +50,7 @@
   justify-content: space-between;
   gap: 10px;
   width: 100%;
-  min-height: 96px;
+  min-height: var(--ui-primary-card-height);
   padding: 13px 16px;
   border-radius: 21px;
   background: var(--portal-wash);
@@ -90,13 +91,11 @@
 .quick-cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 9px;
+  gap: var(--ui-secondary-card-gap);
   margin-top: 10px;
 }
 .quick-cards .portal-row {
   margin: 0;
-}
-.quick-cards .overdue-card {
   align-self: stretch;
   min-height: 70px;
 }
@@ -110,27 +109,6 @@
 .overdue-count {
   color: #845540;
 }
-.contact-card {
-  overflow: hidden;
-  min-width: 0;
-  border-radius: 16px;
-  background: var(--portal-paper);
-}
-.contact-card .portal-row {
-  min-height: 36px;
-  padding-bottom: 1px;
-  border-radius: 0;
-}
-.portal .bought-link {
-  display: block;
-  width: 100%;
-  min-height: 34px;
-  padding: 1px 14px 7px;
-  border-radius: 0;
-  background: var(--portal-paper);
-  color: var(--portal-muted);
-  text-align: left;
-}
-.portal .bought-link.row-pressed {
-  background: var(--portal-pressed);
+.portal .portal-section-title {
+  margin-top: var(--ui-section-top-gap);
 }

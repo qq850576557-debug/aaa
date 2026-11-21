@@ -4,7 +4,6 @@ const { go, back } = require('../../preview');
 const statuses = [
   { id: 'pending', label: '待采购' },
   { id: 'bought', label: '已购买' },
-  { id: 'complete', label: '已完成' },
 ];
 const valid = (state) => statuses.some(({ id }) => id === state);
 
@@ -23,18 +22,25 @@ Page({
   onLoad(options = {}) {
     if (!store.open(this)) return;
     if (options.overdue === '1') this.setData({ overdueOnly: true });
+    else if (options.state === 'complete') this.setData({ state: 'bought' });
     else if (valid(options.state)) this.setData({ state: options.state });
   },
   onShow() {
     if (!this.data.ready) return;
     try {
       const { project, groups } = store.snapshot();
+      const visible = {
+        pending: groups.pending,
+        bought: [...groups.bought, ...groups.complete].sort(
+          (a, b) => a.due.localeCompare(b.due) || a.id.localeCompare(b.id),
+        ),
+      };
       this.setData({
         project,
-        statuses: statuses.map((status) => ({ ...status, count: groups[status.id].length })),
+        statuses: statuses.map((status) => ({ ...status, count: visible[status.id].length })),
         rows: this.data.overdueOnly
           ? groups.pending.filter(({ overdue }) => overdue)
-          : groups[this.data.state],
+          : visible[this.data.state],
         loading: false,
         error: '',
       });

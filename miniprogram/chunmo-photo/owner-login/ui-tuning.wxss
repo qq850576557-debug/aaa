@@ -1,0 +1,73 @@
+.ui-dev-launch,
+.ui-dev-panel {
+  position: fixed;
+  z-index: 4;
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  color: #244e42;
+  text-align: left;
+}
+button.ui-dev-launch {
+  padding: 3px 12px;
+  margin: 0;
+  border: 1px solid #dce7dc;
+  border-radius: 100px;
+  background: #fff;
+  font-size: 11px;
+}
+.ui-dev-launch::after,
+.ui-dev-toolbar button::after {
+  border: 0;
+}
+.ui-dev-panel {
+  box-sizing: border-box;
+  width: min(calc(100vw - 24px), 350px);
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #dce7dc;
+  border-radius: 14px;
+  box-shadow: 0 5px 18px #244e421a;
+  font-size: 12px;
+  font-weight: 400;
+}
+.ui-dev-toolbar,
+.ui-dev-field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+.ui-dev-toolbar text {
+  margin-right: auto;
+}
+.ui-dev-toolbar button {
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 3px 8px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #edf3ec;
+  font-size: 11px;
+}
+.ui-dev-fields {
+  height: min(30vh, 230px);
+  margin-top: 7px;
+}
+.ui-dev-field {
+  padding: 6px 4px;
+  border-top: 1px solid #e7eee5;
+}
+.ui-dev-field slider {
+  margin: 4px 2px;
+}
+.ui-dev-field switch {
+  padding-top: 3px;
+}
+.ui-dev-field input {
+  height: 32px;
+  margin-top: 4px;
+  padding: 0 7px;
+  background: #f5f7f3;
+  border-radius: 6px;
+}

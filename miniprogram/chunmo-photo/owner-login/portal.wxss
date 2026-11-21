@@ -215,3 +215,11 @@ page {
     padding-right: 14px;
   }
 }
+
+.purchase-status {
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: var(--portal-wash);
+  color: var(--portal-ink);
+  font-size: 10px;
+}

@@ -1,31 +1,38 @@
+<import src="../../ui-tuning.wxml" />
 <import src="../../portal.wxml" />
-<view wx:if="{{ready}}" class="portal profile-page" style="padding-top: {{statusTop + 44}}px">
+<view
+  wx:if="{{ready}}"
+  class="portal profile-page"
+  style="padding-top: {{statusTop + 44}}px; {{uiStyle}}"
+>
   <view class="portal-wrap profile-wrap" aria-hidden="{{cropOpen || privacyVisible}}">
     <template is="navigation" data="{{title: '个人中心'}}" />
     <template is="load-state" data="{{error: error, loading: loading}}" />
     <view wx:if="{{owner}}" class="portal-card profile-summary">
       <button
-        class="profile-avatar"
+        class="profile-avatar-trigger"
         bindtap="chooseAvatar"
         disabled="{{avatarLoading}}"
         aria-label="更换头像"
         hover-class="profile-pressed"
       >
-        <image
-          wx:if="{{owner.avatar}}"
-          class="profile-avatar-photo"
-          src="{{owner.avatar}}"
-          mode="aspectFill"
-          aria-hidden="{{true}}"
-        />
-        <image
-          wx:else
-          class="profile-avatar-icon"
-          src="/owner-login/assets/account.png"
-          mode="aspectFit"
-          aria-hidden="{{true}}"
-        />
-        <text class="avatar-edit-mark" aria-hidden="{{true}}">+</text>
+        <view class="profile-avatar">
+          <image
+            wx:if="{{owner.avatar}}"
+            class="profile-avatar-photo"
+            src="{{owner.avatar}}"
+            mode="aspectFill"
+            aria-hidden="{{true}}"
+          />
+          <image
+            wx:else
+            class="profile-avatar-icon"
+            src="/owner-login/assets/account.png"
+            mode="aspectFit"
+            aria-hidden="{{true}}"
+          />
+        </view>
+        <text class="profile-avatar-label" aria-hidden="{{true}}">更换头像</text>
       </button>
       <view class="profile-identity">
         <text class="profile-name">{{owner.name}}</text>
@@ -83,14 +90,19 @@
         <text>退出登录</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
     </view>
-    <view class="profile-footer">
+    <view wx:if="{{ui.footerVisible}}" class="profile-footer" aria-label="春茉空间设计">
       <image
         class="profile-footer-logo"
         src="/owner-login/assets/brand-logo.png"
         mode="aspectFit"
         aria-hidden="{{true}}"
       />
-      <text>春茉空间设计</text>
+      <image
+        class="profile-footer-wordmark"
+        src="/owner-login/assets/brand-name.png"
+        mode="aspectFit"
+        aria-hidden="{{true}}"
+      />
     </view>
   </view>
   <view wx:if="{{cropOpen}}" class="avatar-overlay">
@@ -160,4 +172,5 @@
       </view>
     </view>
   </view>
+  <template wx:if="{{uiDev}}" is="ui-tuning" data="{{fields: uiFields, open: uiOpen}}" />
 </view>

@@ -1,8 +1,13 @@
+<import src="../../ui-tuning.wxml" />
 <import src="../../login-parts.wxml" />
-<view wx:if="{{ready}}" class="owner-login welcome-login" style="padding-top: {{statusTop}}px">
+<view
+  wx:if="{{ready}}"
+  class="owner-login welcome-login"
+  style="padding-top: {{statusTop}}px; {{uiStyle}}"
+>
   <view class="welcome-brand">
     <template is="brand" />
-    <text class="brand-slogan">功能与美共生</text>
+    <text class="brand-slogan">{{ui.sloganText}}</text>
   </view>
   <view class="owner-content welcome-actions">
     <button
@@ -43,4 +48,5 @@
       >
     </view>
   </view>
+  <template wx:if="{{uiDev}}" is="ui-tuning" data="{{fields: uiFields, open: uiOpen}}" />
 </view>

@@ -1,4 +1,5 @@
 @import '../../login.wxss';
+@import '../../ui-tuning.wxss';
 
 .welcome-login {
   padding-bottom: 50px;
@@ -8,17 +9,18 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-top: clamp(69px, calc(26.6vh - 51px), 194px);
+  margin-top: clamp(16px, calc(var(--ui-logo-top) + 26.6vh - 224.5px), 245px);
 }
 .brand-slogan {
-  margin-top: 12px;
+  margin-top: var(--ui-brand-to-slogan-gap);
   color: #415c4a;
-  font-size: 11px;
+  font-size: var(--ui-slogan-font-size);
   font-weight: 400;
-  letter-spacing: 0.14em;
+  letter-spacing: var(--ui-slogan-letter-spacing);
+  text-align: center;
 }
 .welcome-actions {
-  margin-top: clamp(60px, calc(27vh - 51px), 177px);
+  margin-top: clamp(12px, calc(var(--ui-login-button-top) + 27vh - 227.9px), 235px);
 }
 .employee-link {
   display: flex;
@@ -81,4 +83,16 @@
 .policy-link {
   color: #2d4539;
   white-space: nowrap;
+}
+
+.welcome-brand .brand-lockup {
+  gap: var(--ui-logo-to-brand-gap);
+}
+.welcome-brand .brand-logo {
+  width: var(--ui-logo-width);
+  height: var(--ui-logo-height);
+}
+.welcome-brand .brand-name {
+  width: var(--ui-brand-width);
+  height: var(--ui-brand-font-size);
 }

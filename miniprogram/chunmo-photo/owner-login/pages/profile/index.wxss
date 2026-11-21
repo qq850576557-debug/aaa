@@ -1,4 +1,5 @@
 @import '../../portal.wxss';
+@import '../../ui-tuning.wxss';
 
 .profile-page,
 .profile-wrap {
@@ -11,21 +12,33 @@
 .profile-summary {
   display: flex;
   align-items: center;
-  gap: 15px;
-  padding: 17px;
+  gap: var(--ui-avatar-text-gap);
+  margin-top: var(--ui-info-card-top);
+  padding: var(--ui-info-card-padding);
 }
-.portal .profile-avatar {
-  position: relative;
-  display: grid;
-  place-items: center;
-  flex: 0 0 58px;
-  width: 58px;
-  height: 58px;
+.portal .profile-avatar-trigger {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   padding: 0;
+  background: transparent;
+  line-height: 1.4;
+}
+.profile-avatar {
+  display: grid;
+  width: var(--ui-avatar-size);
+  height: var(--ui-avatar-size);
+  place-items: center;
   border-radius: 50%;
   background: var(--portal-wash);
 }
-.portal .profile-avatar.profile-pressed {
+.profile-avatar-label {
+  color: var(--portal-muted);
+  font-size: 11px;
+}
+.profile-pressed .profile-avatar {
   background: var(--portal-pressed);
 }
 .profile-avatar-photo {
@@ -36,21 +49,6 @@
 .profile-avatar-icon {
   width: 24px;
   height: 24px;
-}
-.avatar-edit-mark {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  display: grid;
-  width: 20px;
-  height: 20px;
-  place-items: center;
-  border: 2px solid var(--portal-paper);
-  border-radius: 50%;
-  background: #244e42;
-  color: #fff;
-  font-size: 12px;
-  line-height: 1;
 }
 .profile-identity {
   min-width: 0;
@@ -114,15 +112,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 7px;
   margin-top: auto;
-  padding-top: 26px;
-  color: var(--portal-muted);
-  font-size: 10px;
+  padding-top: var(--ui-footer-top-gap);
 }
 .profile-footer-logo {
-  width: 16px;
-  height: 17px;
+  width: calc(var(--ui-footer-font-size) + 6px);
+  height: calc(var(--ui-footer-font-size) + 7px);
+}
+.profile-footer-wordmark {
+  width: var(--ui-footer-wordmark);
+  height: var(--ui-footer-font-size);
 }
 .avatar-overlay {
   position: fixed;

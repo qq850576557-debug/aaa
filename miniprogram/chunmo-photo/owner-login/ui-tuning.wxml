@@ -1,0 +1,47 @@
+<template name="ui-tuning">
+  <button wx:if="{{!open}}" class="ui-dev-launch" bindtap="toggleUi">调整 UI</button>
+  <view wx:else class="ui-dev-panel">
+    <view class="ui-dev-toolbar">
+      <text>开发态 UI</text>
+      <button bindtap="resetUi">恢复默认</button>
+      <button bindtap="copyUi">复制配置</button>
+      <button bindtap="toggleUi">关闭</button>
+    </view>
+    <scroll-view scroll-y="{{true}}" class="ui-dev-fields">
+      <view class="ui-dev-field" wx:for="{{fields}}" wx:key="key">
+        <view class="ui-dev-field-label">
+          <text>{{item.key}}</text><text wx:if="{{item.type !== 'string'}}">{{item.value}}</text>
+        </view>
+        <slider
+          wx:if="{{item.type === 'number'}}"
+          aria-label="{{item.key}}"
+          min="{{item.min}}"
+          max="{{item.max}}"
+          step="{{item.step}}"
+          value="{{item.value}}"
+          data-key="{{item.key}}"
+          bindchanging="changeUi"
+          bindchange="changeUi"
+          block-size="14"
+          activeColor="#50785f"
+        />
+        <switch
+          wx:elif="{{item.type === 'boolean'}}"
+          aria-label="{{item.key}}"
+          checked="{{item.value}}"
+          data-key="{{item.key}}"
+          bindchange="changeUi"
+          color="#244e42"
+        />
+        <input
+          wx:else
+          value="{{item.value}}"
+          aria-label="{{item.key}}"
+          data-key="{{item.key}}"
+          bindinput="changeUi"
+          maxlength="40"
+        />
+      </view>
+    </scroll-view>
+  </view>
+</template>

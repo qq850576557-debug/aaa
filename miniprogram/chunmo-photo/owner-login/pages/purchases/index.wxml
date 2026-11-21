@@ -20,11 +20,11 @@
         </button>
       </view>
       <block wx:for="{{rows}}" wx:key="id"
-        ><template is="purchase-row" data="{{item: item}}"
+        ><template is="purchase-row" data="{{item: item, showPurchaseStatus: state === 'bought'}}"
       /></block>
       <view wx:if="{{!rows.length}}" class="portal-card empty-state">
-        {{overdueOnly ? '暂无已逾期采购' : state === 'pending' ? '暂无待采购事项' : state ===
-        'bought' ? '暂无已购买事项' : '暂无已完成事项'}}
+        {{overdueOnly ? '暂无已逾期采购' : state === 'pending' ? '暂无待采购事项' :
+        '暂无已购买事项'}}
       </view>
     </block>
   </view>
