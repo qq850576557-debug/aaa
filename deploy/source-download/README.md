@@ -50,3 +50,5 @@ Workbench 使用 `--repo /opt/chunmo-source --publish` 只发布[业主端测试
 首页及头像裁切测试包已更新至源码 `4329db339fa587d67bc631899bfb7e616af74c80`。当前 `owner_preview.py` 生成新版独立工程，沿用旧包的导入方法。ZIP 为 251519 字节，SHA-256 为 `ab301b0d16a93c1eaa8da900bd7dcfd0aa6c5ce277c9daf050e6c7c869edd27b`。[新版 ZIP 下载地址（Workbench PASS 后可用）](https://chmsj.cn/download/releases/wechat-owner-preview-4329db3/chunmo-owner-preview-wechat.zip)
 
 开发态 UI 调整版源码为 `56a5c94d8887389a669893b564e92b9f5df1adf3`。ZIP 为 261732 字节，SHA-256 为 `3fc2aaaf6595d856687dd6747d1778cf552a13adb509f82958eed5ffab235a9c`。[新版测试 ZIP（Workbench PASS 后可用）](https://chmsj.cn/download/releases/wechat-owner-preview-56a5c94/chunmo-owner-preview-wechat.zip)
+
+业主端确认版源码为 `31a3a4b6a6bb1d73b2753feec0b3da44587b3039`。ZIP 为 261775 字节，SHA-256 为 `346863bcc7868efc702d31259f05a515ac3c9387fa4c1cdefe18775a60ec63de`。[确认版测试 ZIP（Workbench PASS 后可用）](https://chmsj.cn/download/releases/wechat-owner-preview-31a3a4b/chunmo-owner-preview-wechat.zip)

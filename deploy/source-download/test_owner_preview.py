@@ -15,7 +15,7 @@ class OwnerPreviewDeliveryTests(unittest.TestCase):
     def test_reviewed_zip_imports_directly_into_guest_devtools(self):
         data = preview.build_zip(test_publish.REPO)
         self.assertEqual(hashlib.sha256(data).hexdigest(), preview.SHA256)
-        self.assertEqual(len(data), 261732)
+        self.assertEqual(len(data), 261775)
         self.assertEqual(data, preview.build_zip(test_publish.REPO))
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             self.assertIsNone(archive.testzip())

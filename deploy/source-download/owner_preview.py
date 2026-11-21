@@ -13,10 +13,10 @@ import zipfile
 import publish as source_delivery
 
 
-COMMIT = "56a5c94d8887389a669893b564e92b9f5df1adf3"
-RELEASE = "wechat-owner-preview-56a5c94"
+COMMIT = "31a3a4b6a6bb1d73b2753feec0b3da44587b3039"
+RELEASE = "wechat-owner-preview-31a3a4b"
 FILENAME = "chunmo-owner-preview-wechat.zip"
-SHA256 = "3fc2aaaf6595d856687dd6747d1778cf552a13adb509f82958eed5ffab235a9c"
+SHA256 = "346863bcc7868efc702d31259f05a515ac3c9387fa4c1cdefe18775a60ec63de"
 PROJECT = "chunmo-owner-preview"
 SOURCE_DIR = "miniprogram/chunmo-photo/"
 SOURCE_PATHS = ("owner-login", "app.wxss", "sitemap.json", "project.config.json")
