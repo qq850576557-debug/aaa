@@ -64,6 +64,6 @@ CHUNMO_WECHAT_TOOLS=/你的隔离工具目录 node scripts/verify-miniprogram.mj
 | --- | --- |
 | 登录 | `logoTop=141`，`logoWidth=66`，`logoToBrandGap=19`，`brandToSloganGap=21`，`brandFontSize=23`，`sloganFontSize=13`，`sloganLetterSpacing=0`，`sloganText="功 能 与 美  ×  共 生"`，`loginButtonTop=175` |
 | 首页 | `headerTop=56`，`titleBottomGap=18`，`primaryCardHeight=64`，`secondaryCardGap=12`，`sectionTopGap=22` |
-| 个人中心 | `infoCardTop=0`，`infoCardPadding=17`，`avatarSize=58`，`avatarTextGap=15`，`footerVisible=false`，`footerTopGap=26`，`footerFontSize=10` |
+| 个人中心 | `infoCardTop=1`，`infoCardPadding=28`，`avatarSize=63`，`avatarTextGap=22`，`footerVisible=true`，`footerTopGap=55`，`footerFontSize=12` |
 
 首页和已购买清单统一将已购买及已完成纳入已购买统计，保留各自的状态及原有操作权限。近期采购安排只列未购买事项。

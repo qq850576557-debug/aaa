@@ -214,22 +214,22 @@ test('UI tuning shows live edits only in development and exports one config', (t
   assert.equal(load('welcome').data.ui.logoToBrandGap, 18);
 
   const profile = load('profile');
-  assert.equal(profile.data.ui.footerVisible, false);
-  profile.changeUi(change('footerVisible', true));
+  assert.equal(profile.data.ui.footerVisible, true);
+  profile.changeUi(change('footerVisible', false));
   profile.changeUi(change('avatarSize', 64));
   profile.copyUi();
   assert.equal(clipboard.login.logoToBrandGap, 18);
   assert.equal(clipboard.profile.avatarSize, 64);
-  assert.equal(clipboard.profile.footerVisible, true);
+  assert.equal(clipboard.profile.footerVisible, false);
   assert.equal(clipboard.home.primaryCardHeight, 64);
 
   let version = 'trial';
   global.wx.getAccountInfoSync = () => ({ miniProgram: { envVersion: version } });
   const trial = load('profile');
   assert.equal(trial.data.uiDev, false);
-  assert.equal(trial.data.ui.footerVisible, false);
+  assert.equal(trial.data.ui.footerVisible, true);
   trial.changeUi(change('avatarSize', 70));
-  assert.equal(trial.data.ui.avatarSize, 58);
+  assert.equal(trial.data.ui.avatarSize, 63);
   version = 'release';
   const release = load('profile');
   assert.equal(release.data.ready, false);
@@ -237,6 +237,6 @@ test('UI tuning shows live edits only in development and exports one config', (t
   version = 'develop';
   profile.resetUi();
   welcome.resetUi();
-  assert.equal(profile.data.ui.footerVisible, false);
+  assert.equal(profile.data.ui.footerVisible, true);
   assert.equal(welcome.data.ui.logoToBrandGap, 19);
 });
