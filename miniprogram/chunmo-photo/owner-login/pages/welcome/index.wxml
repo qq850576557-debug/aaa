@@ -17,6 +17,8 @@
       hover-stay-time="110"
       disabled="{{busy}}"
       bindtap="quickLogin"
+      open-type="{{live && agreed ? 'getPhoneNumber' : ''}}"
+      bindgetphonenumber="authorizePhone"
     >
       <template is="sign-in" data="{{quick: true}}" />
     </button>

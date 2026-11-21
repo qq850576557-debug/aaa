@@ -1,3 +1,9 @@
+import {
+  configuredOwnerPortal,
+  miniOwnerRoutes,
+  staffOwnerRoutes,
+  type OwnerPortalOptions,
+} from './owner-portal';
 import { studioDailyRoutes } from './studio-daily';
 import { runningRelease } from './release';
 import { photoGeocodeRoutes } from './photo-geocode';
@@ -75,7 +81,9 @@ const displayNameSchema = z
   .min(1)
   .max(80)
   .refine((value) => !/[\u0000-\u001f\u007f]/.test(value));
-export function createApp() {
+export function createApp({
+  ownerPortal = configuredOwnerPortal(),
+}: { ownerPortal?: OwnerPortalOptions } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use('/api', (req, res, next) => {
@@ -113,6 +121,7 @@ export function createApp() {
       origin: config.APP_ORIGIN,
     }),
   );
+  miniOwnerRoutes(app, ownerPortal);
   let hashing = 0;
   app.use('/api', (req, res, next) => {
     res.set({
@@ -201,6 +210,7 @@ export function createApp() {
     res.set('X-Chunmo-Workspace-Protocol', '2');
     next();
   });
+  staffOwnerRoutes(app, ownerPortal);
   purchaseRoutes(app);
   recordRoutes(app);
   studioDailyRoutes(app);

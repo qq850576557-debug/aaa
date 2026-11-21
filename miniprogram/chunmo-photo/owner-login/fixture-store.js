@@ -2,6 +2,7 @@
 // local storage or network credentials are involved in this fixture store.
 const { startPreview, routes } = require('./preview');
 const reminders = require('./purchase-reminders');
+const ownerSession = require('./owner-session');
 
 const labels = { pending: '待采购', bought: '已购买', complete: '已完成' };
 const blankFeedback = { brand: '', model: '', note: '' };
@@ -91,6 +92,44 @@ function begin(mode = 'review', now = Date.now()) {
   return true;
 }
 
+function beginVerified({ owner, projects }) {
+  if (!owner?.id || !Array.isArray(projects) || !projects.length)
+    throw Error('暂无访问授权，请联系春茉');
+  const active =
+    session?.owner.id === owner.id && projects.some(({ id }) => id === session.active)
+      ? session.active
+      : projects[0].id;
+  const avatar = session?.owner.id === owner.id ? session.owner.avatar : '';
+  session = {
+    owner: { id: owner.id, name: owner.name, avatar },
+    active,
+    projects,
+    records: Object.fromEntries(projects.map(({ id }) => [id, []])),
+    today: dateAt(0, Date.now()),
+    offline: false,
+    verified: true,
+  };
+}
+
+function isVerified() {
+  return session?.verified === true;
+}
+
+async function refreshVerified() {
+  if (!isVerified()) return;
+  const previous = session;
+  try {
+    const result = await ownerSession.session();
+    if (session !== previous) return;
+    if (!result) throw Error('业主登录已失效，请重新进入');
+    beginVerified(result);
+  } catch (error) {
+    if (session !== previous) return;
+    if (error.statusCode === 401 || error.statusCode === 403) end();
+    throw error;
+  }
+}
+
 function current() {
   if (!session) throw Error('请重新进入业主预览');
   if (session.offline) throw Error('暂时无法加载采购信息，请重试。');
@@ -178,6 +217,9 @@ function end() {
 
 module.exports = {
   begin,
+  beginVerified,
+  isVerified,
+  refreshVerified,
   snapshot,
   choose,
   ownerIdentity,

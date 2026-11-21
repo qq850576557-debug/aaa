@@ -1,0 +1,14 @@
+.owner-access .form-grid {
+  margin-top: 10px;
+}
+.owner-access-member {
+  display: grid;
+  gap: 5px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.owner-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

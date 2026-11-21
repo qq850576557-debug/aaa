@@ -22,6 +22,19 @@ Page(
     },
     onShow() {
       if (!this.data.ready) return;
+      if (store.isVerified()) {
+        void store.refreshVerified().then(
+          () => this.renderSnapshot(),
+          (error) => {
+            this.setData({ project: null, loading: false, error: error.message });
+            if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+          },
+        );
+        return;
+      }
+      this.renderSnapshot();
+    },
+    renderSnapshot() {
       try {
         const { project, projects, groups } = store.snapshot();
         this.setData({

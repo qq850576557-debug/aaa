@@ -1,6 +1,7 @@
 const { withUi } = require('../../ui-tuning');
 const store = require('../../fixture-store');
 const avatar = require('../../avatar');
+const ownerSession = require('../../owner-session');
 const { back, routes, showPolicy } = require('../../preview');
 
 Page(
@@ -31,6 +32,19 @@ Page(
     },
     onShow() {
       if (!this.data.ready) return;
+      if (store.isVerified()) {
+        void store.refreshVerified().then(
+          () => this.renderSnapshot(),
+          (error) => {
+            this.setData({ project: null, loading: false, error: error.message });
+            if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+          },
+        );
+        return;
+      }
+      this.renderSnapshot();
+    },
+    renderSnapshot() {
       try {
         const { owner, project, projects } = store.snapshot();
         this.setData({
@@ -191,6 +205,7 @@ Page(
     showPolicy,
     logOut() {
       this.resetCrop();
+      void ownerSession.logout();
       store.end();
       wx.reLaunch({ url: routes.welcome });
     },
