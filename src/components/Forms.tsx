@@ -60,11 +60,12 @@ export function Editor({
   ownerPurchase?: {
     projects: OwnerPurchaseProject[];
     published: boolean;
+    confirmed: boolean;
     founder: boolean;
     save: (
       purchase: Purchase,
       visible: boolean,
-      edit?: { version: string; changed: boolean },
+      edit?: { version?: string; changed: boolean },
     ) => Promise<void>;
     refresh: () => void;
   };
@@ -262,6 +263,7 @@ export function Editor({
   );
   const visibility = ownerDraft?.project === v.projectId ? ownerDraft : undefined;
   const checked = visibility?.visible ?? ownerItem?.published ?? false;
+  const awaitingCloudPurchase = !isNew && ownerPurchase?.confirmed === false;
   function changeVisibility(visible: boolean) {
     if (!ownerProject) return;
     if (visible === (ownerItem?.published ?? false)) {
@@ -297,13 +299,12 @@ export function Editor({
         (visibility || (dirty && ownerItem?.published && ownerProject?.enabled))
       ) {
         const purchase = value as Purchase;
-        const version = visibility?.version ?? ownerItem?.version;
-        if (!isNew && !version) throw Error('正在读取业主可见性，请稍后重试');
+        const version = visibility ? visibility.version : ownerItem?.version;
         setSavingOwnerPurchase(true);
         await ownerPurchase.save(
           purchase,
           checked,
-          version ? { version, changed: dirty } : undefined,
+          isNew ? undefined : { version, changed: dirty },
         );
         ownerPurchase.refresh();
       } else {
@@ -482,7 +483,7 @@ export function Editor({
                 checked={checked}
                 disabled={
                   savingOwnerPurchase ||
-                  (!isNew && !ownerItem) ||
+                  (!isNew && !awaitingCloudPurchase && !ownerItem && !visibility) ||
                   (!ownerProject?.enabled && !checked)
                 }
                 onChange={(event) => changeVisibility(event.target.checked)}
@@ -493,7 +494,7 @@ export function Editor({
         ) : (
           select('status', '采购状态', [...purchaseStatuses])
         )}
-        {ownerPurchase && ownerProject && canConfigureOwner && !isNew && (
+        {ownerPurchase && ownerProject && canConfigureOwner && !isNew && !awaitingCloudPurchase && (
           <OwnerPurchaseFeedback
             project={ownerProject.id}
             id={edit.value.id}

@@ -89,8 +89,9 @@ function withUi(group, page) {
       if (this.data.ready) apply(this, group);
     },
     onShow() {
-      page.onShow?.call(this);
+      const result = page.onShow?.call(this);
       if (this.data.ready) apply(this, group);
+      return result;
     },
     toggleUi() {
       if (this.data.uiDev) this.setData({ uiOpen: !this.data.uiOpen });

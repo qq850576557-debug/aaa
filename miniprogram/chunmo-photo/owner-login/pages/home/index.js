@@ -47,7 +47,7 @@ Page(
           boughtCount: groups.bought.length + groups.complete.length,
           overdueCount: groups.pending.filter(({ overdue }) => overdue).length,
           totalCount: groups.pending.length + groups.bought.length + groups.complete.length,
-          recent: groups.pending.slice(0, 3),
+          recent: groups.pending,
           error: '',
           loading: false,
         });

@@ -1850,6 +1850,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
               ? {
                   projects: ownerPurchases.projects,
                   founder: !!cloudUser?.owner,
+                  confirmed: savedData.purchases.some(({ id }) => id === edit.value.id),
                   published: ownerPurchases.items.some(
                     ({ id, projectId, published }) =>
                       id === edit.value.id &&

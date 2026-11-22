@@ -479,7 +479,72 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await normal.getByRole('heading', { name: '新建采购事项' }).waitFor();
           assert.equal(await normal.getByRole('checkbox', { name: '业主可见' }).isEnabled(), true);
           assert.equal(await normal.getByLabel('采购责任方').count(), 0);
+
+          const pendingName = '待同步采购灯具';
+          let releaseWorkspaceSave!: () => void;
+          const holdWorkspaceSave = new Promise<void>((resolve) => {
+            releaseWorkspaceSave = resolve;
+          });
+          const workspaceEndpoint = '**/api/workspace';
+          await normal.route(workspaceEndpoint, async (route) => {
+            if (route.request().method() === 'PUT') await holdWorkspaceSave;
+            await route.continue();
+          });
+          const submitting = normal.waitForRequest(
+            (r) => r.url().endsWith('/api/workspace') && r.method() === 'PUT',
+          );
+          try {
+            await normal.getByLabel('采购名称').fill(pendingName);
+            await mainSave.click();
+            await submitting;
+            await normal.getByRole('button', { name: '编辑采购' + pendingName }).click();
+            const waitingVisibility = normal.getByRole('checkbox', { name: '业主可见' });
+            await waitingVisibility.check();
+            assert.equal(
+              await normal.getByText('采购尚未保存或已移除', { exact: true }).count(),
+              0,
+            );
+            assert.ok(
+              !(await feed()).body.items.some(
+                (row: { title: string }) => row.title === pendingName,
+              ),
+            );
+            await waitingVisibility.scrollIntoViewIfNeeded();
+            await normal.screenshot({
+              path: join(artifacts, '04-pending-purchase-visibility.png'),
+            });
+            await mainSave.click();
+          } finally {
+            releaseWorkspaceSave();
+          }
+          await normal.getByRole('heading', { name: '编辑采购事项' }).waitFor({ state: 'hidden' });
+          assert.equal(
+            (await feed()).body.items.filter((row: { title: string }) => row.title === pendingName)
+              .length,
+            1,
+          );
           await normal.close();
+          const savedPending = (await request('/workspace', 'GET', undefined, founder)).body;
+          const pendingRows = savedPending.data.purchases.filter(
+            (row: { name: string }) => row.name === pendingName,
+          );
+          assert.equal(pendingRows.length, 1);
+          // Remove the browser-only fixture through the normal API so it cannot affect the remaining cases.
+          const cleanup = await request(
+            '/workspace',
+            'PUT',
+            {
+              revision: savedPending.revision,
+              data: {
+                ...savedPending.data,
+                purchases: savedPending.data.purchases.filter(
+                  (row: { id: string }) => row.id !== pendingRows[0].id,
+                ),
+              },
+            },
+            founder,
+          );
+          assert.equal(cleanup.status, 200, JSON.stringify(cleanup.body));
 
           const narrow = await open(founder, 760, 'reduce');
           await narrow.getByRole('checkbox', { name: '业主可见' }).waitFor();
@@ -675,7 +740,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       assert.equal(
         (
           await admin.query(
-            "SELECT count(*)::int AS count FROM owner_portal.purchase_event WHERE workspace_id='w'",
+            "SELECT count(*)::int AS count FROM owner_portal.purchase_event WHERE workspace_id='w' AND purchase_id IN ('existing','new-purchase')",
           )
         ).rows[0].count,
         11,

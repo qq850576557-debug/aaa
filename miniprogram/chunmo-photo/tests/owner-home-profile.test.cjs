@@ -106,6 +106,37 @@ test('owner home counts, overdue filter and residence switching follow the activ
   assert.equal(offline.data.owner.name, '演示业主');
 });
 
+test('owner home lists all pending purchases from earliest deadline and hides other states', async (t) => {
+  const { load } = preview(t);
+  const api = require('../owner-login/owner-session');
+  const { session, purchases } = api;
+  t.after(() => Object.assign(api, { session, purchases }));
+  const auth = {
+    owner: { id: 'owner', name: '测试业主' },
+    projects: [{ id: 'a', title: '测试住宅' }],
+    purchasesEnabled: true,
+  };
+  const records = [
+    ['later-d', '2026-12-18', 'pending'],
+    ['old-bought', '2026-11-17', 'bought'],
+    ['same-b', '2026-11-28', 'pending'],
+    ['later-e', '2026-12-20', 'pending'],
+    ['first', '2026-11-18', 'pending'],
+    ['same-a', '2026-11-28', 'pending'],
+    ['old-complete', '2026-11-19', 'complete'],
+  ].map(([id, due, state]) => ({ id, title: id, due, state }));
+  api.session = async () => auth;
+  api.purchases = async () => ({ items: records });
+  store.beginVerified(auth);
+  const home = load('home');
+  await home.onShow();
+  assert.equal(home.data.pendingCount, 5);
+  assert.deepEqual(
+    home.data.recent.map(({ id }) => id),
+    ['first', 'same-a', 'same-b', 'later-d', 'later-e'],
+  );
+});
+
 test('avatar chooses from album, renders and exports a square, preserving previous avatar on cancel or failure', async (t) => {
   const { load } = preview(t);
   store.begin('review', fixtureDate);

@@ -18,7 +18,7 @@ export function useWorkspace(initialUser?: CloudUser) {
         saveOwnerPurchase: async (
           _purchase: Purchase,
           _visible: boolean,
-          _edit?: { version: string; changed: boolean },
+          _edit?: { version?: string; changed: boolean },
         ) => {},
         saveConflict: null,
         resolveSaveConflict: async (_choices: import('./workspace-merge').MergeChoices) => {},

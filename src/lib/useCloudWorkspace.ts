@@ -658,34 +658,49 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     },
     [apply],
   );
-  const ownerPurchaseReceipt = useRef<{ key: string; requestId: string; revision: number }>(
-    undefined,
-  );
+  const ownerPurchaseReceipt = useRef<{
+    key: string;
+    requestId: string;
+    revision: number;
+    version?: string;
+  }>(undefined);
   const saveOwnerPurchase = useCallback(
-    async (purchase: Purchase, visible: boolean, edit?: { version: string; changed: boolean }) => {
-      if (pending.current || blocked.current || !baseline.current)
+    async (purchase: Purchase, visible: boolean, edit?: { version?: string; changed: boolean }) => {
+      if (exclusive.current || blocked.current || !baseline.current)
         throw Error('请先完成云端保存或处理冲突');
+      if (pending.current) {
+        await journal.current;
+        await persist();
+      }
+      if (exclusive.current || pending.current || blocked.current || !baseline.current)
+        throw Error('采购草稿还未同步，请重试保存。业主可见设置已保留在此窗口');
       const key = JSON.stringify({ purchase, visible, edit });
-      if (ownerPurchaseReceipt.current?.key !== key)
-        ownerPurchaseReceipt.current = {
-          key,
-          requestId: crypto.randomUUID(),
-          revision: baseline.current.revision,
-        };
-      const { requestId, revision } = ownerPurchaseReceipt.current;
+      const path = ownerPurchasePath(purchase.projectId, purchase.id);
       pending.current = true;
       exclusive.current = true;
       setStatus('正在保存');
       try {
+        if (ownerPurchaseReceipt.current?.key !== key) {
+          const version = edit
+            ? (edit.version ?? (await cloudApi<{ item: { version: string } }>(path)).item.version)
+            : undefined;
+          ownerPurchaseReceipt.current = {
+            key,
+            requestId: crypto.randomUUID(),
+            revision: baseline.current.revision,
+            version,
+          };
+        }
+        const { requestId, revision, version } = ownerPurchaseReceipt.current;
         const result = await cloudApi<{ workspace: CloudState }>(
-          ownerPurchasePath(purchase.projectId, purchase.id),
+          path,
           'POST',
           edit
             ? {
                 action: 'edit',
                 requestId,
                 revision,
-                version: edit.version,
+                version,
                 ...(edit.changed ? { purchase } : {}),
                 publication: { visible },
               }
@@ -704,7 +719,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         exclusive.current = false;
       }
     },
-    [apply],
+    [apply, persist],
   );
   const reloadCloud = useCallback(async () => {
     if (interacting()) throw Error('请先关闭编辑弹窗；当前表单内容未被替换。');
