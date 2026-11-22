@@ -661,11 +661,15 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
   const ownerPurchaseReceipt = useRef<{ key: string; requestId: string; revision: number }>(
     undefined,
   );
-  const createOwnerPurchase = useCallback(
-    async (purchase: Purchase, publication: OwnerPublication) => {
+  const saveOwnerPurchase = useCallback(
+    async (
+      purchase: Purchase,
+      publication: OwnerPublication,
+      edit?: { version: string; changed: boolean },
+    ) => {
       if (pending.current || blocked.current || !baseline.current)
         throw Error('请先完成云端保存或处理冲突');
-      const key = JSON.stringify({ purchase, publication });
+      const key = JSON.stringify({ purchase, publication, edit });
       if (ownerPurchaseReceipt.current?.key !== key)
         ownerPurchaseReceipt.current = {
           key,
@@ -680,7 +684,16 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         const result = await cloudApi<{ workspace: CloudState }>(
           ownerPurchasePath(purchase.projectId, purchase.id),
           'POST',
-          { action: 'create', requestId, revision, purchase, publication },
+          edit
+            ? {
+                action: 'edit',
+                requestId,
+                revision,
+                version: edit.version,
+                ...(edit.changed ? { purchase } : {}),
+                publication,
+              }
+            : { action: 'create', requestId, revision, purchase, publication },
         );
         apply(validState(result.workspace));
         ownerPurchaseReceipt.current = undefined;
@@ -854,7 +867,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     cloudUser: user,
     reloadCloud,
     changeDeadline,
-    createOwnerPurchase,
+    saveOwnerPurchase,
     saveConflict,
     resolveSaveConflict,
     dismissSaveConflict: () => setSaveConflict(null),

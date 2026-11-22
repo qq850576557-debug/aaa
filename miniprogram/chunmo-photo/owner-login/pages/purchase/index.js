@@ -25,16 +25,18 @@ Page({
     if (!this.data.ready || this.data.saving) return;
     if (store.isVerified()) {
       this.setData({ loading: true, error: '', item: null, unavailable: false });
-      void store.refreshVerified().then(
+      return store.refreshVerified().then(
         () => this.renderSnapshot(),
         (error) => {
           this.setData({ loading: false, error: error.message });
           if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
         },
       );
-      return;
     }
     this.renderSnapshot();
+  },
+  onPullDownRefresh() {
+    return Promise.resolve(this.onShow()).finally(() => wx.stopPullDownRefresh());
   },
   renderSnapshot() {
     try {

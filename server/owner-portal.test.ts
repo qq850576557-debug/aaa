@@ -396,7 +396,15 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
             await page
               .context()
               .addCookies([{ name: 'chunmo_session', value: credential, url: base + '/api' }]);
-            await page.addInitScript(() => sessionStorage.setItem('chunmo-space', 'cloud'));
+            await page.addInitScript(() => {
+              sessionStorage.setItem('chunmo-space', 'cloud');
+              // Keep the desktop editor mounted when exercising its CSS below the mobile switch.
+              const match = window.matchMedia.bind(window);
+              window.matchMedia = (query) =>
+                query === '(max-width:700px), (pointer:coarse) and (max-width:1024px)'
+                  ? match('(max-width: 0px)')
+                  : match(query);
+            });
             await page.goto(base);
             await page.getByRole('button', { name: '采购管理', exact: true }).click();
             await page.getByRole('button', { name: '编辑采购内部采购' }).click();
@@ -410,28 +418,73 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await normal.getByLabel('对外规格 / 尺寸').fill(published.specification);
           await normal.getByLabel('对外数量').fill(published.quantity);
           await normal.getByLabel('参考资料链接（选填）').fill(published.reference);
-          await normal.getByLabel('向业主发布').check();
-          const coordinates = await Promise.all([
-            normal.getByLabel('对外规格 / 尺寸').boundingBox(),
-            normal.getByLabel('对外数量').boundingBox(),
-          ]);
-          assert.ok(
-            coordinates[0] &&
-              coordinates[1] &&
-              Math.abs(coordinates[0].y - coordinates[1].y) <= 2 &&
-              coordinates[0].x + coordinates[0].width <= coordinates[1].x,
-            JSON.stringify(coordinates),
-          );
-          await normal.getByRole('button', { name: '确认发布' }).hover();
-          await normal.getByRole('button', { name: '确认发布' }).focus();
+          const checkbox = normal.getByRole('checkbox', { name: '业主可见' });
+          await checkbox.check();
+          await normal.getByLabel('采购说明（内部）').fill('PRIVATE-UPDATED');
+          const inspectRow = async (page: typeof normal) => {
+            const row = page.locator('.purchase-visibility-row');
+            await row.scrollIntoViewIfNeeded();
+            const boxes = await row.evaluate((node) => {
+              const [left, right] = Array.from(node.children, (child) =>
+                child.getBoundingClientRect(),
+              );
+              const status = node.querySelector('select')!.getBoundingClientRect();
+              const toggle = node.querySelector('input')!.getBoundingClientRect();
+              const panel = node.closest('dialog')!.getBoundingClientRect();
+              const body = node.closest('.modal-body')!.getBoundingClientRect();
+              return {
+                metrics: [left, right, toggle, status].map((box) => box.toJSON()),
+                sameLine:
+                  Math.abs(left.y - right.y) <= 2 && Math.abs(left.height - right.height) <= 2,
+                columns:
+                  left.right <= right.left && left.left >= panel.left && right.right <= panel.right,
+                controls:
+                  Math.abs(toggle.y + toggle.height / 2 - status.y - status.height / 2) <= 2 &&
+                  status.right <= right.right &&
+                  toggle.right <= left.right,
+                covered: left.top < body.top - 1 || right.bottom > body.bottom + 1,
+                overflow: node.scrollWidth > node.clientWidth,
+              };
+            });
+            const { metrics, ...checks } = boxes;
+            assert.deepEqual(
+              checks,
+              { sameLine: true, columns: true, controls: true, covered: false, overflow: false },
+              JSON.stringify(metrics),
+            );
+          };
+          await normal.getByText('业主采购协同', { exact: true }).click();
+          await inspectRow(normal);
+          const mainSave = normal
+            .locator('dialog')
+            .getByRole('button', { name: '保存', exact: true });
+          await mainSave.hover();
+          await mainSave.focus();
           await normal.evaluate(() => document.fonts.ready);
-          await normal.screenshot({ path: join(artifacts, '01-desktop-publication.png') });
-          await normal.getByRole('button', { name: '确认发布' }).click();
-          await normal
-            .locator('.owner-purchase-controls')
-            .getByText('已保存', { exact: true })
-            .waitFor();
+          await normal.screenshot({ path: join(artifacts, '01-desktop-purchase-editor.png') });
+          await mainSave.click();
+          await normal.getByRole('heading', { name: '编辑采购事项' }).waitFor({ state: 'hidden' });
+          assert.equal((await feed()).body.items[0].title, published.title);
+          const savedWorkspace = (await request('/workspace', 'GET', undefined, founder)).body;
+          assert.equal(
+            savedWorkspace.data.purchases.find((row: { id: string }) => row.id === 'existing')
+              .notes,
+            'PRIVATE-UPDATED',
+          );
           await normal.close();
+
+          const narrow = await open(founder, 760, 'reduce');
+          await narrow.getByRole('checkbox', { name: '业主可见' }).waitFor();
+          await inspectRow(narrow);
+          await narrow.screenshot({ path: join(artifacts, '02-narrow-purchase-editor.png') });
+          await narrow.setViewportSize({ width: 390, height: 844 });
+          await inspectRow(narrow);
+          await narrow.screenshot({ path: join(artifacts, '03-compact-purchase-editor.png') });
+          await narrow.getByRole('button', { name: '选择最迟采购日期' }).click();
+          await narrow.locator('.calendar-popover:popover-open').waitFor();
+          await narrow.keyboard.press('Escape');
+          await narrow.locator('.calendar-popover:popover-open').waitFor({ state: 'hidden' });
+          await narrow.close();
           const lowMotion = await open(founder, 1280, 'reduce');
           await lowMotion.getByText('业主采购协同', { exact: true }).click();
           await lowMotion.getByRole('button', { name: '代为确认购买' }).click();
@@ -447,6 +500,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await lowMotion.getByRole('button', { name: '取消', exact: true }).last().click();
           const limited = await open(employee, 1280, 'no-preference');
           assert.equal(await limited.getByText('业主采购协同', { exact: true }).count(), 0);
+          assert.equal(await limited.getByRole('checkbox', { name: '业主可见' }).count(), 0);
           await limited.close();
         } finally {
           await browser.close();
@@ -516,9 +570,21 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         (await respond({ ...confirm, requestId: randomUUID(), version: record.version })).status,
         200,
       );
+      const beforeHide = (await request('/workspace', 'GET', undefined, founder)).body;
+      const hide = {
+        action: 'edit',
+        requestId: randomUUID(),
+        revision: beforeHide.revision,
+        version: (await read()).version,
+        publication: { ...published, published: false },
+      };
+      assert.equal((await change(hide, employee)).status, 200);
+      assert.equal((await change(hide, employee)).status, 200);
+      assert.equal((await change({ ...hide, requestId: randomUUID() }, employee)).status, 409);
+      assert.equal((await read()).model, 'A-01');
       assert.equal(
-        (await write('publication', { publication: { ...published, published: false } })).status,
-        200,
+        (await request('/workspace', 'GET', undefined, founder)).body.revision,
+        beforeHide.revision,
       );
       assert.deepEqual((await feed()).body.items, []);
       assert.equal((await respond(withdraw)).status, 404);

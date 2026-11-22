@@ -67,13 +67,11 @@ const keepForm = (event: KeyboardEvent<HTMLElement>) => {
 export function OwnerPublicationFields({
   value,
   due,
-  enabled,
   busy,
   onChange,
 }: {
   value: OwnerPublication;
   due: string;
-  enabled: boolean;
   busy?: boolean;
   onChange: (fields: OwnerPublication) => void;
 }) {
@@ -98,16 +96,6 @@ export function OwnerPublicationFields({
             <option value="supplier">商家或供应商负责</option>
           </select>
         </label>
-        <label className="owner-publish-check">
-          <input
-            type="checkbox"
-            checked={value.published}
-            disabled={value.responsibility !== 'owner' || (!enabled && !value.published)}
-            onChange={(event) => onChange({ ...value, published: event.target.checked })}
-          />
-          向业主发布
-        </label>
-        {!enabled && <p className="span2 owner-purchase-hint">该项目的业主采购服务已关闭。</p>}
         {value.responsibility === 'owner' && (
           <>
             <label className="form-field span2">
@@ -169,12 +157,11 @@ export function OwnerPublicationFields({
 }
 
 type StaffAction =
-  | { action: 'publication'; publication: OwnerPublication }
   | { action: 'purchase'; feedback: OwnerFeedback }
   | { action: 'return' | 'reopen'; reason: string }
   | { action: 'finish' };
 const feedbackFrom = ({ brand, model, note }: OwnerFeedback) => ({ brand, model, note });
-const publicationFrom = ({
+export const publicationFrom = ({
   responsibility,
   published,
   title,
@@ -198,54 +185,65 @@ export function OwnerPurchaseControls({
   dirty,
   founder,
   onChanged,
+  draft,
+  onPublicationChange,
+  onLoaded,
+  saving,
 }: {
   project: string;
   id: string;
   dirty: boolean;
   founder: boolean;
   onChanged: () => void;
+  draft?: OwnerPublication;
+  onPublicationChange: (value: OwnerPublication) => void;
+  onLoaded: (item: OwnerPurchaseItem) => void;
+  saving: boolean;
 }) {
   const path = ownerPurchasePath(project, id);
   const [item, setItem] = useState<OwnerPurchaseItem>();
-  const [enabled, setEnabled] = useState(false);
-  const [draft, setDraft] = useState<OwnerPublication>();
   const [feedback, setFeedback] = useState<OwnerFeedback>({ brand: '', model: '', note: '' });
   const [action, setAction] = useState<'purchase' | 'return' | 'reopen' | 'finish'>();
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
   const receipt = useRef<{ key: string; id: string }>(undefined);
   const current = useRef(true);
-  useEffect(() => {
-    current.current = true;
-    return () => {
-      current.current = false;
-    };
-  }, []);
-  const apply = (value: { item: OwnerPurchaseItem; enabled: boolean }) => {
-    setItem(value.item);
-    setEnabled(value.enabled);
-    setDraft(publicationFrom(value.item));
-    setFeedback(feedbackFrom(value.item));
-  };
-  async function load() {
-    if (busy) return;
+  const readSequence = useRef(0);
+  const apply = useCallback(
+    ({ item }: { item: OwnerPurchaseItem }) => {
+      setItem(item);
+      onLoaded(item);
+      setFeedback(feedbackFrom(item));
+    },
+    [onLoaded],
+  );
+  const load = useCallback(async () => {
+    const request = ++readSequence.current;
     setBusy(true);
     try {
       const value = await cloudApi<{ item: OwnerPurchaseItem; enabled: boolean }>(path);
-      if (current.current) {
+      if (request === readSequence.current) {
         apply(value);
         setMessage('');
       }
     } catch (error) {
-      if (current.current) setMessage(error instanceof Error ? error.message : '读取失败');
+      if (request === readSequence.current)
+        setMessage(error instanceof Error ? error.message : '读取失败');
     } finally {
-      if (current.current) setBusy(false);
+      if (request === readSequence.current) setBusy(false);
     }
-  }
+  }, [apply, path]);
+  useEffect(() => {
+    current.current = true;
+    void load();
+    return () => {
+      current.current = false;
+      readSequence.current++;
+    };
+  }, [load]);
   async function save(input: StaffAction) {
-    if (!item || busy || dirty) return;
+    if (!item || busy || dirty || saving) return;
     const body = { ...input, version: item.version };
     const key = JSON.stringify(body);
     if (receipt.current?.key !== key) receipt.current = { key, id: crypto.randomUUID() };
@@ -274,12 +272,7 @@ export function OwnerPurchaseControls({
     }
   }
   const productLink = item?.note.match(/https?:\/\/[^\s<>"'，。；、）]+/i)?.[0];
-  const disabled = busy || dirty;
-  const publicationChanged = !!(
-    item &&
-    draft &&
-    JSON.stringify(publicationFrom(item)) !== JSON.stringify(draft)
-  );
+  const disabled = busy || dirty || saving;
   const selectAction = (next: typeof action) => {
     setAction(next);
     setReason('');
@@ -287,37 +280,19 @@ export function OwnerPurchaseControls({
     if (item) setFeedback(item.bought ? feedbackFrom(item) : { brand: '', model: '', note: '' });
   };
   return (
-    <details
-      className="owner-purchase-controls span2"
-      onKeyDown={keepForm}
-      onToggle={(event) => {
-        if (event.currentTarget.open && !open) {
-          setOpen(true);
-          void load();
-        }
-      }}
-    >
+    <details className="owner-purchase-controls span2" onKeyDown={keepForm}>
       <summary>业主采购协同</summary>
-      {dirty && <p className="owner-purchase-hint">请先保存当前采购修改，再操作业主协同。</p>}
       {busy && !item && <p role="status">正在读取…</p>}
-      {item && draft && (
+      {item && (
         <>
           <OwnerPublicationFields
-            value={draft}
+            value={draft ?? publicationFrom(item)}
             due={item.due}
-            enabled={enabled}
-            busy={disabled}
-            onChange={setDraft}
+            busy={busy || saving}
+            onChange={onPublicationChange}
           />
           <div className="owner-purchase-actions">
-            <button
-              type="button"
-              disabled={disabled || !publicationChanged || !draft.title.trim()}
-              onClick={() => void save({ action: 'publication', publication: draft })}
-            >
-              {draft.published ? '确认发布' : item.published ? '撤回发布' : '保存协同设置'}
-            </button>
-            <button type="button" disabled={busy} onClick={() => void load()}>
+            <button type="button" disabled={disabled} onClick={() => void load()}>
               重新读取
             </button>
           </div>

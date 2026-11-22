@@ -24,16 +24,18 @@ Page(
       if (!this.data.ready) return;
       if (store.isVerified()) {
         this.setData({ project: null, recent: [], loading: true, error: '' });
-        void store.refreshVerified().then(
+        return store.refreshVerified().then(
           () => this.renderSnapshot(),
           (error) => {
             this.setData({ project: null, loading: false, error: error.message });
             if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
           },
         );
-        return;
       }
       this.renderSnapshot();
+    },
+    onPullDownRefresh() {
+      return Promise.resolve(this.onShow()).finally(() => wx.stopPullDownRefresh());
     },
     renderSnapshot() {
       try {

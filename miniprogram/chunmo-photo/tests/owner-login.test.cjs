@@ -194,3 +194,54 @@ test('verified owner reloads only the selected residence and retries the same fe
   await assert.rejects(store.refreshVerified, /撤销/);
   assert.equal(store.isVerified(), false);
 });
+
+test('pulling down reloads the live purchase pages and clears withdrawn purchases', async (t) => {
+  const api = require('../owner-login/owner-session');
+  const { session, purchases } = api;
+  const original = { Page: global.Page, wx: global.wx };
+  const routes = ['home', 'purchases', 'purchase'];
+  t.after(() => {
+    Object.assign(api, { session, purchases });
+    Object.assign(global, original);
+    for (const route of routes)
+      delete require.cache[require.resolve(`../owner-login/pages/${route}/index`)];
+    store.end();
+  });
+  const auth = {
+    owner: { id: 'owner', name: '测试业主' },
+    projects: [{ id: 'a', title: '测试住宅' }],
+    purchasesEnabled: true,
+  };
+  const item = { id: 'lamp', title: '灯具', state: 'pending', due: '2026-12-01' };
+  let stopped = 0;
+  let definition;
+  global.wx = { stopPullDownRefresh: () => stopped++ };
+  global.Page = (value) => {
+    definition = value;
+  };
+  api.session = async () => auth;
+  api.purchases = async () => ({ items: [item] });
+  store.beginVerified(auth);
+  const pages = routes.map((route) => {
+    const path = `../owner-login/pages/${route}/index`;
+    delete require.cache[require.resolve(path)];
+    require(path);
+    return {
+      ...definition,
+      data: { ...definition.data, ready: true, id: item.id },
+      setData(patch) {
+        Object.assign(this.data, patch);
+      },
+    };
+  });
+  for (const page of pages) await page.onShow();
+  assert.equal(pages[0].data.pendingCount, 1);
+  assert.equal(pages[1].data.rows.length, 1);
+  assert.equal(pages[2].data.item.id, item.id);
+  api.purchases = async () => ({ items: [] });
+  for (const page of pages) await page.onPullDownRefresh();
+  assert.equal(stopped, 3);
+  assert.equal(pages[0].data.pendingCount, 0);
+  assert.equal(pages[1].data.rows.length, 0);
+  assert.equal(pages[2].data.unavailable, true);
+});

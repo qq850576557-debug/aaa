@@ -155,7 +155,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     cloudUser,
     reloadCloud,
     changeDeadline,
-    createOwnerPurchase,
+    saveOwnerPurchase,
     hasUnsavedChanges,
     saveConflict,
     resolveSaveConflict,
@@ -1856,7 +1856,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                       projectId === (edit.value as Purchase).projectId &&
                       published,
                   ),
-                  create: createOwnerPurchase,
+                  save: saveOwnerPurchase,
                   refresh: refreshOwnerPurchases,
                 }
               : undefined

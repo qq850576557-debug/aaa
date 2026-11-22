@@ -55,11 +55,21 @@ const create = z
     publication,
   })
   .strict();
+const edit = z
+  .object({
+    ...stamp,
+    action: z.literal('edit'),
+    revision: z.number().int().nonnegative(),
+    purchase: purchaseSchema.optional(),
+    publication,
+  })
+  .strict();
 const markBought = z.object({ ...stamp, action: z.literal('purchase'), feedback }).strict();
 const withdraw = z.object({ ...stamp, action: z.literal('withdraw') }).strict();
 const staffInput = z.discriminatedUnion('action', [
   publish,
   create,
+  edit,
   markBought,
   z.object({ ...stamp, action: z.literal('return'), reason }).strict(),
   z.object({ ...stamp, action: z.literal('finish') }).strict(),
@@ -160,13 +170,13 @@ export function staffOwnerPurchaseRoutes(app: Express) {
         return {
           item,
           enabled: scope.service_enabled,
-          ...(input.action === 'create'
+          ...(['create', 'edit'].includes(input.action)
             ? { workspace: workspaceStateWithProof(state, actor) }
             : {}),
         };
       }
       const before = await staffPurchase(c, workspace, project, purchase);
-      let createdState: Awaited<ReturnType<typeof getState>> | undefined;
+      let savedState: Awaited<ReturnType<typeof getState>> | undefined;
       if (input.action === 'create') {
         if (
           before ||
@@ -177,7 +187,7 @@ export function staffOwnerPurchaseRoutes(app: Express) {
           throw new ApiError(409, '采购已存在或所属项目有变，请重新读取');
         if (purchaseComplete(input.purchase) && input.publication.published)
           throw new ApiError(409, '请先保存内部采购，再确认已完成记录的对外发布');
-        createdState = await commit(
+        savedState = await commit(
           c,
           actor,
           input.revision,
@@ -188,7 +198,19 @@ export function staffOwnerPurchaseRoutes(app: Express) {
         throw new ApiError(409, '采购已更新，请重新读取后再操作');
       }
 
-      if (input.action === 'create' || input.action === 'publication') {
+      if (input.action === 'edit' && input.purchase) {
+        if (input.purchase.id !== purchase || input.purchase.projectId !== project)
+          throw new ApiError(409, '采购记录或所属项目有变，请重新读取');
+        savedState = await commit(
+          c,
+          actor,
+          input.revision,
+          savePurchase(state.data, input.purchase),
+          { prior: state },
+        );
+      }
+
+      if (input.action === 'create' || input.action === 'edit' || input.action === 'publication') {
         const fields = input.publication;
         if (fields.published && !scope.service_enabled)
           throw new ApiError(409, '请由负责人先开启本项目业主采购服务');
@@ -277,7 +299,7 @@ export function staffOwnerPurchaseRoutes(app: Express) {
           actor.id,
           actor.displayName ?? actor.login,
           input.requestId,
-          input.action === 'create' ? 'publication' : input.action,
+          input.action === 'create' || input.action === 'edit' ? 'publication' : input.action,
           request,
           before ? JSON.stringify(before) : null,
           JSON.stringify(item),
@@ -286,7 +308,9 @@ export function staffOwnerPurchaseRoutes(app: Express) {
       return {
         item,
         enabled: scope.service_enabled,
-        ...(createdState ? { workspace: workspaceStateWithProof(createdState, actor) } : {}),
+        ...(input.action === 'create' || input.action === 'edit'
+          ? { workspace: workspaceStateWithProof(savedState ?? state, actor) }
+          : {}),
       };
     });
     res.json(result);

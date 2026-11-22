@@ -16,16 +16,6 @@
   margin: 0;
   min-width: 0;
 }
-.owner-publish-check {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  align-self: end;
-  min-height: 36px;
-}
-.owner-publish-check input[type='checkbox'] {
-  width: auto;
-}
 .owner-purchase-preview {
   display: grid;
   gap: 4px;
@@ -58,7 +48,75 @@ dialog.modal.purchase-editor:has(.owner-purchase-controls) {
 :root[data-desktop-ui='v1'] .purchase-editor.cm-glass:has(.owner-purchase-controls) > .modal-head {
   background: var(--cm-glass-fallback, #faf9f4);
 }
-.owner-purchase-fields label.owner-publish-check {
+
+.purchase-visibility-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--cm-line, #dce4dd);
+}
+.purchase-visibility-row > label.purchase-visibility-cell,
+.purchase-visibility-row > .purchase-status-cell {
+  display: flex;
   flex-direction: row;
   align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 44px;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--cm-surface-muted, #eef1ea);
+  border-radius: 12px;
+}
+.purchase-visibility-cell > span,
+.purchase-status-cell > label {
+  flex: 0 0 auto;
+  font-size: var(--cm-caption, 12px);
+  color: var(--cm-green, #244e42);
+}
+.purchase-visibility-cell input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--cm-green, #244e42);
+}
+.purchase-visibility-row .purchase-status-cell > select {
+  width: auto;
+  min-width: 0;
+  flex: 1;
+}
+@media (max-width: 480px) {
+  .purchase-visibility-row {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: 6px;
+  }
+  .purchase-visibility-row > label.purchase-visibility-cell,
+  .purchase-visibility-row > .purchase-status-cell {
+    padding-inline: 6px;
+  }
+}
+
+dialog.modal.purchase-editor[open]:has(.purchase-visibility-row) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.purchase-editor:has(.purchase-visibility-row) > .modal-head {
+  flex: none;
+}
+.purchase-editor:has(.purchase-visibility-row) > form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.purchase-editor:has(.purchase-visibility-row) > form > .modal-body {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.purchase-editor:has(.purchase-visibility-row) > form > .modal-foot {
+  position: static;
+  flex: none;
 }
