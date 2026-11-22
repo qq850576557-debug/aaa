@@ -189,12 +189,17 @@ if [[ $(sql -Atc "SELECT coalesce(to_regclass('owner_portal.purchase_migration')
   [[ $(sql -Atc "SELECT filename || ':' || sha256 FROM owner_portal.purchase_migration ORDER BY filename COLLATE \"C\"") == "$expected" ]] ||
     fail '采购迁移校验值与发布文件不同'
 else
-  sql --single-transaction -v staff_role=chunmo_app -v owner_role=owner_runtime \
-    -v migration_sha="$migration_sha" -v grants_sha="$grants_sha" \
-    -f "$sql_dir/017_owner_purchase.sql" -f "$sql_dir/017_owner_purchase_grants.sql" -f - <<'SQL'
+  migration_input="$upgrade/migration.sql"
+  {
+    cat "$sql_dir/017_owner_purchase.sql" "$sql_dir/017_owner_purchase_grants.sql"
+    cat <<'SQL'
 INSERT INTO owner_portal.purchase_migration(filename,sha256) VALUES
   ('017_owner_purchase.sql', :'migration_sha'), ('017_owner_purchase_grants.sql', :'grants_sha');
 SQL
+  } > "$migration_input"
+  # The root shell opens the private file before runuser starts psql.
+  sql --single-transaction -v staff_role=chunmo_app -v owner_role=owner_runtime \
+    -v migration_sha="$migration_sha" -v grants_sha="$grants_sha" -f - < "$migration_input"
 fi
 [[ $(sql -Atc "SELECT has_function_privilege('owner_runtime','owner_portal.owner_purchases(text,text)','EXECUTE')
  AND NOT has_table_privilege('owner_runtime','public.purchase','SELECT')
