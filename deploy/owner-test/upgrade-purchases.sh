@@ -60,7 +60,7 @@ wait_test() {
   local release=$1
   local origin=${2:-$test_origin}
   for attempt in $(seq 1 24); do
-    if [[ $(health "$origin" test 2>/dev/null) == "$release" ]]; then return; fi
+    if [[ $(health "$origin" test 2>/dev/null) == "$release" ]]; then return 0; fi
     sleep 1
   done
   printf '版本校验超时 %s，预期 %s，实测 %s\n' "$origin" "$release" \
@@ -71,13 +71,34 @@ wait_test() {
 prod=$(health https://chmsj.cn production)
 [[ $prod =~ ^[a-f0-9]{40}$ ]] || fail '无法核对正式站版本'
 pointer="$conf/purchase-upgrade-active"
-if [[ ${1:-} == --rollback ]]; then
-  [[ -f $pointer && ! -L $pointer ]] || fail '没有已激活的采购测试升级'
-  upgrade=$(cat "$pointer")
-  [[ $upgrade =~ ^/etc/chunmo-owner-test/upgrade-purchases\.[a-zA-Z0-9]+$ && ! -L $upgrade ]] ||
+active_upgrade() {
+  [[ -f $pointer && ! -L $pointer ]] || fail '没有有效的采购升级记录'
+  local path
+  path=$(cat "$pointer")
+  [[ $path =~ ^/etc/chunmo-owner-test/upgrade-purchases\.[a-zA-Z0-9]+$ && -d $path && ! -L $path ]] ||
     fail '采购升级备份路径无效'
-  cmp -s "$nginx" "$upgrade/nginx.after" && cmp -s "$unit" "$upgrade/api.after" ||
+  cmp -s "$nginx" "$path/nginx.after" && cmp -s "$unit" "$path/api.after" ||
     fail '测试入口或 API 单元有后续改动，保留原配置'
+  printf '%s\n' "$path"
+}
+write_active_upgrade() {
+  local next="$conf/.purchase-active.XXXXXXXX"
+  next=$(mktemp "$next")
+  printf '%s\n' "$1" > "$next"
+  mv -f "$next" "$pointer"
+}
+if [[ ${1:-} == --rollback ]]; then
+  upgrade=$(active_upgrade)
+  previous_release=$base_release
+  previous_upgrade=
+  if [[ -f $upgrade/previous-upgrade ]]; then
+    previous_upgrade=$(cat "$upgrade/previous-upgrade")
+    previous_release=$(cat "$upgrade/release.before")
+    [[ $previous_release =~ ^[a-f0-9]{40}$ && $previous_upgrade =~ ^/etc/chunmo-owner-test/upgrade-purchases\.[a-zA-Z0-9]+$ && $previous_upgrade != "$upgrade" && -d $previous_upgrade && ! -L $previous_upgrade ]] ||
+      fail '上一个测试版本的回退记录无效'
+    cmp -s "$upgrade/nginx.before" "$previous_upgrade/nginx.after" && cmp -s "$upgrade/api.before" "$previous_upgrade/api.after" ||
+      fail '上一个测试版本的配置与回退快照不同'
+  fi
   restore_release() {
     local code=$1
     trap - ERR INT TERM HUP
@@ -93,22 +114,39 @@ if [[ ${1:-} == --rollback ]]; then
   trap 'restore_release 129' HUP
   switch_unit "$upgrade/api.before"
   switch_nginx "$upgrade/nginx.before"
-  wait_test "$base_release"
+  wait_test "$previous_release"
   [[ $(health https://chmsj.cn production) == "$prod" ]]
-  mv "$pointer" "$upgrade/rolled-back"
+  if [[ $previous_upgrade ]]; then
+    write_active_upgrade "$previous_upgrade"
+  else
+    mv "$pointer" "$upgrade/rolled-back"
+  fi
   trap - ERR INT TERM HUP
-  echo 'PASS 已回退到身份联调版，采购数据和迁移记录已保留'
+  printf 'PASS 已回退到 %s，采购数据和迁移记录已保留\n' "$previous_release"
   exit 0
 fi
 
 pin=${1:-}
 [[ $# == 1 && $pin =~ ^[a-f0-9]{40}$ ]] || fail '请提供已审核的完整 Git SHA'
-[[ ! -e $pointer && ! -L $pointer ]] || fail '已有采购升级激活'
 git -C "$repo" merge-base --is-ancestor 69af2ffbc5060e1a7c32336b02d7aea6bfcb06e6 "$pin" ||
   fail '提交缺少已审核的基础版本'
 current_release=$(health "$test_origin" test) || fail '测试站健康检查失败，请先确认上次回退状态'
-[[ $current_release == "$base_release" ]] || fail "测试站版本为 $current_release，已停止以免覆盖上次回退状态"
-cmp -s "$nginx" "$state/nginx.active" || fail '现有 Nginx 与原测试站激活快照不同'
+previous_upgrade=
+if [[ -e $pointer || -L $pointer ]]; then
+  previous_upgrade=$(active_upgrade)
+  marker_path=$(awk -F= '$1=="WorkingDirectory" {print $2}' "$unit")
+  [[ $marker_path =~ ^/opt/chunmo-owner-test/build\.[a-zA-Z0-9]+$ && $current_release =~ ^[a-f0-9]{40}$ && $current_release != "$base_release" ]] ||
+    fail '测试服务的工作目录或版本无效'
+  [[ $(cat "$marker_path/.verified-build") == "$current_release" ]] || fail '测试站运行版本与构建标记不一致'
+  if [[ $current_release == "$pin" ]]; then
+    printf 'PASS 测试站已运行 %s\n' "$pin"
+    exit 0
+  fi
+  git -C "$repo" merge-base --is-ancestor "$current_release" "$pin" || fail '新版本必须继承当前测试版本'
+else
+  [[ $current_release == "$base_release" ]] || fail "未知测试站版本 $current_release，已停止"
+  cmp -s "$nginx" "$state/nginx.active" || fail '现有 Nginx 与原测试站激活快照不同'
+fi
 systemctl is-active --quiet chunmo-owner-test-pg.service
 systemctl is-active --quiet chunmo-owner-test-api.service
 [[ $(sql -Atc "SELECT current_database() || ':' || current_user || ':' || current_setting('port')") == chunmo_test:chunmo_ownerpg:5441 ]] ||
@@ -138,6 +176,10 @@ upgrade=$(mktemp -d "$conf/upgrade-purchases.XXXXXXXX")
 job=$(mktemp -d /opt/chunmo-owner-test/build.XXXXXXXX)
 cp -p "$unit" "$upgrade/api.before"
 cp -p "$nginx" "$upgrade/nginx.before"
+if [[ $previous_upgrade ]]; then
+  printf '%s\n' "$previous_upgrade" > "$upgrade/previous-upgrade"
+  printf '%s\n' "$current_release" > "$upgrade/release.before"
+fi
 echo "已建立测试升级目录 $upgrade"
 source /etc/chunmo-staging/tools.env
 [[ ${NODE_BIN:-} =~ ^/[a-zA-Z0-9/._-]+$ && -x $NODE_BIN ]] || fail 'Node 路径不可用'
@@ -175,8 +217,9 @@ job = sys.argv[1]
 state = Path(sys.argv[2])
 unit = (state/'api.before').read_text()
 old, = re.findall(r'^WorkingDirectory=(/opt/chunmo-owner-test/build\.[a-zA-Z0-9]+)$',unit,re.M)
-assert 'Environment=CHUNMO_OWNER_PURCHASE_ENABLED=' not in unit
-unit = unit.replace('WorkingDirectory='+old,'WorkingDirectory='+job+'\nEnvironment=CHUNMO_OWNER_PURCHASE_ENABLED=1')
+flag = 'Environment=CHUNMO_OWNER_PURCHASE_ENABLED=1'
+assert re.findall(r'^Environment=CHUNMO_OWNER_PURCHASE_ENABLED=.*$',unit,re.M) in ([], [flag])
+unit = unit.replace('WorkingDirectory='+old, 'WorkingDirectory='+job + ('' if flag in unit else '\n'+flag))
 (state/'api.after').write_text(unit)
 nginx = (state/'nginx.before').read_text()
 assert nginx.count(old)==2
@@ -197,6 +240,7 @@ if [[ $(sql -Atc "SELECT coalesce(to_regclass('owner_portal.purchase_migration')
   [[ $(sql -Atc "SELECT filename || ':' || sha256 FROM owner_portal.purchase_migration ORDER BY filename COLLATE \"C\"") == "$expected" ]] ||
     fail '采购迁移校验值与发布文件不同'
 else
+  [[ ! $previous_upgrade ]] || fail '当前版本缺少采购迁移记录，已停止'
   migration_input="$upgrade/migration.sql"
   {
     cat "$sql_dir/017_owner_purchase.sql" "$sql_dir/017_owner_purchase_grants.sql"
@@ -223,7 +267,7 @@ restore_on_error() {
   set +e
   if (( switched_api )); then switch_unit "$upgrade/api.before"; fi
   if (( switched_nginx )); then switch_nginx "$upgrade/nginx.before"; fi
-  if wait_test "$base_release" && [[ $(health https://chmsj.cn production) == "$prod" ]]; then
+  if wait_test "$current_release" && [[ $(health https://chmsj.cn production) == "$prod" ]]; then
     printf '测试站已回退；测试库与备份保留在 %s\n' "$upgrade" >&2
   else
     printf '回退后需复查服务，配置备份位于 %s\n' "$upgrade" >&2
@@ -246,6 +290,6 @@ curl -fsS --max-time 20 "$test_origin/chunmo-owner-test.zip" -o "$upgrade/downlo
 cmp "$job/chunmo-owner-test.zip" "$upgrade/download.zip"
 PYTHONDONTWRITEBYTECODE=1 python3 "$upgrade/source/deploy/owner-test/smoke.py" "$state/login.txt" --upgrade
 [[ $(health https://chmsj.cn production) == "$prod" ]]
-printf '%s\n' "$upgrade" > "$pointer"
+write_active_upgrade "$upgrade"
 trap - ERR INT TERM HUP
 printf 'PASS 采购联调测试站已升级，正式站版本一致\n测试提交 %s\n下载 %s/chunmo-owner-test.zip\n' "$pin" "$test_origin"
