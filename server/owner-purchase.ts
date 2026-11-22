@@ -229,12 +229,7 @@ export function staffOwnerPurchaseRoutes(app: Express) {
                 // Compatibility with the existing database constraint; the editor only submits visibility.
                 responsibility: 'owner',
                 published: change.visible,
-                title: publicValue(
-                  before?.title,
-                  previousPurchase?.name,
-                  currentPurchase?.name,
-                  100,
-                ),
+                title: (currentPurchase?.name ?? '').trim().slice(0, 100),
                 description: before?.description ?? '',
                 specification: publicValue(
                   before?.specification,

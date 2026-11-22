@@ -546,6 +546,17 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           );
           assert.equal(cleanup.status, 200, JSON.stringify(cleanup.body));
 
+          const alias = await write('publication', {
+            publication: {
+              ...published,
+              title: '789',
+              description: '旧对外说明',
+              specification: original.specification,
+              quantity: original.quantity,
+            },
+          });
+          assert.equal(alias.status, 200, JSON.stringify(alias.body));
+          assert.equal((await feed()).body.items[0].title, '789');
           const narrow = await open(founder, 760, 'reduce');
           await narrow.getByRole('checkbox', { name: '业主可见' }).waitFor();
           await inspectRow(narrow);
@@ -557,6 +568,10 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await narrow.locator('.calendar-popover:popover-open').waitFor();
           await narrow.keyboard.press('Escape');
           await narrow.locator('.calendar-popover:popover-open').waitFor({ state: 'hidden' });
+          // Saving an unchanged, already visible editor repairs its stale public title.
+          await narrow.locator('dialog').getByRole('button', { name: '保存', exact: true }).click();
+          await narrow.getByRole('heading', { name: '编辑采购事项' }).waitFor({ state: 'hidden' });
+          assert.equal((await feed()).body.items[0].title, original.name);
           await narrow.close();
           const lowMotion = await open(founder, 1280, 'reduce');
           await lowMotion.getByRole('button', { name: '代为确认购买' }).click();
@@ -669,8 +684,19 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       assert.deepEqual((await feed()).body.items, []);
       assert.equal((await respond(withdraw)).status, 404);
       assert.equal((await write('publication', { publication: published })).status, 200);
-      assert.equal((await feed()).body.items[0].state, 'bought');
+      assert.equal((await feed()).body.items[0].title, published.title);
       const dbState = (await request('/workspace', 'GET', undefined, founder)).body;
+      const syncName = await write('edit', {
+        revision: dbState.revision,
+        publication: { visible: true },
+      });
+      assert.equal(syncName.status, 200, JSON.stringify(syncName.body));
+      const syncedItem = (await feed()).body.items[0];
+      assert.equal(syncedItem.title, original.name);
+      assert.equal(syncedItem.state, 'bought');
+      assert.equal(syncedItem.feedback.model, 'A-01');
+      assert.equal(syncedItem.description, published.description);
+      assert.equal(syncName.body.workspace.revision, dbState.revision);
       const updated = await request(
         '/workspace',
         'PUT',
@@ -743,7 +769,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
             "SELECT count(*)::int AS count FROM owner_portal.purchase_event WHERE workspace_id='w' AND purchase_id IN ('existing','new-purchase')",
           )
         ).rows[0].count,
-        11,
+        artifacts ? 14 : 12,
       );
     },
   );

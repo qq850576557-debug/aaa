@@ -12,6 +12,7 @@ export type OwnerPurchaseItem = OwnerFeedback & {
   published: boolean;
   id: string;
   internalTitle: string;
+  title: string;
   due: string;
   version: string;
   complete: boolean;

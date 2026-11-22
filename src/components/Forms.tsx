@@ -262,11 +262,14 @@ export function Editor({
     ownerProject && (isNew || (edit.kind === 'purchase' && v.projectId === edit.value.projectId)),
   );
   const visibility = ownerDraft?.project === v.projectId ? ownerDraft : undefined;
-  const checked = visibility?.visible ?? ownerItem?.published ?? false;
+  const published = ownerItem?.published ?? ownerPurchase?.published ?? false;
+  const checked = visibility?.visible ?? published;
+  const refreshPublishedName =
+    published && (!ownerItem || ownerItem.title !== ownerItem.internalTitle);
   const awaitingCloudPurchase = !isNew && ownerPurchase?.confirmed === false;
   function changeVisibility(visible: boolean) {
     if (!ownerProject) return;
-    if (visible === (ownerItem?.published ?? false)) {
+    if (visible === published) {
       setOwnerDraft(undefined);
     } else {
       setOwnerDraft({
@@ -296,7 +299,7 @@ export function Editor({
         kind === 'purchase' &&
         canConfigureOwner &&
         ownerPurchase &&
-        (visibility || (dirty && ownerItem?.published && ownerProject?.enabled))
+        (visibility || (checked && ownerProject?.enabled && (dirty || refreshPublishedName)))
       ) {
         const purchase = value as Purchase;
         const version = visibility ? visibility.version : ownerItem?.version;
