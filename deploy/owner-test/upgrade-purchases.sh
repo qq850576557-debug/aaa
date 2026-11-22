@@ -58,10 +58,14 @@ switch_nginx() {
 }
 wait_test() {
   local release=$1
+  local origin=${2:-$test_origin}
   for attempt in $(seq 1 24); do
-    if [[ $(health "$test_origin" test 2>/dev/null) == "$release" ]]; then return; fi
+    if [[ $(health "$origin" test 2>/dev/null) == "$release" ]]; then return; fi
     sleep 1
   done
+  printf '版本校验超时 %s，预期 %s，实测 %s\n' "$origin" "$release" \
+    "$(health "$origin" test 2>/dev/null || printf '健康检查失败')" >&2
+  systemctl show chunmo-owner-test-api.service -p ActiveState -p SubState -p Result >&2 || true
   return 1
 }
 prod=$(health https://chmsj.cn production)
@@ -102,7 +106,8 @@ pin=${1:-}
 [[ ! -e $pointer && ! -L $pointer ]] || fail '已有采购升级激活'
 git -C "$repo" merge-base --is-ancestor 69af2ffbc5060e1a7c32336b02d7aea6bfcb06e6 "$pin" ||
   fail '提交缺少已审核的基础版本'
-[[ $(health "$test_origin" test) == "$base_release" ]] || fail '正在运行的测试站不是已知身份联调版'
+current_release=$(health "$test_origin" test) || fail '测试站健康检查失败，请先确认上次回退状态'
+[[ $current_release == "$base_release" ]] || fail "测试站版本为 $current_release，已停止以免覆盖上次回退状态"
 cmp -s "$nginx" "$state/nginx.active" || fail '现有 Nginx 与原测试站激活快照不同'
 systemctl is-active --quiet chunmo-owner-test-pg.service
 systemctl is-active --quiet chunmo-owner-test-api.service
@@ -158,6 +163,9 @@ chown -R root:root "$job"
 chmod -R a+rX,go-w "$job"
 chmod 0755 "$job"
 printf '%s\n' "$pin" > "$job/.verified-build"
+chmod 0644 "$job/.verified-build"
+[[ $(runuser -u chunmo_ownerap -- cat "$job/.verified-build") == "$pin" ]] ||
+  fail '测试 API 账号无法读取发布版本标记'
 PYTHONDONTWRITEBYTECODE=1 python3 "$upgrade/source/deploy/owner-test/package.py" "$repo" "$job" "$job/chunmo-owner-test.zip"
 chmod 0644 "$job/chunmo-owner-test.zip"
 python3 - "$job" "$upgrade" <<'PY'
@@ -228,7 +236,7 @@ trap 'restore_on_error 143' TERM
 trap 'restore_on_error 129' HUP
 switched_api=1
 switch_unit "$upgrade/api.after"
-wait_test "$pin"
+wait_test "$pin" http://127.0.0.1:4410
 switched_nginx=1
 switch_nginx "$upgrade/nginx.after"
 wait_test "$pin"
