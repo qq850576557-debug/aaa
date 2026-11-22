@@ -5,7 +5,7 @@ import { makeWorkspaceDelta } from './workspace-delta';
 import { savedFeedback } from '../components/SaveFeedback';
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { emptyData, parseBackup, prepareWorkspace, type Data, type Purchase } from './model';
-import { ownerPurchasePath, type OwnerPublication } from './owner-purchases';
+import { ownerPurchasePath } from './owner-purchases';
 import { canonical, emptyHistory, validateHistory } from './history';
 import { cloudApi, cloudSession, CloudError, type CloudState, type CloudUser } from './cloud';
 import {
@@ -662,14 +662,10 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     undefined,
   );
   const saveOwnerPurchase = useCallback(
-    async (
-      purchase: Purchase,
-      publication: OwnerPublication,
-      edit?: { version: string; changed: boolean },
-    ) => {
+    async (purchase: Purchase, visible: boolean, edit?: { version: string; changed: boolean }) => {
       if (pending.current || blocked.current || !baseline.current)
         throw Error('请先完成云端保存或处理冲突');
-      const key = JSON.stringify({ purchase, publication, edit });
+      const key = JSON.stringify({ purchase, visible, edit });
       if (ownerPurchaseReceipt.current?.key !== key)
         ownerPurchaseReceipt.current = {
           key,
@@ -691,9 +687,9 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
                 revision,
                 version: edit.version,
                 ...(edit.changed ? { purchase } : {}),
-                publication,
+                publication: { visible },
               }
-            : { action: 'create', requestId, revision, purchase, publication },
+            : { action: 'create', requestId, revision, purchase, publication: { visible } },
         );
         apply(validState(result.workspace));
         ownerPurchaseReceipt.current = undefined;

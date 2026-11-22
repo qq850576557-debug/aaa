@@ -1,17 +1,8 @@
 import { inCloud } from '../lib/cloud';
 import { desktopV1Enabled } from '../ui-v1/mode';
 import { PurchaseDateHistory } from './PurchaseDateHistory';
-import {
-  defaultPublication,
-  publicationFrom,
-  OwnerPublicationFields,
-  OwnerPurchaseControls,
-} from './OwnerPurchaseControls';
-import type {
-  OwnerPublication,
-  OwnerPurchaseItem,
-  OwnerPurchaseProject,
-} from '../lib/owner-purchases';
+import { OwnerPurchaseFeedback } from './OwnerPurchaseControls';
+import type { OwnerPurchaseItem, OwnerPurchaseProject } from '../lib/owner-purchases';
 import { useEditorJournal } from '../lib/useEditorJournal';
 import { useId, useRef, useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import { z } from 'zod';
@@ -72,7 +63,7 @@ export function Editor({
     founder: boolean;
     save: (
       purchase: Purchase,
-      publication: OwnerPublication,
+      visible: boolean,
       edit?: { version: string; changed: boolean },
     ) => Promise<void>;
     refresh: () => void;
@@ -110,7 +101,7 @@ export function Editor({
   const [discard, setDiscard] = useState(false);
   const [ownerDraft, setOwnerDraft] = useState<{
     project: string;
-    fields: OwnerPublication;
+    visible: boolean;
     version?: string;
   }>();
   const [ownerItem, setOwnerItem] = useState<OwnerPurchaseItem>();
@@ -170,7 +161,7 @@ export function Editor({
           id={`${uid}-${key}`}
           type={type}
           required={required}
-          maxLength={['name', 'title'].includes(key) ? 100 : 4000}
+          maxLength={['name', 'title', 'quantity'].includes(key) ? 100 : 4000}
           value={String(v[key] ?? '')}
           onChange={(e) => change(key, e.target.value)}
         />
@@ -269,17 +260,19 @@ export function Editor({
   const canConfigureOwner = Boolean(
     ownerProject && (isNew || (edit.kind === 'purchase' && v.projectId === edit.value.projectId)),
   );
-  const publication = ownerDraft?.project === v.projectId ? ownerDraft?.fields : undefined;
-  const currentPublication =
-    publication ??
-    (ownerItem ? publicationFrom(ownerItem) : defaultPublication(String(v.name ?? '')));
-  function changePublication(fields: OwnerPublication) {
+  const visibility = ownerDraft?.project === v.projectId ? ownerDraft : undefined;
+  const checked = visibility?.visible ?? ownerItem?.published ?? false;
+  function changeVisibility(visible: boolean) {
     if (!ownerProject) return;
-    setOwnerDraft({
-      project: ownerProject.id,
-      fields,
-      version: ownerDraft?.version ?? ownerItem?.version,
-    });
+    if (visible === (ownerItem?.published ?? false)) {
+      setOwnerDraft(undefined);
+    } else {
+      setOwnerDraft({
+        project: ownerProject.id,
+        visible,
+        version: ownerItem?.version,
+      });
+    }
   }
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -295,19 +288,21 @@ export function Editor({
       }
       if (kind === 'note' && !payload.taskId) delete payload.taskId;
       const value = schemas[kind].parse(payload);
-      if (kind === 'purchase' && ownerDraft && (!publication || !canConfigureOwner))
+      if (kind === 'purchase' && ownerDraft && (!visibility || !canConfigureOwner))
         throw Error('请在原项目保存业主可见性，再变更所属项目');
-      if (kind === 'purchase' && canConfigureOwner && ownerPurchase && publication) {
+      if (
+        kind === 'purchase' &&
+        canConfigureOwner &&
+        ownerPurchase &&
+        (visibility || (dirty && ownerItem?.published && ownerProject?.enabled))
+      ) {
         const purchase = value as Purchase;
-        const title =
-          publication.title.trim() || (publication.responsibility === 'owner' ? '' : purchase.name);
-        if (!title) throw Error('请确认对外采购名称');
+        const version = visibility?.version ?? ownerItem?.version;
+        if (!isNew && !version) throw Error('正在读取业主可见性，请稍后重试');
         setSavingOwnerPurchase(true);
-        const version = ownerDraft?.version;
-        if (!isNew && !version) throw Error('正在读取采购协同，请稍后重试');
         await ownerPurchase.save(
           purchase,
-          { ...publication, title },
+          checked,
           version ? { version, changed: dirty } : undefined,
         );
         ownerPurchase.refresh();
@@ -459,6 +454,7 @@ export function Editor({
           data.projects.map((p) => [p.id, p.name]),
         )}
         {input('specification', '型号 / 规格')}
+        {input('quantity', '数量')}
         {inCloud() ? (
           <MentionPicker
             owner={String(v.owner ?? '')}
@@ -478,27 +474,18 @@ export function Editor({
           <div className="purchase-visibility-row span2">
             <label
               className="purchase-visibility-cell"
-              title={
-                !ownerProject?.enabled
-                  ? '项目的业主采购服务已关闭'
-                  : currentPublication.responsibility !== 'owner'
-                    ? '请在业主采购协同中选择业主采购'
-                    : undefined
-              }
+              title={!ownerProject?.enabled ? '项目的业主采购服务已关闭' : undefined}
             >
               <span>业主可见</span>
               <input
                 type="checkbox"
-                checked={currentPublication.published}
+                checked={checked}
                 disabled={
                   savingOwnerPurchase ||
                   (!isNew && !ownerItem) ||
-                  currentPublication.responsibility !== 'owner' ||
-                  (!ownerProject?.enabled && !currentPublication.published)
+                  (!ownerProject?.enabled && !checked)
                 }
-                onChange={(event) =>
-                  changePublication({ ...currentPublication, published: event.target.checked })
-                }
+                onChange={(event) => changeVisibility(event.target.checked)}
               />
             </label>
             {select('status', '采购状态', [...purchaseStatuses])}
@@ -506,40 +493,17 @@ export function Editor({
         ) : (
           select('status', '采购状态', [...purchaseStatuses])
         )}
-        {ownerPurchase &&
-          ownerProject &&
-          (isNew ? (
-            <details
-              className="span2 owner-purchase-controls"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && event.target instanceof HTMLInputElement)
-                  event.preventDefault();
-              }}
-            >
-              <summary>业主采购协同</summary>
-              <OwnerPublicationFields
-                value={currentPublication}
-                due={String(v.due ?? '')}
-                busy={savingOwnerPurchase}
-                onChange={changePublication}
-              />
-            </details>
-          ) : (
-            edit.kind === 'purchase' &&
-            v.projectId === edit.value.projectId && (
-              <OwnerPurchaseControls
-                project={ownerProject.id}
-                id={edit.value.id}
-                founder={ownerPurchase.founder}
-                dirty={dirty || !!publication}
-                onChanged={ownerPurchase.refresh}
-                draft={publication}
-                onPublicationChange={changePublication}
-                onLoaded={setOwnerItem}
-                saving={savingOwnerPurchase}
-              />
-            )
-          ))}
+        {ownerPurchase && ownerProject && canConfigureOwner && !isNew && (
+          <OwnerPurchaseFeedback
+            project={ownerProject.id}
+            id={edit.value.id}
+            founder={ownerPurchase.founder}
+            dirty={dirty || !!visibility}
+            onChanged={ownerPurchase.refresh}
+            onLoaded={setOwnerItem}
+            saving={savingOwnerPurchase}
+          />
+        )}
       </>
     );
   return (

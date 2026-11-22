@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { AuthRequest } from './auth';
 import { transaction } from './db';
 import { ApiError, commit, getState, hash, lockOwnerPurchases, type Actor } from './store';
-import { purchaseComplete, purchaseSchema } from '../src/lib/model';
+import { purchaseSchema } from '../src/lib/model';
 import { savePurchase } from '../src/lib/procurement';
 import { workspaceStateWithProof } from './workspace-save';
 
@@ -46,13 +46,14 @@ const publication = z
 const stamp = { requestId: z.uuid(), version: z.string().regex(/^[a-f0-9]{32}$/) };
 const reason = z.string().trim().min(1).max(1000);
 const publish = z.object({ ...stamp, action: z.literal('publication'), publication }).strict();
+const publicationUpdate = z.union([publication, z.object({ visible: z.boolean() }).strict()]);
 const create = z
   .object({
     action: z.literal('create'),
     requestId: z.uuid(),
     revision: z.number().int().nonnegative(),
     purchase: purchaseSchema,
-    publication,
+    publication: publicationUpdate,
   })
   .strict();
 const edit = z
@@ -61,7 +62,7 @@ const edit = z
     action: z.literal('edit'),
     revision: z.number().int().nonnegative(),
     purchase: purchaseSchema.optional(),
-    publication,
+    publication: publicationUpdate,
   })
   .strict();
 const markBought = z.object({ ...stamp, action: z.literal('purchase'), feedback }).strict();
@@ -185,8 +186,6 @@ export function staffOwnerPurchaseRoutes(app: Express) {
           input.purchase.projectId !== project
         )
           throw new ApiError(409, '采购已存在或所属项目有变，请重新读取');
-        if (purchaseComplete(input.purchase) && input.publication.published)
-          throw new ApiError(409, '请先保存内部采购，再确认已完成记录的对外发布');
         savedState = await commit(
           c,
           actor,
@@ -211,7 +210,48 @@ export function staffOwnerPurchaseRoutes(app: Express) {
       }
 
       if (input.action === 'create' || input.action === 'edit' || input.action === 'publication') {
-        const fields = input.publication;
+        const change = input.publication;
+        const previousPurchase = state.data.purchases.find((row) => row.id === purchase);
+        const currentPurchase =
+          savedState?.data.purchases.find((row) => row.id === purchase) ?? previousPurchase;
+        const publicValue = (
+          approved: string | undefined,
+          previous: string | undefined,
+          current: string | undefined,
+          limit: number,
+        ) =>
+          approved && approved !== previous?.trim().slice(0, limit)
+            ? approved
+            : (current ?? '').trim().slice(0, limit);
+        const fields =
+          'visible' in change
+            ? {
+                // Compatibility with the existing database constraint; the editor only submits visibility.
+                responsibility: 'owner',
+                published: change.visible,
+                title: publicValue(
+                  before?.title,
+                  previousPurchase?.name,
+                  currentPurchase?.name,
+                  100,
+                ),
+                description: before?.description ?? '',
+                specification: publicValue(
+                  before?.specification,
+                  previousPurchase?.specification,
+                  currentPurchase?.specification,
+                  1000,
+                ),
+                quantity: publicValue(
+                  before?.quantity,
+                  previousPurchase?.quantity,
+                  currentPurchase?.quantity,
+                  100,
+                ),
+                reference: before?.reference ?? '',
+              }
+            : change;
+        if (!fields.title) throw new ApiError(400, '请填写采购名称');
         if (fields.published && !scope.service_enabled)
           throw new ApiError(409, '请由负责人先开启本项目业主采购服务');
         await c.query(

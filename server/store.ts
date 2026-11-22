@@ -252,7 +252,10 @@ async function guardCollaborativeCompletion(
     [actor.workspaceId, old.projectId, old.id],
   );
   if (result.rowCount)
-    throw new ApiError(409, '已向业主发布的采购请在「业主采购协同」中确认完成或重新开启');
+    throw new ApiError(
+      409,
+      '已设为业主可见的采购，请通过采购编辑窗口内的购买反馈操作确认完成或重新开启',
+    );
 }
 
 export async function commit(

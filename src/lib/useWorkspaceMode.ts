@@ -2,7 +2,6 @@ import { useLocalWorkspace } from './useWorkspace';
 import { useCloudWorkspace } from './useCloudWorkspace';
 import { inCloud, type CloudUser } from './cloud';
 import type { Purchase } from './model';
-import type { OwnerPublication } from './owner-purchases';
 export function useWorkspace(initialUser?: CloudUser) {
   const cloud = inCloud(),
     local = useLocalWorkspace(!cloud),
@@ -18,7 +17,7 @@ export function useWorkspace(initialUser?: CloudUser) {
         changeDeadline: async (_id: string, _date: string, _reason: string) => {},
         saveOwnerPurchase: async (
           _purchase: Purchase,
-          _publication: OwnerPublication,
+          _visible: boolean,
           _edit?: { version: string; changed: boolean },
         ) => {},
         saveConflict: null,

@@ -3,7 +3,6 @@ import { cloudApi, CloudError } from '../lib/cloud';
 import {
   ownerPurchasePath,
   type OwnerFeedback,
-  type OwnerPublication,
   type OwnerPurchaseIndex,
   type OwnerPurchaseItem,
 } from '../lib/owner-purchases';
@@ -48,145 +47,21 @@ export function useOwnerPurchaseIndex(active: boolean) {
   return { index, refresh };
 }
 
-export function defaultPublication(title: string): OwnerPublication {
-  return {
-    responsibility: 'company',
-    published: false,
-    title,
-    description: '',
-    specification: '',
-    quantity: '',
-    reference: '',
-  };
-}
-
 const keepForm = (event: KeyboardEvent<HTMLElement>) => {
   if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault();
 };
-
-export function OwnerPublicationFields({
-  value,
-  due,
-  busy,
-  onChange,
-}: {
-  value: OwnerPublication;
-  due: string;
-  busy?: boolean;
-  onChange: (fields: OwnerPublication) => void;
-}) {
-  return (
-    <fieldset className="owner-purchase-fields" disabled={busy}>
-      <div className="form-grid">
-        <label className="form-field">
-          采购责任方
-          <select
-            value={value.responsibility}
-            onChange={(event) => {
-              const responsibility = event.target.value as OwnerPublication['responsibility'];
-              onChange({
-                ...value,
-                responsibility,
-                published: responsibility === 'owner' && value.published,
-              });
-            }}
-          >
-            <option value="company">春茉采购</option>
-            <option value="owner">业主采购</option>
-            <option value="supplier">商家或供应商负责</option>
-          </select>
-        </label>
-        {value.responsibility === 'owner' && (
-          <>
-            <label className="form-field span2">
-              对外采购名称
-              <input
-                value={value.title}
-                maxLength={100}
-                onChange={(event) => onChange({ ...value, title: event.target.value })}
-              />
-            </label>
-            <label className="form-field span2">
-              对外采购说明
-              <textarea
-                rows={3}
-                value={value.description}
-                maxLength={4000}
-                onChange={(event) => onChange({ ...value, description: event.target.value })}
-              />
-            </label>
-            <label className="form-field">
-              对外规格 / 尺寸
-              <input
-                value={value.specification}
-                maxLength={1000}
-                onChange={(event) => onChange({ ...value, specification: event.target.value })}
-              />
-            </label>
-            <label className="form-field">
-              对外数量
-              <input
-                value={value.quantity}
-                maxLength={100}
-                onChange={(event) => onChange({ ...value, quantity: event.target.value })}
-              />
-            </label>
-            <label className="form-field span2">
-              参考资料链接（选填）
-              <input
-                value={value.reference}
-                maxLength={1000}
-                inputMode="url"
-                onChange={(event) => onChange({ ...value, reference: event.target.value })}
-              />
-            </label>
-            <div className="owner-purchase-preview span2">
-              <small>业主端预览</small>
-              <strong>{value.title || '请填写对外采购名称'}</strong>
-              {due && <small>最迟采购日期 {due}</small>}
-              {value.description && <p>{value.description}</p>}
-              {value.specification && <p>规格 {value.specification}</p>}
-              {value.quantity && <p>数量 {value.quantity}</p>}
-              {value.reference && <p>{value.reference}</p>}
-            </div>
-          </>
-        )}
-      </div>
-    </fieldset>
-  );
-}
 
 type StaffAction =
   | { action: 'purchase'; feedback: OwnerFeedback }
   | { action: 'return' | 'reopen'; reason: string }
   | { action: 'finish' };
 const feedbackFrom = ({ brand, model, note }: OwnerFeedback) => ({ brand, model, note });
-export const publicationFrom = ({
-  responsibility,
-  published,
-  title,
-  description,
-  specification,
-  quantity,
-  reference,
-}: OwnerPublication) => ({
-  responsibility,
-  published,
-  title,
-  description,
-  specification,
-  quantity,
-  reference,
-});
-
-export function OwnerPurchaseControls({
+export function OwnerPurchaseFeedback({
   project,
   id,
   dirty,
   founder,
   onChanged,
-  draft,
-  onPublicationChange,
   onLoaded,
   saving,
 }: {
@@ -195,8 +70,6 @@ export function OwnerPurchaseControls({
   dirty: boolean;
   founder: boolean;
   onChanged: () => void;
-  draft?: OwnerPublication;
-  onPublicationChange: (value: OwnerPublication) => void;
   onLoaded: (item: OwnerPurchaseItem) => void;
   saving: boolean;
 }) {
@@ -206,6 +79,7 @@ export function OwnerPurchaseControls({
   const [action, setAction] = useState<'purchase' | 'return' | 'reopen' | 'finish'>();
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState('');
+  const [retryRead, setRetryRead] = useState(false);
   const [busy, setBusy] = useState(false);
   const receipt = useRef<{ key: string; id: string }>(undefined);
   const current = useRef(true);
@@ -226,10 +100,13 @@ export function OwnerPurchaseControls({
       if (request === readSequence.current) {
         apply(value);
         setMessage('');
+        setRetryRead(false);
       }
     } catch (error) {
-      if (request === readSequence.current)
+      if (request === readSequence.current) {
+        setRetryRead(true);
         setMessage(error instanceof Error ? error.message : '读取失败');
+      }
     } finally {
       if (request === readSequence.current) setBusy(false);
     }
@@ -249,6 +126,7 @@ export function OwnerPurchaseControls({
     if (receipt.current?.key !== key) receipt.current = { key, id: crypto.randomUUID() };
     setBusy(true);
     setMessage('');
+    setRetryRead(false);
     try {
       const value = await cloudApi<{ item: OwnerPurchaseItem; enabled: boolean }>(path, 'POST', {
         ...body,
@@ -265,6 +143,7 @@ export function OwnerPurchaseControls({
       if (!current.current) return;
       if (error instanceof CloudError && error.status === 409) {
         receipt.current = undefined;
+        setRetryRead(true);
         setMessage(error.message + '。如记录有变，请重新读取。');
       } else setMessage(error instanceof Error ? error.message : '保存失败，请重试');
     } finally {
@@ -279,24 +158,13 @@ export function OwnerPurchaseControls({
     setMessage('');
     if (item) setFeedback(item.bought ? feedbackFrom(item) : { brand: '', model: '', note: '' });
   };
+  const hasFeedback = item && (item.bought || item.feedbackAt || item.returnReason);
+  if (!item?.published && !hasFeedback && !message) return null;
   return (
-    <details className="owner-purchase-controls span2" onKeyDown={keepForm}>
-      <summary>业主采购协同</summary>
-      {busy && !item && <p role="status">正在读取…</p>}
+    <div className="span2 purchase-owner-feedback" onKeyDown={keepForm}>
       {item && (
         <>
-          <OwnerPublicationFields
-            value={draft ?? publicationFrom(item)}
-            due={item.due}
-            busy={busy || saving}
-            onChange={onPublicationChange}
-          />
-          <div className="owner-purchase-actions">
-            <button type="button" disabled={disabled} onClick={() => void load()}>
-              重新读取
-            </button>
-          </div>
-          {(item.bought || item.feedbackAt || item.returnReason) && (
+          {hasFeedback && (
             <div className="owner-purchase-preview">
               <strong>
                 {item.complete ? '采购已完成' : item.bought ? '已购买 · 待公司复核' : '待采购'}
@@ -430,11 +298,11 @@ export function OwnerPurchaseControls({
           {message}
         </p>
       )}
-      {!item && message && (
-        <button type="button" onClick={() => void load()}>
+      {retryRead && (
+        <button type="button" disabled={disabled} onClick={() => void load()}>
           重试读取
         </button>
       )}
-    </details>
+    </div>
   );
 }

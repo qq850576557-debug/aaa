@@ -314,6 +314,8 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         projectId: 'p1',
         name: '内部采购',
         notes: 'PRIVATE-DETAIL',
+        specification: '旧采购规格 A',
+        quantity: '2 套',
         due: '2026-12-09',
         taskId: '',
         leadDays: 0,
@@ -335,6 +337,12 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       await admin.query("INSERT INTO purchase VALUES('w','existing','p1',NULL,$1)", [
         JSON.stringify(original),
       ]);
+      await admin.query(
+        `INSERT INTO owner_portal.purchase_collaboration
+         (workspace_id,project_id,purchase_id,responsibility,published,title,description,specification,quantity,reference)
+         VALUES ('w','p1','existing','supplier',false,$1,'旧对外说明','','','')`,
+        [original.name],
+      );
       await pool.query("UPDATE project SET payload=$1 WHERE workspace_id='w' AND id='p1'", [
         JSON.stringify(fixtures.projects[0]),
       ]);
@@ -411,13 +419,10 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
             return page;
           };
           const normal = await open(founder, 1440, 'no-preference');
-          await normal.getByText('业主采购协同', { exact: true }).click();
-          await normal.getByLabel('采购责任方').selectOption('owner');
-          await normal.getByLabel('对外采购名称').fill(published.title);
-          await normal.getByLabel('对外采购说明').fill(published.description);
-          await normal.getByLabel('对外规格 / 尺寸').fill(published.specification);
-          await normal.getByLabel('对外数量').fill(published.quantity);
-          await normal.getByLabel('参考资料链接（选填）').fill(published.reference);
+          assert.equal(await normal.getByText('业主采购协同', { exact: true }).count(), 0);
+          assert.equal(await normal.getByLabel('采购责任方').count(), 0);
+          assert.equal(await normal.getByLabel('型号 / 规格').inputValue(), '旧采购规格 A');
+          assert.equal(await normal.getByLabel('数量').inputValue(), '2 套');
           const checkbox = normal.getByRole('checkbox', { name: '业主可见' });
           await checkbox.check();
           await normal.getByLabel('采购说明（内部）').fill('PRIVATE-UPDATED');
@@ -453,7 +458,6 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
               JSON.stringify(metrics),
             );
           };
-          await normal.getByText('业主采购协同', { exact: true }).click();
           await inspectRow(normal);
           const mainSave = normal
             .locator('dialog')
@@ -464,13 +468,17 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await normal.screenshot({ path: join(artifacts, '01-desktop-purchase-editor.png') });
           await mainSave.click();
           await normal.getByRole('heading', { name: '编辑采购事项' }).waitFor({ state: 'hidden' });
-          assert.equal((await feed()).body.items[0].title, published.title);
+          assert.equal((await feed()).body.items[0].title, original.name);
           const savedWorkspace = (await request('/workspace', 'GET', undefined, founder)).body;
           assert.equal(
             savedWorkspace.data.purchases.find((row: { id: string }) => row.id === 'existing')
               .notes,
             'PRIVATE-UPDATED',
           );
+          await normal.getByRole('button', { name: '新增采购', exact: true }).click();
+          await normal.getByRole('heading', { name: '新建采购事项' }).waitFor();
+          assert.equal(await normal.getByRole('checkbox', { name: '业主可见' }).isEnabled(), true);
+          assert.equal(await normal.getByLabel('采购责任方').count(), 0);
           await normal.close();
 
           const narrow = await open(founder, 760, 'reduce');
@@ -486,7 +494,6 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await narrow.locator('.calendar-popover:popover-open').waitFor({ state: 'hidden' });
           await narrow.close();
           const lowMotion = await open(founder, 1280, 'reduce');
-          await lowMotion.getByText('业主采购协同', { exact: true }).click();
           await lowMotion.getByRole('button', { name: '代为确认购买' }).click();
           await lowMotion.getByLabel('购买备注').fill('测试商品链接 https://example.com/item');
           await lowMotion.getByLabel('购买备注').focus();
@@ -506,7 +513,12 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await browser.close();
         }
       } else {
-        assert.equal((await write('publication', { publication: published })).status, 200);
+        const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
+        assert.equal(
+          (await write('edit', { revision: workspace.revision, publication: { visible: true } }))
+            .status,
+          200,
+        );
       }
       await admin.query("INSERT INTO project_permission VALUES('w','p1','employee',true)");
       assert.equal((await request(desktop, 'GET', undefined, employee)).status, 200);
@@ -516,8 +528,11 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         403,
       );
       let record = (await feed()).body.items[0];
-      assert.equal(record.title, published.title);
+      assert.equal(record.title, original.name);
+      assert.equal(record.specification, original.specification);
+      assert.equal(record.quantity, original.quantity);
       assert.equal(record.due, original.due);
+      assert.equal(record.description, '旧对外说明');
       assert.equal(record.state, 'pending');
       assert.ok(!JSON.stringify(record).includes('PRIVATE-'));
       assert.deepEqual(Object.keys(record).sort(), [
@@ -576,7 +591,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         requestId: randomUUID(),
         revision: beforeHide.revision,
         version: (await read()).version,
-        publication: { ...published, published: false },
+        publication: { visible: false },
       };
       assert.equal((await change(hide, employee)).status, 200);
       assert.equal((await change(hide, employee)).status, 200);
@@ -624,8 +639,8 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         action: 'create',
         requestId: randomUUID(),
         revision: canonical.revision,
-        purchase: { ...original, id: 'new-purchase', name: '第二笔' },
-        publication: published,
+        purchase: { ...original, id: 'new-purchase', name: '第二笔', status: '已完成' },
+        publication: { visible: true },
       };
       const endpoint = '/owner-purchases/p1/new-purchase';
       const created = await request(endpoint, 'POST', creation, founder);
@@ -634,7 +649,12 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         created.body.workspace.data.purchases.some((p: { id: string }) => p.id === 'new-purchase'),
       );
       assert.equal((await request(endpoint, 'POST', creation, founder)).status, 200);
-      assert.equal((await feed()).body.items.length, 2);
+      const both = (await feed()).body.items;
+      assert.equal(both.length, 2);
+      assert.equal(
+        both.find((item: { id: string }) => item.id === 'new-purchase').state,
+        'complete',
+      );
       for (const table of [
         'owner_portal.purchase_collaboration',
         'owner_portal.purchase_staff',
