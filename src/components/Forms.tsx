@@ -16,6 +16,7 @@ import {
   dateOK,
   duration,
   plus,
+  purchaseComplete,
   purchaseDue,
   projectStatus,
   projectSchema,
@@ -196,11 +197,7 @@ export function Editor({
           kind === 'purchase' && key === 'status' ? String(v.status) : undefined
         }
         required={key === 'projectId'}
-        disabled={
-          kind === 'purchase' &&
-          key === 'status' &&
-          (ownerPurchase?.published || ownerItem?.published || savingOwnerPurchase)
-        }
+        disabled={kind === 'purchase' && key === 'status' && savingOwnerPurchase}
         value={
           key === 'dependency'
             ? String((v.dependsOn as string[] | undefined)?.[0] ?? '')
@@ -222,7 +219,17 @@ export function Editor({
         {options.map((o) => {
           const [value, text] = Array.isArray(o) ? o : [o, o];
           return (
-            <option key={value} value={value}>
+            <option
+              key={value}
+              value={value}
+              disabled={
+                edit.kind === 'purchase' &&
+                key === 'status' &&
+                published &&
+                purchaseComplete(edit.value) !==
+                  purchaseComplete({ ...edit.value, status: value as Purchase['status'] })
+              }
+            >
               {text}
             </option>
           );

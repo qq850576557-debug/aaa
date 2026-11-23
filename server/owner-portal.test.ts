@@ -388,7 +388,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       );
       if (artifacts) {
         await mkdir(artifacts, { recursive: true });
-        const { chromium } = await import('@playwright/test');
+        const { chromium, expect } = await import('@playwright/test');
         const browser = await chromium.launch({
           executablePath: '/usr/bin/chromium',
           args: ['--no-sandbox'],
@@ -469,6 +469,24 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await mainSave.click();
           await normal.getByRole('heading', { name: '编辑采购事项' }).waitFor({ state: 'hidden' });
           assert.equal((await feed()).body.items[0].title, original.name);
+          const cardStatus = normal.getByRole('combobox', { name: '采购状态' + original.name });
+          await cardStatus.selectOption('已下单');
+          await expect
+            .poll(async () => {
+              const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
+              return workspace.data.purchases.find((row: { id: string }) => row.id === original.id)
+                .status;
+            })
+            .toBe('已下单');
+          assert.equal((await feed()).body.items[0].state, 'pending');
+          await cardStatus.selectOption('待采购');
+          await expect
+            .poll(async () => {
+              const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
+              return workspace.data.purchases.find((row: { id: string }) => row.id === original.id)
+                .status;
+            })
+            .toBe('待采购');
           const savedWorkspace = (await request('/workspace', 'GET', undefined, founder)).body;
           assert.equal(
             savedWorkspace.data.purchases.find((row: { id: string }) => row.id === 'existing')
@@ -551,6 +569,54 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
               [original.name, pendingName, ...visibleNames.slice(0, index + 1)].sort(),
             );
           }
+          const statusName = visibleNames[0];
+          const changedCard = normal.getByRole('combobox', { name: '采购状态' + statusName });
+          const phoneItem = async () =>
+            (await feed()).body.items.find(({ title }: { title: string }) => title === statusName);
+          await changedCard.selectOption('已到货');
+          const arrived = normal.getByRole('dialog', { name: '标为已到货' });
+          await expect(arrived.getByText('请先确认购买，再标为已到货。')).toBeVisible();
+          await arrived.getByRole('button', { name: '取消', exact: true }).click();
+          await expect(changedCard).toHaveValue('待采购');
+          await changedCard.selectOption('已到货');
+          await arrived.getByRole('button', { name: '代为确认购买' }).click();
+          await arrived.getByLabel('型号').fill('测试型号');
+          await arrived.getByRole('button', { name: '确认', exact: true }).click();
+          await expect(arrived.getByText('购买信息已保存')).toBeVisible();
+          assert.equal((await phoneItem()).state, 'bought');
+          await arrived.screenshot({ path: join(artifacts, '05-confirm-arrival.png') });
+          await arrived.getByRole('button', { name: '确认', exact: true }).focus();
+          await normal.keyboard.press('Enter');
+          await expect(arrived).toBeHidden();
+          await expect(changedCard).toHaveValue('已到货');
+          assert.equal((await phoneItem()).state, 'complete');
+          await changedCard.selectOption('已完成');
+          await expect
+            .poll(async () => {
+              const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
+              return workspace.data.purchases.find(
+                (row: { name: string }) => row.name === statusName,
+              ).status;
+            })
+            .toBe('已完成');
+          await changedCard.selectOption('已下单');
+          const reopen = normal.getByRole('dialog', { name: '标为已下单' });
+          await expect(reopen.getByRole('button', { name: '确认', exact: true })).toBeDisabled();
+          await reopen.getByLabel('对外说明').fill('测试重新采购');
+          await normal.setViewportSize({ width: 390, height: 844 });
+          await expect
+            .poll(async () => {
+              const bounds = await reopen.boundingBox();
+              return !!bounds && bounds.x >= 0 && bounds.x + bounds.width <= 390;
+            })
+            .toBe(true);
+          await reopen.screenshot({ path: join(artifacts, '06-confirm-reopen.png') });
+          await reopen.getByRole('button', { name: '确认', exact: true }).click();
+          await expect(reopen).toBeHidden();
+          await expect(changedCard).toHaveValue('已下单');
+          assert.equal((await phoneItem()).state, 'pending');
+          assert.equal((await phoneItem()).feedback.model, '测试型号');
+          assert.equal((await phoneItem()).returnReason, '测试重新采购');
           await normal.close();
           const savedPending = (await request('/workspace', 'GET', undefined, founder)).body;
           const browserNames = new Set([pendingName, ...visibleNames, privateName]);

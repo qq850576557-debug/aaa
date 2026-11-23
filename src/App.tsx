@@ -64,7 +64,10 @@ import {
   Users,
 } from 'lucide-react';
 import { PurchaseCard } from './components/PurchaseCard';
-import { useOwnerPurchaseIndex } from './components/OwnerPurchaseControls';
+import {
+  OwnerPurchaseStatusDialog,
+  useOwnerPurchaseIndex,
+} from './components/OwnerPurchaseControls';
 import { CompactStats } from './components/CompactStats';
 import { PurchaseDeadlineDialog } from './components/PurchaseDeadlineDialog';
 import { HistoryPanel } from './components/HistoryPanel';
@@ -230,6 +233,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const view = route.view,
     selected = route.projectId;
   const [edit, setEdit] = useState<Edit | null>(null);
+  const [ownerStatus, setOwnerStatus] = useState<{
+    purchase: Purchase;
+    status: Purchase['status'];
+  }>();
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [day, setDay] = useState<string | null>(null);
   const [archived, setArchived] = useState(route.view === 'completed');
@@ -805,7 +812,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             collaboration?.published &&
             purchaseComplete(x) !== purchaseComplete({ ...x, status })
           ) {
-            purchaseEditor(x);
+            setOwnerStatus({ purchase: x, status });
             return;
           }
           save('purchase', { ...x, due: purchaseDue(x, data), status });
@@ -1798,6 +1805,14 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             }}
           />
         </DeferredPanel>
+      )}
+      {ownerStatus && (
+        <OwnerPurchaseStatusDialog
+          {...ownerStatus}
+          founder={!!cloudUser?.owner}
+          onClose={() => setOwnerStatus(undefined)}
+          onChanged={refreshOwnerPurchases}
+        />
       )}
       {edit && (
         <Editor

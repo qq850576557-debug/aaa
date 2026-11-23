@@ -73,8 +73,21 @@ const staffInput = z.discriminatedUnion('action', [
   edit,
   markBought,
   z.object({ ...stamp, action: z.literal('return'), reason }).strict(),
-  z.object({ ...stamp, action: z.literal('finish') }).strict(),
-  z.object({ ...stamp, action: z.literal('reopen'), reason }).strict(),
+  z
+    .object({
+      ...stamp,
+      action: z.literal('finish'),
+      status: z.enum(['已到货', '已完成']).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      ...stamp,
+      action: z.literal('reopen'),
+      reason,
+      status: z.enum(['待采购', '已下单']).optional(),
+    })
+    .strict(),
 ]);
 
 function staffScope(c: PoolClient, actor: Actor, project: string) {
@@ -294,7 +307,7 @@ export function staffOwnerPurchaseRoutes(app: Express) {
         } else if (input.action === 'finish' || input.action === 'reopen') {
           if (input.action === 'finish' && !before.bought)
             throw new ApiError(409, '请先确认购买，再确认采购完成');
-          const status = input.action === 'finish' ? '已完成' : '待采购';
+          const status = input.status ?? (input.action === 'finish' ? '已完成' : '待采购');
           await commit(
             c,
             actor,

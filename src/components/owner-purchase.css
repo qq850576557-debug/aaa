@@ -20,6 +20,10 @@
 .owner-purchase-preview button {
   justify-self: start;
 }
+.owner-purchase-status-dialog .owner-purchase-feedback {
+  display: grid;
+  gap: 8px;
+}
 .owner-purchase-actions {
   display: flex;
   gap: 8px;

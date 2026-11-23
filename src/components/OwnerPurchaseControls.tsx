@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { cloudApi, CloudError } from '../lib/cloud';
+import type { Purchase } from '../lib/model';
+import { Modal } from './Modal';
 import {
   ownerPurchasePath,
   type OwnerFeedback,
@@ -53,30 +55,71 @@ const keepForm = (event: KeyboardEvent<HTMLElement>) => {
 
 type StaffAction =
   | { action: 'purchase'; feedback: OwnerFeedback }
-  | { action: 'return' | 'reopen'; reason: string }
-  | { action: 'finish' };
+  | { action: 'return'; reason: string }
+  | { action: 'reopen'; reason: string; status?: '待采购' | '已下单' }
+  | { action: 'finish'; status?: '已到货' | '已完成' };
 const feedbackFrom = ({ brand, model, note }: OwnerFeedback) => ({ brand, model, note });
+export function OwnerPurchaseStatusDialog({
+  purchase,
+  status,
+  founder,
+  onClose,
+  onChanged,
+}: {
+  purchase: Purchase;
+  status: Purchase['status'];
+  founder: boolean;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal
+      title={`标为${status}`}
+      subtitle={purchase.name}
+      className="owner-purchase-status-dialog"
+      blocking
+      onClose={() => !busy && onClose()}
+    >
+      <div className="modal-body">
+        <OwnerPurchaseFeedback
+          project={purchase.projectId}
+          id={purchase.id}
+          founder={founder}
+          onChanged={onChanged}
+          statusChange={{ status, close: onClose, onBusy: setBusy }}
+        />
+      </div>
+    </Modal>
+  );
+}
 export function OwnerPurchaseFeedback({
   project,
   id,
-  dirty,
+  dirty = false,
   founder,
   onChanged,
   onLoaded,
-  saving,
+  saving = false,
+  statusChange,
 }: {
   project: string;
   id: string;
-  dirty: boolean;
+  dirty?: boolean;
   founder: boolean;
   onChanged: () => void;
-  onLoaded: (item: OwnerPurchaseItem) => void;
-  saving: boolean;
+  onLoaded?: (item: OwnerPurchaseItem) => void;
+  saving?: boolean;
+  statusChange?: { status: Purchase['status']; close: () => void; onBusy: (busy: boolean) => void };
 }) {
   const path = ownerPurchasePath(project, id);
+  const target = statusChange?.status;
+  const finishStatus = target === '已到货' || target === '已完成' ? target : undefined;
+  const reopenStatus = target === '待采购' || target === '已下单' ? target : undefined;
   const [item, setItem] = useState<OwnerPurchaseItem>();
   const [feedback, setFeedback] = useState<OwnerFeedback>({ brand: '', model: '', note: '' });
-  const [action, setAction] = useState<'purchase' | 'return' | 'reopen' | 'finish'>();
+  const targetAction = finishStatus ? 'finish' : reopenStatus ? 'reopen' : undefined;
+  const [action, setAction] = useState<StaffAction['action'] | undefined>(targetAction);
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState('');
   const [retryRead, setRetryRead] = useState(false);
@@ -87,7 +130,7 @@ export function OwnerPurchaseFeedback({
   const apply = useCallback(
     ({ item }: { item: OwnerPurchaseItem }) => {
       setItem(item);
-      onLoaded(item);
+      onLoaded?.(item);
       setFeedback(feedbackFrom(item));
     },
     [onLoaded],
@@ -125,6 +168,7 @@ export function OwnerPurchaseFeedback({
     const key = JSON.stringify(body);
     if (receipt.current?.key !== key) receipt.current = { key, id: crypto.randomUUID() };
     setBusy(true);
+    statusChange?.onBusy(true);
     setMessage('');
     setRetryRead(false);
     try {
@@ -135,10 +179,14 @@ export function OwnerPurchaseFeedback({
       receipt.current = undefined;
       onChanged();
       if (!current.current) return;
+      if (statusChange && input.action !== 'purchase') {
+        statusChange.close();
+        return;
+      }
       apply(value);
-      setAction(undefined);
+      setAction(targetAction);
       setReason('');
-      setMessage('已保存');
+      setMessage(statusChange ? '购买信息已保存' : '已保存');
     } catch (error) {
       if (!current.current) return;
       if (error instanceof CloudError && error.status === 409) {
@@ -147,7 +195,10 @@ export function OwnerPurchaseFeedback({
         setMessage(error.message + '。如记录有变，请重新读取。');
       } else setMessage(error instanceof Error ? error.message : '保存失败，请重试');
     } finally {
-      if (current.current) setBusy(false);
+      if (current.current) {
+        setBusy(false);
+        statusChange?.onBusy(false);
+      }
     }
   }
   const productLink = item?.note.match(/https?:\/\/[^\s<>"'，。；、）]+/i)?.[0];
@@ -159,10 +210,14 @@ export function OwnerPurchaseFeedback({
     if (item) setFeedback(item.bought ? feedbackFrom(item) : { brand: '', model: '', note: '' });
   };
   const hasFeedback = item && (item.bought || item.feedbackAt || item.returnReason);
-  if (!item?.published && !hasFeedback && !message) return null;
+  if (!statusChange && !item?.published && !hasFeedback && !message) return null;
+  const needsPurchase = action === 'finish' && item && !item.bought;
   return (
     <div className="span2 purchase-owner-feedback" onKeyDown={keepForm}>
-      {item && (
+      {statusChange && !item?.published && !message && (
+        <p role="status">{item ? '采购发布状态有变，请关闭后重新选择。' : '正在读取采购…'}</p>
+      )}
+      {item && (!statusChange || item.published) && (
         <>
           {hasFeedback && (
             <div className="owner-purchase-preview">
@@ -197,7 +252,7 @@ export function OwnerPurchaseFeedback({
               {item.returnReason && <p>对外说明 {item.returnReason}</p>}
             </div>
           )}
-          {item.published && (
+          {item.published && !statusChange && (
             <div className="owner-purchase-actions">
               {!item.complete && (
                 <button type="button" disabled={disabled} onClick={() => selectAction('purchase')}>
@@ -255,8 +310,14 @@ export function OwnerPurchaseFeedback({
                     />
                   </label>
                 </fieldset>
+              ) : needsPurchase ? (
+                <p>请先确认购买，再标为{finishStatus ?? '已完成'}。</p>
               ) : action === 'finish' ? (
-                <p>确认后，业主可查看购买信息。</p>
+                <p>
+                  {statusChange
+                    ? '确认后，业主端将显示采购已完成。'
+                    : '确认后，业主可查看购买信息。'}
+                </p>
               ) : (
                 <label className="form-field">
                   对外说明
@@ -273,19 +334,26 @@ export function OwnerPurchaseFeedback({
                   type="button"
                   disabled={disabled || (['return', 'reopen'].includes(action) && !reason.trim())}
                   className="primary"
-                  onClick={() =>
+                  onClick={() => {
+                    if (needsPurchase) return selectAction('purchase');
                     void save(
                       action === 'purchase'
                         ? { action, feedback }
                         : action === 'finish'
-                          ? { action }
-                          : { action, reason },
-                    )
-                  }
+                          ? { action, status: finishStatus }
+                          : action === 'reopen'
+                            ? { action, reason, status: reopenStatus }
+                            : { action, reason },
+                    );
+                  }}
                 >
-                  确认
+                  {needsPurchase ? '代为确认购买' : '确认'}
                 </button>
-                <button type="button" disabled={busy} onClick={() => selectAction(undefined)}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={statusChange?.close ?? (() => selectAction(undefined))}
+                >
                   取消
                 </button>
               </div>
