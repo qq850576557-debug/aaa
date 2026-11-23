@@ -15,6 +15,7 @@ function preview(t) {
     getWindowInfo: () => ({ statusBarHeight: 24 }),
     navigateTo: ({ url }) => navigation.push(url),
     navigateBack() {},
+    stopPullDownRefresh() {},
     reLaunch() {},
     showToast() {},
     request: () => assert.fail('Unexpected network request from preview'),
@@ -126,7 +127,7 @@ test('owner home lists all pending purchases from earliest deadline and hides ot
     ['old-complete', '2026-11-19', 'complete'],
   ].map(([id, due, state]) => ({ id, title: id, due, state }));
   api.session = async () => auth;
-  api.purchases = async () => ({ items: records });
+  api.purchases = async () => ({ items: [...records] });
   store.beginVerified(auth);
   const home = load('home');
   await home.onShow();
@@ -134,6 +135,32 @@ test('owner home lists all pending purchases from earliest deadline and hides ot
   assert.deepEqual(
     home.data.recent.map(({ id }) => id),
     ['first', 'same-a', 'same-b', 'later-d', 'later-e'],
+  );
+  records.push(
+    { id: 'added-earlier', title: '新发布采购一', due: '2026-11-20', state: 'pending' },
+    { id: 'added-later', title: '新发布采购二', due: '2027-01-05', state: 'pending' },
+  );
+  await home.onPullDownRefresh();
+  assert.equal(home.data.pendingCount, 7);
+  assert.equal(home.data.totalCount, 9);
+  const expected = [
+    'first',
+    'added-earlier',
+    'same-a',
+    'same-b',
+    'later-d',
+    'later-e',
+    'added-later',
+  ];
+  assert.deepEqual(
+    home.data.recent.map(({ id }) => id),
+    expected,
+  );
+  const list = load('purchases', { state: 'pending' });
+  await list.onShow();
+  assert.deepEqual(
+    list.data.rows.map(({ id }) => id),
+    expected,
   );
 });
 

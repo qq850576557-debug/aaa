@@ -108,11 +108,24 @@ export function Editor({
   const [ownerItem, setOwnerItem] = useState<OwnerPurchaseItem>();
   const [savingOwnerPurchase, setSavingOwnerPurchase] = useState(false);
   const dirty = JSON.stringify(v) !== JSON.stringify(initial);
+  const collection = {
+    project: data.projects,
+    trade: data.trades,
+    task: data.tasks,
+    note: data.notes,
+    purchase: data.purchases,
+  }[edit.kind];
+  const isExisting = collection.some(({ id }) => id === edit.value.id);
   const journal = useEditorJournal(
-    `editor:${edit.kind}:${data[({ project: 'projects', trade: 'trades', task: 'tasks', purchase: 'purchases', note: 'notes' } as const)[edit.kind]]?.some((x: any) => x.id === edit.value.id) ? edit.value.id : 'new'}`,
+    `editor:${edit.kind}:${isExisting ? edit.value.id : 'new'}`,
     v,
     set,
     dirty,
+    // A draft from a completed creation must not turn the next new purchase into an edit.
+    edit.kind === 'purchase' && !isExisting
+      ? (draft) =>
+          typeof draft?.id === 'string' && !data.purchases.some(({ id }) => id === draft.id)
+      : undefined,
   );
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const close = () => {
@@ -243,13 +256,7 @@ export function Editor({
     />
   );
   const kind = edit.kind;
-  const isNew = !{
-    project: data.projects,
-    trade: data.trades,
-    task: data.tasks,
-    note: data.notes,
-    purchase: data.purchases,
-  }[kind].some((x) => x.id === v.id);
+  const isNew = !collection.some(({ id }) => id === v.id);
   const schemas = {
     project: projectSchema,
     trade: tradeSchema,
@@ -309,6 +316,7 @@ export function Editor({
           checked,
           isNew ? undefined : { version, changed: dirty },
         );
+        await journal.clear().catch(() => {});
         ownerPurchase.refresh();
       } else {
         onSave(kind, value, { colorChanged: kind === 'trade' && colorChanged.current });

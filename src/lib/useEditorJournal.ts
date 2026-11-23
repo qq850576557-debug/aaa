@@ -15,6 +15,7 @@ export function useEditorJournal<T>(
   value: T,
   restore: (value: T) => void,
   dirty: boolean,
+  canRestore?: (value: T) => boolean,
 ) {
   const [status, setStatus] = useState('');
   const operationId = useRef(crypto.randomUUID());
@@ -23,6 +24,8 @@ export function useEditorJournal<T>(
   const [recovery, setRecovery] = useState<unknown>();
   const latest = useRef(value);
   latest.current = value;
+  const acceptsDraft = useRef(canRestore);
+  acceptsDraft.current = canRestore;
   const original = useRef(value);
   const owner = verifiedOwner();
   const key = owner ? JSON.stringify([owner.workspaceId, owner.id, name, draftTab()]) : '';
@@ -56,7 +59,12 @@ export function useEditorJournal<T>(
               cursor = await cursor.continue();
             }
           }
-          if (active && saved && JSON.stringify(latest.current) === initial) {
+          if (
+            active &&
+            saved &&
+            JSON.stringify(latest.current) === initial &&
+            acceptsDraft.current?.(saved.value) !== false
+          ) {
             if (saved.operationId) operationId.current = saved.operationId;
             const local = saved.value;
             const base = saved.base;

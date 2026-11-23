@@ -523,13 +523,39 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
               .length,
             1,
           );
+          await normal.unroute(workspaceEndpoint);
+          const visibleNames = [
+            '测试采购三',
+            '测试采购四',
+            '测试采购五',
+            '测试采购六',
+            '测试采购七',
+          ];
+          const privateName = '测试未发布采购';
+          for (const [index, name] of [...visibleNames, privateName].entries()) {
+            await normal.getByRole('button', { name: '新增采购', exact: true }).click();
+            await normal.getByRole('heading', { name: '新建采购事项' }).waitFor();
+            await normal.getByLabel('采购名称').fill(name);
+            const visibility = normal.getByRole('checkbox', { name: '业主可见' });
+            assert.equal(await visibility.isChecked(), false);
+            if (name !== privateName) await visibility.check();
+            await normal.getByText('本地已保存，待提交', { exact: true }).waitFor();
+            await mainSave.click();
+            await normal.locator('dialog').waitFor({ state: 'hidden' });
+            await normal.getByRole('button', { name: '编辑采购' + name }).waitFor();
+            const delivered = (await feed()).body.items.map(
+              ({ title }: { title: string }) => title,
+            );
+            assert.deepEqual(
+              delivered.sort(),
+              [original.name, pendingName, ...visibleNames.slice(0, index + 1)].sort(),
+            );
+          }
           await normal.close();
           const savedPending = (await request('/workspace', 'GET', undefined, founder)).body;
-          const pendingRows = savedPending.data.purchases.filter(
-            (row: { name: string }) => row.name === pendingName,
-          );
-          assert.equal(pendingRows.length, 1);
-          // Remove the browser-only fixture through the normal API so it cannot affect the remaining cases.
+          const browserNames = new Set([pendingName, ...visibleNames, privateName]);
+          assert.equal(savedPending.data.purchases.length, browserNames.size + 1);
+          // Keep the fixture set for the remaining cases unchanged.
           const cleanup = await request(
             '/workspace',
             'PUT',
@@ -538,7 +564,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
               data: {
                 ...savedPending.data,
                 purchases: savedPending.data.purchases.filter(
-                  (row: { id: string }) => row.id !== pendingRows[0].id,
+                  (row: { name: string }) => !browserNames.has(row.name),
                 ),
               },
             },
