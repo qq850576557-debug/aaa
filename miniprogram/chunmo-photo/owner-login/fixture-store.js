@@ -4,7 +4,7 @@ const { startPreview, routes } = require('./preview');
 const reminders = require('./purchase-reminders');
 const ownerSession = require('./owner-session');
 
-const labels = { pending: '待采购', bought: '已购买', complete: '已完成' };
+const labels = { pending: '待采购', bought: '已下单', complete: '已到货' };
 const blankFeedback = { brand: '', model: '', note: '' };
 const modes = ['review', 'single', 'empty', 'offline', 'denied'];
 let session = null;
@@ -228,7 +228,7 @@ function itemInProject(id, projectId, version) {
   const s = current();
   const item = s.active === projectId && s.records[s.active].find((entry) => entry.id === id);
   if (!item) throw Error('此条采购已不可见');
-  if (item.state === 'complete') throw Error('公司已确认完成');
+  if (item.state === 'complete') throw Error('公司已确认到货');
   if (item.version !== version) throw Error('采购已更新，请重新读取后再操作');
   return item;
 }
@@ -241,6 +241,7 @@ function update(id, projectId, version, draft) {
       throw Error('购买信息过长，请缩短后重试');
   }
   const fields = Object.fromEntries(Object.keys(limits).map((key) => [key, draft[key].trim()]));
+  if (!fields.brand || !fields.model) throw Error('请填写品牌和型号');
   if (isVerified()) return feedbackRequest(projectId, id, version, 'purchase', fields);
   item.feedback = fields;
   item.state = 'bought';

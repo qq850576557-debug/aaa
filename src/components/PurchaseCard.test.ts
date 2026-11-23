@@ -36,13 +36,12 @@ function card(status: Purchase['status'], canReopen = true) {
 }
 
 describe('shared purchase status controls', () => {
-  it.each(purchaseStatuses)('offers all four statuses when currently %s', (status) => {
+  it.each(purchaseStatuses)('offers the three active statuses when currently %s', (status) => {
     const markup = card(status);
     expect([...markup.matchAll(/<option[^>]*>([^<]*)<\/option>/g)].map((m) => m[1])).toEqual([
       '待采购',
       '已下单',
       '已到货',
-      '已完成',
     ]);
     expect(markup).toContain(`data-purchase-status="${status}"`);
     expect(markup).toContain(`<option value="${status}" selected="">${status}</option>`);
@@ -64,5 +63,9 @@ describe('shared purchase status controls', () => {
     const markup = card('已到货');
     expect(markup).toContain('采购已到货');
     expect(markup).not.toContain('采购已完成');
+  });
+  it('displays legacy completion as arrival without changing the stored status', () => {
+    expect(card('已完成')).toContain('<option value="已到货" selected="">已到货</option>');
+    expect(purchaseSchema.parse({ ...purchase, status: '已完成' }).status).toBe('已完成');
   });
 });

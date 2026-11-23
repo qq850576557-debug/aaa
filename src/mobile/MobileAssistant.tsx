@@ -1,8 +1,8 @@
 import { mobileRequested } from './mode';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { Camera, ClipboardList, ShoppingCart, Home, Plus } from 'lucide-react';
-import type { Data, Purchase } from '../lib/model';
-import { plus, purchaseStatuses } from '../lib/model';
+import type { Data, Purchase, PurchaseStatus } from '../lib/model';
+import { plus, purchaseDisplayStatus, purchaseStatuses } from '../lib/model';
 import type { WorkRecord } from '../lib/records';
 import { cloudApi, type CloudUser } from '../lib/cloud';
 import { categorizedAgenda, type AgendaItem } from '../lib/agenda';
@@ -43,7 +43,7 @@ export function MobileAssistant({
   onOpen: (item: AgendaItem) => void;
   onToggle: (item: AgendaItem) => void;
   onDelete: (item: AgendaItem) => void;
-  onPurchaseStatus: (p: Purchase, status: Purchase['status']) => void;
+  onPurchaseStatus: (p: Purchase, status: PurchaseStatus) => void;
 }) {
   const [tab, setTab] = useState<'home' | 'records' | 'purchases' | 'photo'>('home'),
     [project, setProject] = useState(() =>
@@ -125,10 +125,8 @@ export function MobileAssistant({
           <select
             disabled={i.done && !user?.owner}
             aria-label={`${i.title}采购状态`}
-            value={i.value.status}
-            onChange={(e) =>
-              onPurchaseStatus(i.value as Purchase, e.target.value as Purchase['status'])
-            }
+            value={purchaseDisplayStatus(i.value.status)}
+            onChange={(e) => onPurchaseStatus(i.value, e.target.value as PurchaseStatus)}
           >
             {purchaseStatuses.map((s) => (
               <option key={s} value={s}>

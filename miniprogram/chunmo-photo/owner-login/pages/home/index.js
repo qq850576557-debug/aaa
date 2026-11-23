@@ -44,7 +44,7 @@ Page(
           project,
           canSwitch: projects.length > 1,
           pendingCount: groups.pending.length,
-          boughtCount: groups.bought.length + groups.complete.length,
+          boughtCount: groups.bought.length,
           overdueCount: groups.pending.filter(({ overdue }) => overdue).length,
           totalCount: groups.pending.length + groups.bought.length + groups.complete.length,
           recent: groups.pending,

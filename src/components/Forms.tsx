@@ -17,6 +17,7 @@ import {
   duration,
   plus,
   purchaseComplete,
+  purchaseDisplayStatus,
   purchaseDue,
   projectStatus,
   projectSchema,
@@ -67,6 +68,7 @@ export function Editor({
       purchase: Purchase,
       visible: boolean,
       edit?: { version?: string; changed: boolean },
+      order?: { brand: string; model: string },
     ) => Promise<void>;
     refresh: () => void;
   };
@@ -176,7 +178,13 @@ export function Editor({
           id={`${uid}-${key}`}
           type={type}
           required={required}
-          maxLength={['name', 'title', 'quantity'].includes(key) ? 100 : 4000}
+          maxLength={
+            key === 'orderBrand' || key === 'orderModel'
+              ? 80
+              : ['name', 'title', 'quantity'].includes(key)
+                ? 100
+                : 4000
+          }
           value={String(v[key] ?? '')}
           onChange={(e) => change(key, e.target.value)}
         />
@@ -194,14 +202,18 @@ export function Editor({
       <select
         id={`${uid}-${key}`}
         data-purchase-status={
-          kind === 'purchase' && key === 'status' ? String(v.status) : undefined
+          kind === 'purchase' && key === 'status'
+            ? purchaseDisplayStatus(v.status as Purchase['status'])
+            : undefined
         }
         required={key === 'projectId'}
         disabled={kind === 'purchase' && key === 'status' && savingOwnerPurchase}
         value={
           key === 'dependency'
             ? String((v.dependsOn as string[] | undefined)?.[0] ?? '')
-            : String(v[key] ?? '')
+            : kind === 'purchase' && key === 'status'
+              ? purchaseDisplayStatus(v.status as Purchase['status'])
+              : String(v[key] ?? '')
         }
         onChange={(e) =>
           key === 'dependency'
@@ -225,9 +237,11 @@ export function Editor({
               disabled={
                 edit.kind === 'purchase' &&
                 key === 'status' &&
-                published &&
-                purchaseComplete(edit.value) !==
-                  purchaseComplete({ ...edit.value, status: value as Purchase['status'] })
+                canConfigureOwner &&
+                value !== purchaseDisplayStatus(edit.value.status) &&
+                (value === '已到货' ||
+                  purchaseComplete(edit.value) ||
+                  (edit.value.status === '已下单' && value === '待采购'))
               }
             >
               {text}
@@ -278,6 +292,11 @@ export function Editor({
   const visibility = ownerDraft?.project === v.projectId ? ownerDraft : undefined;
   const published = ownerItem?.published ?? ownerPurchase?.published ?? false;
   const checked = visibility?.visible ?? published;
+  const enteringOrder =
+    kind === 'purchase' &&
+    canConfigureOwner &&
+    v.status === '已下单' &&
+    (isNew || (edit.kind === 'purchase' && edit.value.status !== '已下单'));
   const refreshPublishedName =
     published && (!ownerItem || ownerItem.title !== ownerItem.internalTitle);
   const awaitingCloudPurchase = !isNew && ownerPurchase?.confirmed === false;
@@ -297,7 +316,11 @@ export function Editor({
     e.preventDefault();
     if (savingOwnerPurchase) return;
     try {
-      const payload = { ...v };
+      const { orderBrand, orderModel, ...payload } = v;
+      const order = enteringOrder
+        ? { brand: String(orderBrand ?? '').trim(), model: String(orderModel ?? '').trim() }
+        : undefined;
+      if (order && (!order.brand || !order.model)) throw Error('请填写品牌和型号');
       if (['project', 'trade', 'task'].includes(kind) && v.personnel) {
         payload.personnel = {
           ...people,
@@ -313,7 +336,9 @@ export function Editor({
         kind === 'purchase' &&
         canConfigureOwner &&
         ownerPurchase &&
-        (visibility || (checked && ownerProject?.enabled && (dirty || refreshPublishedName)))
+        (order ||
+          visibility ||
+          (checked && ownerProject?.enabled && (dirty || refreshPublishedName)))
       ) {
         const purchase = value as Purchase;
         const version = visibility ? visibility.version : ownerItem?.version;
@@ -322,6 +347,7 @@ export function Editor({
           purchase,
           checked,
           isNew ? undefined : { version, changed: dirty },
+          order,
         );
         await journal.clear().catch(() => {});
         ownerPurchase.refresh();
@@ -511,6 +537,12 @@ export function Editor({
           </div>
         ) : (
           select('status', '采购状态', [...purchaseStatuses])
+        )}
+        {enteringOrder && (
+          <>
+            {input('orderBrand', '品牌', 'text', true)}
+            {input('orderModel', '型号', 'text', true)}
+          </>
         )}
         {ownerPurchase && ownerProject && canConfigureOwner && !isNew && !awaitingCloudPurchase && (
           <OwnerPurchaseFeedback

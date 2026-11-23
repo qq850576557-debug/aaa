@@ -24,7 +24,7 @@ export function projectAgenda(data: Data, projectId: string | undefined, date: s
   };
 }
 
-import { purchaseDue, purchaseComplete, type Purchase } from './model';
+import { purchaseDue, purchaseComplete, purchaseDisplayStatus, type Purchase } from './model';
 import type { WorkRecord } from './records';
 export type AgendaItem = {
   id: string;
@@ -54,7 +54,7 @@ export function categorizedAgenda(
         projectId: p.projectId,
         title: p.name,
         date: purchaseDue(p, data),
-        status: p.status,
+        status: purchaseDisplayStatus(p.status),
         done: purchaseComplete(p),
         value: p,
       })),

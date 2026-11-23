@@ -51,7 +51,7 @@
           <view class="portal-arrow" aria-hidden="{{true}}"></view>
         </button>
         <button class="portal-row bought-card" bindtap="bought" hover-class="row-pressed">
-          <view><text>已购买</text><text class="quick-count">{{boughtCount}} 项</text></view>
+          <view><text>已下单</text><text class="quick-count">{{boughtCount}} 项</text></view>
           <view class="portal-arrow" aria-hidden="{{true}}"></view>
         </button>
       </view>

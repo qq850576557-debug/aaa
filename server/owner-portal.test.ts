@@ -469,24 +469,6 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await mainSave.click();
           await normal.getByRole('heading', { name: '编辑采购事项' }).waitFor({ state: 'hidden' });
           assert.equal((await feed()).body.items[0].title, original.name);
-          const cardStatus = normal.getByRole('combobox', { name: '采购状态' + original.name });
-          await cardStatus.selectOption('已下单');
-          await expect
-            .poll(async () => {
-              const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
-              return workspace.data.purchases.find((row: { id: string }) => row.id === original.id)
-                .status;
-            })
-            .toBe('已下单');
-          assert.equal((await feed()).body.items[0].state, 'pending');
-          await cardStatus.selectOption('待采购');
-          await expect
-            .poll(async () => {
-              const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
-              return workspace.data.purchases.find((row: { id: string }) => row.id === original.id)
-                .status;
-            })
-            .toBe('待采购');
           const savedWorkspace = (await request('/workspace', 'GET', undefined, founder)).body;
           assert.equal(
             savedWorkspace.data.purchases.find((row: { id: string }) => row.id === 'existing')
@@ -557,6 +539,11 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
             const visibility = normal.getByRole('checkbox', { name: '业主可见' });
             assert.equal(await visibility.isChecked(), false);
             if (name !== privateName) await visibility.check();
+            else {
+              await normal.locator('dialog').getByLabel('采购状态').selectOption('已下单');
+              await normal.locator('dialog').getByLabel('品牌', { exact: true }).fill('内部品牌');
+              await normal.locator('dialog').getByLabel('型号', { exact: true }).fill('内部型号');
+            }
             await normal.getByText('本地已保存，待提交', { exact: true }).waitFor();
             await mainSave.click();
             await normal.locator('dialog').waitFor({ state: 'hidden' });
@@ -573,34 +560,35 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           const changedCard = normal.getByRole('combobox', { name: '采购状态' + statusName });
           const phoneItem = async () =>
             (await feed()).body.items.find(({ title }: { title: string }) => title === statusName);
+          await expect(changedCard.locator('option')).toHaveText(['待采购', '已下单', '已到货']);
           await changedCard.selectOption('已到货');
           const arrived = normal.getByRole('dialog', { name: '标为已到货' });
-          await expect(arrived.getByText('请先确认购买，再标为已到货。')).toBeVisible();
+          await expect(arrived.getByText('请先填写品牌和型号并确认下单。')).toBeVisible();
           await arrived.getByRole('button', { name: '取消', exact: true }).click();
           await expect(changedCard).toHaveValue('待采购');
-          await changedCard.selectOption('已到货');
-          await arrived.getByRole('button', { name: '代为确认购买' }).click();
-          await arrived.getByLabel('型号').fill('测试型号');
-          await arrived.getByRole('button', { name: '确认', exact: true }).click();
-          await expect(arrived.getByText('购买信息已保存')).toBeVisible();
+          await changedCard.selectOption('已下单');
+          const ordered = normal.getByRole('dialog', { name: '标为已下单' });
+          const confirmOrder = ordered.getByRole('button', { name: '确认', exact: true });
+          await ordered.getByLabel('型号').fill('测试型号');
+          await expect(confirmOrder).toBeDisabled();
+          await ordered.getByLabel('品牌').fill('测试品牌');
+          await ordered.screenshot({ path: join(artifacts, '05-confirm-order.png') });
+          await confirmOrder.click();
+          await expect(changedCard).toHaveValue('已下单');
           assert.equal((await phoneItem()).state, 'bought');
-          await arrived.screenshot({ path: join(artifacts, '05-confirm-arrival.png') });
+          await changedCard.selectOption('已到货');
+          await expect(arrived.getByText('确认这项采购已到货？')).toBeVisible();
+          await expect(arrived.getByLabel('品牌')).toHaveCount(0);
+          await expect(arrived.getByLabel('型号')).toHaveCount(0);
+          await arrived.screenshot({ path: join(artifacts, '06-confirm-arrival.png') });
           await arrived.getByRole('button', { name: '确认', exact: true }).focus();
           await normal.keyboard.press('Enter');
           await expect(arrived).toBeHidden();
           await expect(changedCard).toHaveValue('已到货');
           assert.equal((await phoneItem()).state, 'complete');
-          await changedCard.selectOption('已完成');
-          await expect
-            .poll(async () => {
-              const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
-              return workspace.data.purchases.find(
-                (row: { name: string }) => row.name === statusName,
-              ).status;
-            })
-            .toBe('已完成');
-          await changedCard.selectOption('已下单');
-          const reopen = normal.getByRole('dialog', { name: '标为已下单' });
+          assert.equal((await phoneItem()).feedback.brand, '测试品牌');
+          await changedCard.selectOption('待采购');
+          const reopen = normal.getByRole('dialog', { name: '标为待采购' });
           await expect(reopen.getByRole('button', { name: '确认', exact: true })).toBeDisabled();
           await reopen.getByLabel('对外说明').fill('测试重新采购');
           await normal.setViewportSize({ width: 390, height: 844 });
@@ -610,10 +598,10 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
               return !!bounds && bounds.x >= 0 && bounds.x + bounds.width <= 390;
             })
             .toBe(true);
-          await reopen.screenshot({ path: join(artifacts, '06-confirm-reopen.png') });
+          await reopen.screenshot({ path: join(artifacts, '07-confirm-reopen.png') });
           await reopen.getByRole('button', { name: '确认', exact: true }).click();
           await expect(reopen).toBeHidden();
-          await expect(changedCard).toHaveValue('已下单');
+          await expect(changedCard).toHaveValue('待采购');
           assert.equal((await phoneItem()).state, 'pending');
           assert.equal((await phoneItem()).feedback.model, '测试型号');
           assert.equal((await phoneItem()).returnReason, '测试重新采购');
@@ -621,6 +609,16 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           const savedPending = (await request('/workspace', 'GET', undefined, founder)).body;
           const browserNames = new Set([pendingName, ...visibleNames, privateName]);
           assert.equal(savedPending.data.purchases.length, browserNames.size + 1);
+          const privateOrder = savedPending.data.purchases.find(
+            (p: { name: string }) => p.name === privateName,
+          );
+          assert.equal(privateOrder.status, '已下单');
+          const privateFeedback = (
+            await request('/owner-purchases/p1/' + privateOrder.id, 'GET', undefined, founder)
+          ).body.item;
+          assert.equal(privateFeedback.published, false);
+          assert.equal(privateFeedback.brand, '内部品牌');
+          assert.equal(privateFeedback.model, '内部型号');
           // Keep the fixture set for the remaining cases unchanged.
           const cleanup = await request(
             '/workspace',
@@ -729,6 +727,10 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       };
       const respond = (body: object, bearer = tokenA, route = postPhone) =>
         request(route, 'POST', body, '', bearer);
+      assert.equal(
+        (await respond({ ...confirm, feedback: { ...confirm.feedback, brand: '' } })).status,
+        400,
+      );
       assert.equal(
         (await respond(confirm, tokenB, projects + '/p2/purchases/existing/feedback')).status,
         404,

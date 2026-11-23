@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ComponentProps } from 'react';
 import { Modal, Confirm } from './Modal';
 import { Editor, type Edit, type Entity } from './Forms';
 import { RecordDrawer } from './RecordDrawer';
@@ -14,6 +14,7 @@ export function AgendaEntryDialog({
   request,
   data,
   isCloud,
+  ownerPurchase,
   onClose,
   onPurchase,
   onRecord,
@@ -21,6 +22,7 @@ export function AgendaEntryDialog({
   request: AgendaEntryRequest;
   data: Data;
   isCloud: boolean;
+  ownerPurchase?: ComponentProps<typeof Editor>['ownerPurchase'];
   onClose: () => void;
   onPurchase: (kind: Edit['kind'], value: Entity) => void;
   onRecord: (record: WorkRecord) => void;
@@ -143,6 +145,7 @@ export function AgendaEntryDialog({
               embedded
               edit={{ ...purchase, value: drafts.current.purchase ?? purchase.value } as Edit}
               data={data}
+              ownerPurchase={ownerPurchase}
               onDirtyChange={(v) => {
                 dirty.current = v || transferred.current;
               }}

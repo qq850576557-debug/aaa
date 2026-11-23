@@ -665,7 +665,12 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     version?: string;
   }>(undefined);
   const saveOwnerPurchase = useCallback(
-    async (purchase: Purchase, visible: boolean, edit?: { version?: string; changed: boolean }) => {
+    async (
+      purchase: Purchase,
+      visible: boolean,
+      edit?: { version?: string; changed: boolean },
+      order?: { brand: string; model: string },
+    ) => {
       if (exclusive.current || blocked.current || !baseline.current)
         throw Error('请先完成云端保存或处理冲突');
       if (pending.current) {
@@ -674,7 +679,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
       }
       if (exclusive.current || pending.current || blocked.current || !baseline.current)
         throw Error('采购草稿还未同步，请重试保存。业主可见设置已保留在此窗口');
-      const key = JSON.stringify({ purchase, visible, edit });
+      const key = JSON.stringify({ purchase, visible, edit, order });
       const path = ownerPurchasePath(purchase.projectId, purchase.id);
       pending.current = true;
       exclusive.current = true;
@@ -703,8 +708,16 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
                 version,
                 ...(edit.changed ? { purchase } : {}),
                 publication: { visible },
+                ...(order ? { order } : {}),
               }
-            : { action: 'create', requestId, revision, purchase, publication: { visible } },
+            : {
+                action: 'create',
+                requestId,
+                revision,
+                purchase,
+                publication: { visible },
+                ...(order ? { order } : {}),
+              },
         );
         apply(validState(result.workspace));
         ownerPurchaseReceipt.current = undefined;

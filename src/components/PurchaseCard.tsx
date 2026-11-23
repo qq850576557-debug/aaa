@@ -5,10 +5,12 @@ import './purchase-status.css';
 import {
   purchaseDue,
   purchaseComplete,
+  purchaseDisplayStatus,
   purchaseStatuses,
   remainingTime,
   type Data,
   type Purchase,
+  type PurchaseStatus,
 } from '../lib/model';
 export function PurchaseCard({
   purchase: p,
@@ -25,26 +27,27 @@ export function PurchaseCard({
   data: Data;
   now: string;
   onEdit: () => void;
-  onStatus: (status: Purchase['status']) => void;
+  onStatus: (status: PurchaseStatus) => void;
   onDelete?: () => void;
   canReopen?: boolean;
   showProject?: boolean;
   ownerBadge?: string;
 }) {
   const due = purchaseDue(p, data),
-    done = purchaseComplete(p);
+    done = purchaseComplete(p),
+    status = purchaseDisplayStatus(p.status);
   return (
     <article
       className={`purchase-row purchase-card ${done ? 'done' : ''}`}
       data-purchase-id={p.id}
-      data-purchase-status={p.status}
+      data-purchase-status={status}
       style={projectThemeStyle(useProjectTheme(p.projectId))}
     >
       <div className="purchase-actions" role="group" aria-label={`采购操作：${p.name}`}>
         <select
           aria-label={`采购状态${p.name}`}
-          value={p.status}
-          onChange={(e) => onStatus(e.target.value as Purchase['status'])}
+          value={status}
+          onChange={(e) => onStatus(e.target.value as PurchaseStatus)}
         >
           {purchaseStatuses.map((status) => (
             <option
@@ -79,7 +82,7 @@ export function PurchaseCard({
             {due} 前采购 <PurchaseDateHistory purchase={p} />
           </small>
           <span className={`deadline-countdown ${!done && due < now ? 'red' : ''}`}>
-            {p.status === '已到货' ? '采购已到货' : done ? '采购已完成' : remainingTime(due, now)}
+            {done ? '采购已到货' : remainingTime(due, now)}
           </span>
         </div>
         {p.owner && <small className="purchase-responsible">负责人：{p.owner}</small>}

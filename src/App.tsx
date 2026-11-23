@@ -104,6 +104,7 @@ import {
   plus,
   purchaseDue,
   purchaseComplete,
+  type PurchaseStatus,
   procurementView,
   projectStatus,
   noteDue,
@@ -235,7 +236,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [edit, setEdit] = useState<Edit | null>(null);
   const [ownerStatus, setOwnerStatus] = useState<{
     purchase: Purchase;
-    status: Purchase['status'];
+    status: PurchaseStatus;
   }>();
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [day, setDay] = useState<string | null>(null);
@@ -259,10 +260,12 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [purchaseProject, setPurchaseProject] = useState('');
   const { index: ownerPurchases, refresh: refreshOwnerPurchases } = useOwnerPurchaseIndex(
-    !mobile &&
-      isCloud &&
+    isCloud &&
       ready &&
-      (edit?.kind === 'purchase' || ['purchases', 'reminders', 'project-detail'].includes(view)),
+      (mobile ||
+        !!agendaEntry ||
+        edit?.kind === 'purchase' ||
+        ['overview', 'purchases', 'reminders', 'project-detail'].includes(view)),
   );
   const { notices, notify, dismiss } = useNotices();
   useEffect(() => {
@@ -786,6 +789,13 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         Number(purchaseComplete(a)) - Number(purchaseComplete(b)) ||
         purchaseDue(a, data).localeCompare(purchaseDue(b, data)),
     );
+  function changePurchaseStatus(purchase: Purchase, status: PurchaseStatus) {
+    if (ownerPurchases.projects.some(({ id }) => id === purchase.projectId)) {
+      setOwnerStatus({ purchase, status });
+      return;
+    }
+    save('purchase', { ...purchase, due: purchaseDue(purchase, data), status });
+  }
   function purchaseCard(x: Purchase) {
     const collaboration = ownerPurchases.items.find(
       ({ id, projectId }) => id === x.id && projectId === x.projectId,
@@ -801,22 +811,13 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         canReopen={!isCloud || !!cloudUser?.owner}
         showProject={view === 'reminders' || view === 'purchases'}
         ownerBadge={
-          collaboration?.bought && !collaboration?.complete
-            ? '业主已购买 · 待公司复核'
+          collaboration?.published && collaboration.bought && !collaboration.complete
+            ? '已下单 · 待到货'
             : collaboration?.published
               ? '已向业主发布'
               : undefined
         }
-        onStatus={(status) => {
-          if (
-            collaboration?.published &&
-            purchaseComplete(x) !== purchaseComplete({ ...x, status })
-          ) {
-            setOwnerStatus({ purchase: x, status });
-            return;
-          }
-          save('purchase', { ...x, due: purchaseDue(x, data), status });
-        }}
+        onStatus={(status) => changePurchaseStatus(x, status)}
       />
     );
   }
@@ -895,11 +896,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         }}
         onToggle={() => {
           if (item.kind === 'purchase')
-            save('purchase', {
-              ...item.value,
-              due: purchaseDue(item.value, data),
-              status: item.done ? '待采购' : '已完成',
-            });
+            changePurchaseStatus(item.value, item.done ? '待采购' : '已到货');
           else if (item.kind === 'record') void recordSource.toggle(item.value);
         }}
       />
@@ -997,7 +994,11 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     const legacy = items.filter((x) => x.kind === 'legacy' && !x.done && x.date <= now);
     const review = ownerPurchases.items
       .filter(
-        (x) => x.bought && !x.complete && (!metricFilter || !selected || x.projectId === selected),
+        (x) =>
+          x.published &&
+          x.bought &&
+          !x.complete &&
+          (!metricFilter || !selected || x.projectId === selected),
       )
       .flatMap(({ id }) => data.purchases.filter((purchase) => purchase.id === id));
 
@@ -1143,9 +1144,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 },
               });
           }}
-          onPurchaseStatus={(purchase, status) =>
-            save('purchase', { ...purchase, due: purchaseDue(purchase, data), status })
-          }
+          onPurchaseStatus={changePurchaseStatus}
         />
       ) : (
         <>
@@ -1760,6 +1759,18 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             request={agendaEntry}
             data={data}
             isCloud={isCloud}
+            ownerPurchase={
+              ownerPurchases.projects.length
+                ? {
+                    projects: ownerPurchases.projects,
+                    founder: !!cloudUser?.owner,
+                    published: false,
+                    confirmed: false,
+                    save: saveOwnerPurchase,
+                    refresh: refreshOwnerPurchases,
+                  }
+                : undefined
+            }
             onClose={() => setAgendaEntry(null)}
             onPurchase={(kind, value) => {
               save(kind, value);
@@ -1861,7 +1872,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             !isCloud || cloudUser?.owner ? (p) => setDeadlineChange(p.id) : undefined
           }
           ownerPurchase={
-            !mobile && isCloud && edit.kind === 'purchase' && ownerPurchases.projects.length
+            isCloud && edit.kind === 'purchase' && ownerPurchases.projects.length
               ? {
                   projects: ownerPurchases.projects,
                   founder: !!cloudUser?.owner,

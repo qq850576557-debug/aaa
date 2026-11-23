@@ -19,6 +19,7 @@ export function useWorkspace(initialUser?: CloudUser) {
           _purchase: Purchase,
           _visible: boolean,
           _edit?: { version?: string; changed: boolean },
+          _order?: { brand: string; model: string },
         ) => {},
         saveConflict: null,
         resolveSaveConflict: async (_choices: import('./workspace-merge').MergeChoices) => {},

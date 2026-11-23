@@ -125,7 +125,7 @@ test('owner fixtures scope purchases, preserve edits, and gate status changes', 
   const completed = groups.complete[0];
   assert.throws(
     () => store.update(completed.id, project.id, completed.version, feedback),
-    /已确认完成/,
+    /已确认到货/,
   );
   assert.throws(() => store.choose('other-project'), /不可访问/);
   store.choose(projects[1].id);

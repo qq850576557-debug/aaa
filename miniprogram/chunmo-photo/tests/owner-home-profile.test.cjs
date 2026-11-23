@@ -53,7 +53,7 @@ test('owner home counts, overdue filter and residence switching follow the activ
   const home = load('home');
   assert.deepEqual(
     [home.data.pendingCount, home.data.totalCount, home.data.overdueCount, home.data.boughtCount],
-    [3, 5, 1, 2],
+    [3, 5, 1, 1],
   );
   home.overdue();
   assert.match(navigation.pop(), /overdue=1$/);
@@ -66,7 +66,16 @@ test('owner home counts, overdue filter and residence switching follow the activ
   assert.match(navigation.pop(), /state=bought$/);
   assert.deepEqual(
     load('purchases', { state: 'bought' }).data.rows.map((row) => row.id),
-    ['floor', 'sink'],
+    ['sink'],
+  );
+  const arrived = load('purchases', { state: 'complete' });
+  assert.deepEqual(
+    arrived.data.statuses.map(({ label }) => label),
+    ['待采购', '已下单', '已到货'],
+  );
+  assert.deepEqual(
+    arrived.data.rows.map(({ id, statusLabel }) => [id, statusLabel]),
+    [['floor', '已到货']],
   );
   home.switchResidence();
   assert.match(navigation.pop(), /profile\/index\?switch=1$/);
@@ -74,12 +83,20 @@ test('owner home counts, overdue filter and residence switching follow the activ
   assert.equal(profile.data.switchOpen, true);
 
   const { project, groups } = store.snapshot();
-  store.update('lighting', project.id, groups.pending[0].version, store.blankFeedback);
+  assert.throws(
+    () => store.update('lighting', project.id, groups.pending[0].version, store.blankFeedback),
+    /请填写品牌和型号/,
+  );
+  store.update('lighting', project.id, groups.pending[0].version, {
+    brand: '测试品牌',
+    model: 'J-1',
+    note: '',
+  });
   home.onShow();
   list.onShow();
   assert.deepEqual(
     [home.data.pendingCount, home.data.totalCount, home.data.overdueCount, home.data.boughtCount],
-    [2, 5, 0, 3],
+    [2, 5, 0, 2],
   );
   assert.deepEqual(list.data.rows, []);
   const purchased = store.snapshot().groups.bought.find(({ id }) => id === 'lighting');

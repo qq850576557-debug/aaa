@@ -16,6 +16,11 @@ const feedback = z
     note: z.string().trim().max(1000),
   })
   .strict();
+const orderFeedback = feedback.extend({
+  brand: z.string().trim().min(1, '请填写品牌').max(80),
+  model: z.string().trim().min(1, '请填写型号').max(80),
+});
+const orderFields = orderFeedback.omit({ note: true });
 const publication = z
   .object({
     responsibility: z.enum(['owner', 'company', 'supplier']),
@@ -54,6 +59,7 @@ const create = z
     revision: z.number().int().nonnegative(),
     purchase: purchaseSchema,
     publication: publicationUpdate,
+    order: orderFields.optional(),
   })
   .strict();
 const edit = z
@@ -63,6 +69,7 @@ const edit = z
     revision: z.number().int().nonnegative(),
     purchase: purchaseSchema.optional(),
     publication: publicationUpdate,
+    order: orderFields.optional(),
   })
   .strict();
 const markBought = z.object({ ...stamp, action: z.literal('purchase'), feedback }).strict();
@@ -72,6 +79,15 @@ const staffInput = z.discriminatedUnion('action', [
   create,
   edit,
   markBought,
+  z
+    .object({
+      ...stamp,
+      action: z.literal('order'),
+      feedback: orderFeedback,
+      reason: reason.optional(),
+    })
+    .strict(),
+  z.object({ ...stamp, action: z.literal('reset') }).strict(),
   z.object({ ...stamp, action: z.literal('return'), reason }).strict(),
   z
     .object({
@@ -118,6 +134,38 @@ async function staffPurchase(c: PoolClient, workspace: string, project: string, 
     [workspace, project, purchase],
   );
   return rows[0];
+}
+
+async function ensureInternalFeedback(c: PoolClient, key: string[], title: string) {
+  await c.query(
+    `INSERT INTO owner_portal.purchase_collaboration
+     (workspace_id,project_id,purchase_id,responsibility,title,description,specification,quantity,reference)
+     VALUES($1,$2,$3,'company',$4,'','','','') ON CONFLICT DO NOTHING`,
+    [...key, title.trim().slice(0, 100)],
+  );
+}
+
+async function recordFeedback(
+  c: PoolClient,
+  key: string[],
+  actor: Actor,
+  draft: z.infer<typeof feedback>,
+  reason = '',
+) {
+  await c.query(
+    `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=true,
+     brand=$4,model=$5,note=$6,feedback_actor_id=$7,feedback_actor_name=$8,feedback_at=now(),return_reason=$9
+     WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3`,
+    [
+      ...key,
+      draft.brand,
+      draft.model,
+      draft.note,
+      actor.id,
+      actor.displayName ?? actor.login,
+      reason,
+    ],
+  );
 }
 
 export function staffOwnerPurchaseRoutes(app: Express) {
@@ -190,6 +238,7 @@ export function staffOwnerPurchaseRoutes(app: Express) {
         };
       }
       const before = await staffPurchase(c, workspace, project, purchase);
+      const previousPurchase = state.data.purchases.find((row) => row.id === purchase);
       let savedState: Awaited<ReturnType<typeof getState>> | undefined;
       if (input.action === 'create') {
         if (
@@ -224,7 +273,6 @@ export function staffOwnerPurchaseRoutes(app: Express) {
 
       if (input.action === 'create' || input.action === 'edit' || input.action === 'publication') {
         const change = input.publication;
-        const previousPurchase = state.data.purchases.find((row) => row.id === purchase);
         const currentPurchase =
           savedState?.data.purchases.find((row) => row.id === purchase) ?? previousPurchase;
         const publicValue = (
@@ -281,59 +329,67 @@ export function staffOwnerPurchaseRoutes(app: Express) {
             fields.reference,
           ],
         );
+        if ('order' in input && input.order) {
+          if (currentPurchase?.status !== '已下单' || before?.complete)
+            throw new ApiError(409, '请先选择已下单');
+          await recordFeedback(c, key, actor, { ...input.order, note: before?.note ?? '' });
+        }
       } else {
-        if (!before.published || before.responsibility !== 'owner')
+        const existingFeedbackAction = input.action === 'purchase' || input.action === 'return';
+        if (existingFeedbackAction && (!before.published || before.responsibility !== 'owner'))
           throw new ApiError(409, '采购当前未向业主发布');
-        if (input.action === 'reopen' ? !before.complete || !actor.owner : before.complete)
+        if (input.action === 'order' && before.complete && (!actor.owner || !input.reason))
+          throw new ApiError(actor.owner ? 400 : 403, '重新开启采购须由负责人填写原因');
+        if (
+          input.action !== 'order' &&
+          (input.action === 'reopen' ? !before.complete || !actor.owner : before.complete)
+        )
           throw new ApiError(
             input.action === 'reopen' && !actor.owner ? 403 : 409,
-            input.action === 'reopen' ? '仅负责人可重新开启已完成采购' : '采购已完成',
+            input.action === 'reopen' ? '仅负责人可重新开启已到货采购' : '采购已到货',
           );
         if (input.action === 'purchase') {
-          const draft = input.feedback;
-          await c.query(
-            `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=true,
-             brand=$4,model=$5,note=$6,feedback_actor_id=$7,feedback_actor_name=$8,feedback_at=now(),return_reason=''
-             WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3`,
-            [
-              ...key,
-              draft.brand,
-              draft.model,
-              draft.note,
-              actor.id,
-              actor.displayName ?? actor.login,
-            ],
-          );
-        } else if (input.action === 'finish' || input.action === 'reopen') {
-          if (input.action === 'finish' && !before.bought)
-            throw new ApiError(409, '请先确认购买，再确认采购完成');
-          const status = input.status ?? (input.action === 'finish' ? '已完成' : '待采购');
-          await commit(
-            c,
-            actor,
-            state.revision,
-            {
-              ...state.data,
-              purchases: state.data.purchases.map((row) =>
-                row.id === purchase ? { ...row, status } : row,
-              ),
-            },
-            { prior: state, ownerPurchaseAction: purchase },
-          );
-          if (input.action === 'reopen') {
+          if (!orderFeedback.safeParse(input.feedback).success)
+            throw new ApiError(400, '请填写品牌和型号');
+          await recordFeedback(c, key, actor, input.feedback);
+        } else {
+          if (!previousPurchase || previousPurchase.projectId !== project)
+            throw new ApiError(409, '采购已移除或所属项目已变更');
+          if (input.action === 'return' && !before.bought)
+            throw new ApiError(409, '采购已处于待采购');
+          if (input.action === 'finish' && !before.bought && previousPurchase.status !== '已下单')
+            throw new ApiError(409, '请先确认下单，再确认到货');
+          const status =
+            input.action === 'finish'
+              ? '已到货'
+              : input.action === 'order'
+                ? '已下单'
+                : input.action === 'reopen'
+                  ? (input.status ?? '待采购')
+                  : '待采购';
+          if (!before.published) await ensureInternalFeedback(c, key, previousPurchase.name);
+          if (input.action === 'order')
+            await recordFeedback(c, key, actor, input.feedback, input.reason);
+          if (previousPurchase.status !== status)
+            await commit(
+              c,
+              actor,
+              state.revision,
+              {
+                ...state.data,
+                purchases: state.data.purchases.map((row) =>
+                  row.id === purchase ? { ...row, status } : row,
+                ),
+              },
+              { prior: state, ownerPurchaseAction: purchase },
+            );
+          if (input.action === 'reopen' || input.action === 'reset' || input.action === 'return') {
             await c.query(
               `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=false,return_reason=$4
                WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3`,
-              [...key, input.reason],
+              [...key, input.action === 'reset' ? '' : input.reason],
             );
           }
-        } else {
-          if (!before.bought) throw new ApiError(409, '采购已处于待采购');
-          await c.query(
-            `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=false,return_reason=$4
-             WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3`,
-            [...key, input.reason],
-          );
         }
       }
 
@@ -347,7 +403,13 @@ export function staffOwnerPurchaseRoutes(app: Express) {
           actor.id,
           actor.displayName ?? actor.login,
           input.requestId,
-          input.action === 'create' || input.action === 'edit' ? 'publication' : input.action,
+          input.action === 'create' || input.action === 'edit'
+            ? 'publication'
+            : input.action === 'order'
+              ? 'purchase'
+              : input.action === 'reset'
+                ? 'return'
+                : input.action,
           request,
           before ? JSON.stringify(before) : null,
           JSON.stringify(item),
@@ -386,6 +448,8 @@ export function ownerPurchaseRoutes(
     if (!req.is('application/json')) throw new ApiError(415, '需要JSON请求');
     const actor = await current(req);
     const input = z.discriminatedUnion('action', [markBought, withdraw]).parse(req.body);
+    if (input.action === 'purchase' && !orderFeedback.safeParse(input.feedback).success)
+      throw new ApiError(400, '请填写品牌和型号');
     const project = id.parse(req.params.projectId),
       purchase = id.parse(req.params.purchaseId);
     const { rows } = await db.query(

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { cloudApi, CloudError } from '../lib/cloud';
-import type { Purchase } from '../lib/model';
+import type { Purchase, PurchaseStatus } from '../lib/model';
 import { Modal } from './Modal';
 import {
   ownerPurchasePath,
@@ -55,9 +55,11 @@ const keepForm = (event: KeyboardEvent<HTMLElement>) => {
 
 type StaffAction =
   | { action: 'purchase'; feedback: OwnerFeedback }
+  | { action: 'order'; feedback: OwnerFeedback; reason?: string }
+  | { action: 'reset' }
   | { action: 'return'; reason: string }
-  | { action: 'reopen'; reason: string; status?: '待采购' | '已下单' }
-  | { action: 'finish'; status?: '已到货' | '已完成' };
+  | { action: 'reopen'; reason: string }
+  | { action: 'finish' };
 const feedbackFrom = ({ brand, model, note }: OwnerFeedback) => ({ brand, model, note });
 export function OwnerPurchaseStatusDialog({
   purchase,
@@ -67,7 +69,7 @@ export function OwnerPurchaseStatusDialog({
   onChanged,
 }: {
   purchase: Purchase;
-  status: Purchase['status'];
+  status: PurchaseStatus;
   founder: boolean;
   onClose: () => void;
   onChanged: () => void;
@@ -87,7 +89,7 @@ export function OwnerPurchaseStatusDialog({
           id={purchase.id}
           founder={founder}
           onChanged={onChanged}
-          statusChange={{ status, close: onClose, onBusy: setBusy }}
+          statusChange={{ status, current: purchase.status, close: onClose, onBusy: setBusy }}
         />
       </div>
     </Modal>
@@ -110,15 +112,28 @@ export function OwnerPurchaseFeedback({
   onChanged: () => void;
   onLoaded?: (item: OwnerPurchaseItem) => void;
   saving?: boolean;
-  statusChange?: { status: Purchase['status']; close: () => void; onBusy: (busy: boolean) => void };
+  statusChange?: {
+    status: PurchaseStatus;
+    current: Purchase['status'];
+    close: () => void;
+    onBusy: (busy: boolean) => void;
+  };
 }) {
   const path = ownerPurchasePath(project, id);
   const target = statusChange?.status;
-  const finishStatus = target === '已到货' || target === '已完成' ? target : undefined;
-  const reopenStatus = target === '待采购' || target === '已下单' ? target : undefined;
+  const wasArrived = statusChange?.current === '已到货' || statusChange?.current === '已完成';
   const [item, setItem] = useState<OwnerPurchaseItem>();
   const [feedback, setFeedback] = useState<OwnerFeedback>({ brand: '', model: '', note: '' });
-  const targetAction = finishStatus ? 'finish' : reopenStatus ? 'reopen' : undefined;
+  const targetAction =
+    target === '已到货'
+      ? 'finish'
+      : target === '已下单'
+        ? 'order'
+        : target === '待采购'
+          ? wasArrived
+            ? 'reopen'
+            : 'reset'
+          : undefined;
   const [action, setAction] = useState<StaffAction['action'] | undefined>(targetAction);
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState('');
@@ -179,14 +194,14 @@ export function OwnerPurchaseFeedback({
       receipt.current = undefined;
       onChanged();
       if (!current.current) return;
-      if (statusChange && input.action !== 'purchase') {
+      if (statusChange && !(input.action === 'order' && target === '已到货')) {
         statusChange.close();
         return;
       }
       apply(value);
       setAction(targetAction);
       setReason('');
-      setMessage(statusChange ? '购买信息已保存' : '已保存');
+      setMessage(statusChange ? '下单信息已保存' : '已保存');
     } catch (error) {
       if (!current.current) return;
       if (error instanceof CloudError && error.status === 409) {
@@ -207,23 +222,31 @@ export function OwnerPurchaseFeedback({
     setAction(next);
     setReason('');
     setMessage('');
-    if (item) setFeedback(item.bought ? feedbackFrom(item) : { brand: '', model: '', note: '' });
+    if (item)
+      setFeedback(
+        next === 'order' || item.bought ? feedbackFrom(item) : { brand: '', model: '', note: '' },
+      );
   };
   const hasFeedback = item && (item.bought || item.feedbackAt || item.returnReason);
   if (!statusChange && !item?.published && !hasFeedback && !message) return null;
-  const needsPurchase = action === 'finish' && item && !item.bought;
+  const needsOrder =
+    action === 'finish' &&
+    statusChange &&
+    item &&
+    !item.bought &&
+    statusChange.current !== '已下单';
+  const needsReason =
+    action === 'reopen' || action === 'return' || (action === 'order' && wasArrived);
+  const needsDetails = action === 'order' || action === 'purchase';
+  const missingOrderInfo = needsDetails && (!feedback.brand.trim() || !feedback.model.trim());
   return (
     <div className="span2 purchase-owner-feedback" onKeyDown={keepForm}>
-      {statusChange && !item?.published && !message && (
-        <p role="status">{item ? '采购发布状态有变，请关闭后重新选择。' : '正在读取采购…'}</p>
-      )}
-      {item && (!statusChange || item.published) && (
+      {statusChange && !item && !message && <p role="status">正在读取采购…</p>}
+      {item && (
         <>
           {hasFeedback && (
             <div className="owner-purchase-preview">
-              <strong>
-                {item.complete ? '采购已完成' : item.bought ? '已购买 · 待公司复核' : '待采购'}
-              </strong>
+              <strong>{item.complete ? '已到货' : item.bought ? '已下单' : '待采购'}</strong>
               {item.feedbackAt && (
                 <small>
                   {item.feedbackActor} ·{' '}
@@ -270,7 +293,7 @@ export function OwnerPurchaseFeedback({
                     disabled={disabled}
                     onClick={() => selectAction('finish')}
                   >
-                    确认采购完成
+                    确认到货
                   </button>
                 </>
               )}
@@ -283,12 +306,13 @@ export function OwnerPurchaseFeedback({
           )}
           {action && (
             <div className="owner-purchase-preview">
-              {action === 'purchase' ? (
+              {needsDetails && (
                 <fieldset className="owner-purchase-fields" disabled={disabled}>
                   <label className="form-field">
                     品牌
                     <input
                       maxLength={80}
+                      required
                       value={feedback.brand}
                       onChange={(event) => setFeedback({ ...feedback, brand: event.target.value })}
                     />
@@ -297,6 +321,7 @@ export function OwnerPurchaseFeedback({
                     型号
                     <input
                       maxLength={80}
+                      required
                       value={feedback.model}
                       onChange={(event) => setFeedback({ ...feedback, model: event.target.value })}
                     />
@@ -310,15 +335,12 @@ export function OwnerPurchaseFeedback({
                     />
                   </label>
                 </fieldset>
-              ) : needsPurchase ? (
-                <p>请先确认购买，再标为{finishStatus ?? '已完成'}。</p>
-              ) : action === 'finish' ? (
-                <p>
-                  {statusChange
-                    ? '确认后，业主端将显示采购已完成。'
-                    : '确认后，业主可查看购买信息。'}
-                </p>
-              ) : (
+              )}
+              {action === 'finish' && (
+                <p>{needsOrder ? '请先填写品牌和型号并确认下单。' : '确认这项采购已到货？'}</p>
+              )}
+              {action === 'reset' && <p>确认将这项采购退回待采购？</p>}
+              {needsReason && (
                 <label className="form-field">
                   对外说明
                   <textarea
@@ -332,22 +354,22 @@ export function OwnerPurchaseFeedback({
               <div className="owner-purchase-actions">
                 <button
                   type="button"
-                  disabled={disabled || (['return', 'reopen'].includes(action) && !reason.trim())}
+                  disabled={disabled || missingOrderInfo || (needsReason && !reason.trim())}
                   className="primary"
                   onClick={() => {
-                    if (needsPurchase) return selectAction('purchase');
+                    if (needsOrder) return selectAction('order');
                     void save(
-                      action === 'purchase'
-                        ? { action, feedback }
-                        : action === 'finish'
-                          ? { action, status: finishStatus }
-                          : action === 'reopen'
-                            ? { action, reason, status: reopenStatus }
+                      action === 'order'
+                        ? { action, feedback, ...(needsReason ? { reason } : {}) }
+                        : action === 'purchase'
+                          ? { action, feedback }
+                          : action === 'finish' || action === 'reset'
+                            ? { action }
                             : { action, reason },
                     );
                   }}
                 >
-                  {needsPurchase ? '代为确认购买' : '确认'}
+                  {needsOrder ? '填写下单信息' : '确认'}
                 </button>
                 <button
                   type="button"
