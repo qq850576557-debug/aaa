@@ -194,7 +194,9 @@ for candidate in /usr/bin/python3.11 /usr/bin/python3; do
 done
 [[ -n $build_python ]] || fail '需要 Python 3.10 或更高版本构建'
 mkdir "$upgrade/source"
-git -C "$repo" archive "$pin" deploy/owner-test deploy/apk-download/publish.py deploy/source-download/owner_preview.py deploy/source-download/publish.py server/proposed/017_owner_purchase.sql server/proposed/017_owner_purchase_grants.sql | tar -x -C "$upgrade/source"
+git -C "$repo" archive "$pin" deploy/owner-test deploy/apk-download/publish.py deploy/source-download/owner_preview.py deploy/source-download/publish.py \
+  server/proposed/017_owner_purchase.sql server/proposed/017_owner_purchase_grants.sql \
+  server/proposed/018_owner_purchase_evidence.sql server/proposed/018_owner_purchase_evidence_grants.sql | tar -x -C "$upgrade/source"
 git -C "$repo" archive "$pin" | tar -x -C "$job"
 chown -R chunmo-build:chunmo-build "$job"
 nice -n 10 runuser -u chunmo-build -- env -i HOME=/var/lib/chunmo-build PATH="$build_path" \
@@ -236,8 +238,16 @@ sql_dir="$upgrade/source/server/proposed"
 migration_sha=$(sha256sum "$sql_dir/017_owner_purchase.sql" | awk '{print $1}')
 grants_sha=$(sha256sum "$sql_dir/017_owner_purchase_grants.sql" | awk '{print $1}')
 expected=$(printf '017_owner_purchase.sql:%s\n017_owner_purchase_grants.sql:%s' "$migration_sha" "$grants_sha")
+evidence_sha=$(sha256sum "$sql_dir/018_owner_purchase_evidence.sql" | awk '{print $1}')
+evidence_grants_sha=$(sha256sum "$sql_dir/018_owner_purchase_evidence_grants.sql" | awk '{print $1}')
+expected_evidence=$(printf '%s\n018_owner_purchase_evidence.sql:%s\n018_owner_purchase_evidence_grants.sql:%s' \
+  "$expected" "$evidence_sha" "$evidence_grants_sha")
+ledger() {
+  sql -Atc "SELECT filename || ':' || sha256 FROM owner_portal.purchase_migration ORDER BY filename COLLATE \"C\""
+}
 if [[ $(sql -Atc "SELECT coalesce(to_regclass('owner_portal.purchase_migration')::text,'')") ]]; then
-  [[ $(sql -Atc "SELECT filename || ':' || sha256 FROM owner_portal.purchase_migration ORDER BY filename COLLATE \"C\"") == "$expected" ]] ||
+  installed=$(ledger)
+  [[ $installed == "$expected" || $installed == "$expected_evidence" ]] ||
     fail '采购迁移校验值与发布文件不同'
 else
   [[ ! $previous_upgrade ]] || fail '当前版本缺少采购迁移记录，已停止'
@@ -253,7 +263,22 @@ SQL
   sql --single-transaction -v staff_role=chunmo_app -v owner_role=owner_runtime \
     -v migration_sha="$migration_sha" -v grants_sha="$grants_sha" -f - < "$migration_input"
 fi
+if [[ $(ledger) == "$expected" ]]; then
+  {
+    printf "SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s';\n"
+    cat "$sql_dir/018_owner_purchase_evidence.sql" "$sql_dir/018_owner_purchase_evidence_grants.sql"
+    cat <<'SQL'
+INSERT INTO owner_portal.purchase_migration(filename,sha256) VALUES
+  ('018_owner_purchase_evidence.sql', :'migration_sha'),
+  ('018_owner_purchase_evidence_grants.sql', :'grants_sha');
+SQL
+  } | sql --single-transaction -v staff_role=chunmo_app -v owner_role=owner_runtime \
+    -v backup_role=chunmo_ownerpg -v migration_sha="$evidence_sha" -v grants_sha="$evidence_grants_sha" -f -
+fi
+[[ $(ledger) == "$expected_evidence" ]] || fail '测试库 018 校验值不一致'
 [[ $(sql -Atc "SELECT has_function_privilege('owner_runtime','owner_portal.owner_purchases(text,text)','EXECUTE')
+ AND has_function_privilege('owner_runtime','owner_portal.owner_purchase_photo(text,text,text,text)','EXECUTE')
+ AND NOT has_table_privilege('owner_runtime','owner_portal.purchase_feedback_photo','SELECT')
  AND NOT has_table_privilege('owner_runtime','public.purchase','SELECT')
  AND NOT has_table_privilege('owner_runtime','owner_portal.purchase_collaboration','SELECT')") == t ]] ||
   fail '独立业主权限校验失败'

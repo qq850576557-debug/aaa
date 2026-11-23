@@ -111,6 +111,12 @@ function purchaseRequest(project, suffix, method, body) {
 const purchases = (project) => purchaseRequest(project, '', 'GET');
 const feedback = (project, id, body) =>
   purchaseRequest(project, '/' + encodeURIComponent(id) + '/feedback', 'POST', body);
+const photo = (project, id, imageId) =>
+  purchaseRequest(
+    project,
+    '/' + encodeURIComponent(id) + '/photo/' + encodeURIComponent(imageId),
+    'GET',
+  );
 
 module.exports = {
   productionBuild,
@@ -122,4 +128,5 @@ module.exports = {
   logout,
   purchases,
   feedback,
+  photo,
 };

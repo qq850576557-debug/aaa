@@ -200,3 +200,16 @@
     animation: none;
   }
 }
+
+.purchase-photo {
+  display: block;
+  width: 100%;
+  max-width: 480rpx;
+  margin-top: 16rpx;
+  border-radius: 16rpx;
+}
+
+.photo-actions {
+  display: flex;
+  gap: 12rpx;
+}

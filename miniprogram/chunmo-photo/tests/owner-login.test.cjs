@@ -349,3 +349,93 @@ test('pulling down reloads the live purchase pages and clears withdrawn purchase
   assert.equal(pages[1].data.rows.length, 0);
   assert.equal(pages[2].data.unavailable, true);
 });
+
+test('purchase sheet keeps the selected image through the picker and a network retry, then clears private previews on hide', async (t) => {
+  const api = require('../owner-login/owner-session');
+  const backup = { feedback: api.feedback, session: api.session, purchases: api.purchases };
+  const original = { Page: global.Page, wx: global.wx, photo: store.photo };
+  const path = '../owner-login/pages/purchase/index';
+  t.after(() => {
+    global.Page = original.Page;
+    global.wx = original.wx;
+    store.photo = original.photo;
+    Object.assign(api, backup);
+    delete require.cache[require.resolve(path)];
+    store.end();
+  });
+  const identity = {
+    owner: { id: 'test', name: '测试业主' },
+    projects: [{ id: 'home', title: '测试住宅' }],
+    purchasesEnabled: true,
+  };
+  const imageId = 'a'.repeat(64);
+  const item = {
+    id: 'lamp',
+    title: '灯具',
+    state: 'bought',
+    version: 'v',
+    due: '2026-12-01',
+    feedback: { brand: 'A', model: 'B', note: '', imageId },
+  };
+  const requests = [];
+  let definition,
+    page,
+    fileReads = 0;
+  global.Page = (value) => {
+    definition = value;
+  };
+  global.wx = {
+    showToast() {},
+    chooseMedia: async () => {
+      page.onHide();
+      await page.onShow();
+      return { tempFiles: [{ tempFilePath: '/temp/photo.png' }] };
+    },
+    getFileSystemManager: () => ({
+      statSync: () => ({ size: 1024 }),
+      readFile: ({ success }) => {
+        fileReads++;
+        success({ data: 'dGVzdA==' });
+      },
+    }),
+  };
+  api.session = async () => identity;
+  api.purchases = async () => ({ items: [item] });
+  api.feedback = async (project, id, value) => {
+    requests.push({ project, id, value });
+    if (requests.length === 1) throw Object.assign(Error('网络中断'), { statusCode: 0 });
+  };
+  store.photo = async (project, id, digest) => {
+    assert.deepEqual([project, id, digest], ['home', 'lamp', imageId]);
+    return { image: 'dGVzdA==' };
+  };
+  store.beginVerified(identity);
+  delete require.cache[require.resolve(path)];
+  require(path);
+  page = {
+    ...definition,
+    data: { ...definition.data, ready: true, id: 'lamp' },
+    setData(patch) {
+      Object.assign(this.data, patch);
+    },
+  };
+  await page.onShow();
+  await page.showPhoto();
+  assert.match(page.data.photoSrc, /^data:image\/jpeg;base64,/);
+  page.onHide();
+  assert.equal(page.data.photoSrc, '');
+  await page.onShow();
+  page.openSheet();
+  await page.choosePhoto();
+  assert.equal(page.data.sheet, true);
+  assert.equal(page.data.photoState, 'new');
+  page.data.draft.link = 'https://example.com/item';
+  await page.saveVerified('purchase', page.data.item, page.data.project, page.data.draft);
+  assert.equal(page.data.draftError, '网络中断');
+  await page.saveVerified('purchase', page.data.item, page.data.project, page.data.draft);
+  assert.equal(fileReads, 1);
+  assert.deepEqual(requests[0], requests[1]);
+  assert.equal(requests[0].value.feedback.link, 'https://example.com/item');
+  assert.equal(requests[0].value.feedback.image, 'dGVzdA==');
+  assert.equal(page.data.sheet, false);
+});

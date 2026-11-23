@@ -5,7 +5,7 @@ const reminders = require('./purchase-reminders');
 const ownerSession = require('./owner-session');
 
 const labels = { pending: '待采购', bought: '已下单', complete: '已到货' };
-const blankFeedback = { brand: '', model: '', note: '' };
+const blankFeedback = { brand: '', model: '', link: '', note: '' };
 const modes = ['review', 'single', 'empty', 'offline', 'denied'];
 let session = null;
 
@@ -159,7 +159,7 @@ function feedbackRequest(project, id, version, action, fields) {
       return (part === 'x' ? digit : (digit & 3) | 8).toString(16);
     });
     activeSession.pendingFeedback.set(key, requestId);
-    if (activeSession.pendingFeedback.size > 30)
+    if (activeSession.pendingFeedback.size > 8)
       activeSession.pendingFeedback.delete(activeSession.pendingFeedback.keys().next().value);
   }
   return ownerSession
@@ -241,8 +241,17 @@ function update(id, projectId, version, draft) {
       throw Error('购买信息过长，请缩短后重试');
   }
   const fields = Object.fromEntries(Object.keys(limits).map((key) => [key, draft[key].trim()]));
+  if (draft.link !== undefined) {
+    if (typeof draft.link !== 'string' || draft.link.length > 1000) throw Error('购买链接过长');
+    fields.link = draft.link.trim();
+    if (fields.link && !/^https:\/\/[^\s/]+(?:[^\s]*)$/i.test(fields.link))
+      throw Error('请填写有效的 HTTPS 购买链接');
+  }
   if (!fields.brand || !fields.model) throw Error('请填写品牌和型号');
-  if (isVerified()) return feedbackRequest(projectId, id, version, 'purchase', fields);
+  if (isVerified()) {
+    if (draft.image !== undefined) fields.image = draft.image;
+    return feedbackRequest(projectId, id, version, 'purchase', fields);
+  }
   item.feedback = fields;
   item.state = 'bought';
   item.version++;
@@ -283,6 +292,7 @@ module.exports = {
   setAvatar,
   update,
   revoke,
+  photo: ownerSession.photo,
   open,
   retry,
   end,

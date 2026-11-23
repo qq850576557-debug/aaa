@@ -129,7 +129,11 @@ try {
     });
     if (denied.status === 0 || !/permission denied.*owner_portal/u.test(denied.stderr ?? ''))
       throw Error('Backup scope before the additional grant was not verified');
-    sql(db, backupGrant);
+    const evidenceGrant = readFileSync(
+      'server/proposed/018_owner_purchase_evidence_grants.sql',
+      'utf8',
+    );
+    sql(db, backupGrant + '\n' + evidenceGrant);
     docker(dumpCommand);
     docker(['exec', name, 'createdb', '-U', 'postgres', '-O', 'owner_release_restore', restored]);
     docker([
@@ -152,6 +156,7 @@ try {
         'server/proposed/016_owner_identity_grants.sql',
         'server/proposed/017_owner_purchase_grants.sql',
         'deploy/owner-release/backup-grants.sql',
+        'server/proposed/018_owner_purchase_evidence_grants.sql',
       ]
         .map((file) => readFileSync(file, 'utf8'))
         .join('\n'),
@@ -164,6 +169,7 @@ try {
       (SELECT count(*) FROM owner_portal.project_grant),
       (SELECT count(*) FROM owner_portal.purchase_collaboration),
       (SELECT count(*) FROM owner_portal.purchase_event),
+      (SELECT jsonb_agg(jsonb_build_array(digest,encode(sha256(jpeg),'hex')) ORDER BY digest) FROM owner_portal.purchase_feedback_photo),
       has_function_privilege('owner_runtime','owner_portal.owner_purchases(text,text)','EXECUTE'),
       NOT has_table_privilege('owner_runtime','public.purchase','SELECT'),
       NOT has_table_privilege('owner_runtime','public.work_record','SELECT'),

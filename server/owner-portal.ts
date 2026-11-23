@@ -120,7 +120,6 @@ export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
   if (!options) return;
   const { db, key, wechat } = options;
   const { digest } = crypto(key);
-  router.use(express.json({ limit: '8kb' }));
 
   async function current(req: Request) {
     const parsed = /^Bearer ([a-f0-9]{64})$/.exec(req.get('Authorization') ?? '');
@@ -137,6 +136,8 @@ export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     if (!row) throw new ApiError(401, '业主登录已失效');
     return { id: String(row.id), label: String(row.label), hash };
   }
+  if (ownerPurchasesEnabled()) ownerPurchaseRoutes(router, db, current);
+  router.use(express.json({ limit: '8kb' }));
   const projects = (id: string) =>
     db.query(
       'SELECT id,title,phase FROM owner_portal.available_project WHERE member_id=$1 ORDER BY title,id',
@@ -245,7 +246,6 @@ export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     if (!list.length) throw new ApiError(403, '暂无访问授权，请联系春茉');
     res.json({ projects: list });
   });
-  if (ownerPurchasesEnabled()) ownerPurchaseRoutes(router, db, current);
   router.use(() => {
     throw new ApiError(404, '接口不存在');
   });

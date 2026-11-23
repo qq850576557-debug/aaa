@@ -46,6 +46,13 @@
           ><text>型号</text
           ><text class="detail-value">{{item.feedback.model || '未填写'}}</text></view
         >
+        <view wx:if="{{item.feedback.link}}" class="detail-meta">
+          <text>购买链接</text><button class="small-button" bindtap="copyLink">复制链接</button>
+        </view>
+        <view wx:if="{{item.feedback.imageId}}" class="detail-meta">
+          <text>购买图片</text><button wx:if="{{!photoSrc}}" class="small-button" bindtap="showPhoto">查看图片</button>
+        </view>
+        <image wx:if="{{photoSrc}}" class="purchase-photo" src="{{photoSrc}}" mode="widthFix" />
         <text
           selectable="{{true}}"
           class="detail-description saved-note"
@@ -113,11 +120,18 @@
             adjust-position="{{false}}"
           />
         </view>
+        <view id="link-field" class="sheet-field">
+          <text>购买链接 <text class="optional-label">选填</text></text>
+          <input value="{{draft.link}}" placeholder="粘贴 HTTPS 商品链接" maxlength="1000"
+            aria-label="购买链接" data-field="link" data-scroll-id="link-field"
+            bindinput="writeFeedback" bindfocus="focusFeedback"
+            bindkeyboardheightchange="keyboardChange" adjust-position="{{false}}" />
+        </view>
         <view id="note-field" class="sheet-field">
           <text>购买备注 <text class="optional-label">选填</text></text>
           <textarea
             value="{{draft.note}}"
-            placeholder="可粘贴商品链接或填写其他说明"
+            placeholder="填写其他购买说明"
             maxlength="1000"
             aria-label="购买备注"
             data-field="note"
@@ -128,11 +142,18 @@
             adjust-position="{{false}}"
           />
         </view>
+        <view wx:if="{{verified}}" class="sheet-field">
+          <text>购买图片 <text class="optional-label">选填，1 张</text></text>
+          <view class="photo-actions">
+            <button class="small-button" bindtap="choosePhoto" disabled="{{saving || pickingPhoto}}">{{photoState === 'new' || photoState === 'existing' ? '更换图片' : '选择图片'}}</button>
+            <button wx:if="{{photoState === 'new' || photoState === 'existing'}}" class="small-button" bindtap="removePhoto" disabled="{{saving}}">移除</button>
+          </view>
+        </view>
         <text wx:if="{{draftError}}" class="draft-error" aria-role="alert">{{draftError}}</text>
       </scroll-view>
       <view class="sheet-actions">
         <button class="detail-secondary" bindtap="closeSheet" disabled="{{saving}}">取消</button>
-        <button class="detail-primary" bindtap="confirm" disabled="{{saving}}" loading="{{saving}}">
+        <button class="detail-primary" bindtap="confirm" disabled="{{saving || pickingPhoto}}" loading="{{saving}}">
           {{item.state === 'bought' ? '保存修改' : '确认下单'}}
         </button>
       </view>

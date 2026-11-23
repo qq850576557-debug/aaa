@@ -1,5 +1,21 @@
 const store = require('../../fixture-store');
 const { back } = require('../../preview');
+const maxPhoto = 512 * 1024;
+
+async function encodePhoto(path) {
+  const fs = wx.getFileSystemManager();
+  if (fs.statSync(path).size > maxPhoto)
+    path = (await wx.compressImage({ src: path, quality: 60, compressedWidth: 1200 })).tempFilePath;
+  if (fs.statSync(path).size > maxPhoto) throw Error('图片超过 512 KB，请选择较小的图片');
+  return new Promise((resolve, reject) =>
+    fs.readFile({
+      filePath: path,
+      encoding: 'base64',
+      success: ({ data }) => resolve(data),
+      fail: () => reject(Error('图片读取失败，请重新选择')),
+    }),
+  );
+}
 
 Page({
   data: {
@@ -17,14 +33,18 @@ Page({
     saving: false,
     keyboardHeight: 0,
     focusedField: '',
+    verified: false,
+    photoState: '',
+    photoSrc: '',
+    pickingPhoto: false,
   },
   onLoad(options = {}) {
     if (store.open(this)) this.setData({ id: String(options.id || '') });
   },
   onShow() {
-    if (!this.data.ready || this.data.saving) return;
+    if (!this.data.ready || this.data.saving || this.data.pickingPhoto) return;
     if (store.isVerified()) {
-      this.setData({ loading: true, error: '', item: null, unavailable: false });
+      this.setData({ loading: true, error: '', item: null, unavailable: false, photoSrc: '' });
       return store.refreshVerified().then(
         () => this.renderSnapshot(),
         (error) => {
@@ -44,7 +64,15 @@ Page({
       const item = Object.values(groups)
         .flat()
         .find((entry) => entry.id === this.data.id);
-      this.setData({ item: item || null, project, unavailable: !item, loading: false, error: '' });
+      this.setData({
+        item: item || null,
+        project,
+        unavailable: !item,
+        loading: false,
+        error: '',
+        verified: store.isVerified(),
+        photoSrc: '',
+      });
       if (!item) this.closeSheet();
     } catch (error) {
       this.setData({ item: null, loading: false, error: error.message });
@@ -52,7 +80,9 @@ Page({
     }
   },
   onHide() {
-    this.closeSheet();
+    this._photoRequest = null;
+    this.setData({ photoSrc: '' });
+    if (!this.data.pickingPhoto) this.closeSheet();
   },
   retry() {
     store.retry();
@@ -66,22 +96,78 @@ Page({
     if (item && item.state !== 'complete')
       this.setData({
         sheet: true,
-        draft: item.state === 'bought' ? { ...item.feedback } : { ...store.blankFeedback },
+        draft:
+          item.state === 'bought'
+            ? { ...store.blankFeedback, ...item.feedback }
+            : { ...store.blankFeedback },
+        photoState: item.feedback?.imageId ? 'existing' : '',
         draftError: '',
         focusedField: '',
       });
   },
   closeSheet() {
     if (!this.data.sheet || this.data.saving) return;
+    this._photoPath = undefined;
+    this._encodedPhoto = undefined;
     this.setData({
       sheet: false,
       keyboardHeight: 0,
       focusedField: '',
       draft: { ...store.blankFeedback },
       draftError: '',
+      photoState: '',
     });
   },
   stop() {},
+  async choosePhoto() {
+    if (!this.data.sheet || !this.data.verified || this.data.saving || this.data.pickingPhoto)
+      return;
+    this.setData({ pickingPhoto: true });
+    try {
+      const result = await wx.chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['album'],
+        sizeType: ['compressed'],
+      });
+      const path = result.tempFiles?.[0]?.tempFilePath;
+      if (!path || !this.data.sheet) return;
+      this._photoPath = path;
+      this._encodedPhoto = undefined;
+      this.setData({ photoState: 'new', draftError: '' });
+    } catch (error) {
+      if (!String(error?.errMsg).includes('cancel'))
+        this.setData({ draftError: '无法选取图片，请重试' });
+    } finally {
+      this.setData({ pickingPhoto: false });
+    }
+  },
+  removePhoto() {
+    if (!this.data.sheet || this.data.saving || this.data.pickingPhoto) return;
+    this._photoPath = undefined;
+    this._encodedPhoto = undefined;
+    this.setData({ photoState: 'remove', draftError: '' });
+  },
+  async showPhoto() {
+    const { item, project } = this.data;
+    const imageId = item?.feedback?.imageId;
+    if (!imageId || !project || !store.isVerified()) return;
+    const request = {};
+    this._photoRequest = request;
+    try {
+      const { image } = await store.photo(project.id, item.id, imageId);
+      if (this._photoRequest === request && this.data.item?.feedback?.imageId === imageId)
+        this.setData({ photoSrc: 'data:image/jpeg;base64,' + image });
+    } catch (error) {
+      if (this._photoRequest !== request) return;
+      if ([401, 403, 404].includes(error.statusCode)) this.onShow();
+      wx.showToast({ title: error.message, icon: 'none' });
+    }
+  },
+  copyLink() {
+    const link = this.data.item?.feedback?.link;
+    if (link) wx.setClipboardData({ data: link });
+  },
   writeFeedback(event) {
     const { field } = event.currentTarget.dataset;
     if (this.data.sheet && Object.hasOwn(store.blankFeedback, field))
@@ -96,7 +182,7 @@ Page({
   },
   confirm() {
     const { item, project, draft, sheet } = this.data;
-    if (!sheet || !item || !project || this.data.saving) return;
+    if (!sheet || !item || !project || this.data.saving || this.data.pickingPhoto) return;
     if (store.isVerified()) {
       void this.saveVerified('purchase', item, project, draft);
       return;
@@ -113,8 +199,16 @@ Page({
   async saveVerified(action, item, project, draft) {
     this.setData({ saving: true, draftError: '' });
     try {
-      if (action === 'purchase') await store.update(item.id, project.id, item.version, draft);
-      else await store.revoke(item.id, project.id, item.version);
+      if (action === 'purchase') {
+        if (this._photoPath && !this._encodedPhoto)
+          this._encodedPhoto = await encodePhoto(this._photoPath);
+        const image = this._photoPath
+          ? this._encodedPhoto
+          : this.data.photoState === 'remove'
+            ? ''
+            : undefined;
+        await store.update(item.id, project.id, item.version, { ...draft, image });
+      } else await store.revoke(item.id, project.id, item.version);
     } catch (error) {
       this.setData({ saving: false });
       if (!store.isVerified()) {

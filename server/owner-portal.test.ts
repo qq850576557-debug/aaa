@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import express from 'express';
 import test from 'node:test';
 import pg from 'pg';
+import sharp from 'sharp';
 import { createApp } from './app';
 import { config } from './config';
 import { pool, privatePool } from './db';
@@ -95,6 +96,12 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   );
   const migration = await readFile('server/proposed/017_owner_purchase.sql', 'utf8');
   const grants = await readFile('server/proposed/017_owner_purchase_grants.sql', 'utf8');
+  const evidence = await readFile('server/proposed/018_owner_purchase_evidence.sql', 'utf8');
+  const evidenceGrants = await readFile(
+    'server/proposed/018_owner_purchase_evidence_grants.sql',
+    'utf8',
+  );
+  await admin.query('CREATE ROLE owner_photo_backup NOLOGIN NOINHERIT');
   const migrationClient = await admin.connect();
   try {
     await migrationClient.query('BEGIN');
@@ -108,6 +115,37 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       "INSERT INTO owner_portal.purchase_migration(filename,sha256) VALUES('017_owner_purchase.sql',$1),('017_owner_purchase_grants.sql',$2)",
       [hash(migration), hash(grants)],
     );
+    await migrationClient.query(`
+      INSERT INTO owner_portal.purchase_collaboration
+        (workspace_id,project_id,purchase_id,responsibility,title,description,specification,quantity,reference,bought,brand,model,note)
+      VALUES ('legacy-w','legacy-home','legacy-item','owner','旧采购','','','','',true,'旧品牌','旧型号','旧备注')
+    `);
+    await migrationClient.query('COMMIT');
+    await migrationClient.query('BEGIN');
+    await migrationClient.query(evidence);
+    await migrationClient.query(
+      evidenceGrants
+        .replaceAll(':"staff_role"', staff.username)
+        .replaceAll(':"owner_role"', ownerDb.username)
+        .replaceAll(':"backup_role"', 'owner_photo_backup'),
+    );
+    await migrationClient.query(
+      "INSERT INTO owner_portal.purchase_migration(filename,sha256) VALUES('018_owner_purchase_evidence.sql',$1),('018_owner_purchase_evidence_grants.sql',$2)",
+      [hash(evidence), hash(evidenceGrants)],
+    );
+    const legacy = await migrationClient.query(
+      "SELECT bought,brand,model,note,feedback_link,feedback_photo FROM owner_portal.purchase_collaboration WHERE purchase_id='legacy-item'",
+    );
+    assert.deepEqual(legacy.rows, [
+      {
+        bought: true,
+        brand: '旧品牌',
+        model: '旧型号',
+        note: '旧备注',
+        feedback_link: '',
+        feedback_photo: null,
+      },
+    ]);
     await migrationClient.query('COMMIT');
   } catch (error) {
     await migrationClient.query('ROLLBACK');
@@ -121,6 +159,8 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   assert.deepEqual(migrationRows.rows, [
     { filename: '017_owner_purchase.sql', sha256: hash(migration) },
     { filename: '017_owner_purchase_grants.sql', sha256: hash(grants) },
+    { filename: '018_owner_purchase_evidence.sql', sha256: hash(evidence) },
+    { filename: '018_owner_purchase_evidence_grants.sql', sha256: hash(evidenceGrants) },
   ]);
   await admin.query(
     'GRANT SELECT,INSERT,UPDATE,DELETE ON workspace_state,assignment,purchase,purchase_record,project,task,trade,memo,person TO ' +
@@ -306,9 +346,10 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
     () => runtime.query('SELECT phone_sealed FROM owner_portal.member'),
     (e: any) => e.code === '42501',
   );
+  let evidencePhotoPath = '';
   await t.test(
     'existing and new purchases publish safely and synchronize through completion',
-    async () => {
+    async (purchaseTest) => {
       const original = {
         id: 'existing',
         projectId: 'p1',
@@ -898,6 +939,219 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         ).rows[0].count,
         artifacts ? 14 : 12,
       );
+      const originalImage = await sharp({
+        create: { width: 48, height: 32, channels: 3, background: '#728c62' },
+      })
+        .png()
+        .withMetadata({ exif: { IFD0: { Artist: 'PRIVATE-IMAGE-METADATA' } } })
+        .toBuffer();
+      const photoRequest = {
+        action: 'purchase',
+        requestId: randomUUID(),
+        version: (await feed()).body.items[0].version,
+        feedback: {
+          brand: '示例品牌',
+          model: 'A-18',
+          note: '示例图片反馈',
+          link: 'HTTPS://example.com/item?sku=18',
+          image: originalImage.toString('base64'),
+        },
+      };
+      await purchaseTest.test(
+        'purchase link and private JPEG synchronize and retain an exact retry receipt',
+        async () => {
+          assert.equal(
+            (
+              await respond({
+                ...photoRequest,
+                feedback: { ...photoRequest.feedback, link: 'https://user:pwd@example.com/item' },
+              })
+            ).status,
+            400,
+          );
+          assert.equal(
+            (
+              await respond({
+                ...photoRequest,
+                feedback: {
+                  ...photoRequest.feedback,
+                  image: Buffer.from('not an image').toString('base64'),
+                },
+              })
+            ).status,
+            400,
+          );
+          const rivalPhoto = {
+            ...photoRequest,
+            requestId: randomUUID(),
+            feedback: { ...photoRequest.feedback, note: '并发反馈' },
+          };
+          const raced = await Promise.all([respond(photoRequest), respond(rivalPhoto)]);
+          assert.deepEqual(raced.map((r) => r.status).sort(), [200, 409]);
+          const accepted = raced[0].status === 200 ? photoRequest : rivalPhoto;
+          const visible = (await feed()).body.items[0];
+          assert.equal(visible.feedback.link, 'https://example.com/item?sku=18');
+          assert.equal(visible.feedback.brand, '示例品牌');
+          assert.match(visible.feedback.imageId, /^[a-f0-9]{64}$/);
+          const imageId = visible.feedback.imageId;
+          evidencePhotoPath = phone + '/existing/photo/' + imageId;
+          if (accepted) {
+            assert.equal((await respond(accepted)).status, 200);
+            assert.equal(
+              (
+                await respond({
+                  ...accepted,
+                  feedback: { ...accepted.feedback, link: 'https://example.com/different' },
+                })
+              ).status,
+              409,
+            );
+          }
+          assert.equal((await read()).link, visible.feedback.link);
+          assert.equal((await read()).imageId, imageId);
+          const ownerPhoto = await request(evidencePhotoPath, 'GET', undefined, '', tokenA);
+          assert.equal(ownerPhoto.status, 200);
+          assert.equal((await request(evidencePhotoPath)).status, 401);
+          assert.equal(
+            (await request(evidencePhotoPath.replace('/p1/', '/p2/'), 'GET', undefined, '', tokenA))
+              .status,
+            404,
+          );
+          assert.equal(
+            (
+              await request(
+                evidencePhotoPath.replace('/existing/', '/new-purchase/'),
+                'GET',
+                undefined,
+                '',
+                tokenA,
+              )
+            ).status,
+            404,
+          );
+          const staffPhoto = await request(
+            desktop + '/photo/' + imageId,
+            'GET',
+            undefined,
+            founder,
+          );
+          assert.equal(staffPhoto.status, 200);
+          assert.equal(staffPhoto.body.image, ownerPhoto.body.image);
+          const meta = await sharp(Buffer.from(ownerPhoto.body.image, 'base64')).metadata();
+          assert.equal(meta.format, 'jpeg');
+          assert.equal(meta.exif, undefined);
+          const events = (
+            await admin.query(
+              `
+          SELECT input,before_value,after_value FROM owner_portal.purchase_event
+          WHERE actor_kind='owner' AND purchase_id='existing' AND input#>>'{feedback,imageId}'=$1
+        `,
+              [imageId],
+            )
+          ).rows;
+          assert.equal(events.length, 1);
+          assert.ok(!JSON.stringify(events).includes(ownerPhoto.body.image));
+          assert.equal(
+            (await admin.query('SELECT count(*)::int n FROM owner_portal.purchase_feedback_photo'))
+              .rows[0].n,
+            1,
+          );
+          await assert.rejects(
+            () => runtime.query('SELECT jpeg FROM owner_portal.purchase_feedback_photo'),
+            (error: any) => error.code === '42501',
+          );
+          const replacement = await write('purchase', {
+            feedback: {
+              brand: '公司代确认',
+              model: '005',
+              note: '公司核对',
+              link: visible.feedback.link,
+            },
+          });
+          assert.equal(replacement.status, 200);
+          assert.equal(replacement.body.item.imageId, imageId);
+          assert.equal((await feed()).body.items[0].feedback.brand, '公司代确认');
+          assert.equal(
+            (await write('publication', { publication: { ...published, published: false } }))
+              .status,
+            200,
+          );
+          assert.equal(
+            (await request(evidencePhotoPath, 'GET', undefined, '', tokenA)).status,
+            404,
+          );
+          assert.equal((await write('publication', { publication: published })).status, 200);
+          assert.equal(
+            (await request(evidencePhotoPath, 'GET', undefined, '', tokenA)).status,
+            200,
+          );
+          const activePhoto = (await feed()).body.items[0];
+          const removed = {
+            ...photoRequest,
+            requestId: randomUUID(),
+            version: activePhoto.version,
+            feedback: { ...photoRequest.feedback, brand: '公司代确认', image: '' },
+          };
+          assert.equal((await respond(removed)).status, 200);
+          assert.equal(
+            (await request(evidencePhotoPath, 'GET', undefined, '', tokenA)).status,
+            404,
+          );
+          assert.equal((await read()).imageId, null);
+          assert.equal(
+            (
+              await respond({
+                ...removed,
+                requestId: randomUUID(),
+                version: (await feed()).body.items[0].version,
+                feedback: { ...removed.feedback, image: photoRequest.feedback.image },
+              })
+            ).status,
+            200,
+          );
+          assert.equal(
+            (await request(evidencePhotoPath, 'GET', undefined, '', tokenA)).status,
+            200,
+          );
+          assert.equal(
+            (await admin.query('SELECT count(*)::int n FROM owner_portal.purchase_feedback_photo'))
+              .rows[0].n,
+            1,
+          );
+          if (artifacts) {
+            const { chromium, expect } = await import('@playwright/test');
+            const browser = await chromium.launch({
+              executablePath: '/usr/bin/chromium',
+              args: ['--no-sandbox'],
+            });
+            try {
+              const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+              await page
+                .context()
+                .addCookies([{ name: 'chunmo_session', value: founder, url: base + '/api' }]);
+              await page.addInitScript(() => sessionStorage.setItem('chunmo-space', 'cloud'));
+              await page.goto(base);
+              await page.getByRole('button', { name: '采购管理', exact: true }).click();
+              await page.getByRole('button', { name: '编辑采购内部采购' }).click();
+              const modal = page.getByRole('dialog');
+              await expect(modal.getByText(visible.feedback.link, { exact: false })).toBeVisible();
+              await modal.getByRole('button', { name: '查看购买图片' }).click();
+              await expect(modal.getByRole('img', { name: '业主购买图片' })).toBeVisible();
+              assert.ok(
+                await modal
+                  .getByRole('img', { name: '业主购买图片' })
+                  .evaluate(
+                    (img) =>
+                      img instanceof HTMLImageElement && img.complete && img.naturalWidth > 0,
+                  ),
+              );
+              await modal.screenshot({ path: join(artifacts, 'owner-005-desktop-feedback.png') });
+            } finally {
+              await browser.close();
+            }
+          }
+        },
+      );
     },
   );
   const list = (await request(staffApi(), 'GET', undefined, founder)).body.members;
@@ -905,6 +1159,9 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   assert.ok(!JSON.stringify(list).includes('13900000001'));
   const id = list.find((row: { name: string }) => row.name === '甲').id;
   assert.equal((await request(staffApi() + '/members/' + id, 'DELETE', {}, founder)).status, 200);
+  assert.ok(evidencePhotoPath);
+  assert.equal((await request(evidencePhotoPath, 'GET', undefined, '', tokenA)).status, 404);
+  assert.equal((await request(evidencePhotoPath, 'GET', undefined, '', tokenB)).status, 200);
   assert.deepEqual(
     (await request(projects, 'GET', undefined, '', tokenA)).body.projects.map(
       (row: { id: string }) => row.id,

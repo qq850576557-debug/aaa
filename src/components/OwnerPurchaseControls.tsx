@@ -60,7 +60,12 @@ type StaffAction =
   | { action: 'return'; reason: string }
   | { action: 'reopen'; reason: string }
   | { action: 'finish' };
-const feedbackFrom = ({ brand, model, note }: OwnerFeedback) => ({ brand, model, note });
+const feedbackFrom = ({ brand, model, note, link }: OwnerFeedback): OwnerFeedback => ({
+  brand,
+  model,
+  note,
+  ...(link === undefined ? {} : { link }),
+});
 export function OwnerPurchaseStatusDialog({
   purchase,
   status,
@@ -216,7 +221,20 @@ export function OwnerPurchaseFeedback({
       }
     }
   }
-  const productLink = item?.note.match(/https?:\/\/[^\s<>"'，。；、）]+/i)?.[0];
+  const productLink = item?.link || item?.note.match(/https?:\/\/[^\s<>"'，。；、）]+/i)?.[0];
+  const [photo, setPhoto] = useState<{ path: string; image: string }>();
+  const photoPath = item?.imageId ? path + '/photo/' + item.imageId : '';
+  useEffect(() => {
+    setPhoto(undefined);
+  }, [photoPath]);
+  async function readPhoto() {
+    try {
+      const { image } = await cloudApi<{ image: string }>(photoPath);
+      setPhoto({ path: photoPath, image });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '图片暂时无法读取');
+    }
+  }
   const disabled = busy || dirty || saving;
   const selectAction = (next: typeof action) => {
     setAction(next);
@@ -259,7 +277,8 @@ export function OwnerPurchaseFeedback({
               {item.brand && <p>品牌 {item.brand}</p>}
               {item.model && <p>型号 {item.model}</p>}
               {item.note && <p>{item.note}</p>}
-              {item.note && (
+              {item.link && <p>购买链接 {item.link}</p>}
+              {(productLink || item.note) && (
                 <button
                   type="button"
                   onClick={() =>
@@ -272,6 +291,18 @@ export function OwnerPurchaseFeedback({
                   {productLink ? '复制商品链接' : '复制购买备注'}
                 </button>
               )}
+              {photoPath &&
+                (photo?.path === photoPath ? (
+                  <img
+                    className="owner-feedback-photo"
+                    src={'data:image/jpeg;base64,' + photo.image}
+                    alt="业主购买图片"
+                  />
+                ) : (
+                  <button type="button" onClick={() => void readPhoto()}>
+                    查看购买图片
+                  </button>
+                ))}
               {item.returnReason && <p>对外说明 {item.returnReason}</p>}
             </div>
           )}
@@ -324,6 +355,15 @@ export function OwnerPurchaseFeedback({
                       required
                       value={feedback.model}
                       onChange={(event) => setFeedback({ ...feedback, model: event.target.value })}
+                    />
+                  </label>
+                  <label className="form-field">
+                    购买链接
+                    <input
+                      type="url"
+                      maxLength={1000}
+                      value={feedback.link ?? ''}
+                      onChange={(event) => setFeedback({ ...feedback, link: event.target.value })}
                     />
                   </label>
                   <label className="form-field">

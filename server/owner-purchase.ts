@@ -1,5 +1,6 @@
-import type { Express, Request, Router } from 'express';
+import express, { type Express, type Request, type Router } from 'express';
 import type { PoolClient } from 'pg';
+import sharp from 'sharp';
 import { z } from 'zod';
 import type { AuthRequest } from './auth';
 import { transaction } from './db';
@@ -9,18 +10,37 @@ import { savePurchase } from '../src/lib/procurement';
 import { workspaceStateWithProof } from './workspace-save';
 
 const id = z.string().min(1).max(100);
+const photoId = z.string().regex(/^[a-f0-9]{64}$/);
+const photoLimit = 512 * 1024;
+const httpsLink = z
+  .string()
+  .trim()
+  .max(1000)
+  .refine((value) => {
+    if (!value) return true;
+    try {
+      const url = new URL(value);
+      return (
+        /^https:\/\/[^/?#]/i.test(value) && !url.username && !url.password && !/[\s\\]/u.test(value)
+      );
+    } catch {
+      return false;
+    }
+  }, '请填写有效的 HTTPS 链接')
+  .transform((value) => value.replace(/^https:\/\//i, 'https://'));
 const feedback = z
   .object({
     brand: z.string().trim().max(80),
     model: z.string().trim().max(80),
     note: z.string().trim().max(1000),
+    link: httpsLink.optional(),
   })
   .strict();
 const orderFeedback = feedback.extend({
   brand: z.string().trim().min(1, '请填写品牌').max(80),
   model: z.string().trim().min(1, '请填写型号').max(80),
 });
-const orderFields = orderFeedback.omit({ note: true });
+const orderFields = orderFeedback.omit({ note: true, link: true });
 const publication = z
   .object({
     responsibility: z.enum(['owner', 'company', 'supplier']),
@@ -29,19 +49,7 @@ const publication = z
     description: z.string().trim().max(4000),
     specification: z.string().trim().max(1000),
     quantity: z.string().trim().max(100),
-    reference: z
-      .string()
-      .trim()
-      .max(1000)
-      .refine((value) => {
-        if (!value) return true;
-        try {
-          const url = new URL(value);
-          return url.protocol === 'https:' && !url.username && !url.password && !/\s/u.test(value);
-        } catch {
-          return false;
-        }
-      }, '参考资料请填写有效 HTTPS 链接'),
+    reference: httpsLink,
   })
   .strict()
   .refine(
@@ -73,6 +81,14 @@ const edit = z
   })
   .strict();
 const markBought = z.object({ ...stamp, action: z.literal('purchase'), feedback }).strict();
+const ownerBought = markBought.extend({
+  feedback: orderFeedback.extend({
+    image: z
+      .string()
+      .max(4 * Math.ceil(photoLimit / 3))
+      .optional(),
+  }),
+});
 const withdraw = z.object({ ...stamp, action: z.literal('withdraw') }).strict();
 const staffInput = z.discriminatedUnion('action', [
   publish,
@@ -129,6 +145,7 @@ async function staffPurchase(c: PoolClient, workspace: string, project: string, 
        coalesce(specification,'') AS specification, coalesce(quantity,'') AS quantity,
        coalesce(reference,'') AS reference, coalesce(bought,false) AS bought,
        coalesce(brand,'') AS brand, coalesce(model,'') AS model, coalesce(note,'') AS note,
+       coalesce(feedback_link,'') AS link, feedback_photo AS "imageId",
        feedback_actor_name AS "feedbackActor", feedback_at AS "feedbackAt", return_reason AS "returnReason"
      FROM owner_portal.purchase_staff WHERE workspace_id=$1 AND project_id=$2 AND id=$3`,
     [workspace, project, purchase],
@@ -154,7 +171,8 @@ async function recordFeedback(
 ) {
   await c.query(
     `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=true,
-     brand=$4,model=$5,note=$6,feedback_actor_id=$7,feedback_actor_name=$8,feedback_at=now(),return_reason=$9
+     brand=$4,model=$5,note=$6,feedback_actor_id=$7,feedback_actor_name=$8,feedback_at=now(),return_reason=$9,
+     feedback_link=coalesce($10,feedback_link)
      WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3`,
     [
       ...key,
@@ -164,6 +182,7 @@ async function recordFeedback(
       actor.id,
       actor.displayName ?? actor.login,
       reason,
+      draft.link ?? null,
     ],
   );
 }
@@ -205,6 +224,28 @@ export function staffOwnerPurchaseRoutes(app: Express) {
       return { item, enabled: scope.service_enabled };
     });
     res.json({ item, enabled });
+  });
+  app.get(itemRoute + '/photo/:photoId', async (req: AuthRequest, res) => {
+    const actor = req.actor!;
+    const project = id.parse(req.params.projectId);
+    const purchase = id.parse(req.params.purchaseId);
+    const digest = photoId.parse(req.params.photoId);
+    const photo = await transaction(async (c) => {
+      const scope = await staffScope(c, actor, project);
+      if (!scope?.can_edit) throw new ApiError(403, '无此项目采购协同权限');
+      const { rows } = await c.query<{ jpeg: Buffer }>(
+        `
+        SELECT photo.jpeg FROM owner_portal.purchase_feedback_photo photo
+        JOIN owner_portal.purchase_staff p ON p.workspace_id=photo.workspace_id
+          AND p.project_id=photo.project_id AND p.id=photo.purchase_id AND p.feedback_photo=photo.digest
+        WHERE photo.workspace_id=$1 AND photo.project_id=$2 AND photo.purchase_id=$3 AND photo.digest=$4
+      `,
+        [actor.workspaceId, project, purchase, digest],
+      );
+      return rows[0]?.jpeg;
+    });
+    if (!photo) throw new ApiError(404, '图片已不可查看');
+    res.set('Cache-Control', 'no-store').json({ image: photo.toString('base64') });
   });
   app.post(itemRoute, async (req: AuthRequest, res) => {
     const input = staffInput.parse(req.body);
@@ -427,6 +468,28 @@ export function staffOwnerPurchaseRoutes(app: Express) {
   });
 }
 
+async function cleanPhoto(image: string) {
+  if (!image) return ''; // Explicit removal. An omitted field preserves the current photo.
+  try {
+    const bytes = Buffer.from(image, 'base64');
+    if (bytes.length > photoLimit || bytes.toString('base64') !== image) throw Error();
+    const source = sharp(bytes, { limitInputPixels: 12_000_000, failOn: 'warning' });
+    const meta = await source.metadata();
+    if (!['jpeg', 'png', 'webp'].includes(meta.format ?? '') || (meta.pages ?? 1) !== 1)
+      throw Error();
+    const jpeg = await source
+      .autoOrient()
+      .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+      .flatten({ background: '#fff' })
+      .jpeg({ quality: 78 })
+      .toBuffer();
+    if (jpeg.length > photoLimit) throw Error();
+    return jpeg.toString('base64');
+  } catch {
+    throw new ApiError(400, '请选择有效的 JPG、PNG 或 WebP 图片，大小不超过 512 KB');
+  }
+}
+
 export function ownerPurchaseRoutes(
   router: Router,
   db: Pick<PoolClient, 'query'>,
@@ -444,40 +507,63 @@ export function ownerPurchaseRoutes(
     if (!rows[0].allowed) throw new ApiError(404, '该住宅暂不可访问');
     res.json({ items: rows[0].items });
   });
-  router.post(base + '/:purchaseId/feedback', async (req, res) => {
-    if (!req.is('application/json')) throw new ApiError(415, '需要JSON请求');
+  router.get(base + '/:purchaseId/photo/:photoId', async (req, res) => {
     const actor = await current(req);
-    const input = z.discriminatedUnion('action', [markBought, withdraw]).parse(req.body);
-    if (input.action === 'purchase' && !orderFeedback.safeParse(input.feedback).success)
-      throw new ApiError(400, '请填写品牌和型号');
-    const project = id.parse(req.params.projectId),
-      purchase = id.parse(req.params.purchaseId);
-    const { rows } = await db.query(
-      'SELECT owner_portal.owner_purchase_feedback($1,$2,$3,$4,$5,$6,$7) AS result',
+    const result = await db.query<{ jpeg: Buffer | null }>(
+      'SELECT owner_portal.owner_purchase_photo($1,$2,$3,$4) AS jpeg',
       [
         actor.hash,
-        project,
-        purchase,
-        input.requestId,
-        input.version,
-        input.action,
-        input.action === 'purchase' ? JSON.stringify(input.feedback) : null,
+        id.parse(req.params.projectId),
+        id.parse(req.params.purchaseId),
+        photoId.parse(req.params.photoId),
       ],
     );
-    switch (rows[0].result) {
-      case 'saved':
-        res.json({ ok: true });
-        return;
-      case 'session':
-        throw new ApiError(401, '业主登录已失效');
-      case 'hidden':
-        throw new ApiError(404, '此条采购已不可见');
-      case 'limit':
-        throw new ApiError(429, '操作频繁，请稍后重试');
-      case 'conflict':
-        throw new ApiError(409, '采购已更新，请重新读取后再操作');
-      default:
-        throw new ApiError(400, '购买信息校验失败');
-    }
+    const photo = result.rows[0]?.jpeg;
+    if (!photo) throw new ApiError(404, '图片已不可查看');
+    res.json({ image: photo.toString('base64') });
   });
+  router.post(
+    base + '/:purchaseId/feedback',
+    async (req, res, next) => {
+      res.locals.ownerPurchaseActor = await current(req);
+      next();
+    },
+    express.json({ limit: '768kb' }),
+    async (req, res) => {
+      if (!req.is('application/json')) throw new ApiError(415, '需要JSON请求');
+      const actor: { hash: string } = res.locals.ownerPurchaseActor;
+      const input = z.discriminatedUnion('action', [ownerBought, withdraw]).parse(req.body);
+      const project = id.parse(req.params.projectId),
+        purchase = id.parse(req.params.purchaseId);
+      if (input.action === 'purchase' && input.feedback.image !== undefined)
+        input.feedback.image = await cleanPhoto(input.feedback.image);
+      const { rows } = await db.query(
+        'SELECT owner_portal.owner_purchase_feedback($1,$2,$3,$4,$5,$6,$7) AS result',
+        [
+          actor.hash,
+          project,
+          purchase,
+          input.requestId,
+          input.version,
+          input.action,
+          input.action === 'purchase' ? JSON.stringify(input.feedback) : null,
+        ],
+      );
+      switch (rows[0].result) {
+        case 'saved':
+          res.json({ ok: true });
+          return;
+        case 'session':
+          throw new ApiError(401, '业主登录已失效');
+        case 'hidden':
+          throw new ApiError(404, '此条采购已不可见');
+        case 'limit':
+          throw new ApiError(429, '操作频繁，请稍后重试');
+        case 'conflict':
+          throw new ApiError(409, '采购已更新，请重新读取后再操作');
+        default:
+          throw new ApiError(400, '购买信息校验失败');
+      }
+    },
+  );
 }

@@ -1,4 +1,4 @@
-export type OwnerFeedback = { brand: string; model: string; note: string };
+export type OwnerFeedback = { brand: string; model: string; note: string; link?: string };
 export type OwnerPurchaseProject = { id: string; enabled: boolean };
 export type OwnerPurchaseSummary = {
   id: string;
@@ -19,6 +19,7 @@ export type OwnerPurchaseItem = OwnerFeedback & {
   bought: boolean;
   feedbackActor?: string;
   feedbackAt?: string;
+  imageId?: string | null;
   returnReason?: string;
 };
 export type OwnerPurchaseIndex = {
