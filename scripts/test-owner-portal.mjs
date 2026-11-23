@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { setTimeout } from 'node:timers/promises';
 
 const name = 'chunmo-owner-auth-' + randomBytes(6).toString('hex');
@@ -74,39 +75,101 @@ try {
   process.exitCode = result.status ?? 1;
   if (result.status === 0 && process.env.CHUNMO_OWNER_REHEARSE_RESTORE === '1') {
     const restored = 'chunmo_owner_restore_test';
-    docker([
+    const sql = (database, statements) =>
+      docker(
+        [
+          'exec',
+          '-i',
+          name,
+          'psql',
+          '-U',
+          'postgres',
+          '-qAt',
+          '-X',
+          '-v',
+          'ON_ERROR_STOP=1',
+          '-v',
+          'staff_role=owner_staff',
+          '-v',
+          'owner_role=owner_runtime',
+          '-v',
+          'backup_role=owner_release_backup',
+          '-d',
+          database,
+        ],
+        process.env,
+        statements,
+      );
+    const backupGrant = readFileSync('deploy/owner-release/backup-grants.sql', 'utf8');
+    sql(
+      db,
+      `
+      CREATE ROLE owner_release_backup LOGIN NOSUPERUSER NOINHERIT NOREPLICATION;
+      CREATE ROLE owner_release_restore LOGIN NOSUPERUSER NOINHERIT NOREPLICATION;
+      GRANT USAGE ON SCHEMA public TO owner_release_backup;
+      GRANT SELECT ON ALL TABLES IN SCHEMA public TO owner_release_backup;
+      GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO owner_release_backup;
+    `,
+    );
+    const dumpCommand = [
       'exec',
       name,
       'pg_dump',
       '-U',
-      'postgres',
+      'owner_release_backup',
       '-Fc',
+      '--no-owner',
+      '--no-acl',
       '-f',
       '/tmp/owner-rehearsal.dump',
       db,
-    ]);
-    docker(['exec', name, 'createdb', '-U', 'postgres', restored]);
+    ];
+    const denied = spawnSync('docker', ['--host=' + localDocker, ...dumpCommand], {
+      encoding: 'utf8',
+    });
+    if (denied.status === 0 || !/permission denied.*owner_portal/u.test(denied.stderr ?? ''))
+      throw Error('Backup scope before the additional grant was not verified');
+    sql(db, backupGrant);
+    docker(dumpCommand);
+    docker(['exec', name, 'createdb', '-U', 'postgres', '-O', 'owner_release_restore', restored]);
     docker([
       'exec',
       name,
       'pg_restore',
       '-U',
-      'postgres',
+      'owner_release_restore',
       '--exit-on-error',
+      '--single-transaction',
+      '--no-owner',
+      '--no-acl',
       '-d',
       restored,
       '/tmp/owner-rehearsal.dump',
     ]);
+    sql(
+      restored,
+      [
+        'server/proposed/016_owner_identity_grants.sql',
+        'server/proposed/017_owner_purchase_grants.sql',
+        'deploy/owner-release/backup-grants.sql',
+      ]
+        .map((file) => readFileSync(file, 'utf8'))
+        .join('\n'),
+    );
     const query = `SELECT json_build_array(
       (SELECT jsonb_object_agg(name,checksum) FROM schema_migration),
       (SELECT jsonb_object_agg(filename,sha256) FROM owner_portal.purchase_migration),
       (SELECT count(*) FROM purchase), (SELECT count(*) FROM work_record),
+      (SELECT count(*) FROM owner_portal.member),
+      (SELECT count(*) FROM owner_portal.project_grant),
+      (SELECT count(*) FROM owner_portal.purchase_collaboration),
       (SELECT count(*) FROM owner_portal.purchase_event),
       has_function_privilege('owner_runtime','owner_portal.owner_purchases(text,text)','EXECUTE'),
       NOT has_table_privilege('owner_runtime','public.purchase','SELECT'),
-      NOT has_table_privilege('owner_runtime','public.work_record','SELECT'))`;
-    const verify = (database) =>
-      docker(['exec', name, 'psql', '-U', 'postgres', '-At', '-d', database, '-c', query]);
+      NOT has_table_privilege('owner_runtime','public.work_record','SELECT'),
+      has_table_privilege('owner_release_backup','owner_portal.purchase_event','SELECT'),
+      NOT has_table_privilege('owner_release_backup','owner_portal.purchase_event','INSERT'));`;
+    const verify = (database) => sql(database, query);
     if (verify(db) !== verify(restored)) throw Error('Owner restore verification differs');
     const reportSql = spawnSync(
       'python3',

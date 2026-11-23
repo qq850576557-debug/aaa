@@ -15,7 +15,7 @@ APP = "miniprogram/chunmo-photo/"
 APP_ID = "wxb48a7abb3858a252"
 BASELINES = {
     "photo": "76737c345ec4abc4d0445e69b660162609003eec",
-    "workbench": "4e1daf260ed21342450d224cec2f3f0104f4d0db",
+    "workbench": "8cd3efee8c25cc2c69a5558d40b23b3c4b05da65",
 }
 
 
