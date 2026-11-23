@@ -1,0 +1,11 @@
+<import src="../../portal.wxml" />
+<view wx:if="{{ready}}" class="portal" style="padding-top: {{statusTop + 44}}px">
+  <view class="portal-wrap">
+    <template is="navigation" data="{{title: '用户协议'}}" />
+    <view wx:if="{{text}}" class="portal-card detail-card">
+      <text class="portal-muted">版本 {{version}}</text>
+      <text class="detail-description terms-text" selectable="{{true}}">{{text}}</text>
+    </view>
+    <view wx:else class="portal-card empty-state">正式用户协议待确认</view>
+  </view>
+</view>

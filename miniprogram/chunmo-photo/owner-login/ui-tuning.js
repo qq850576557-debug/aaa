@@ -1,4 +1,5 @@
 const defaults = require('./ui-dev-tokens');
+const { productionBuild } = require('./owner-session');
 
 const overrides = {};
 const limits = {
@@ -24,6 +25,7 @@ const limits = {
 };
 
 function isDevelop() {
+  if (productionBuild()) return false;
   try {
     const version = wx.getAccountInfoSync?.()?.miniProgram?.envVersion;
     return version === 'develop' || (!version && wx.getDeviceInfo?.()?.platform === 'devtools');

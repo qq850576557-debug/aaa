@@ -10,8 +10,12 @@ const runtime = randomBytes(24).toString('hex');
 const localDocker =
   process.platform === 'win32' ? 'npipe:////./pipe/docker_engine' : 'unix:///var/run/docker.sock';
 
-function docker(args, env = process.env) {
-  const result = spawnSync('docker', ['--host=' + localDocker, ...args], { encoding: 'utf8', env });
+function docker(args, env = process.env, input) {
+  const result = spawnSync('docker', ['--host=' + localDocker, ...args], {
+    encoding: 'utf8',
+    env,
+    input,
+  });
   if (result.error || result.status !== 0) throw Error(result.stderr || String(result.error));
   return result.stdout.trim();
 }
@@ -68,6 +72,85 @@ try {
   );
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
+  if (result.status === 0 && process.env.CHUNMO_OWNER_REHEARSE_RESTORE === '1') {
+    const restored = 'chunmo_owner_restore_test';
+    docker([
+      'exec',
+      name,
+      'pg_dump',
+      '-U',
+      'postgres',
+      '-Fc',
+      '-f',
+      '/tmp/owner-rehearsal.dump',
+      db,
+    ]);
+    docker(['exec', name, 'createdb', '-U', 'postgres', restored]);
+    docker([
+      'exec',
+      name,
+      'pg_restore',
+      '-U',
+      'postgres',
+      '--exit-on-error',
+      '-d',
+      restored,
+      '/tmp/owner-rehearsal.dump',
+    ]);
+    const query = `SELECT json_build_array(
+      (SELECT jsonb_object_agg(name,checksum) FROM schema_migration),
+      (SELECT jsonb_object_agg(filename,sha256) FROM owner_portal.purchase_migration),
+      (SELECT count(*) FROM purchase), (SELECT count(*) FROM work_record),
+      (SELECT count(*) FROM owner_portal.purchase_event),
+      has_function_privilege('owner_runtime','owner_portal.owner_purchases(text,text)','EXECUTE'),
+      NOT has_table_privilege('owner_runtime','public.purchase','SELECT'),
+      NOT has_table_privilege('owner_runtime','public.work_record','SELECT'))`;
+    const verify = (database) =>
+      docker(['exec', name, 'psql', '-U', 'postgres', '-At', '-d', database, '-c', query]);
+    if (verify(db) !== verify(restored)) throw Error('Owner restore verification differs');
+    const reportSql = spawnSync(
+      'python3',
+      [
+        '-c',
+        "import runpy; print(runpy.run_path('deploy/owner-release/preflight.py')['REPORT_SQL'])",
+      ],
+      { encoding: 'utf8' },
+    );
+    if (reportSql.status !== 0) throw Error('Could not load the production read-only query');
+    const report = docker(
+      [
+        'exec',
+        '-i',
+        name,
+        'psql',
+        '-U',
+        'postgres',
+        '-qAt',
+        '-X',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-v',
+        'staff=owner_staff',
+        '-v',
+        'owner=owner_runtime',
+        '-d',
+        restored,
+      ],
+      process.env,
+      reportSql.stdout,
+    )
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    if (
+      !report[0]?.ownerObjects?.purchase ||
+      report[0]?.ownerRole?.canReadInternalRecords !== false ||
+      !report[1]?.ownerPurchaseMigrations
+    )
+      throw Error('Production read-only query did not verify the restored schema');
+    process.stdout.write(
+      'PASS isolated backup and restore with migration hashes and owner permissions\n',
+    );
+  }
 } finally {
   docker(['stop', name]);
 }

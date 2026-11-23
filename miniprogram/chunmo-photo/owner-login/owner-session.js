@@ -1,7 +1,33 @@
 const config = require('./owner-live-config');
-const storageKey = 'chunmo.owner.v1.session';
+const productionBuild = () => config.deployment === 'production';
+const storageKey = productionBuild()
+  ? 'chunmo.owner.v1.production.session'
+  : 'chunmo.owner.v1.session';
+
+function terms() {
+  const policy = config.terms;
+  return typeof policy?.version === 'string' &&
+    policy.version.trim() &&
+    typeof policy.text === 'string' &&
+    policy.text.trim()
+    ? policy
+    : null;
+}
+
+function availableBuild() {
+  const account = wx.getAccountInfoSync?.()?.miniProgram;
+  return (
+    productionBuild() &&
+    config.origin === 'https://chmsj.cn' &&
+    /^wx[a-f0-9]{16}$/i.test(config.appId ?? '') &&
+    account?.appId === config.appId &&
+    ['develop', 'trial', 'release'].includes(account.envVersion)
+  );
+}
 
 function enabled() {
+  if (productionBuild())
+    return Boolean(availableBuild() && terms() && typeof wx.openPrivacyContract === 'function');
   if (
     !/^https:\/\/[a-z0-9.-]+(?::[0-9]+)?$/i.test(config.origin) ||
     !/^wx[a-f0-9]{16}$/i.test(config.appId)
@@ -86,4 +112,14 @@ const purchases = (project) => purchaseRequest(project, '', 'GET');
 const feedback = (project, id, body) =>
   purchaseRequest(project, '/' + encodeURIComponent(id) + '/feedback', 'POST', body);
 
-module.exports = { enabled, login, session, logout, purchases, feedback };
+module.exports = {
+  productionBuild,
+  availableBuild,
+  terms,
+  enabled,
+  login,
+  session,
+  logout,
+  purchases,
+  feedback,
+};

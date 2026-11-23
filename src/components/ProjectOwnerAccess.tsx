@@ -13,6 +13,7 @@ export function ProjectOwnerAccess({ projectId }: { projectId: string }) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [invite, setInvite] = useState('');
+  const [copied, setCopied] = useState(false);
   const [rebind, setRebind] = useState<Member>();
   useEffect(() => {
     let current = true;
@@ -34,10 +35,11 @@ export function ProjectOwnerAccess({ projectId }: { projectId: string }) {
     setBusy(true);
     setError('');
     setInvite('');
+    setCopied(false);
     try {
       const response = await cloudApi<{ invite?: string }>(url + path, method, body);
       if (response.invite) {
-        setInvite('owner-login/pages/welcome/index?invite=' + response.invite);
+        setInvite(response.invite);
         setName('');
         setPhone('');
         setRebind(undefined);
@@ -47,6 +49,14 @@ export function ProjectOwnerAccess({ projectId }: { projectId: string }) {
       setError(e instanceof Error ? e.message : '业主授权保存失败');
     } finally {
       setBusy(false);
+    }
+  }
+  async function copyInvite() {
+    try {
+      await navigator.clipboard.writeText(invite);
+      setCopied(true);
+    } catch {
+      setError('请选中口令后手动复制');
     }
   }
   if (!access) return error ? <p role="alert">{error}</p> : null;
@@ -153,10 +163,23 @@ export function ProjectOwnerAccess({ projectId }: { projectId: string }) {
           </div>
         ))}
         {invite && (
-          <label className="form-field span2">
-            一次性邀请路径（24 小时有效）
-            <input readOnly value={invite} onFocus={(event) => event.target.select()} />
-          </label>
+          <div className="form-field span2">
+            <label>
+              一次性邀请口令（24 小时有效）
+              <input readOnly value={invite} onFocus={(event) => event.target.select()} />
+            </label>
+            <button type="button" onClick={() => void copyInvite()}>
+              {copied ? '已复制邀请口令' : '复制邀请口令'}
+            </button>
+            <label>
+              开发工具邀请路径
+              <input
+                readOnly
+                value={'owner-login/pages/welcome/index?invite=' + invite}
+                onFocus={(event) => event.target.select()}
+              />
+            </label>
+          </div>
         )}
         {error && (
           <p role="alert" className="span2">

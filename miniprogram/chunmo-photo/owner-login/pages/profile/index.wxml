@@ -156,7 +156,7 @@
     <view class="avatar-dialog" aria-role="dialog" aria-label="头像隐私保护">
       <text class="avatar-title">头像隐私保护</text>
       <text class="privacy-copy"
-        >仅使用你从相册选中的照片裁切头像。本次演示的头像保留在当前会话。</text
+        >仅使用你从相册选中的照片裁切头像。头像在本机的当前会话中显示。</text
       >
       <button class="privacy-policy-button" bindtap="openAvatarPrivacy">查看隐私保护指引</button>
       <view class="avatar-actions">

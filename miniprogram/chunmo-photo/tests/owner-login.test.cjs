@@ -1,6 +1,110 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { cpSync, mkdtempSync, rmSync, writeFileSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
 const store = require('../owner-login/fixture-store');
+
+test('formal package requires approved terms, protects the live route, and accepts an invitation without developer tools', async (t) => {
+  const saved = { Page: global.Page, wx: global.wx };
+  const root = mkdtempSync(join(tmpdir(), 'owner-release-test-'));
+  cpSync(join(__dirname, '../owner-login'), root, { recursive: true });
+  writeFileSync(
+    join(root, 'owner-live-config.js'),
+    `module.exports = ${JSON.stringify({
+      deployment: 'production',
+      origin: 'https://chmsj.cn',
+      appId: 'wx1111111111111111',
+      terms: null,
+    })};`,
+  );
+  t.after(() => {
+    Object.assign(global, saved);
+    rmSync(root, { recursive: true, force: true });
+  });
+  const config = require(join(root, 'owner-live-config.js'));
+  const productionStore = require(join(root, 'fixture-store.js'));
+  let definition;
+  const destinations = [];
+  const calls = [];
+  let modal;
+  let appId = config.appId;
+  let privacyOpened = false;
+  global.Page = (value) => {
+    definition = value;
+  };
+  global.wx = {
+    getAccountInfoSync: () => ({ miniProgram: { appId, envVersion: 'release' } }),
+    openPrivacyContract: () => {
+      privacyOpened = true;
+    },
+    reLaunch: ({ url }) => destinations.push(url),
+    navigateTo: ({ url }) => destinations.push(url),
+    redirectTo: ({ url }) => destinations.push(url),
+    showModal: (options) => {
+      modal = options;
+    },
+    getStorageSync: (key) => {
+      assert.equal(key, 'chunmo.owner.v1.production.session');
+      return undefined;
+    },
+    setStorageSync: (key) => assert.equal(key, 'chunmo.owner.v1.production.session'),
+    login: async () => ({ code: 'fake-login-code' }),
+    request: (input) => {
+      calls.push(input);
+      input.success({
+        statusCode: 200,
+        data: {
+          token: 'd'.repeat(64),
+          owner: { id: 'tester', name: '测试业主' },
+          projects: [{ id: 'house', title: '测试住宅' }],
+          purchasesEnabled: true,
+        },
+      });
+    },
+  };
+  require(join(root, 'pages/welcome/index.js'));
+  const load = () => {
+    const page = { ...definition, data: structuredClone(definition.data) };
+    page.setData = (patch) => Object.assign(page.data, patch);
+    page.onLoad({ mode: 'review' });
+    return page;
+  };
+  const closed = load();
+  closed.toggleAgreement();
+  closed.quickLogin();
+  assert.equal(closed.data.live, false);
+  assert.throws(() => productionStore.snapshot(), /重新进入/);
+  assert.equal(calls.length, 0);
+  config.terms = { version: 'test', text: '测试协议' };
+  appId = 'wx2222222222222222';
+  assert.equal(load().data.ready, false);
+  appId = config.appId;
+  const ready = load();
+  await Promise.resolve();
+  assert.equal(ready.data.live, true);
+  assert.equal(ready.data.uiDev, false);
+  ready.openEmployee();
+  assert.equal(destinations.at(-1), '/pages/login/index');
+  ready.showPolicy({ currentTarget: { dataset: { title: '隐私保护指引' } } });
+  assert.equal(privacyOpened, true);
+  ready.showPolicy({ currentTarget: { dataset: { title: '用户协议' } } });
+  assert.equal(destinations.at(-1), '/owner-login/pages/terms/index');
+  ready.enterInvite();
+  modal.success({ confirm: true, content: 'invalid' });
+  assert.equal(ready.data.inviteReady, false);
+  const invite = 'a'.repeat(64);
+  modal.success({ confirm: true, content: ` ${invite} ` });
+  assert.equal(ready.data.inviteReady, true);
+  await ready.authorizePhone({ detail: { code: 'fake-phone-code' } });
+  assert.equal(calls.length, 0);
+  ready.toggleAgreement();
+  await ready.authorizePhone({ detail: { code: 'fake-phone-code' } });
+  assert.equal(calls[0].url, 'https://chmsj.cn/api/mini-owner/v1/auth/login');
+  assert.equal(calls[0].data.invite, invite);
+  assert.equal(ready.data.invite, '');
+  assert.equal(productionStore.snapshot().project.id, 'house');
+});
 
 test('owner login preview separates both entry points and never attempts live authentication', (t) => {
   const saved = { Page: global.Page, wx: global.wx };

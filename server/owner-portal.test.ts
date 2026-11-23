@@ -675,6 +675,39 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           );
           await lowMotion.screenshot({ path: join(artifacts, '02-desktop-purchase-feedback.png') });
           await lowMotion.getByRole('button', { name: '取消', exact: true }).last().click();
+          await lowMotion.goto(base);
+          await lowMotion.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+          await lowMotion
+            .getByRole('button', { name: /编辑当前项目|编辑项目一号住宅/ })
+            .first()
+            .click();
+          const accessPanel = lowMotion.locator('dialog .owner-access');
+          await accessPanel.getByText('业主授权', { exact: true }).click();
+          await accessPanel.getByLabel('业主称呼').fill('邀请口令验收');
+          await accessPanel.getByLabel('业主手机号', { exact: true }).fill('13900000009');
+          await accessPanel.getByRole('button', { name: '授权并生成邀请' }).click();
+          const inviteField = accessPanel.getByLabel('一次性邀请口令（24 小时有效）');
+          const code = await inviteField.inputValue();
+          assert.match(code, /^[a-f0-9]{64}$/);
+          await accessPanel.getByRole('button', { name: '复制邀请口令' }).click();
+          assert.equal(await lowMotion.evaluate(() => navigator.clipboard.readText()), code);
+          const pathField = accessPanel.getByLabel('开发工具邀请路径');
+          assert.equal(
+            await pathField.inputValue(),
+            'owner-login/pages/welcome/index?invite=' + code,
+          );
+          await pathField.scrollIntoViewIfNeeded();
+          await lowMotion.locator('dialog').screenshot({
+            path: join(artifacts, '08-owner-invitation.png'),
+            mask: [inviteField, pathField],
+            maskColor: '#e8ebe4',
+          });
+          await accessPanel
+            .locator('.owner-access-member')
+            .filter({ hasText: '邀请口令验收' })
+            .getByRole('button', { name: '撤销本项目授权' })
+            .click();
+          await lowMotion.close();
           const limited = await open(employee, 1280, 'no-preference');
           assert.equal(await limited.getByText('业主采购协同', { exact: true }).count(), 0);
           assert.equal(await limited.getByRole('checkbox', { name: '业主可见' }).count(), 0);

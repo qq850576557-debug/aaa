@@ -15,12 +15,15 @@
       hover-class="sign-in-pressed"
       hover-start-time="0"
       hover-stay-time="110"
-      disabled="{{busy}}"
+      disabled="{{busy || (formal && !live)}}"
       bindtap="quickLogin"
       open-type="{{live && agreed ? 'getPhoneNumber' : ''}}"
       bindgetphonenumber="authorizePhone"
     >
       <template is="sign-in" data="{{quick: true}}" />
+    </button>
+    <button wx:if="{{formal && live}}" class="owner-link employee-link" hover-class="owner-link-down" bindtap="enterInvite">
+      {{inviteReady ? '已填邀请口令' : '填写邀请口令'}}
     </button>
     <button class="owner-link employee-link" hover-class="owner-link-down" bindtap="openEmployee">
       <text>账号密码登录</text>
@@ -51,4 +54,15 @@
     </view>
   </view>
   <template wx:if="{{uiDev}}" is="ui-tuning" data="{{fields: uiFields, open: uiOpen}}" />
+  <view wx:if="{{formal && privacyVisible}}" class="owner-privacy-screen">
+    <view class="owner-privacy-panel" aria-role="dialog" aria-label="登录隐私保护">
+      <text>隐私保护</text>
+      <text>登录时会核对微信授权手机号和住宅访问邀请。</text>
+      <button class="owner-link" data-title="隐私保护指引" bindtap="showPolicy">查看隐私保护指引</button>
+      <view class="owner-privacy-actions">
+        <button class="owner-link" bindtap="rejectLoginPrivacy">暂不同意</button>
+        <button class="owner-link" id="chunmo-privacy-agree" open-type="agreePrivacyAuthorization" bindagreeprivacyauthorization="agreeLoginPrivacy">同意并继续</button>
+      </view>
+    </view>
+  </view>
 </view>

@@ -1,0 +1,5 @@
+@import '../../portal.wxss';
+
+.terms-text {
+  white-space: pre-wrap;
+}

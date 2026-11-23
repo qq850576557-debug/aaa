@@ -1,6 +1,12 @@
+const ownerSession = require('./owner-session');
+
 function startPreview(page, ready = true) {
   const version = wx.getAccountInfoSync?.().miniProgram?.envVersion;
-  if (version !== 'develop' && version !== 'trial') {
+  if (
+    ownerSession.productionBuild()
+      ? !ownerSession.availableBuild()
+      : version !== 'develop' && version !== 'trial'
+  ) {
     wx.reLaunch({ url: '/pages/login/index' });
     return;
   }
@@ -26,6 +32,19 @@ function back(fallback = 'home') {
 }
 
 function showPolicy(event) {
+  if (ownerSession.productionBuild()) {
+    if (event.currentTarget.dataset.title === '隐私保护指引') {
+      const unavailable = () => wx.showToast({ title: '暂时无法打开隐私保护指引', icon: 'none' });
+      if (typeof wx.openPrivacyContract === 'function')
+        wx.openPrivacyContract({ fail: unavailable });
+      else unavailable();
+    } else if (ownerSession.terms()) {
+      wx.navigateTo({ url: '/owner-login/pages/terms/index' });
+    } else {
+      wx.showToast({ title: '正式用户协议待确认', icon: 'none' });
+    }
+    return;
+  }
   wx.showModal({
     title: event.currentTarget.dataset.title,
     content: '正式内容将在春茉确认后提供。',

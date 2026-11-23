@@ -15,7 +15,8 @@
         "pages/home/index",
         "pages/purchases/index",
         "pages/purchase/index",
-        "pages/profile/index"
+        "pages/profile/index",
+        "pages/terms/index"
       ]
     }
   ],

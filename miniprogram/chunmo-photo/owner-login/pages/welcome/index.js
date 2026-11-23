@@ -2,6 +2,7 @@ const { withUi } = require('../../ui-tuning');
 const { startPreview, routes, showPolicy } = require('../../preview');
 const { begin, beginVerified, modes } = require('../../fixture-store');
 const ownerSession = require('../../owner-session');
+const invitePattern = /^[a-f0-9]{64}$/;
 
 Page(
   withUi('login', {
@@ -13,23 +14,48 @@ Page(
       busy: false,
       mode: 'review',
       live: false,
+      formal: false,
+      inviteReady: false,
+      privacyVisible: false,
       invite: '',
     },
     onLoad(options = {}) {
       if (!startPreview(this)) return;
+      const formal = ownerSession.productionBuild();
+      this.setData({ formal });
       if (ownerSession.enabled()) {
+        const invite =
+          typeof options.invite === 'string' && invitePattern.test(options.invite)
+            ? options.invite
+            : '';
         this.setData({
           live: true,
-          invite: typeof options.invite === 'string' ? options.invite : '',
+          invite,
+          inviteReady: Boolean(invite),
         });
         void this.restoreSession();
+      } else if (formal) {
+        this.setData({ feedback: '业主采购入口暂未开放' });
       } else if (modes.includes(options.mode)) this.setData({ mode: options.mode });
     },
     toggleAgreement() {
       this.setData({ agreed: !this.data.agreed, feedback: '' });
     },
+    onUnload() {
+      if (this.data.privacyVisible) this.rejectLoginPrivacy();
+    },
+    agreeLoginPrivacy() {
+      getApp().resolvePrivacy(true);
+    },
+    rejectLoginPrivacy() {
+      getApp().resolvePrivacy(false);
+    },
     quickLogin() {
       if (!this.data.ready || this.data.busy) return;
+      if (this.data.formal && !this.data.live) {
+        this.setData({ feedback: '业主采购入口暂未开放' });
+        return;
+      }
       if (!this.data.agreed) {
         this.setData({ feedback: '请先阅读并勾选协议及隐私指引' });
         return;
@@ -71,7 +97,7 @@ Page(
       try {
         const value = await ownerSession.login(phoneCode, this.data.invite);
         beginVerified(value);
-        this.setData({ invite: '' });
+        this.setData({ invite: '', inviteReady: false });
         wx.redirectTo({ url: routes.home });
       } catch (error) {
         this.setData({ feedback: error.message });
@@ -80,7 +106,25 @@ Page(
       }
     },
     openEmployee() {
-      wx.navigateTo({ url: '/owner-login/pages/employee/index' });
+      if (this.data.formal) wx.reLaunch({ url: '/pages/login/index' });
+      else wx.navigateTo({ url: '/owner-login/pages/employee/index' });
+    },
+    enterInvite() {
+      if (!this.data.formal || !this.data.live || this.data.busy) return;
+      wx.showModal({
+        title: '填写邀请口令',
+        editable: true,
+        placeholderText: '粘贴春茉提供的一次性邀请口令',
+        success: (result) => {
+          if (!result.confirm) return;
+          const invite = String(result.content ?? '').trim();
+          if (!invitePattern.test(invite)) {
+            this.setData({ feedback: '请核对完整的邀请口令' });
+            return;
+          }
+          this.setData({ invite, inviteReady: true, feedback: '' });
+        },
+      });
     },
     showPolicy,
   }),
