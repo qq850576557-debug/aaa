@@ -13,11 +13,17 @@ repo=/opt/chunmo-source
 mode=${1:-}
 commit=${2:-}
 studio_duty=0
+owner_018=0
 case $mode in
   --deploy-studio-duty|--rollback-studio-duty)
     studio_duty=1
     previous=0741da22e288b632fa3d1651903a09c0b97b4b9d
     mode=${mode%-studio-duty}
+    ;;
+  --deploy-owner-018|--rollback-owner-018)
+    owner_018=1
+    previous=8f241b577c4c60f70b06509257f4d43836ab61e0
+    mode=${mode%-owner-018}
     ;;
 esac
 phase=host
@@ -28,7 +34,7 @@ units=(chunmo-staging-web chunmo-staging-api chunmo-mini-photo chunmo-mini-workb
 
 fail() { printf 'FAIL %s — %s\n' "$phase" "$*" >&2; exit 1; }
 [[ $# == 2 && ( $mode == --deploy || $mode == --rollback ) && $commit =~ ^[a-f0-9]{40}$ &&
-    $commit != "$previous" ]] || fail '用法 deploy.sh --deploy|--rollback|--deploy-studio-duty|--rollback-studio-duty 完整提交'
+    $commit != "$previous" ]] || fail '请使用已审核的发布入口和完整提交。'
 [[ $EUID == 0 ]] || fail '请在 Workbench 的 root 终端执行。'
 exec 9>/run/lock/chunmo-staging-deploy.lock
 flock -n 9 || fail '已有部署或备份操作在运行。'
@@ -41,7 +47,7 @@ export PG_ADMIN_SOCKET
 [[ $NODE_BIN == /* && -x $NODE_BIN && -S $PG_ADMIN_SOCKET/.s.PGSQL.5432 ]] ||
   fail '当前 Node 或 PostgreSQL 工具路径不符合预检。'
 export PATH="$(dirname -- "$NODE_BIN"):$PATH"
-python3 - "$conf" <<'PY'
+python3 -I -B - "$conf" <<'PY'
 import json, sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -65,9 +71,9 @@ site() {
 }
 
 health() {
-  local sha=$1 expected_index actual_index owner_status pid
+  local sha=$1 expected_index actual_index owner_status pid endpoint
   for unit in "${units[@]}"; do systemctl is-active --quiet "$unit" || return 1; done
-  site -f https://chmsj.cn/api/health | python3 -c '
+  site -f https://chmsj.cn/api/health | python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 caps = data.get("capabilities", {})
@@ -77,8 +83,8 @@ assert caps.get("studioDaily") is True and caps.get("ownerPurchases") is not Tru
   expected_index=$(sha256sum "$base/releases/$sha/dist/index.html") || return 1
   actual_index=$(site -f https://chmsj.cn/ | sha256sum) || return 1
   [[ ${actual_index%% *} == "${expected_index%% *}" ]] || return 1
-  site -f https://chmsj.cn/api/mini-photo/health | python3 -c 'import json,sys; assert json.load(sys.stdin).get("ok") is True' || return 1
-  site -f https://chmsj.cn/api/mini-photo-candidate/health | python3 -c '
+  site -f https://chmsj.cn/api/mini-photo/health | python3 -I -B -c 'import json,sys; assert json.load(sys.stdin).get("ok") is True' || return 1
+  site -f https://chmsj.cn/api/mini-photo-candidate/health | python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 assert data.get("ok") is True and "workbench-v1" in data.get("features", [])
@@ -88,13 +94,18 @@ assert data.get("ok") is True and "workbench-v1" in data.get("features", [])
   [[ $owner_status == 404 || ( $sha == "$previous" && $owner_status == 401 ) ]] || return 1
   pid=$(systemctl show -p MainPID --value chunmo-staging-api) || return 1
   [[ $pid =~ ^[1-9][0-9]*$ ]] || return 1
-  python3 - "$pid" <<'PY'
+  python3 -I -B - "$pid" <<'PY' || return 1
 import sys
 from pathlib import Path
 environ = (Path('/proc') / sys.argv[1] / 'environ').read_bytes().split(b'\0')
 assert b'CHUNMO_OWNER_PORTAL_ENABLED=1' not in environ
 assert b'CHUNMO_OWNER_PURCHASE_ENABLED=1' not in environ
 PY
+  if [[ $owner_018 == 1 ]]; then
+    for endpoint in /api/records /api/studio-daily; do
+      [[ $(site -o /dev/null -w '%{http_code}' "https://chmsj.cn$endpoint") == 401 ]] || return 1
+    done
+  fi
 }
 
 wait_health() {
@@ -175,11 +186,26 @@ if [[ $studio_duty == 1 ]]; then
     esac
   done <<< "$changes"
 fi
+if [[ $owner_018 == 1 ]]; then
+  features=6bb23cad3f53740ba83bb6294e67be556330f003
+  git -C "$repo" merge-base --is-ancestor "$features" "$commit" ||
+    fail '缺少已验收的 OWNER-005 基线。'
+  changes=$(git -C "$repo" diff --name-only "$features" "$commit")
+  while IFS= read -r path; do
+    case "$path" in
+      deploy/owner-release/deploy.sh|deploy/owner-release/prepare-018.py|\
+      deploy/owner-release/upgrade-018.sh|deploy/owner-release/test-018.py|\
+      docs/owner-007-production.md) ;;
+      *) fail "018 发布包含范围外文件：$path" ;;
+    esac
+  done <<< "$changes"
+fi
 [[ $(df -Pk "$base" | awk 'NR==2 {print $4}') -ge 2097152 ]] ||
   fail '发布目录剩余空间不足 2GiB。'
 
+if [[ $owner_018 == 0 ]]; then
 phase=backup-evidence
-python3 - "$backups" "$conf/control.json" "$restore_database" <<'PY'
+python3 -I -B - "$backups" "$conf/control.json" "$restore_database" <<'PY'
 from hashlib import sha256
 import json, re, sys
 from pathlib import Path
@@ -209,15 +235,64 @@ for report in root.glob('backup-*.cmbackup.restore-verified.json'):
 else:
     raise SystemExit('未找到现场验收通过的隔离恢复记录。')
 PY
+fi
 
 sql() {
   runuser -u postgres -- env -i PATH="$PATH" psql -X -qAt -w -v ON_ERROR_STOP=1 \
     -U postgres -h "$PG_ADMIN_SOCKET" -p 5432 -d chunmo_staging "$@"
 }
 
+check_018() {
+  local report
+  report=$(sql <<< "$migration_check") || fail '018 账本、权限或数据核查失败。'
+  db_state=${report##*$'\n'}
+  [[ $db_state == pending || $db_state == ready ]] || fail '无法识别 018 状态。'
+  printf '核查 018 状态 %s 现有行数 %s\n' "$db_state" "${report%$'\n'*}"
+}
+
+backup_and_rehearse_018() {
+  local output archive
+  output=$(cd "$old" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
+  archive=$(sed -n 's/^Encrypted consistent database backup complete: //p' <<< "$output")
+  [[ $archive == "$backups/"* && ${archive#"$backups/"} =~ ^backup-[a-f0-9]{32}-[0-9TZ-]+-[a-f0-9]{8}\.cmbackup$ &&
+     -f $archive && ! -L $archive && -f $archive.json && ! -e $archive.restore-verified.json ]] ||
+    fail '无法确认刚生成的正式库加密归档。'
+  printf '最新迁移前归档 %s\n' "$archive"
+  (cd "$old" && "$NODE_BIN" dist-deploy/ops.mjs restore-check "$conf" "$archive" "$PG_RESTORE_BIN")
+  python3 -I -B - "$archive.restore-verified.json" <<'PY'
+import json, re, sys
+with open(sys.argv[1]) as report:
+    restored = json.load(report)
+assert re.fullmatch(r'chunmo_restorecheck_[0-9]{14}_[a-f0-9]{8}', restored['database'])
+assert restored['countsVerified'] is True and restored['privateKeyVerified'] is True
+PY
+  printf 'PASS 最新加密备份已在新建隔离库恢复。\n'
+}
+
 phase=database-preflight
-if [[ $studio_duty == 0 ]]; then
-  migration_check=$(python3 "$launch_dir/prepare-migration.py" --check)
+if [[ $owner_018 == 1 ]]; then
+  migration_check=$(python3 -I -B "$launch_dir/prepare-018.py" --check)
+  check_018
+  pg_data=$(sql -Atc 'SHOW data_directory')
+  db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
+  python3 -I -B - "$backups" "$pg_data" "$db_bytes" <<'PY'
+from pathlib import Path
+import os, sys
+backup, database = map(Path, sys.argv[1:3])
+size = int(sys.argv[3])
+def available(path):
+    disk = os.statvfs(str(path))
+    return disk.f_frsize * disk.f_bavail
+if not database.is_absolute() or size <= 0:
+    raise SystemExit('FAIL 无法确定正式库磁盘和数据库大小')
+gib = 1024**3
+shared = os.stat(backup).st_dev == os.stat(database).st_dev
+if available(backup) < max(gib, 2*size) + (size if shared else 0) or available(database) < size:
+    raise SystemExit('FAIL 加密备份及新建隔离恢复库的可用空间不足')
+print('PASS 加密备份及隔离恢复空间核查')
+PY
+elif [[ $studio_duty == 0 ]]; then
+  migration_check=$(python3 -I -B "$launch_dir/prepare-migration.py" --check)
   db_state=$(sql <<< "$migration_check")
   [[ $db_state == absent || $db_state == ready ]] || fail '数据库状态不符合发布计划。'
 fi
@@ -266,12 +341,23 @@ fi
 
 phase=database
 health "$previous" || fail '构建期间正式站状态发生变化。'
-if [[ $studio_duty == 0 ]]; then
+if [[ $owner_018 == 1 ]]; then
+  phase=pre-018-backup-and-restore
+  backup_and_rehearse_018
+  phase=database-018
+  check_018
+  if [[ $db_state == pending ]]; then
+    migration=$(python3 -I -B "$launch_dir/prepare-018.py" --apply)
+    sql <<< "$migration"
+  fi
+  check_018
+  [[ $db_state == ready ]] || fail '018 提交后的账本或权限核查失败。'
+elif [[ $studio_duty == 0 ]]; then
   if [[ $db_state == absent ]]; then
     phase=pre-migration-backup
     (cd "$old" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
     phase=database
-    migration=$(python3 "$launch_dir/prepare-migration.py")
+    migration=$(python3 -I -B "$launch_dir/prepare-migration.py")
     sql <<< "$migration" >/dev/null
   fi
   [[ $(sql <<< "$migration_check") == ready ]] || fail '业主表、权限或校验值未通过复验。'
@@ -287,5 +373,10 @@ promoted=1
 select_release "$new"
 systemctl restart chunmo-staging-api
 wait_health "$commit" || fail '新版网页、API 或员工服务未通过验收。'
+if [[ $owner_018 == 1 ]]; then
+  phase=post-018-acceptance
+  check_018
+  [[ $db_state == ready ]] || fail '上线后 018 核查失败。'
+fi
 phase=complete
 printf 'PASS 正式网页/API/数据库部署通过 %s，业主开放保持关闭。\n' "$commit"
