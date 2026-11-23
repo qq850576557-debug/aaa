@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { Modal } from './Modal';
 import { PeoplePicker, type StudioUser } from './StudioKit';
 import { useBriefExpansion } from './BriefPanel';
@@ -6,8 +6,10 @@ import { ruleActive, duty, studioWeek, type StudioSettings } from '../lib/studio
 import {
   changeRotation,
   rotationPreview,
+  rotationBetween,
   effectiveActual,
   type Rotation,
+  type RotationCommand,
 } from '../lib/studio-rotation';
 import { plus } from '../lib/model';
 import './studio-daily.css';
@@ -18,6 +20,7 @@ type Result = {
   users: StudioUser[];
   owner: boolean;
   day: string;
+  serverTime: number;
 };
 export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compact?: boolean }) {
   const [rulesExpanded, setRulesExpanded] = useBriefExpansion('studio-rules');
@@ -33,11 +36,15 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
     [start, setStart] = useState(''),
     [planned, setPlanned] = useState(''),
     [actual, setActual] = useState(''),
-    [action, setAction] = useState('configure');
+    [action, setAction] = useState<RotationCommand['action']>('configure'),
+    [reschedule, setReschedule] = useState(false),
+    [draftBase, setDraftBase] = useState<Result | null>(null);
   const pending = useRef<any>(null);
   const newRuleId = useRef('');
   const retainedMode = useRef('');
   const dirty = useRef(false);
+  const draftVersion = useRef(0);
+  const loadId = useRef(0);
   useEffect(() => {
     const protect = (e: BeforeUnloadEvent) => {
       if (dirty.current) e.preventDefault();
@@ -45,20 +52,42 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
     window.addEventListener('beforeunload', protect);
     return () => window.removeEventListener('beforeunload', protect);
   }, []);
-  async function load() {
+  const load = useCallback(async (): Promise<Result | undefined> => {
+    const id = ++loadId.current;
     try {
-      const r = await fetch('/api/studio-daily');
-      const body = await r.json();
+      const r = await fetch('/api/studio-daily', { cache: 'no-store' });
+      const body: Result & { error?: string } = await r.json();
       if (!r.ok) throw Error(body.error || '工作室日常读取失败');
+      if (id !== loadId.current) return;
       setState(body);
-      setError('');
+      if (!dirty.current) setError('');
+      return body;
     } catch (e) {
-      setError((e as Error).message);
+      if (id === loadId.current && !dirty.current) setError((e as Error).message);
     }
-  }
+  }, []);
   useEffect(() => {
-    if (cloud) void load();
-  }, [cloud]);
+    if (!cloud) return;
+    void load();
+    const visible = () => {
+      if (document.visibilityState === 'visible') void load();
+    };
+    const restored = (e: PageTransitionEvent) => {
+      if (e.persisted) void load();
+    };
+    document.addEventListener('visibilitychange', visible);
+    window.addEventListener('pageshow', restored);
+    return () => {
+      document.removeEventListener('visibilitychange', visible);
+      window.removeEventListener('pageshow', restored);
+    };
+  }, [cloud, load]);
+  useEffect(() => {
+    if (!cloud || !state?.serverTime) return;
+    const midnight = Date.parse(plus(state.day, 1) + 'T00:00:00+08:00');
+    const timer = window.setTimeout(() => void load(), Math.max(0, midnight - state.serverTime));
+    return () => window.clearTimeout(timer);
+  }, [cloud, load, state]);
   const name = (id: string) => state?.users.find((u) => u.id === id)?.name || '已停用账号';
   const rotation = state?.value.rotation;
   function openRule(id = '') {
@@ -70,6 +99,7 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
     if (dirty.current && !confirm('切换后将放弃尚未保存的输入，继续吗？')) return;
     dirty.current = false;
     retainedMode.current = 'rules';
+    draftVersion.current = state.version;
     const r = state.value.rules.find((x) => x.id === id);
     setRuleId(id);
     newRuleId.current = crypto.randomUUID();
@@ -79,6 +109,23 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
     setError('');
     setMode('rules');
   }
+  const initializeDuty = useCallback((source: Result) => {
+    const r = source.value.rotation;
+    const current = r ? rotationPreview(r, source.day, 1)[0] : undefined;
+    setDraftBase(source);
+    draftVersion.current = source.version;
+    setPeople(r?.people || []);
+    setInterval(r?.interval || 3);
+    setStart(r?.start || source.day);
+    setPlanned(current?.planned || source.day);
+    setActual(source.day);
+    setAction('configure');
+    setReschedule(false);
+  }, []);
+  useEffect(() => {
+    if (state && !dirty.current && !pending.current && retainedMode.current === 'duty')
+      initializeDuty(state);
+  }, [initializeDuty, state]);
   function openDuty() {
     if (!state?.owner) return;
     if (retainedMode.current === 'duty') {
@@ -88,31 +135,38 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
     if (dirty.current && !confirm('切换后将放弃尚未保存的输入，继续吗？')) return;
     dirty.current = false;
     retainedMode.current = 'duty';
-    setPeople(rotation?.people || []);
-    setInterval(rotation?.interval || 3);
-    setStart(rotation?.start || state.day);
-    setPlanned(rotation?.currentDate || state.day);
-    setActual(state.day);
-    setAction('configure');
+    initializeDuty(state);
     pending.current = null;
     setError('');
     setMode('duty');
   }
-  const command =
-    action === 'configure'
-      ? { action, interval, people, start, currentDate: planned }
-      : { action, actual };
+  const draftRotation = draftBase?.value.rotation;
+  const selected =
+    draftRotation && draftBase ? rotationPreview(draftRotation, draftBase.day, 1)[0] : undefined;
+  const last = draftRotation?.history.at(-1);
+  let command: RotationCommand | undefined;
+  if (action === 'configure') command = { action, interval, people, start, currentDate: planned };
+  if (action === 'complete' && selected)
+    command = {
+      action,
+      actual,
+      reschedule,
+      round: { person: selected.person, planned: selected.planned },
+    };
+  if (action === 'correctLast' && last) command = { action, actual, reschedule, roundId: last.id };
   let preview: Rotation | undefined;
+  let previewError = '';
   try {
-    if (mode === 'duty')
+    if (mode === 'duty' && draftBase && command)
       preview = changeRotation(
-        rotation,
-        command as any,
+        draftRotation,
+        command,
         '00000000-0000-4000-8000-000000000000',
         new Date().toISOString(),
+        draftBase.day,
       );
-  } catch {
-    /* incomplete form */
+  } catch (e) {
+    if (action !== 'configure' && actual) previewError = (e as Error).message;
   }
   async function submit(value: unknown, rot = false) {
     if (!state?.owner || busy) return;
@@ -123,7 +177,7 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
       if (!pending.current || pending.current.fingerprint !== fingerprint)
         pending.current = {
           fingerprint,
-          body: { requestId: crypto.randomUUID(), version: state.version, value },
+          body: { requestId: crypto.randomUUID(), version: draftVersion.current, value },
         };
       const r = await fetch('/api/studio-daily' + (rot ? '/rotation' : ''), {
         method: rot ? 'POST' : 'PUT',
@@ -132,8 +186,11 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
       });
       const ack = await r.json();
       if (r.status === 409) {
-        await load();
+        const latest = await load();
         pending.current = null;
+        if (!latest) throw Error('设置或轮次已变化，重新读取失败；输入仍保留。');
+        draftVersion.current = latest.version;
+        if (rot) setDraftBase(latest);
         throw Error('设置已更新，已读取最新版本；输入仍保留，请核对工作要求或当前轮次后重新保存。');
       }
       if (!r.ok) throw Error(ack.error || '保存失败，输入内容保留');
@@ -186,7 +243,7 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
         <p>{r.text}</p>
       </div>
     ));
-  const next = rotation ? rotationPreview(rotation, 3) : [];
+  const next = rotation && state ? rotationPreview(rotation, state.day) : [];
   const week = state ? studioWeek(plus(state.day, weekOffset * 7)) : [];
   return (
     <section className="studio-ui sd-section">
@@ -259,7 +316,9 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
           <div className="sd-card-content">
             {rotation ? (
               <>
-                <p className="sd-caption">当前轮值 · 每{rotation.interval}天轮换</p>
+                <p className="sd-caption">
+                  {next[0].current ? '当前轮值' : '待轮值'} · 每{rotation.interval}天轮换
+                </p>
                 <strong className="sd-person">{name(next[0].person)}</strong>
                 <p>计划打扫　{next[0].planned}</p>
                 <div className="sd-next">
@@ -408,14 +467,19 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
                     aria-label="本次操作"
                     className="sd-input"
                     value={action}
-                    onChange={(e) => setAction(e.target.value)}
+                    onChange={(e) => {
+                      setAction(e.target.value as RotationCommand['action']);
+                      setReschedule(false);
+                    }}
                     disabled={busy}
                   >
-                    <option value="configure">{rotation ? '调整轮换计划' : '首次设置轮换'}</option>
-                    <option value="complete" disabled={!rotation}>
+                    <option value="configure">
+                      {draftRotation ? '调整轮换计划' : '首次设置轮换'}
+                    </option>
+                    <option value="complete" disabled={!selected}>
                       记录本轮完成
                     </option>
-                    <option value="correctLast" disabled={!rotation?.history.length}>
+                    <option value="correctLast" disabled={!last}>
                       修正最近一次完成日期
                     </option>
                   </select>
@@ -445,14 +509,14 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
                         </select>
                       </label>
                       <label>
-                        {rotation ? '当前轮次计划日期' : '起始日期'}
+                        {draftRotation ? '当前轮次计划日期' : '起始日期'}
                         <input
                           className="sd-input"
                           type="date"
-                          aria-label={rotation ? '当前轮次计划日期' : '起始日期'}
-                          value={rotation ? planned : start}
+                          aria-label={draftRotation ? '当前轮次计划日期' : '起始日期'}
+                          value={draftRotation ? planned : start}
                           onChange={(e) => {
-                            if (!rotation) setStart(e.target.value);
+                            if (!draftRotation) setStart(e.target.value);
                             setPlanned(e.target.value);
                           }}
                         />
@@ -460,35 +524,49 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
                     </div>
                   </>
                 ) : (
-                  <label>
-                    <span className="sd-caption">
-                      {action === 'complete'
-                        ? `本轮：${name(rotation!.people[rotation!.position])} · 计划 ${rotation!.currentDate}`
-                        : `最近完成：${name(rotation!.history.at(-1)!.person)} · ${effectiveActual(rotation!, rotation!.history.at(-1)!)}`}
-                    </span>
-                    <br />
-                    实际完成日期
-                    <input
-                      aria-label="实际完成日期"
-                      className="sd-input"
-                      type="date"
-                      value={actual}
-                      onChange={(e) => setActual(e.target.value)}
-                    />
-                  </label>
+                  <>
+                    <label>
+                      <span className="sd-caption">
+                        {action === 'complete'
+                          ? selected && `本轮：${name(selected.person)} · 计划 ${selected.planned}`
+                          : last &&
+                            draftRotation &&
+                            `最近完成：${name(last.person)} · ${effectiveActual(draftRotation, last)}`}
+                      </span>
+                      <br />
+                      实际完成日期
+                      <input
+                        aria-label="实际完成日期"
+                        className="sd-input"
+                        type="date"
+                        value={actual}
+                        onChange={(e) => setActual(e.target.value)}
+                      />
+                    </label>
+                    <div className="sd-person-choice">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={reschedule}
+                          onChange={(e) => setReschedule(e.target.checked)}
+                        />
+                        <span>按实际完成日期重新安排后续排班</span>
+                      </label>
+                    </div>
+                  </>
                 )}
                 <div className="sd-preview">
                   <h3>保存后的排班预览</h3>
-                  {preview ? (
-                    rotationPreview(preview, 3).map((p, i) => (
+                  {preview && draftBase ? (
+                    rotationPreview(preview, draftBase.day).map((p, i) => (
                       <div key={i}>
                         <span>{name(p.person)}</span>
                         <time>{p.planned}</time>
-                        <small>{i ? '计划' : '当前轮次'}</small>
+                        <small>{i ? '计划' : p.current ? '当前轮次' : '待轮值'}</small>
                       </div>
                     ))
                   ) : (
-                    <p>请选择人员并填写有效日期</p>
+                    <p>{previewError || '请选择人员并填写有效日期'}</p>
                   )}
                 </div>
                 <footer>
@@ -529,21 +607,7 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
                           <span>实际 {effectiveActual(rotation, h)} · 已完成</span>
                         </div>
                       ))}
-                    {rotationPreview(
-                      rotation,
-                      Math.min(
-                        10000,
-                        Math.max(
-                          8,
-                          Math.ceil(
-                            (new Date(week[6]).getTime() -
-                              new Date(rotation.currentDate).getTime()) /
-                              86400000 /
-                              rotation.interval,
-                          ) + 1,
-                        ),
-                      ),
-                    )
+                    {rotationBetween(rotation, week[0], week[6])
                       .filter(
                         (p) =>
                           p.planned >= week[0] &&
@@ -554,7 +618,7 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
                         <div className="sd-schedule-row" key={i}>
                           <strong>{name(p.person)}</strong>
                           <span>{p.planned}</span>
-                          <span>{p.current ? '当前轮次' : '计划'}</span>
+                          <span>{p.planned < state.day ? '原计划' : '计划'}</span>
                         </div>
                       ))}
                     <section className="sd-upcoming" aria-label="近期三轮值日">
@@ -563,7 +627,7 @@ export function StudioDaily({ cloud, compact = false }: { cloud: boolean; compac
                         <div className="sd-schedule-row" key={i}>
                           <strong>{name(p.person)}</strong>
                           <time dateTime={p.planned}>{p.planned}</time>
-                          <span>{['当前轮次', '下一轮', '下下轮'][i]}</span>
+                          <span>{[p.current ? '当前轮次' : '待轮值', '下一轮', '下下轮'][i]}</span>
                         </div>
                       ))}
                     </section>

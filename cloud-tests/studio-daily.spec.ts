@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { fixtureAccounts, fixtureQuery } from '../server/test-fixtures';
 import { pool, privatePool } from '../server/db';
-import { mkdir } from 'node:fs/promises';
 import { studioDay, studioWeek } from '../src/lib/studio-daily';
 import { plus } from '../src/lib/model';
 test.afterAll(async () => {
@@ -32,8 +31,7 @@ test('desktop founder manages simple requirements and rotation; staff can only r
     await expect(p.locator('.save-state')).toContainText('已保存');
   }
   await signIn(page, f.login);
-  const dir = 'docs/screenshots/studio-home-v3';
-  await mkdir(dir, { recursive: true });
+  const dir = test.info().outputDir;
   await page.getByRole('button', { name: '收起今日事项', exact: true }).click();
   await page.getByRole('button', { name: '采购管理', exact: true }).click();
   await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
@@ -80,7 +78,10 @@ test('desktop founder manages simple requirements and rotation; staff can only r
   await page.getByRole('button', { name: '编辑值日', exact: true }).click();
   await modal.getByLabel('本次操作', { exact: true }).selectOption('complete');
   await modal.getByLabel('实际完成日期', { exact: true }).fill(completed);
+  await expect(modal.locator('.sd-preview')).toContainText(plus(day, 3));
+  await modal.getByLabel('按实际完成日期重新安排后续排班').check();
   await expect(modal.locator('.sd-preview')).toContainText(plus(completed, 3));
+  await modal.screenshot({ path: dir + '/completion.png' });
   await modal.getByRole('button', { name: '确认预览并保存', exact: true }).click();
   await expect(modal).toHaveCount(0);
   await page.screenshot({ path: dir + '/home.png', fullPage: true });
@@ -114,6 +115,24 @@ test('desktop founder manages simple requirements and rotation; staff can only r
   await expect(other.getByTestId('studio-rules')).not.toContainText('检查门窗');
   await expect(other.getByTestId('studio-rules')).toContainText('整理工作台');
   await otherContext.close();
+
+  await page.setViewportSize({ width: 1024, height: 760 });
+  await page.goto('/?ui=legacy');
+  await page.getByRole('button', { name: '编辑值日', exact: true }).click();
+  modal = page.getByRole('dialog', { name: '编辑值日', exact: true });
+  await modal.getByLabel('本次操作').selectOption('complete');
+  const reschedule = modal.getByRole('checkbox', { name: '按实际完成日期重新安排后续排班' });
+  await reschedule.focus();
+  await page.keyboard.press('Space');
+  await expect(reschedule).toBeChecked();
+  expect((await reschedule.boundingBox())?.width).toBeLessThanOrEqual(16);
+  expect(
+    await modal.evaluate((el) => {
+      const bounds = el.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= innerWidth && bounds.bottom <= innerHeight;
+    }),
+  ).toBe(true);
+  await modal.screenshot({ path: dir + '/completion-legacy.png' });
 });
 
 test('home shows all cards and same-site purchase status never changes site background', async ({
@@ -158,7 +177,102 @@ test('home shows all cards and same-site purchase status never changes site back
   const content = page.getByTestId('today-panel').locator('.brief-content');
   expect(await content.evaluate((e) => e.clientHeight >= e.scrollHeight - 1)).toBe(true);
   await page.screenshot({
-    path: 'docs/screenshots/studio-home-v3/home-all-cards.png',
+    path: test.info().outputPath('home-all-cards.png'),
     fullPage: true,
   });
+});
+
+test('Beijing midnight and tab return update all rotation views and keep an unsaved draft', async ({
+  page,
+}) => {
+  const f = await fixtureAccounts(2);
+  const people = [f.id, f.employeeId, f.employees[1].id];
+  const names = ['模拟员工 A', '模拟员工 B', '模拟员工 C'];
+  for (let i = 0; i < people.length; i++)
+    await fixtureQuery('UPDATE account SET display_name=$1 WHERE id=$2', [names[i], people[i]]);
+
+  await page.goto('/');
+  await page.getByLabel('登录账号', { exact: true }).fill(f.login);
+  await page.getByLabel('登录密码', { exact: true }).fill(f.password);
+  await page.getByRole('button', { name: '登录', exact: true }).click();
+  await expect(page.locator('.save-state')).toContainText('已保存');
+  const status = await page.evaluate(async (people) => {
+    const session = await (await fetch('/api/auth/session')).json();
+    return (
+      await fetch('/api/studio-daily/rotation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': session.csrf },
+        body: JSON.stringify({
+          requestId: crypto.randomUUID(),
+          version: 0,
+          value: {
+            action: 'configure',
+            interval: 7,
+            people,
+            start: '2026-11-15',
+            currentDate: '2026-11-15',
+          },
+        }),
+      })
+    ).status;
+  }, people);
+  expect(status).toBe(200);
+
+  let instant = Date.parse('2026-11-21T23:59:40+08:00');
+  await page.clock.install({ time: instant });
+  let reads = 0;
+  await page.route('**/api/studio-daily', async (route) => {
+    const response = await route.fetch();
+    reads++;
+    await route.fulfill({
+      response,
+      json: {
+        ...(await response.json()),
+        day: studioDay(instant),
+        serverTime: instant,
+      },
+    });
+  });
+  await page.reload();
+  const card = page.locator('.sd-duty');
+  await expect(card.locator('.sd-person')).toHaveText(names[0]);
+  await expect(card).toContainText('2026-11-15');
+  const initialReads = reads;
+  instant += 25000;
+  await page.clock.fastForward(25000);
+  await expect(card.locator('.sd-person')).toHaveText(names[1]);
+  await expect(card).toContainText('2026-11-22');
+  expect(reads).toBeGreaterThan(initialReads);
+
+  instant = Date.parse('2026-11-23T12:00:00+08:00');
+  const showTab = () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await showTab();
+  await expect.poll(() => reads).toBeGreaterThan(initialReads + 1);
+  await expect(card).toContainText('2026-11-29');
+  await expect(card).not.toContainText('最近完成');
+  await card.screenshot({ path: test.info().outputPath('home-nov23.png') });
+  await page.getByRole('button', { name: '查看排班', exact: true }).click();
+  const schedule = page.getByRole('dialog', { name: '值日排班', exact: true });
+  await expect(schedule.getByLabel('近期三轮值日').getByText(names[1])).toBeVisible();
+  await expect(schedule.getByLabel('近期三轮值日')).toContainText('2026-11-29');
+  await expect(schedule).not.toContainText('已完成');
+  await schedule.screenshot({ path: test.info().outputPath('schedule-nov23.png') });
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: '编辑值日', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: '编辑值日', exact: true });
+  await expect(editor.getByLabel('当前轮次计划日期')).toHaveValue('2026-11-22');
+  await editor.getByLabel('本次操作').selectOption('complete');
+  await expect(editor).toContainText('本轮：模拟员工 B · 计划 2026-11-22');
+  await expect(editor.locator('.sd-preview')).toContainText('2026-11-29');
+  await editor.getByLabel('按实际完成日期重新安排后续排班').check();
+  await expect(editor.locator('.sd-preview')).toContainText('2026-11-30');
+  await editor.screenshot({ path: test.info().outputPath('completion-nov23.png') });
+
+  instant = Date.parse('2026-11-29T12:00:00+08:00');
+  await showTab();
+  await expect(card.locator('.sd-person')).toHaveText(names[2]);
+  await expect(editor.getByLabel('实际完成日期', { exact: true })).toHaveValue('2026-11-23');
+  await expect(editor.getByLabel('按实际完成日期重新安排后续排班')).toBeChecked();
+  await expect(editor).toContainText('本轮：模拟员工 B · 计划 2026-11-22');
 });

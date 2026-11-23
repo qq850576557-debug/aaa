@@ -12,6 +12,14 @@ restore_database=chunmo_restorecheck_20261123075542_188a4d8d
 repo=/opt/chunmo-source
 mode=${1:-}
 commit=${2:-}
+studio_duty=0
+case $mode in
+  --deploy-studio-duty|--rollback-studio-duty)
+    studio_duty=1
+    previous=0741da22e288b632fa3d1651903a09c0b97b4b9d
+    mode=${mode%-studio-duty}
+    ;;
+esac
 phase=host
 promoted=0
 job=
@@ -20,7 +28,7 @@ units=(chunmo-staging-web chunmo-staging-api chunmo-mini-photo chunmo-mini-workb
 
 fail() { printf 'FAIL %s — %s\n' "$phase" "$*" >&2; exit 1; }
 [[ $# == 2 && ( $mode == --deploy || $mode == --rollback ) && $commit =~ ^[a-f0-9]{40}$ &&
-    $commit != "$previous" ]] || fail '用法 deploy.sh --deploy|--rollback 完整提交'
+    $commit != "$previous" ]] || fail '用法 deploy.sh --deploy|--rollback|--deploy-studio-duty|--rollback-studio-duty 完整提交'
 [[ $EUID == 0 ]] || fail '请在 Workbench 的 root 终端执行。'
 exec 9>/run/lock/chunmo-staging-deploy.lock
 flock -n 9 || fail '已有部署或备份操作在运行。'
@@ -156,6 +164,17 @@ git -C "$repo" merge-base --is-ancestor "$previous" "$commit" ||
   fail '发布版本并非当前正式基线的后继。'
 git -C "$repo" diff --quiet "$previous" "$commit" -- server/migrations package-lock.json ||
   fail '基础迁移或依赖锁定文件已变化。'
+if [[ $studio_duty == 1 ]]; then
+  changes=$(git -C "$repo" diff --name-only "$previous" "$commit")
+  while IFS= read -r path; do
+    case "$path" in
+      server/studio-daily.ts|server/studio-daily.test.ts|src/components/StudioDaily.tsx|src/lib/studio-daily.ts|\
+      src/lib/studio-rotation.ts|src/lib/studio-rotation.test.ts|cloud-tests/studio-daily.spec.ts|\
+      deploy/owner-release/deploy.sh|deploy/studio-daily/rotation-snapshot.sh|docs/studio-duty-calendar-release.md) ;;
+      *) fail "卫生值日发布包含范围外文件：$path" ;;
+    esac
+  done <<< "$changes"
+fi
 [[ $(df -Pk "$base" | awk 'NR==2 {print $4}') -ge 2097152 ]] ||
   fail '发布目录剩余空间不足 2GiB。'
 
@@ -197,14 +216,16 @@ sql() {
 }
 
 phase=database-preflight
-migration_check=$(python3 "$launch_dir/prepare-migration.py" --check)
-db_state=$(sql <<< "$migration_check")
+if [[ $studio_duty == 0 ]]; then
+  migration_check=$(python3 "$launch_dir/prepare-migration.py" --check)
+  db_state=$(sql <<< "$migration_check")
+  [[ $db_state == absent || $db_state == ready ]] || fail '数据库状态不符合发布计划。'
+fi
 if [[ $active == "$new" ]]; then
-  [[ $db_state == ready ]] || fail '已运行候选版本，但迁移状态异常。'
+  [[ $studio_duty == 1 || $db_state == ready ]] || fail '已运行候选版本，但迁移状态异常。'
   printf 'PASS 正式版本已部署并验收 %s\n' "$commit"
   exit 0
 fi
-[[ $db_state == absent || $db_state == ready ]] || fail '数据库状态不符合发布计划。'
 
 phase=build
 if [[ ! -e $new ]]; then
@@ -245,15 +266,19 @@ fi
 
 phase=database
 health "$previous" || fail '构建期间正式站状态发生变化。'
-if [[ $db_state == absent ]]; then
-  phase=pre-migration-backup
-  (cd "$old" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
-  phase=database
-  migration=$(python3 "$launch_dir/prepare-migration.py")
-  sql <<< "$migration" >/dev/null
+if [[ $studio_duty == 0 ]]; then
+  if [[ $db_state == absent ]]; then
+    phase=pre-migration-backup
+    (cd "$old" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
+    phase=database
+    migration=$(python3 "$launch_dir/prepare-migration.py")
+    sql <<< "$migration" >/dev/null
+  fi
+  [[ $(sql <<< "$migration_check") == ready ]] || fail '业主表、权限或校验值未通过复验。'
+  printf 'PASS 数据库 016/017、分权和关闭状态已核验。\n'
+else
+  printf 'PASS 卫生值日发布只切换代码，已核验数据库就绪状态。\n'
 fi
-[[ $(sql <<< "$migration_check") == ready ]] || fail '业主表、权限或校验值未通过复验。'
-printf 'PASS 数据库 016/017、分权和关闭状态已核验。\n'
 phase=backup
 (cd "$new" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
 

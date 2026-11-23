@@ -6,6 +6,7 @@ import { createApp } from './app';
 import { fixtureAccounts, fixtureQuery } from './test-fixtures';
 import { config } from './config';
 import { pool, privatePool } from './db';
+import { plus } from '../src/lib/model';
 import { emptyStudio, studioDay } from '../src/lib/studio-daily';
 const server = createServer(createApp());
 await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
@@ -101,6 +102,9 @@ test('rotation owner-only commands append completion and corrections; legacy set
   const f = await fixtureAccounts(),
     a = await login(f.login, f.password),
     s = await login(f.employee, f.password);
+  const day = studioDay(),
+    anchor = plus(day, -7),
+    planned = plus(anchor, 6);
   const configure = {
     requestId: randomUUID(),
     version: 0,
@@ -108,22 +112,44 @@ test('rotation owner-only commands append completion and corrections; legacy set
       action: 'configure',
       interval: 3,
       people: [f.employeeId],
-      start: '2026-11-16',
-      currentDate: '2026-11-16',
+      start: anchor,
+      currentDate: anchor,
     },
   };
   // Resolve account IDs from the same directory used by the desktop UI.
   const current = await (await req('/studio-daily', 'GET', undefined, a)).json();
-  configure.value.people = current.users.map((u: any) => u.id);
+  configure.value.people = [f.employeeId, f.id];
+  assert.equal(current.day, day);
+  assert.equal(studioDay(current.serverTime), day);
   assert.equal((await req('/studio-daily/rotation', 'POST', configure, s)).status, 403);
   assert.equal((await req('/studio-daily/rotation', 'POST', configure, a)).status, 200);
   const complete = {
     requestId: randomUUID(),
     version: 1,
-    value: { action: 'complete', actual: '2026-11-15' },
+    value: {
+      action: 'complete',
+      actual: day,
+      reschedule: false,
+      round: { person: f.employeeId, planned },
+    },
   };
-  assert.equal((await req('/studio-daily/rotation', 'POST', complete, a)).status, 200);
-  assert.equal((await req('/studio-daily/rotation', 'POST', complete, a)).status, 200);
+  const before = await (await req('/studio-daily', 'GET', undefined, a)).json();
+  assert.equal(before.value.rotation.currentDate, anchor);
+  assert.equal(before.value.rotation.history.length, 0);
+  const stale = {
+    ...complete,
+    requestId: randomUUID(),
+    value: { ...complete.value, round: { person: f.employeeId, planned: anchor } },
+  };
+  assert.equal((await req('/studio-daily/rotation', 'POST', stale, a)).status, 409);
+  assert.equal((await req('/studio-daily/rotation', 'POST', complete, s)).status, 403);
+  const competing = { ...complete, requestId: randomUUID() };
+  const attempts = await Promise.all(
+    [complete, competing].map((body) => req('/studio-daily/rotation', 'POST', body, a)),
+  );
+  assert.deepEqual(attempts.map((r) => r.status).sort(), [200, 409]);
+  const winner = attempts[0].status === 200 ? complete : competing;
+  assert.equal((await req('/studio-daily/rotation', 'POST', winner, a)).status, 200);
   assert.equal(
     (await req('/studio-daily/rotation', 'POST', { ...complete, requestId: randomUUID() }, a))
       .status,
@@ -131,7 +157,10 @@ test('rotation owner-only commands append completion and corrections; legacy set
   );
   let saved = await (await req('/studio-daily', 'GET', undefined, a)).json();
   assert.equal(saved.value.rotation.history.length, 1);
-  assert.equal(saved.value.rotation.currentDate, '2026-11-18');
+  assert.equal(saved.value.rotation.currentDate, plus(planned, 3));
+  assert.equal(saved.value.rotation.history[0].person, f.employeeId);
+  assert.equal(saved.value.rotation.history[0].planned, planned);
+  assert.equal(saved.value.rotation.history[0].actual, day);
   const original = structuredClone(saved.value.rotation.history);
   assert.equal(
     (
@@ -141,7 +170,7 @@ test('rotation owner-only commands append completion and corrections; legacy set
         {
           requestId: randomUUID(),
           version: 2,
-          value: { action: 'correctLast', actual: '2026-11-17' },
+          value: { action: 'correctLast', actual: day, roundId: original[0].id, reschedule: true },
         },
         a,
       )
@@ -150,7 +179,7 @@ test('rotation owner-only commands append completion and corrections; legacy set
   );
   saved = await (await req('/studio-daily', 'GET', undefined, a)).json();
   assert.deepEqual(saved.value.rotation.history, original);
-  assert.equal(saved.value.rotation.currentDate, '2026-11-20');
+  assert.equal(saved.value.rotation.currentDate, plus(day, 3));
   const legacy = { ...saved.value };
   delete legacy.rotation;
   assert.equal(

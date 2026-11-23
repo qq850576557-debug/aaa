@@ -40,7 +40,8 @@ export const emptyStudio = (): StudioSettings => ({
   exceptions: [],
   cleaning: '',
 });
-export const studioDay = () => new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+export const studioDay = (timestamp = Date.now()) =>
+  new Date(timestamp + 8 * 3600000).toISOString().slice(0, 10);
 export const weekDay = (date: string) => new Date(date + 'T12:00:00Z').getUTCDay();
 export const ruleActive = (r: StudioSettings['rules'][number], day: string) =>
   r.enabled &&

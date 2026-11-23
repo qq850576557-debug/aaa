@@ -1,4 +1,4 @@
-import { rotationCommand, changeRotation } from '../src/lib/studio-rotation';
+import { rotationCommand, changeRotation, RotationConflict } from '../src/lib/studio-rotation';
 import type { Express } from 'express';
 import { z } from 'zod';
 import { owner, type AuthRequest } from './auth';
@@ -25,21 +25,24 @@ export function studioDailyRoutes(app: Express) {
           )
         ).rows;
         const value = row?.value || emptyStudio();
+        const now = Date.now();
+        const day = studioDay(now);
         if (!req.actor!.owner)
           value.rules = value.rules.filter(
             (r: any) =>
-              ruleActive(r, studioDay()) && (!r.people.length || r.people.includes(req.actor!.id)),
+              ruleActive(r, day) && (!r.people.length || r.people.includes(req.actor!.id)),
           );
         return {
           version: row?.version || 0,
           value,
           users,
           owner: req.actor!.owner,
-          day: studioDay(),
+          day,
+          serverTime: now,
           updatedAt: row?.updatedAt || null,
         };
       });
-      res.json(result);
+      res.set('Cache-Control', 'no-store').json(result);
     } catch (e) {
       next(e);
     }
@@ -89,17 +92,19 @@ export function studioDailyRoutes(app: Express) {
         let value: any;
         if (rotation) {
           try {
+            const now = Date.now();
             value = {
               ...(old?.value || emptyStudio()),
               rotation: changeRotation(
                 old?.value.rotation,
                 b.value as any,
                 b.requestId,
-                new Date().toISOString(),
+                new Date(now).toISOString(),
+                studioDay(now),
               ),
             };
           } catch (e) {
-            throw new ApiError(400, (e as Error).message);
+            throw new ApiError(e instanceof RotationConflict ? 409 : 400, (e as Error).message);
           }
         } else {
           value = b.value;
