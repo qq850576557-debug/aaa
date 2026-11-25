@@ -8,6 +8,11 @@ import { studioDailyRoutes } from './studio-daily';
 import { runningRelease } from './release';
 import { photoGeocodeRoutes } from './photo-geocode';
 import { createMiniPhotoGateway } from './miniprogram-photo';
+import {
+  configuredEmployeeWechat,
+  miniEmployeeSessions,
+  type EmployeeWechat,
+} from './mini-employee-session';
 import { sitePhotoRoutes } from './site-photos';
 import {
   aggregatePresence,
@@ -92,7 +97,8 @@ const displayNameSchema = z
   .refine((value) => !/[\u0000-\u001f\u007f]/.test(value));
 export function createApp({
   ownerPortal = configuredOwnerPortal(),
-}: { ownerPortal?: OwnerPortalOptions } = {}) {
+  employeeWechat = configuredEmployeeWechat(),
+}: { ownerPortal?: OwnerPortalOptions; employeeWechat?: EmployeeWechat } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use('/api', (req, res, next) => {
@@ -131,6 +137,7 @@ export function createApp({
     }),
   );
   miniOwnerRoutes(app, ownerPortal);
+  miniEmployeeSessions(app, employeeWechat);
   let hashing = 0;
   app.use('/api', (req, res, next) => {
     res.set({

@@ -108,4 +108,4 @@ class Api {
     }
   }
 }
-module.exports = { Api };
+module.exports = { Api: require('./employee-remember').withEmployeeRemember(Api) };

@@ -106,7 +106,7 @@ Page(
       }
     },
     openEmployee() {
-      if (this.data.formal) wx.reLaunch({ url: '/pages/login/index' });
+      if (this.data.formal) wx.reLaunch({ url: '/pages/login/index?manual=1' });
       else wx.navigateTo({ url: '/owner-login/pages/employee/index' });
     },
     enterInvite() {

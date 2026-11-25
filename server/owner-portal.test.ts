@@ -13,6 +13,7 @@ import { pool, privatePool } from './db';
 import { hash } from './store';
 import { migrate } from './migrate';
 import { officialOwnerWechat } from './owner-wechat';
+import { passwordHash } from './auth';
 import { emptyData, newProject } from '../src/lib/model';
 import { emptyHistory } from '../src/lib/history';
 
@@ -94,6 +95,9 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
     'GRANT SELECT ON account,auth_session,cloud_workspace,account_avatar,card_avatar TO ' +
       staff.username,
   );
+  await admin.query('GRANT UPDATE ON account TO ' + staff.username);
+  await admin.query('GRANT INSERT,DELETE ON auth_session TO ' + staff.username);
+  await admin.query('GRANT SELECT,INSERT,UPDATE ON login_limit TO ' + staff.username);
   const migration = await readFile('server/proposed/017_owner_purchase.sql', 'utf8');
   const grants = await readFile('server/proposed/017_owner_purchase_grants.sql', 'utf8');
   const evidence = await readFile('server/proposed/018_owner_purchase_evidence.sql', 'utf8');
@@ -207,6 +211,10 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   let verified = { openid: 'demo_a', phone: '13900000001' };
   let providerCalls = 0;
   const app = createApp({
+    employeeWechat: {
+      appId: 'wx1111111111111111',
+      openId: async (code) => code,
+    },
     ownerPortal: {
       key: process.env.CHUNMO_OWNER_DATA_KEY!,
       db: runtime,
@@ -258,6 +266,85 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
     });
     return { status: response.status, body: await response.json() };
   }
+  await t.test(
+    'employee remembered sign-in uses a separate, WeChat-bound 30-day credential',
+    async () => {
+      const oldPassword = 'Test-monthly-2026!';
+      const newPassword = 'Changed-monthly-2026!';
+      await admin.query(
+        "INSERT INTO account(id,workspace_id,login,password_hash,role) VALUES('monthly','w','monthly',$1,'employee')",
+        [await passwordHash(oldPassword)],
+      );
+      const passwordLogin = async (password: string) => {
+        const response = await fetch(base + '/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Origin: base },
+          body: JSON.stringify({ login: 'monthly', password }),
+        });
+        assert.equal(response.status, 200);
+        assert.match(response.headers.get('set-cookie') ?? '', /Max-Age=28800/);
+        return /chunmo_session=([a-f0-9]{64})/.exec(response.headers.get('set-cookie') ?? '')![1];
+      };
+      const call = (route: string, body: object, cookie = '', sendCsrf = true, referer = true) =>
+        fetch(base + '/api/mini-employee/v1/' + route, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(referer
+              ? { Referer: 'https://servicewechat.com/wx1111111111111111/0/page-frame.html' }
+              : {}),
+            ...(cookie ? { Cookie: 'chunmo_session=' + cookie } : {}),
+            ...(cookie && sendCsrf ? { 'X-CSRF-Token': hash('csrf:' + cookie) } : {}),
+          },
+          body: JSON.stringify(body),
+        });
+      let cookie = await passwordLogin(oldPassword);
+      const code = 'verified_employee_wx';
+      assert.equal((await call('remember', { code }, cookie, false)).status, 403);
+      const issued = await call('remember', { code }, cookie);
+      assert.equal(issued.status, 200);
+      const { token, expiresAt } = await issued.json();
+      const remaining = Date.parse(expiresAt) - Date.now();
+      assert(remaining > 29.99 * 86400000 && remaining <= 30 * 86400000);
+      assert.equal((await request('/auth/session', 'GET', undefined, token)).status, 401);
+      assert.equal((await call('resume', { code, token }, '', false, false)).status, 403);
+      assert.equal((await call('resume', { code: 'other_wechat', token })).status, 401);
+      await admin.query('DELETE FROM auth_session WHERE token_hash=$1', [hash(cookie)]);
+      assert.equal((await request('/auth/session', 'GET', undefined, cookie)).status, 401);
+      const restored = await call('resume', { code, token });
+      assert.equal(restored.status, 200);
+      const short = /chunmo_session=([a-f0-9]{64})/.exec(
+        restored.headers.get('set-cookie') ?? '',
+      )![1];
+      assert.equal(
+        (await request('/auth/session', 'GET', undefined, short)).body.user.id,
+        'monthly',
+      );
+      assert.equal((await call('forget', { code, token })).status, 200);
+      assert.equal((await call('resume', { code, token })).status, 401);
+      const again = await call('remember', { code }, short);
+      assert.equal(again.status, 200);
+      const second = (await again.json()).token;
+      const password = await request(
+        '/auth/password',
+        'POST',
+        {
+          currentPassword: oldPassword,
+          newPassword,
+          confirmPassword: newPassword,
+        },
+        short,
+      );
+      assert.equal(password.status, 200);
+      assert.equal((await call('resume', { code, token: second })).status, 401);
+      cookie = await passwordLogin(newPassword);
+      const third = (await (await call('remember', { code }, cookie)).json()).token;
+      await admin.query(
+        "UPDATE auth_session SET expires_at=now()-interval '1 second' WHERE account_id='monthly'",
+      );
+      assert.equal((await call('resume', { code, token: third })).status, 401);
+    },
+  );
   const staffApi = (p = 'p1') => '/projects/' + p + '/owner-access';
   const auth = '/mini-owner/v1/auth/login';
   const projects = '/mini-owner/v1/projects';
@@ -309,6 +396,12 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   assert.equal(providerCalls, 0);
   const result = await login(inviteA);
   assert.equal(result.status, 200);
+  const ownerWindow = (
+    await admin.query(
+      'SELECT extract(epoch from expires_at-now()) AS seconds FROM owner_portal.session',
+    )
+  ).rows[0].seconds;
+  assert(Number(ownerWindow) > 29.99 * 86400 && Number(ownerWindow) <= 30 * 86400);
   const tokenA = result.body.token as string;
   assert.deepEqual(result.body.projects.map((item: { id: string }) => item.id).sort(), [
     'p1',

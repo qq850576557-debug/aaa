@@ -14,6 +14,7 @@ mode=${1:-}
 commit=${2:-}
 studio_duty=0
 owner_018=0
+mini_monthly=0
 case $mode in
   --deploy-studio-duty|--rollback-studio-duty)
     studio_duty=1
@@ -24,6 +25,12 @@ case $mode in
     owner_018=1
     previous=8f241b577c4c60f70b06509257f4d43836ab61e0
     mode=${mode%-owner-018}
+    ;;
+  --deploy-mini-monthly|--rollback-mini-monthly)
+    owner_018=1
+    mini_monthly=1
+    previous=4a6ff34497c67bed7bd71e2e89f4ac6339be1cff
+    mode=${mode%-mini-monthly}
     ;;
 esac
 phase=host
@@ -186,7 +193,22 @@ if [[ $studio_duty == 1 ]]; then
     esac
   done <<< "$changes"
 fi
-if [[ $owner_018 == 1 ]]; then
+if [[ $mini_monthly == 1 ]]; then
+  changes=$(git -C "$repo" diff --name-only "$previous" "$commit")
+  while IFS= read -r path; do
+    case "$path" in
+      deploy/owner-release/deploy.sh|deploy/owner-release/package.py|docs/owner-legal-review.md|\
+      docs/owner-mini-monthly-login.md|server/app.ts|server/mini-employee-session.ts|server/owner-wechat.ts|\
+      server/owner-portal.ts|server/owner-portal.test.ts|miniprogram/chunmo-photo/lib/api.js|\
+      miniprogram/chunmo-photo/lib/employee-remember.js|miniprogram/chunmo-photo/pages/login/index.js|\
+      miniprogram/chunmo-photo/pages/password/index.js|miniprogram/chunmo-photo/owner-login/owner-session.js|\
+      miniprogram/chunmo-photo/owner-login/pages/welcome/index.js|\
+      miniprogram/chunmo-photo/tests/employee-remember.test.cjs|miniprogram/chunmo-photo/tests/login.test.cjs|\
+      miniprogram/chunmo-photo/tests/owner-login.test.cjs) ;;
+      *) fail "小程序免登录发布包含范围外文件：$path" ;;
+    esac
+  done <<< "$changes"
+elif [[ $owner_018 == 1 ]]; then
   features=6bb23cad3f53740ba83bb6294e67be556330f003
   git -C "$repo" merge-base --is-ancestor "$features" "$commit" ||
     fail '缺少已验收的 OWNER-005 基线。'
@@ -273,6 +295,7 @@ phase=database-preflight
 if [[ $owner_018 == 1 ]]; then
   migration_check=$(python3 -I -B "$launch_dir/prepare-018.py" --check)
   check_018
+  [[ $mini_monthly == 0 || $db_state == ready ]] || fail '正式库需要已部署的 018'
   pg_data=$(sql -Atc 'SHOW data_directory')
   db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
   python3 -I -B - "$backups" "$pg_data" "$db_bytes" <<'PY'
@@ -347,6 +370,7 @@ if [[ $owner_018 == 1 ]]; then
   phase=database-018
   check_018
   if [[ $db_state == pending ]]; then
+    [[ $mini_monthly == 0 ]] || fail '正式库 018 状态已变化'
     migration=$(python3 -I -B "$launch_dir/prepare-018.py" --apply)
     sql <<< "$migration"
   fi

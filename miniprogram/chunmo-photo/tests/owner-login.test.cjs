@@ -48,7 +48,10 @@ test('formal package requires approved terms, protects the live route, and accep
       assert.equal(key, 'chunmo.owner.v1.production.session');
       return undefined;
     },
-    setStorageSync: (key) => assert.equal(key, 'chunmo.owner.v1.production.session'),
+    setStorageSync: (key, value) => {
+      if (key === 'chunmo.mini.entry.v1') assert.equal(value, 'owner');
+      else assert.equal(key, 'chunmo.owner.v1.production.session');
+    },
     login: async () => ({ code: 'fake-login-code' }),
     request: (input) => {
       calls.push(input);
@@ -85,7 +88,7 @@ test('formal package requires approved terms, protects the live route, and accep
   assert.equal(ready.data.live, true);
   assert.equal(ready.data.uiDev, false);
   ready.openEmployee();
-  assert.equal(destinations.at(-1), '/pages/login/index');
+  assert.equal(destinations.at(-1), '/pages/login/index?manual=1');
   ready.showPolicy({ currentTarget: { dataset: { title: '隐私保护指引' } } });
   assert.equal(privacyOpened, true);
   ready.showPolicy({ currentTarget: { dataset: { title: '用户协议' } } });

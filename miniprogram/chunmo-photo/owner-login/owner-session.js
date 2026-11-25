@@ -3,6 +3,7 @@ const productionBuild = () => config.deployment === 'production';
 const storageKey = productionBuild()
   ? 'chunmo.owner.v1.production.session'
   : 'chunmo.owner.v1.session';
+const entryKey = 'chunmo.mini.entry.v1';
 
 function terms() {
   const policy = config.terms;
@@ -80,6 +81,7 @@ async function login(phoneCode, invite) {
   });
   if (!/^[a-f0-9]{64}$/.test(result.token)) throw new SessionError('登录响应异常', 0);
   wx.setStorageSync(storageKey, result.token);
+  if (productionBuild()) wx.setStorageSync(entryKey, 'owner');
   return result;
 }
 
@@ -93,6 +95,7 @@ async function logout() {
   const token = enabled() && wx.getStorageSync(storageKey);
   if (!token) return;
   wx.removeStorageSync(storageKey);
+  if (productionBuild() && wx.getStorageSync(entryKey) === 'owner') wx.removeStorageSync(entryKey);
   // Local access is cleared even if the device is offline. The server token expires.
   await request('/auth/logout', 'POST', {}, token).catch(() => {});
 }

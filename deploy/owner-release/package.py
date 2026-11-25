@@ -17,6 +17,7 @@ BASELINES = {
     "photo": "76737c345ec4abc4d0445e69b660162609003eec",
     "workbench": "8cd3efee8c25cc2c69a5558d40b23b3c4b05da65",
 }
+REMEMBER_MODULE = "lib/employee-remember.js"
 
 
 def archive(repo, commit, paths):
@@ -33,6 +34,40 @@ def encoded(value):
     return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
+def add_employee_resume(files, helper, workbench):
+    api_path = "lib/api.js"
+    export = b"module.exports = { Api };"
+    if files[api_path].count(export) != 1:
+        raise ValueError("Unexpected employee API export")
+    files[api_path] = files[api_path].replace(
+        export, b"module.exports = { Api: require('./employee-remember').withEmployeeRemember(Api) };"
+    )
+    files[REMEMBER_MODULE] = helper
+    page_path = "pages/login/index.js"
+    src = files[page_path]
+    start = re.search(rb"(?m)^  (?:async )?onLoad\(\) \{\n", src)
+    if workbench and not start:
+        raise ValueError("Unexpected employee login initialization")
+    end = src.index(b"  accountInput(e)", start.end() if start else 0)
+    is_workbench = b"true" if workbench else b"false"
+    files[page_path] = (
+        b"const { resumeEntry } = require('../../lib/employee-remember');\n"
+        + src[:start.start() if start else end]
+        + b"  onLoad(options) {\n"
+        + b"    this.setData({ login: getApp().pendingLogin || '' });\n"
+        + b"    return resumeEntry(this, options, " + is_workbench + b");\n  },\n"
+        + src[end:]
+    )
+    password = "pages/password/index.js"
+    if password in files:
+        anchor = b"await call('redirectTo', { url: '/pages/login/index' })"
+        if files[password].count(anchor) != 1:
+            raise ValueError("Unexpected employee switch-account route")
+        files[password] = files[password].replace(
+            anchor, b"await call('redirectTo', { url: '/pages/login/index?manual=1' })"
+        )
+
+
 def build(repo, owner_sha, employee, terms=None):
     if not re.fullmatch(r"[a-f0-9]{40}", owner_sha):
         raise ValueError("Provide the full owner Git SHA")
@@ -47,7 +82,8 @@ def build(repo, owner_sha, employee, terms=None):
         raise ValueError("Provide approved terms with version and text")
 
     files = archive(repo, BASELINES[employee], [APP.rstrip("/")])
-    owner = archive(repo, owner_sha, [(APP + "owner-login"), (APP + "app.json")])
+    owner = archive(repo, owner_sha, [APP + "owner-login", APP + "app.json", APP + REMEMBER_MODULE])
+    add_employee_resume(files, owner.pop(REMEMBER_MODULE), employee == "workbench")
     app = json.loads(files["app.json"])
     subpackage, = [p for p in json.loads(owner.pop("app.json"))["subPackages"] if p["root"] == "owner-login"]
     subpackage["pages"].remove("pages/employee/index")

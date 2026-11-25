@@ -1,8 +1,10 @@
 const { message, call } = require('../../lib/platform');
+const { resumeEntry } = require('../../lib/employee-remember');
 Page({
   data: { login: '', busy: false, error: '', privacyVisible: false },
-  onLoad() {
+  onLoad(options) {
     this.setData({ login: getApp().pendingLogin || '' });
+    return resumeEntry(this, options, false);
   },
   accountInput(e) {
     this.setData({ login: e.detail.value.replace(/[\r\n]/g, '') });

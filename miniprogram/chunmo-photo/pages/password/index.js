@@ -17,7 +17,7 @@ Page({
     if (this.data.busy) return;
     this.setData({ password: '' });
     if (wx.hideKeyboard) wx.hideKeyboard({ fail() {} });
-    await call('redirectTo', { url: '/pages/login/index' }).catch((error) =>
+    await call('redirectTo', { url: '/pages/login/index?manual=1' }).catch((error) =>
       this.setData({ error: message(error) }),
     );
   },

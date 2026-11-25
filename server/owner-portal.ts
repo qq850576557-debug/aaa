@@ -212,7 +212,7 @@ export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
           'UPDATE owner_portal.member SET app_id=$2,identity_digest=$3,bound_at=now() WHERE id=$1',
           [row.id, wechat.appId, binding],
         );
-      await c.query("INSERT INTO owner_portal.session VALUES($1,$2,now()+interval '8 hours')", [
+      await c.query("INSERT INTO owner_portal.session VALUES($1,$2,now()+interval '30 days')", [
         digest('session', accessToken),
         row.id,
       ]);

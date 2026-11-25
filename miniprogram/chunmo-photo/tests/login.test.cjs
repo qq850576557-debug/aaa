@@ -70,7 +70,7 @@ test('separate account/password pages keep Chinese account text and existing aut
   assert.equal(page.data.password, '');
   assert.match(page.data.error, /账号或密码错误/);
   await page.changeAccount();
-  assert.equal(routes.at(-1), '/pages/login/index');
+  assert.equal(routes.at(-1), '/pages/login/index?manual=1');
   load(files[0]);
   assert.equal(page.data.login, '春茉设计');
   await page.next();
