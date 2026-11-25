@@ -1511,6 +1511,13 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await dir.getByRole('combobox', { name: '按工地筛选' }).selectOption('p2');
           await expect(dir.getByText('乙', { exact: true })).toHaveCount(0);
           await dir.getByRole('combobox', { name: '按工地筛选' }).selectOption('');
+          const toolbar = await Promise.all([
+            dir.getByRole('searchbox').boundingBox(),
+            dir.getByRole('combobox', { name: '按工地筛选' }).boundingBox(),
+            dir.getByRole('button', { name: '新增授权' }).boundingBox(),
+          ]);
+          const centers = toolbar.map((box) => box!.y + box!.height / 2);
+          assert.ok(Math.max(...centers) - Math.min(...centers) < 2);
           await page
             .getByRole('dialog', { name: '账号管理' })
             .screenshot({ path: join(browserAssets, '04-业主账号.png') });
