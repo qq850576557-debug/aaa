@@ -6,6 +6,7 @@ import re
 import sys
 from urllib.request import Request, build_opener, HTTPCookieProcessor
 from urllib.error import URLError
+from urllib.parse import quote
 
 ORIGIN = "https://owner-test.chmsj.cn"
 text = Path(sys.argv[1]).read_text()
@@ -27,13 +28,21 @@ try:
     assert api("/auth/login", {"login": "owner-test-admin", "password": value.group(1)})["ok"] is True
     assert api("/auth/session")["user"]["owner"] is True
     projects = api("/workspace")["data"]["projects"]
-    assert len(projects) == 2 and all("（测试）" in item["name"] for item in projects)
-    if sys.argv[2:] == ["--upgrade"]:
+    if "--upgrade" in sys.argv[2:]:
         result = api("/owner-purchases")
         assert {row["id"] for row in result["projects"]} == {p["id"] for p in projects}
         assert isinstance(result["items"], list)
+        if "--design" in sys.argv[2:]:
+            assert projects
+            design = api("/projects/" + quote(projects[0]["id"], safe="") + "/owner-design")
+            assert all(isinstance(design[key], str) for key in ("rendering", "panorama"))
+            assert isinstance(design["version"], int) and isinstance(design["origins"], list)
     else:
+        assert len(projects) == 2 and all("（测试）" in item["name"] for item in projects)
         assert api("/projects/" + projects[0]["id"] + "/owner-access") == {"enabled": False, "members": []}
 except (URLError, ValueError, KeyError, TypeError, AssertionError):
     raise SystemExit("测试账号或初始授权状态校验失败")
-print("隔离负责人登录及测试采购接口已核验" if sys.argv[2:] else "隔离负责人登录、两个测试住宅和默认授权关闭已核验")
+if "--design" in sys.argv[2:]:
+    print("隔离负责人登录、采购及设计成果接口已核验")
+else:
+    print("隔离负责人登录及测试采购接口已核验" if sys.argv[2:] else "隔离负责人登录、两个测试住宅和默认授权关闭已核验")

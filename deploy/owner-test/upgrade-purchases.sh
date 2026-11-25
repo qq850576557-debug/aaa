@@ -141,7 +141,7 @@ if [[ -e $pointer || -L $pointer ]]; then
     fail '测试服务的工作目录或版本无效'
   [[ $(cat "$marker_path/.verified-build") == "$current_release" ]] || fail '测试站运行版本与构建标记不一致'
   if [[ $current_release == "$pin" ]]; then
-    printf 'PASS 测试站已运行 %s\n' "$pin"
+    printf 'PASS 测试站已运行 %s\n下载 %s/chunmo-owner-test.zip\n' "$pin" "$test_origin"
     exit 0
   fi
   git -C "$repo" merge-base --is-ancestor "$current_release" "$pin" || fail '新版本必须继承当前测试版本'
@@ -153,7 +153,7 @@ systemctl is-active --quiet chunmo-owner-test-pg.service
 systemctl is-active --quiet chunmo-owner-test-api.service
 [[ $(sql -Atc "SELECT current_database() || ':' || current_user || ':' || current_setting('port')") == chunmo_test:chunmo_ownerpg:5441 ]] ||
   fail '数据库身份未通过测试环境校验'
-[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT LIKE '019_%'") == 15 ]] ||
+[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT IN ('019_employee_wechat.sql','019_employee_wechat_grants.sql','020_owner_design.sql','020_owner_design_grants.sql')") == 15 ]] ||
   fail '隔离库基础迁移数量与预期不同'
 test_db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
 [[ $test_db_bytes =~ ^[0-9]+$ ]] || fail '无法核对测试备份大小'
@@ -238,10 +238,12 @@ old, = re.findall(r'^WorkingDirectory=(/opt/chunmo-owner-test/build\.[a-zA-Z0-9]
 flag = 'Environment=CHUNMO_OWNER_PURCHASE_ENABLED=1'
 assert re.findall(r'^Environment=CHUNMO_OWNER_PURCHASE_ENABLED=.*$',unit,re.M) in ([], [flag])
 unit = unit.replace('WorkingDirectory='+old, 'WorkingDirectory='+job + ('' if flag in unit else '\n'+flag))
-unified_flag = 'Environment=CHUNMO_MINI_UNIFIED_ENABLED=1'
-assert re.findall(r'^Environment=CHUNMO_MINI_UNIFIED_ENABLED=.*$',unit,re.M) in ([], [unified_flag])
-if sys.argv[3] == '1' and unified_flag not in unit:
-    unit = unit.replace('WorkingDirectory='+job,'WorkingDirectory='+job+'\n'+unified_flag)
+if sys.argv[3] == '1':
+    for key in ('CHUNMO_MINI_UNIFIED_ENABLED','CHUNMO_OWNER_DESIGN_ENABLED'):
+        flag = 'Environment='+key+'=1'
+        assert re.findall(r'^Environment='+key+r'=.*$',unit,re.M) in ([], [flag])
+        if flag not in unit:
+            unit = unit.replace('WorkingDirectory='+job,'WorkingDirectory='+job+'\n'+flag)
 (state/'api.after').write_text(unit)
 nginx = (state/'nginx.before').read_text()
 assert nginx.count(old)==2
@@ -325,6 +327,33 @@ SQL
   [[ $(staff_ledger) == "$staff_expected" ]] || fail '测试库 019 校验值不一致'
   [[ $(sql -Atc "SELECT has_table_privilege('chunmo_app','public.employee_wechat_binding','SELECT') AND NOT has_table_privilege('owner_runtime','public.employee_wechat_binding','SELECT')") == t ]] ||
     fail '测试库 019 角色隔离校验失败'
+  design_sql="$job/server/proposed/020_owner_design.sql"
+  design_grants="$job/server/proposed/020_owner_design_grants.sql"
+  design_sha=$(sha256sum "$design_sql" | awk '{print $1}')
+  design_grants_sha=$(sha256sum "$design_grants" | awk '{print $1}')
+  design_expected=$(printf '020_owner_design.sql:%s\n020_owner_design_grants.sql:%s' "$design_sha" "$design_grants_sha")
+  design_ledger() { sql -Atc "SELECT name || ':' || checksum FROM schema_migration WHERE name LIKE '020_%' ORDER BY name"; }
+  installed_design=$(design_ledger)
+  [[ ! $installed_design || $installed_design == "$design_expected" ]] ||
+    fail '测试库 020 账本不完整或校验值不一致'
+  if [[ ! $installed_design ]]; then
+    {
+      printf "SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s'; SELECT pg_advisory_xact_lock(62109684);\n"
+      cat "$design_sql" "$design_grants"
+      cat <<'SQL'
+INSERT INTO schema_migration(name,checksum) VALUES
+  ('020_owner_design.sql', :'design_sha'), ('020_owner_design_grants.sql', :'design_grants_sha');
+SQL
+    } | sql --single-transaction -v staff_role=chunmo_app -v owner_role=owner_runtime \
+      -v design_sha="$design_sha" -v design_grants_sha="$design_grants_sha" -f -
+  fi
+  [[ $(design_ledger) == "$design_expected" ]] || fail '测试库 020 校验值不一致'
+  [[ $(sql -Atc "SELECT has_table_privilege('chunmo_app','owner_portal.project_design','SELECT')
+    AND has_table_privilege('chunmo_app','owner_portal.project_design','INSERT')
+    AND has_table_privilege('chunmo_app','owner_portal.project_design','UPDATE')
+    AND NOT has_table_privilege('owner_runtime','owner_portal.project_design','SELECT,INSERT,UPDATE,DELETE')
+    AND has_function_privilege('owner_runtime','owner_portal.authorized_design(text,text)','EXECUTE')") == t ]] ||
+    fail '测试库 020 角色隔离校验失败'
 fi
 cmp -s "$nginx" "$upgrade/nginx.before"
 cmp -s "$unit" "$upgrade/api.before"
@@ -357,11 +386,14 @@ curl -fsS --max-time 10 "$test_origin/api/health" | python3 -c 'import json,sys;
 if (( v21 )); then
   [[ $(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' "$test_origin/api/mini-login/v1/discover") == 403 ]]
   [[ $(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$test_origin/api/mini-photo-candidate/workbench/workspace") == 403 ]]
+  [[ $(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$test_origin/api/mini-owner/v1/projects/test/design") == 401 ]]
 fi
 [[ $(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$test_origin/api/mini-owner/v1/projects/test/purchases") == 401 ]]
 curl -fsS --max-time 20 "$test_origin/chunmo-owner-test.zip" -o "$upgrade/download.zip"
 cmp "$job/chunmo-owner-test.zip" "$upgrade/download.zip"
-PYTHONDONTWRITEBYTECODE=1 python3 "$upgrade/source/deploy/owner-test/smoke.py" "$state/login.txt" --upgrade
+smoke_flags=(--upgrade)
+if (( v21 )); then smoke_flags+=(--design); fi
+PYTHONDONTWRITEBYTECODE=1 python3 "$upgrade/source/deploy/owner-test/smoke.py" "$state/login.txt" "${smoke_flags[@]}"
 [[ $(health https://chmsj.cn production) == "$prod" ]]
 write_active_upgrade "$upgrade"
 trap - ERR INT TERM HUP
