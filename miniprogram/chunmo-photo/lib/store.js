@@ -27,8 +27,20 @@ class PhotoStore {
     }
   }
   async init() {
-    await this.io('mkdir', { dirPath: this.root, recursive: true });
-    const { files } = await this.io('readdir', { dirPath: this.root });
+    const directory = { dirPath: this.root };
+    let listing;
+    try {
+      await this.io('mkdir', { ...directory, recursive: true });
+    } catch (error) {
+      // WeChat can reject a recursive mkdir when the account directory already
+      // exists. Only continue when that same directory can actually be read.
+      try {
+        listing = await this.io('readdir', directory);
+      } catch {
+        throw error;
+      }
+    }
+    const { files } = listing ?? (await this.io('readdir', directory));
     for (const id of files.filter((id) => ID.test(id))) {
       const dir = this.root + '/' + id;
       let revisions;

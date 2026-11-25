@@ -34,6 +34,26 @@ async function fixture(t) {
   };
   return { root, io, store, file, add };
 }
+test('reopen an existing WeChat photo directory and preserve records when mkdir reports exists', async (t) => {
+  const f = await fixture(t);
+  const task = await f.add();
+  const io = adapter();
+  const mkdir = io.mkdir;
+  io.mkdir = (options) => {
+    if (options.dirPath === f.store.root) {
+      queueMicrotask(() => options.fail({ errMsg: 'mkdir:fail file already exists' }));
+      return;
+    }
+    mkdir(options);
+  };
+  const restored = await new PhotoStore(io, f.root, actor).init();
+  assert.deepEqual(restored, [task]);
+  assert.equal(await fs.readFile(task.dir + '/raw', 'utf8'), await fs.readFile(f.file, 'utf8'));
+  const colliding = new PhotoStore(io, f.root, { ...actor, id: 'collision' });
+  await fs.writeFile(colliding.root, 'unrelated original file');
+  await assert.rejects(colliding.init(), (error) => error.code === 'EEXIST');
+  assert.equal(await fs.readFile(colliding.root, 'utf8'), 'unrelated original file');
+});
 test('20 synthetic queue jobs saved once, durable restart preserves all photo bytes and stages', async (t) => {
   const f = await fixture(t),
     saved = [],
