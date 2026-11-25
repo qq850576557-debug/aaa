@@ -1,0 +1,16 @@
+.spring-notice {
+  box-sizing: border-box;
+  padding: 7px 11px;
+  border-radius: 9px;
+  color: #53695c;
+  background: #eef3ee;
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.spring-notice-error { color: #963f33; background: #fdf1ed; }
+.spring-notice-warning { color: #7b562e; background: #f7f1e8; }
+.spring-notice-floating { position: absolute; z-index: 2; inset-inline: 0; top: 3px; }
+
+.spring-notice-reserved { height: 48px; overflow-y: auto; margin-bottom: 5px; }
+.spring-notice-empty { visibility: hidden; }

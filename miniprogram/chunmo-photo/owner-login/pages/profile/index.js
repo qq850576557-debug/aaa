@@ -1,3 +1,4 @@
+const unified = require('../../../lib/unified-login');
 const { withUi } = require('../../ui-tuning');
 const store = require('../../fixture-store');
 const avatar = require('../../avatar');
@@ -28,6 +29,7 @@ Page(
       maxZoom: avatar.MAX_ZOOM,
     },
     onLoad(options = {}) {
+      if (ownerSession.unified()) this.setData({ canSwitch: unified.canSwitch() });
       if (store.open(this) && options.switch === '1') this.setData({ switchOpen: true });
     },
     onShow() {
@@ -70,6 +72,9 @@ Page(
       this.cropSession = null;
       this.dragOrigin = null;
       if (this.data.privacyVisible) this.rejectAvatarPrivacy();
+    },
+    switchIdentity() {
+      wx.reLaunch({ url: unified.entry + '?choose=1' });
     },
     retry() {
       store.retry();

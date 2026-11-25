@@ -1,0 +1,9 @@
+.title {
+  margin-bottom: 18px;
+}
+.panel view {
+  margin: 12px 0;
+}
+.panel button {
+  margin-top: 14px;
+}

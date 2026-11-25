@@ -6,9 +6,7 @@
     </button></view
   ><view class="summary"
     >已拍 {{stats.captured}} · 相册已保存 {{stats.saved}} · 待处理 {{stats.failed}}</view
-  ><view wx:if="{{notice}}" class="error">{{notice}}</view
-  ><view wx:if="{{warning}}" class="error">{{warning}}</view
-  ><view class="grid"
+  ><spring-notice text="{{notice || warning}}" tone="{{notice ? noticeTone : 'warning'}}" reserved="{{true}}" /><view class="grid"
     ><view
       wx:for="{{photos}}"
       wx:key="id"

@@ -15,21 +15,23 @@
       hover-class="sign-in-pressed"
       hover-start-time="0"
       hover-stay-time="110"
-      disabled="{{busy || (formal && !live)}}"
+      disabled="{{busy || (formal && !live && !unified)}}"
       bindtap="quickLogin"
-      open-type="{{live && agreed ? 'getPhoneNumber' : ''}}"
+      open-type="{{!unified && live && agreed ? 'getPhoneNumber' : ''}}"
       bindgetphonenumber="authorizePhone"
     >
       <template is="sign-in" data="{{quick: true}}" />
     </button>
-    <button wx:if="{{formal && live}}" class="owner-link employee-link" hover-class="owner-link-down" bindtap="enterInvite">
+    <button wx:if="{{!unified && formal && live}}" class="owner-link employee-link" hover-class="owner-link-down" bindtap="enterInvite">
       {{inviteReady ? '已填邀请口令' : '填写邀请口令'}}
     </button>
     <button class="owner-link employee-link" hover-class="owner-link-down" bindtap="openEmployee">
-      <text>账号密码登录</text>
+      <text>{{unified ? '其他登录方式' : '账号密码登录'}}</text>
       <view class="arrow-mark" aria-hidden="{{true}}"></view>
     </button>
-    <view wx:if="{{feedback}}" class="feedback" role="status">{{feedback}}</view>
+    <view class="welcome-feedback">
+      <spring-notice wx:if="{{!binding && !roles.length}}" text="{{feedback}}" tone="{{feedbackTone}}" floating="{{true}}" />
+    </view>
   </view>
   <view class="owner-content owner-consent">
     <button
@@ -54,10 +56,34 @@
     </view>
   </view>
   <template wx:if="{{uiDev}}" is="ui-tuning" data="{{fields: uiFields, open: uiOpen}}" />
+  <view wx:if="{{unified && (binding || roles.length === 2)}}" class="owner-privacy-screen binding-screen">
+    <view class="owner-privacy-panel binding-panel" aria-role="dialog" aria-label="微信登录">
+      <view class="binding-title">
+        <text>{{roles.length === 2 ? '选择使用身份' : '首次绑定'}}</text>
+        <button class="owner-link" bindtap="closeBinding" disabled="{{busy}}" aria-label="关闭">×</button>
+      </view>
+      <block wx:if="{{roles.length === 2}}">
+        <button class="sign-in-button" data-role="employee" bindtap="pickRole" disabled="{{busy}}"><view class="sign-in-label">员工工作台</view></button>
+        <button class="sign-in-button" data-role="owner" bindtap="pickRole" disabled="{{busy}}"><view class="sign-in-label">业主采购</view></button>
+      </block>
+      <block wx:elif="{{binding === 'employee'}}">
+        <label>员工账号<input value="{{staffLogin}}" data-field="staffLogin" bindinput="editBinding" maxlength="160" /></label>
+        <label>原账号密码<input password value="{{password}}" data-field="password" bindinput="editBinding" maxlength="128" /></label>
+        <button class="sign-in-button" open-type="getPhoneNumber" bindgetphonenumber="bindPhone" disabled="{{busy || !phoneBinding || !staffLogin || !password}}"><view class="sign-in-label">验证手机号并绑定</view></button>
+        <button wx:if="{{ownerBinding}}" class="owner-link employee-link" bindtap="showOwnerBinding">我有业主邀请</button>
+      </block>
+      <block wx:else>
+        <label>邀请口令<input value="{{inviteDraft}}" data-field="inviteDraft" bindinput="editBinding" maxlength="64" /></label>
+        <button class="sign-in-button" open-type="getPhoneNumber" bindgetphonenumber="bindPhone" disabled="{{busy || inviteDraft.length !== 64}}"><view class="sign-in-label">验证手机号并绑定</view></button>
+        <button class="owner-link employee-link" bindtap="showEmployeeBinding">使用员工账号绑定</button>
+      </block>
+      <spring-notice text="{{feedback}}" tone="{{feedbackTone}}" />
+    </view>
+  </view>
   <view wx:if="{{formal && privacyVisible}}" class="owner-privacy-screen">
     <view class="owner-privacy-panel" aria-role="dialog" aria-label="登录隐私保护">
       <text>隐私保护</text>
-      <text>登录时会核对微信授权手机号和住宅访问邀请。</text>
+      <text>{{unified ? '首次绑定时会核对微信授权手机号及账号凭证。' : '登录时会核对微信授权手机号和住宅访问邀请。'}}</text>
       <button class="owner-link" data-title="隐私保护指引" bindtap="showPolicy">查看隐私保护指引</button>
       <view class="owner-privacy-actions">
         <button class="owner-link" bindtap="rejectLoginPrivacy">暂不同意</button>

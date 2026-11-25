@@ -1,4 +1,4 @@
-import { MemberCards } from './MemberCards';
+import { AccountDirectory } from './AccountDirectory';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Modal, Confirm } from './Modal';
 import { PASSWORD_MIN, PASSWORD_MAX, passwordSchema } from '../lib/password';
@@ -7,7 +7,6 @@ import { Avatar } from './Avatar';
 import { accountPermissions } from '../lib/account-permissions';
 import { AvatarEditor } from './AvatarEditor';
 import { LoginNameEditor } from './LoginNameEditor';
-import { loginSchema, LOGIN_HELP } from '../lib/login';
 import { AuditLog } from './AuditLog';
 import './account.css';
 export type DirectoryAccount = {
@@ -66,17 +65,11 @@ function CloudPanel({
   const [user, setUser] = useState<CloudUser | null>(initialUser ?? null),
     [loading, setLoading] = useState(!initialUser),
     [accounts, setAccounts] = useState<DirectoryAccount[]>([]),
-    [tab, setTab] = useState('profile'),
+    [tab, setTab] = useState('staff'),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false),
-    [displayName, setDisplayName] = useState(initialUser?.displayName || initialUser?.login || ''),
-    [target, setTarget] = useState(''),
-    [employeeName, setEmployeeName] = useState(''),
-    [note, setNote] = useState(''),
-    [login, setLogin] = useState(''),
-    [password, setPassword] = useState(''),
-    [newName, setNewName] = useState('');
+    [displayName, setDisplayName] = useState(initialUser?.displayName || initialUser?.login || '');
   const [confirmation, setConfirmation] = useState<{
     title: string;
     message: string;
@@ -88,11 +81,9 @@ function CloudPanel({
     alreadyImported?: boolean;
     counts?: Record<string, number>;
   } | null>(null);
-  const selected = accounts.find((a) => a.id === target);
   const expired = () => {
     setUser(null);
     setAccounts([]);
-    setPassword('');
     setNotice('会话已失效，请重新登录。');
     window.dispatchEvent(new Event('chunmo-auth-expired'));
   };
@@ -127,7 +118,7 @@ function CloudPanel({
     };
   }, []);
   useEffect(() => {
-    if (user && ['directory', 'audit'].includes(tab) && accountPermissions(user.owner).directory)
+    if (user && tab === 'audit' && accountPermissions(user.owner).directory)
       void directory().catch(report);
   }, [user?.id, tab]);
   async function action(run: () => Promise<void>) {
@@ -152,17 +143,16 @@ function CloudPanel({
       });
     else run();
   };
-  function selectAccount(id: string) {
-    const a = accounts.find((a) => a.id === id);
-    setTarget(id);
-    setEmployeeName(a?.displayName || a?.login || '');
-    setNote(a?.note || '');
-    setError('');
-    setNotice('');
-  }
   return (
     <>
-      <Modal title="账号管理" onClose={onClose} wide className="account-dialog">
+      <Modal
+        title="账号管理"
+        onClose={onClose}
+        wide
+        className={
+          'account-dialog' + (['staff', 'owner'].includes(tab) ? ' account-directory-dialog' : '')
+        }
+      >
         <div className="modal-body account-body">
           {loading ? (
             <p role="status">正在读取账号…</p>
@@ -175,19 +165,22 @@ function CloudPanel({
             </div>
           ) : (
             <>
-              <div className="account-identity">
-                <Avatar account={user} />
-                <div>
-                  <h3>{user.displayName || user.login}</h3>
-                  <p>
-                    {user.owner ? '工作室负责人' : '普通员工'} · 登录名 {user.login}
-                  </p>
+              {tab === 'profile' && (
+                <div className="account-identity">
+                  <Avatar account={user} />
+                  <div>
+                    <h3>{user.displayName || user.login}</h3>
+                    <p>
+                      {user.owner ? '工作室负责人' : '普通员工'} · 登录名 {user.login}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="account-tabs" role="tablist" aria-label="账号管理功能">
                 {[
+                  ['staff', '员工账号'],
+                  ...(user.owner ? [['owner', '业主账号']] : []),
                   ['profile', '账号与安全'],
-                  ['directory', '账号通讯录'],
                   ['audit', '操作记录'],
                   ...(accountPermissions(user.owner).backupImport ? [['import', '备份导入']] : []),
                 ].map(([key, label]) => (
@@ -294,220 +287,22 @@ function CloudPanel({
                   </div>
                 </section>
               )}
-              {tab === 'directory' && accountPermissions(user.owner).directory && (
-                <section className="account-section" aria-label="账号通讯录">
-                  <MemberCards
-                    user={user}
-                    onSaved={async (card) => {
-                      await directory();
-                      if (target === card.id) setEmployeeName(card.displayName);
-                      if (card.id === user.id) {
-                        const updated = await cloudSession();
-                        setUser(updated);
-                        setDisplayName(updated.displayName || updated.login);
-                        window.dispatchEvent(
-                          new CustomEvent('chunmo-profile-updated', { detail: updated }),
-                        );
-                      }
-                    }}
-                  />
-                  <p className="account-muted">
-                    正式展示名称属于账号本人；“我的私有备注”仅当前账号可见。
-                  </p>
-                  <label>
-                    选择账号
-                    <select
-                      aria-label="选择账号"
-                      value={target}
-                      onChange={(e) => selectAccount(e.target.value)}
-                    >
-                      <option value="">请选择账号</option>
-                      {accounts
-                        .filter((a) => a.id !== user.id)
-                        .map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.displayName || a.login} · {a.login}
-                            {a.active ? '' : '（已停用）'}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  {selected && (
-                    <div className="account-selected">
-                      <h3>{selected.displayName || selected.login}</h3>
-                      <p className="account-muted">
-                        正式登录名：{selected.login} ·{' '}
-                        {selected.owner ? '工作室负责人' : '普通员工'} ·{' '}
-                        {selected.active ? '已启用' : '已停用'}
-                      </p>
-                      <form
-                        aria-label="修改私有账号备注"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          void action(async () => {
-                            await cloudApi(
-                              '/accounts/' + encodeURIComponent(target) + '/note',
-                              'PUT',
-                              { note },
-                            );
-                            await directory();
-                            setNotice('我的私有备注已保存，其他账号无法读取。');
-                          });
-                        }}
-                      >
-                        <label>
-                          我的私有备注
-                          <textarea
-                            aria-label="我的私有备注"
-                            maxLength={1000}
-                            rows={3}
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                          />
-                        </label>
-                        <button disabled={busy}>保存私有备注</button>
-                      </form>
-                      {user.owner && !selected.owner && (
-                        <>
-                          <form
-                            aria-label="修改员工展示名称"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              void action(async () => {
-                                await cloudApi('/accounts/' + encodeURIComponent(target), 'PATCH', {
-                                  displayName: employeeName,
-                                });
-                                await directory();
-                                setNotice('员工展示名称已保存。');
-                              });
-                            }}
-                          >
-                            <label>
-                              员工正式展示名称
-                              <input
-                                aria-label="员工正式展示名称"
-                                required
-                                maxLength={80}
-                                value={employeeName}
-                                onChange={(e) => setEmployeeName(e.target.value)}
-                              />
-                            </label>
-                            <button disabled={busy}>保存员工展示名称</button>
-                          </form>
-                          <button
-                            disabled={busy}
-                            onClick={() =>
-                              setConfirmation({
-                                title: selected.active ? '停用该员工账号？' : '恢复该员工账号？',
-                                message:
-                                  '仅变更账号登录状态，保留关联工作记录和项目数据。停用后所有旧会话失效。',
-                                run: () =>
-                                  void action(async () => {
-                                    await cloudApi(
-                                      '/accounts/' + encodeURIComponent(target),
-                                      'PATCH',
-                                      { active: !selected.active },
-                                    );
-                                    await directory();
-                                    setNotice('员工账号状态已更新。');
-                                  }),
-                              })
-                            }
-                          >
-                            {selected.active ? '停用员工账号' : '恢复员工账号'}
-                          </button>
-                          <details className="account-card">
-                            <summary>重置员工密码</summary>
-                            <p className="account-muted">
-                              无需原密码。重置后员工全部旧会话失效，角色、状态和工作记录保持不变。
-                            </p>
-                            <PasswordForm
-                              key={target}
-                              requireCurrent={false}
-                              onExpired={expired}
-                              onSave={async (_current, password) => {
-                                await cloudApi('/accounts/' + encodeURIComponent(target), 'PATCH', {
-                                  password,
-                                });
-                                setNotice('员工密码已重置，全部旧会话已撤销，请通知员工重新登录。');
-                              }}
-                            />
-                          </details>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {user.owner && (
-                    <details className="account-card">
-                      <summary>创建普通员工账号</summary>
-                      <p className="account-muted">{LOGIN_HELP}</p>
-                      <form
-                        aria-label="创建普通员工账号"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const account = loginSchema.safeParse(login);
-                          if (!account.success) {
-                            setError(account.error.issues[0].message);
-                            return;
-                          }
-                          const checked = passwordSchema.safeParse(password);
-                          if (!checked.success) {
-                            setError(checked.error.issues[0].message);
-                            return;
-                          }
-                          void action(async () => {
-                            await cloudApi('/accounts', 'POST', {
-                              login: account.data,
-                              password,
-                              ...(newName.trim() ? { displayName: newName } : {}),
-                            });
-                            setPassword('');
-                            setLogin('');
-                            setNewName('');
-                            await directory();
-                            setNotice('普通员工账号已创建。');
-                          });
-                        }}
-                      >
-                        <label>
-                          新员工登录名
-                          <input
-                            aria-label="新员工登录名"
-                            autoComplete="off"
-                            required
-                            minLength={3}
-                            maxLength={160}
-                            value={login}
-                            onChange={(e) => setLogin(e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          员工展示名称
-                          <input
-                            aria-label="员工展示名称"
-                            maxLength={80}
-                            value={newName}
-                            onChange={(e) => setNewName(e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          初始密码
-                          <input
-                            aria-label="初始密码"
-                            type="password"
-                            autoComplete="new-password"
-                            required
-                            minLength={PASSWORD_MIN}
-                            maxLength={PASSWORD_MAX}
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                          />
-                        </label>
-                        <button disabled={busy}>创建员工</button>
-                      </form>
-                    </details>
-                  )}
-                </section>
+              {(tab === 'staff' || (tab === 'owner' && user.owner)) && (
+                <AccountDirectory
+                  key={tab}
+                  category={tab}
+                  user={user}
+                  onProfile={async (card) => {
+                    if (card.id === user.id) {
+                      const updated = await cloudSession();
+                      setUser(updated);
+                      setDisplayName(updated.displayName || updated.login);
+                      window.dispatchEvent(
+                        new CustomEvent('chunmo-profile-updated', { detail: updated }),
+                      );
+                    }
+                  }}
+                />
               )}
               {tab === 'audit' && accountPermissions(user.owner).audit && (
                 <AuditLog accounts={accounts} />

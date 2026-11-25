@@ -25,7 +25,7 @@ function requireSession() {
     owner = app.engine && app.engine.store.identity;
   if (identity && owner && identity.id === owner.id && identity.workspaceId === owner.workspaceId)
     return app;
-  wx.reLaunch({ url: '/pages/login/index' });
+  wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
   return null;
 }
 async function enableAlbum(engine, activate = true) {

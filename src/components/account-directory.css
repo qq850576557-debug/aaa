@@ -1,0 +1,192 @@
+.account-directory {
+  min-width: 0;
+  color: var(--account-ink, #244238);
+}
+.directory-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.directory-toolbar input[type='search'] {
+  flex: 1 1 215px;
+  min-width: 0;
+  border-radius: 18px;
+}
+.directory-toolbar .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.directory-table-wrap {
+  overflow-x: auto;
+  border-radius: 15px;
+  background: #fff9;
+}
+.directory-table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.directory-table th {
+  color: #64736a;
+  font-weight: 500;
+  padding: 8px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.directory-table tr + tr,
+.directory-table tbody {
+  border-top: 1px solid #e9eee9;
+}
+.directory-table td {
+  padding: 6px 10px;
+  height: 56px;
+  overflow-wrap: anywhere;
+}
+.directory-person {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 8px;
+  color: inherit;
+}
+button.directory-person,
+button.directory-more {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+button.directory-person:hover,
+button.directory-more:hover {
+  background: #eff3ee;
+}
+.directory-person .account-avatar {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 50%;
+  font-size: 15px;
+}
+.directory-person .account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.directory-more {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+}
+.directory-action {
+  anchor-scope: --account-action;
+}
+.directory-more {
+  anchor-name: --account-action;
+}
+.directory-menu {
+  position: fixed;
+  position-anchor: --account-action;
+  inset: auto;
+  top: anchor(bottom);
+  right: anchor(right);
+  position-try-fallbacks: flip-block;
+  margin: 3px 0;
+  border: 1px solid #e1e8df;
+  border-radius: 12px;
+  background: #f9fbf7;
+  color: #244238;
+  box-shadow: 0 6px 24px #243c2c26;
+  padding: 4px;
+}
+.directory-menu:popover-open {
+  display: grid;
+  min-width: 145px;
+}
+.directory-menu button {
+  padding: 7px 9px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: inherit;
+}
+.directory-menu button:hover,
+.directory-menu button:focus-visible {
+  background: #eaf2e9;
+}
+.directory-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.directory-tags span {
+  background: var(--project-tag, #e7eee7);
+  color: var(--project-ink, #315b46);
+  border-radius: 8px;
+  padding: 3px 7px;
+}
+.directory-tags span[data-revoked='true'] {
+  opacity: 0.63;
+}
+.directory-positive {
+  color: #37694c;
+}
+.directory-muted {
+  color: #737b68;
+}
+.directory-state {
+  padding: 10px;
+  color: #5f7166;
+}
+.directory-announcer {
+  min-height: 1.25em;
+  color: #526d5e;
+  padding-top: 4px;
+  font-size: 12px;
+}
+.directory-editor {
+  display: grid;
+  gap: 12px;
+}
+.directory-editor label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.directory-editor input,
+.directory-editor select,
+.directory-editor textarea {
+  width: 100%;
+  min-width: 0;
+}
+.directory-editor p {
+  margin: 0;
+}
+.directory-card-dialog .member-cards-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.account-dialog.account-directory-dialog {
+  width: min(1070px, calc(100vw - 24px));
+}
+.account-directory-dialog .account-body {
+  padding-top: 4px;
+}
+.account-directory-dialog .account-tabs {
+  margin-bottom: 12px;
+}
+@media (max-width: 690px) {
+  .directory-toolbar > input[type='search'] {
+    flex-basis: 100%;
+  }
+  .directory-table {
+    min-width: 670px;
+  }
+}

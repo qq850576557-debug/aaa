@@ -1,6 +1,8 @@
 const config = require('./owner-live-config');
-const productionBuild = () => config.deployment === 'production';
-const storageKey = productionBuild()
+const isolated = () => config.deployment === 'isolated';
+const productionBuild = () => config.deployment === 'production' || isolated();
+const unified = () => config.unified === true;
+const storageKey = isolated() ? 'chunmo.owner.v21.isolated.session' : productionBuild()
   ? 'chunmo.owner.v1.production.session'
   : 'chunmo.owner.v1.session';
 const entryKey = 'chunmo.mini.entry.v1';
@@ -19,10 +21,10 @@ function availableBuild() {
   const account = wx.getAccountInfoSync?.()?.miniProgram;
   return (
     productionBuild() &&
-    config.origin === 'https://chmsj.cn' &&
+    (isolated() ? config.origin === 'https://owner-test.chmsj.cn' : config.origin === 'https://chmsj.cn') &&
     /^wx[a-f0-9]{16}$/i.test(config.appId ?? '') &&
     account?.appId === config.appId &&
-    ['develop', 'trial', 'release'].includes(account.envVersion)
+    (isolated() ? ['develop', 'trial'] : ['develop', 'trial', 'release']).includes(account.envVersion)
   );
 }
 
@@ -79,6 +81,10 @@ async function login(phoneCode, invite) {
     phoneCode,
     ...(invite ? { invite } : {}),
   });
+  return accept(result);
+}
+
+function accept(result) {
   if (!/^[a-f0-9]{64}$/.test(result.token)) throw new SessionError('登录响应异常', 0);
   wx.setStorageSync(storageKey, result.token);
   if (productionBuild()) wx.setStorageSync(entryKey, 'owner');
@@ -123,6 +129,8 @@ const photo = (project, id, imageId) =>
 
 module.exports = {
   productionBuild,
+  unified,
+  accept,
   availableBuild,
   terms,
   enabled,

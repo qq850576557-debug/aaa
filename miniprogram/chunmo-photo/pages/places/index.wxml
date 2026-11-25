@@ -14,8 +14,7 @@
       bindconfirm="search"
       confirm-type="search"
       maxlength="80"
-    /><view wx:if="{{error}}" class="error"
-      >{{error}}<button
+    /><view class="places-notice"><spring-notice text="{{error}}" tone="error" reserved="{{true}}" /><button wx:if="{{error}}"
         class="quiet small"
         open-type="openSetting"
         bindopensetting="settingsChanged"

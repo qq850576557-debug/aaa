@@ -86,6 +86,7 @@
       >
         <text>隐私保护指引</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
+      <button wx:if="{{canSwitch}}" class="portal-row" bindtap="switchIdentity" hover-class="row-pressed"><text>切换身份</text><view class="portal-arrow" aria-hidden="{{true}}"></view></button>
       <button class="portal-row" bindtap="logOut" hover-class="row-pressed">
         <text>退出登录</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>

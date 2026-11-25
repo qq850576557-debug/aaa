@@ -42,6 +42,7 @@ export async function wechatOpenId(appId: string, secret: string, code: string, 
 
 export type OwnerWechat = {
   appId: string;
+  phone?(phoneCode: string): Promise<string>;
   verify(loginCode: string, phoneCode: string): Promise<{ openid: string; phone: string }>;
 };
 
@@ -67,24 +68,28 @@ export function officialOwnerWechat(appId: string, secret: string, http = fetch)
     return refresh;
   }
 
+  async function phone(phoneCode: string) {
+    const endpoint = new URL(host + '/wxa/business/getuserphonenumber');
+    endpoint.searchParams.set('access_token', await accessToken());
+    const result = await wechatJson(http, endpoint, { code: phoneCode });
+    const info = result?.phone_info;
+    if (result?.errcode === 40001 || result?.errcode === 42001) cached = undefined;
+    if (
+      result?.errcode !== 0 ||
+      info?.countryCode !== '86' ||
+      info?.watermark?.appid !== appId ||
+      typeof info?.purePhoneNumber !== 'string' ||
+      !/^1[3-9][0-9]{9}$/.test(info.purePhoneNumber)
+    )
+      throw new ApiError(401, '无法验证微信手机号，请重新授权');
+    return info.purePhoneNumber as string;
+  }
   return {
     appId,
+    phone,
     async verify(loginCode, phoneCode) {
       const openid = await wechatOpenId(appId, secret, loginCode, http);
-      const endpoint = new URL(host + '/wxa/business/getuserphonenumber');
-      endpoint.searchParams.set('access_token', await accessToken());
-      const result = await wechatJson(http, endpoint, { code: phoneCode });
-      const info = result?.phone_info;
-      if (result?.errcode === 40001 || result?.errcode === 42001) cached = undefined;
-      if (
-        result?.errcode !== 0 ||
-        info?.countryCode !== '86' ||
-        info?.watermark?.appid !== appId ||
-        typeof info?.purePhoneNumber !== 'string' ||
-        !/^1[3-9][0-9]{9}$/.test(info.purePhoneNumber)
-      )
-        throw new ApiError(401, '无法验证微信手机号，请重新授权');
-      return { openid, phone: info.purePhoneNumber };
+      return { openid, phone: await phone(phoneCode) };
     },
   };
 }

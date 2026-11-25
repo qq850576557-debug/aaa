@@ -149,7 +149,7 @@
             <button wx:if="{{photoState === 'new' || photoState === 'existing'}}" class="small-button" bindtap="removePhoto" disabled="{{saving}}">移除</button>
           </view>
         </view>
-        <text wx:if="{{draftError}}" class="draft-error" aria-role="alert">{{draftError}}</text>
+        <spring-notice text="{{draftError}}" tone="error" />
       </scroll-view>
       <view class="sheet-actions">
         <button class="detail-secondary" bindtap="closeSheet" disabled="{{saving}}">取消</button>

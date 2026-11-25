@@ -5,7 +5,7 @@ Page({
   onLoad() {
     const login = getApp().pendingLogin || '';
     if (!login.trim()) {
-      wx.redirectTo({ url: '/pages/login/index' });
+      wx.redirectTo({ url: '/pages/login/index?manual=1' });
       return;
     }
     this.setData({ login });
@@ -53,7 +53,7 @@ Page({
           return;
         }
       }
-      await call('redirectTo', { url: '/pages/places/index' });
+      await call('switchTab', { url: '/pages/workbench/index' });
     } catch (error) {
       this.setData({ error: message(error) });
     } finally {

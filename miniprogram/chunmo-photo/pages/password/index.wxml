@@ -14,8 +14,7 @@
       maxlength="128"
       confirm-type="done"
       bindconfirm="submit"
-    /><view wx:if="{{error}}" class="error">{{error}}</view
-    ><button class="primary spaced" bindtap="submit" loading="{{busy}}" disabled="{{busy}}">
+    /><spring-notice text="{{error}}" reserved="{{true}}" tone="error" /><button class="primary spaced" bindtap="submit" loading="{{busy}}" disabled="{{busy}}">
       登录</button
     ><button class="quiet" bindtap="privacyContract">隐私保护指引</button></view
   ></view

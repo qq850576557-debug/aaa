@@ -109,6 +109,42 @@ async function ownerTransaction<T>(db: pg.Pool, run: (client: pg.PoolClient) => 
   }
 }
 
+// The caller has already verified the WeChat code against this exact AppID.
+export async function boundMiniOwner(options: OwnerPortalOptions, openId: string, issue: boolean) {
+  const { db, key, wechat } = options;
+  const { digest } = crypto(key);
+  const values = [wechat.appId, digest('wechat', wechat.appId, openId)];
+  const token = issue ? randomToken() : '';
+  return ownerTransaction(db, async (c) => {
+    const row = (
+      await c.query(
+        'SELECT id,label FROM owner_portal.member WHERE app_id=$1 AND identity_digest=$2' +
+          (issue ? ' FOR UPDATE' : ''),
+        values,
+      )
+    ).rows[0];
+    if (!row) return null;
+    const projects = (
+      await c.query(
+        'SELECT id,title,phase FROM owner_portal.available_project WHERE member_id=$1 ORDER BY title,id',
+        [row.id],
+      )
+    ).rows;
+    if (!projects.length) return null;
+    if (issue)
+      await c.query("INSERT INTO owner_portal.session VALUES($1,$2,now()+interval '30 days')", [
+        digest('session', token),
+        row.id,
+      ]);
+    return {
+      token,
+      owner: { id: row.id, name: row.label },
+      projects,
+      purchasesEnabled: ownerPurchasesEnabled(),
+    };
+  });
+}
+
 export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
   const router = express.Router();
   app.use(prefix, router);
@@ -272,6 +308,36 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     return [workspace, project] as const;
   }
 
+  app.get('/api/owner-accounts', owner, available, async (req: AuthRequest, res) => {
+    const workspace = req.actor!.workspaceId;
+    const [members, projects] = await Promise.all([
+      transaction((c) =>
+        c.query(
+          `SELECT m.id,m.label AS name,'*******' || m.phone_suffix AS "maskedPhone",
+          m.identity_digest IS NOT NULL AS bound,COALESCE((
+            SELECT jsonb_agg(jsonb_build_object('id',g.project_id,'name',p.payload->>'name',
+              'color',p.payload->>'color','active',g.revoked_at IS NULL,'enabled',COALESCE(s.enabled,false))
+              ORDER BY p.payload->>'name',g.project_id)
+            FROM owner_portal.project_grant g LEFT JOIN public.project p ON p.workspace_id=g.workspace_id AND p.id=g.project_id
+            LEFT JOIN owner_portal.project_service s ON s.workspace_id=g.workspace_id AND s.project_id=g.project_id
+            WHERE g.workspace_id=m.workspace_id AND g.member_id=m.id
+          ),'[]'::jsonb) AS projects
+        FROM owner_portal.member m WHERE m.workspace_id=$1 ORDER BY m.label,m.id`,
+          [workspace],
+        ),
+      ),
+      transaction((c) =>
+        c.query(
+          `SELECT p.id,p.payload->>'name' AS name,p.payload->>'color' AS color,COALESCE(s.enabled,false) AS enabled
+         FROM public.project p LEFT JOIN owner_portal.project_service s ON s.workspace_id=p.workspace_id AND s.project_id=p.id
+         WHERE p.workspace_id=$1 ORDER BY p.payload->>'name',p.id`,
+          [workspace],
+        ),
+      ),
+    ]);
+    res.json({ members: members.rows, projects: projects.rows });
+  });
+
   app.get(prefix, owner, available, async (req: AuthRequest, res) => {
     const data = await transaction(async (c) => {
       const [workspace, project] = await lock(c, req);
@@ -315,26 +381,44 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     res.json({ ok: true });
   });
   app.post(prefix + '/members', owner, available, async (req: AuthRequest, res) => {
-    const body = z.object({ name: label, phone }).strict().parse(req.body);
+    const body = z
+      .union([
+        z.object({ name: label, phone, create: z.literal(true).optional() }).strict(),
+        z.object({ memberId }).strict(),
+      ])
+      .parse(req.body);
     const { digest, sealPhone } = keys();
     const invite = randomToken();
     await transaction(async (c) => {
       const [workspace, project] = await lock(c, req);
-      const row = (
-        await c.query(
-          `INSERT INTO owner_portal.member(id,workspace_id,label,phone_digest,phone_sealed,phone_suffix)
+      const row =
+        'memberId' in body
+          ? (
+              await c.query(
+                'SELECT id FROM owner_portal.member WHERE workspace_id=$1 AND id=$2 FOR UPDATE',
+                [workspace, body.memberId],
+              )
+            ).rows[0]
+          : (
+              await c.query(
+                `INSERT INTO owner_portal.member(id,workspace_id,label,phone_digest,phone_sealed,phone_suffix)
          VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(workspace_id,phone_digest)
-         DO UPDATE SET label=excluded.label RETURNING id`,
-          [
-            randomUUID(),
-            workspace,
-            body.name,
-            digest('phone', workspace, body.phone),
-            sealPhone(body.phone),
-            body.phone.slice(-4),
-          ],
-        )
-      ).rows[0];
+         DO UPDATE SET label=owner_portal.member.label WHERE NOT $7 AND owner_portal.member.label=excluded.label RETURNING id`,
+                [
+                  randomUUID(),
+                  workspace,
+                  body.name,
+                  digest('phone', workspace, body.phone),
+                  sealPhone(body.phone),
+                  body.phone.slice(-4),
+                  body.create === true,
+                ],
+              )
+            ).rows[0];
+      if (!row) {
+        if ('memberId' in body) throw new ApiError(404, '业主账号不存在');
+        throw new ApiError(409, '该手机号已有业主账号，请从业主列表选择本人');
+      }
       await c.query(
         `INSERT INTO owner_portal.project_grant(workspace_id,project_id,member_id) VALUES($1,$2,$3)
          ON CONFLICT(workspace_id,project_id,member_id) DO UPDATE SET revoked_at=NULL`,
@@ -372,6 +456,12 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
       await c.query(
         'UPDATE owner_portal.invite SET consumed_at=now() WHERE member_id=$1 AND project_id=$2 AND consumed_at IS NULL',
         [id, project],
+      );
+      await c.query(
+        `DELETE FROM owner_portal.session WHERE member_id=$1 AND NOT EXISTS (
+           SELECT 1 FROM owner_portal.project_grant g JOIN owner_portal.project_service s USING(workspace_id,project_id)
+           WHERE g.member_id=$1 AND g.revoked_at IS NULL AND s.enabled)`,
+        [id],
       );
       await audit(c, req.actor!, 'owner.grant.revoke', undefined, {
         entityType: 'owner_member',

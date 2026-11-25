@@ -1,4 +1,4 @@
-const { origin } = require('../config');
+const { origin, apiPrefix = '/api/mini-photo/' } = require('../config');
 const { call } = require('./platform');
 const routes = {
   login: 'POST',
@@ -7,6 +7,8 @@ const routes = {
   identity: 'GET',
   nearby: 'POST',
   renew: 'POST',
+  'workbench/workspace': 'GET',
+  'workbench/records': 'GET',
 };
 class Api {
   constructor() {
@@ -23,7 +25,7 @@ class Api {
   }
   async raw(path, data, method, proof = '') {
     const response = await call('request', {
-      url: origin + '/api/mini-photo/' + path,
+      url: origin + apiPrefix + path,
       method,
       timeout: 20000,
       data,
@@ -56,6 +58,11 @@ class Api {
         this.clear();
       throw error;
     }
+    if (!response.data || typeof response.data !== 'object' || Array.isArray(response.data))
+      throw Object.assign(Error('云端未返回有效JSON确认，提交仍待核对'), {
+        status: 0,
+        code: 'INVALID_API_RESPONSE',
+      });
     return response.data;
   }
   async bootstrap() {
@@ -71,21 +78,47 @@ class Api {
       });
     await this.booting;
   }
-  async request(path, data) {
-    if (!routes[path]) throw Error('小程序不支持此接口');
+  async request(path, data, requestedMethod) {
+    const dynamic = /^workbench\/records\/[a-f0-9-]{36}(\/history)?$/.test(path);
+    const method = requestedMethod || routes[path] || (dynamic ? 'GET' : '');
+    const allowed =
+      (path === 'workbench/workspace' && ['GET', 'PUT'].includes(method)) ||
+      (path === 'workbench/records' && ['GET', 'POST'].includes(method)) ||
+      (dynamic && (path.endsWith('/history') ? method === 'GET' : method === 'PUT')) ||
+      (!path.startsWith('workbench/') && routes[path] === method);
+    if (!allowed) throw Error('小程序不支持此接口');
+    const owner = path.startsWith('workbench/') ? this.identity : null;
+    const checkOwner = () => {
+      if (
+        path.startsWith('workbench/') &&
+        (!owner ||
+          !this.identity ||
+          owner.id !== this.identity.id ||
+          owner.workspaceId !== this.identity.workspaceId)
+      )
+        throw Object.assign(Error('账号已变化，未发送旧账号工作提交'), {
+          status: 0,
+          code: 'OWNER_CHANGED',
+        });
+    };
     await this.bootstrap();
+    checkOwner();
     try {
-      return await this.raw(path, data, routes[path], this.proof);
+      return await this.raw(path, data, method, this.proof);
     } catch (error) {
       // This rejection is before the original handler: retry cannot duplicate a mutation.
       if (error.code !== 'MINI_PROOF_EXPIRED') throw error;
       this.expiresAt = 0;
       await this.bootstrap();
-      return this.raw(path, data, routes[path], this.proof);
+      checkOwner();
+      return this.raw(path, data, method, this.proof);
     }
   }
   async login(login, password) {
     await this.request('login', { login, password });
+    return this.restore();
+  }
+  async restore() {
     const session = await this.request('session');
     this.csrf = session.csrf;
     const config = await this.request('identity');

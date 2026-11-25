@@ -1,0 +1,1 @@
+<view wx:if="{{text || reserved}}" class="spring-notice spring-notice-{{tone}} {{floating ? 'spring-notice-floating' : ''}} {{reserved ? 'spring-notice-reserved' : ''}} {{text ? '' : 'spring-notice-empty'}}" aria-role="{{tone === 'error' ? 'alert' : 'status'}}">{{text}}</view>

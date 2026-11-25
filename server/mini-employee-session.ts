@@ -5,13 +5,17 @@ import { z } from 'zod';
 import { authenticate, randomToken, setCookie, type AuthRequest } from './auth';
 import { config } from './config';
 import { pool, transaction } from './db';
-import { wechatOpenId } from './owner-wechat';
+import { officialOwnerWechat, wechatOpenId } from './owner-wechat';
 import { ApiError, hash } from './store';
 
 const loginCode = z.string().regex(/^[a-zA-Z0-9_-]{1,256}$/);
 const rememberInput = z.object({ code: loginCode }).strict();
 const restoreInput = rememberInput.extend({ token: z.string().regex(/^[a-f0-9]{64}$/) });
-export type EmployeeWechat = { appId: string; openId: (code: string) => Promise<string> };
+export type EmployeeWechat = {
+  appId: string;
+  openId: (code: string) => Promise<string>;
+  phone?: (code: string) => Promise<string>;
+};
 
 export function configuredEmployeeWechat(): EmployeeWechat | undefined {
   const [appId, secret] =
@@ -19,7 +23,17 @@ export function configuredEmployeeWechat(): EmployeeWechat | undefined {
       ? [process.env.CHUNMO_MINI_APP_ID, process.env.CHUNMO_MINI_APP_SECRET]
       : [process.env.CHUNMO_OWNER_WECHAT_APP_ID, process.env.CHUNMO_OWNER_WECHAT_APP_SECRET];
   if (!appId || !/^wx[a-f0-9]{16}$/i.test(appId) || !secret) return;
-  return { appId, openId: (code) => wechatOpenId(appId, secret, code) };
+  return {
+    appId,
+    openId: (code) => wechatOpenId(appId, secret, code),
+    phone: officialOwnerWechat(appId, secret).phone,
+  };
+}
+
+export function employeeRememberHash(appId: string, openId: string, token: string) {
+  return createHmac('sha256', config.PRIVATE_DATA_KEY)
+    .update(JSON.stringify(['mini-employee-session-v1', appId, openId, token]))
+    .digest('hex');
 }
 
 export function miniEmployeeSessions(app: Express, wechat?: EmployeeWechat) {
@@ -50,9 +64,7 @@ export function miniEmployeeSessions(app: Express, wechat?: EmployeeWechat) {
     );
     if (limited.rows[0].attempts > 30) throw new ApiError(429, '请稍后重试');
     const openId = await wechat!.openId(code);
-    return createHmac('sha256', config.PRIVATE_DATA_KEY)
-      .update(JSON.stringify(['mini-employee-session-v1', wechat!.appId, openId, token]))
-      .digest('hex');
+    return employeeRememberHash(wechat!.appId, openId, token);
   }
 
   async function lockRememberedAccount(c: PoolClient, key: string) {

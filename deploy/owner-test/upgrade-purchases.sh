@@ -126,6 +126,8 @@ if [[ ${1:-} == --rollback ]]; then
   exit 0
 fi
 
+v21=0
+if [[ ${1:-} == --v21 ]]; then v21=1; shift; fi
 pin=${1:-}
 [[ $# == 1 && $pin =~ ^[a-f0-9]{40}$ ]] || fail '请提供已审核的完整 Git SHA'
 git -C "$repo" merge-base --is-ancestor 69af2ffbc5060e1a7c32336b02d7aea6bfcb06e6 "$pin" ||
@@ -151,7 +153,8 @@ systemctl is-active --quiet chunmo-owner-test-pg.service
 systemctl is-active --quiet chunmo-owner-test-api.service
 [[ $(sql -Atc "SELECT current_database() || ':' || current_user || ':' || current_setting('port')") == chunmo_test:chunmo_ownerpg:5441 ]] ||
   fail '数据库身份未通过测试环境校验'
-[[ $(sql -Atc 'SELECT count(*) FROM schema_migration') == 15 ]] || fail '隔离库基础迁移数量与预期不同'
+[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT LIKE '019_%'") == 15 ]] ||
+  fail '隔离库基础迁移数量与预期不同'
 test_db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
 [[ $test_db_bytes =~ ^[0-9]+$ ]] || fail '无法核对测试备份大小'
 conf_kib=$(df -Pk "$conf" | awk 'NR==2 {print $4}')
@@ -210,9 +213,22 @@ printf '%s\n' "$pin" > "$job/.verified-build"
 chmod 0644 "$job/.verified-build"
 [[ $(runuser -u chunmo_ownerap -- cat "$job/.verified-build") == "$pin" ]] ||
   fail '测试 API 账号无法读取发布版本标记'
-PYTHONDONTWRITEBYTECODE=1 python3 "$upgrade/source/deploy/owner-test/package.py" "$repo" "$job" "$job/chunmo-owner-test.zip"
+if (( v21 )); then
+  test_app_id=$(python3 - "$state/runtime.env" <<'PY'
+import re,sys
+from pathlib import Path
+app_ids=re.findall(r'^CHUNMO_OWNER_WECHAT_APP_ID=(wx[a-f0-9]{16})$', Path(sys.argv[1]).read_text(), re.M)
+assert len(app_ids)==1
+print(app_ids[0])
+PY
+)
+  "$build_python" -B "$job/deploy/owner-release/package-v21.py" --repo "$repo" --sha "$pin" \
+    --test-app-id "$test_app_id" --output "$job/chunmo-owner-test.zip"
+else
+  PYTHONDONTWRITEBYTECODE=1 python3 "$upgrade/source/deploy/owner-test/package.py" "$repo" "$job" "$job/chunmo-owner-test.zip"
+fi
 chmod 0644 "$job/chunmo-owner-test.zip"
-python3 - "$job" "$upgrade" <<'PY'
+python3 - "$job" "$upgrade" "$v21" <<'PY'
 from pathlib import Path
 import re, sys
 job = sys.argv[1]
@@ -222,6 +238,10 @@ old, = re.findall(r'^WorkingDirectory=(/opt/chunmo-owner-test/build\.[a-zA-Z0-9]
 flag = 'Environment=CHUNMO_OWNER_PURCHASE_ENABLED=1'
 assert re.findall(r'^Environment=CHUNMO_OWNER_PURCHASE_ENABLED=.*$',unit,re.M) in ([], [flag])
 unit = unit.replace('WorkingDirectory='+old, 'WorkingDirectory='+job + ('' if flag in unit else '\n'+flag))
+unified_flag = 'Environment=CHUNMO_MINI_UNIFIED_ENABLED=1'
+assert re.findall(r'^Environment=CHUNMO_MINI_UNIFIED_ENABLED=.*$',unit,re.M) in ([], [unified_flag])
+if sys.argv[3] == '1' and unified_flag not in unit:
+    unit = unit.replace('WorkingDirectory='+job,'WorkingDirectory='+job+'\n'+unified_flag)
 (state/'api.after').write_text(unit)
 nginx = (state/'nginx.before').read_text()
 assert nginx.count(old)==2
@@ -282,6 +302,30 @@ fi
  AND NOT has_table_privilege('owner_runtime','public.purchase','SELECT')
  AND NOT has_table_privilege('owner_runtime','owner_portal.purchase_collaboration','SELECT')") == t ]] ||
   fail '独立业主权限校验失败'
+if (( v21 )); then
+  staff_sql="$job/server/proposed/019_employee_wechat.sql"
+  staff_grants="$job/server/proposed/019_employee_wechat_grants.sql"
+  staff_sha=$(sha256sum "$staff_sql" | awk '{print $1}')
+  staff_grants_sha=$(sha256sum "$staff_grants" | awk '{print $1}')
+  staff_expected=$(printf '019_employee_wechat.sql:%s\n019_employee_wechat_grants.sql:%s' "$staff_sha" "$staff_grants_sha")
+  staff_ledger() { sql -Atc "SELECT name || ':' || checksum FROM schema_migration WHERE name LIKE '019_%' ORDER BY name"; }
+  installed_staff=$(staff_ledger)
+  [[ ! $installed_staff || $installed_staff == "$staff_expected" ]] ||
+    fail '测试库 019 账本不完整或校验值不一致'
+  if [[ ! $installed_staff ]]; then
+    {
+      printf "SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s'; SELECT pg_advisory_xact_lock(62109684);\n"
+      cat "$staff_sql" "$staff_grants"
+      cat <<'SQL'
+INSERT INTO schema_migration(name,checksum) VALUES
+  ('019_employee_wechat.sql', :'staff_sha'),('019_employee_wechat_grants.sql', :'staff_grants_sha');
+SQL
+    } | sql --single-transaction -v staff_role=chunmo_app -v staff_sha="$staff_sha" -v staff_grants_sha="$staff_grants_sha" -f -
+  fi
+  [[ $(staff_ledger) == "$staff_expected" ]] || fail '测试库 019 校验值不一致'
+  [[ $(sql -Atc "SELECT has_table_privilege('chunmo_app','public.employee_wechat_binding','SELECT') AND NOT has_table_privilege('owner_runtime','public.employee_wechat_binding','SELECT')") == t ]] ||
+    fail '测试库 019 角色隔离校验失败'
+fi
 cmp -s "$nginx" "$upgrade/nginx.before"
 cmp -s "$unit" "$upgrade/api.before"
 switched_api=0
@@ -310,6 +354,10 @@ switched_nginx=1
 switch_nginx "$upgrade/nginx.after"
 wait_test "$pin"
 curl -fsS --max-time 10 "$test_origin/api/health" | python3 -c 'import json,sys; assert json.load(sys.stdin)["capabilities"]["ownerPurchases"] is True'
+if (( v21 )); then
+  [[ $(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d '{}' "$test_origin/api/mini-login/v1/discover") == 403 ]]
+  [[ $(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$test_origin/api/mini-photo-candidate/workbench/workspace") == 403 ]]
+fi
 [[ $(curl -sS --max-time 10 -o /dev/null -w '%{http_code}' "$test_origin/api/mini-owner/v1/projects/test/purchases") == 401 ]]
 curl -fsS --max-time 20 "$test_origin/chunmo-owner-test.zip" -o "$upgrade/download.zip"
 cmp "$job/chunmo-owner-test.zip" "$upgrade/download.zip"

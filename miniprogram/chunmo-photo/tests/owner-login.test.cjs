@@ -7,8 +7,11 @@ const store = require('../owner-login/fixture-store');
 
 test('formal package requires approved terms, protects the live route, and accepts an invitation without developer tools', async (t) => {
   const saved = { Page: global.Page, wx: global.wx };
-  const root = mkdtempSync(join(tmpdir(), 'owner-release-test-'));
+  const sandbox = mkdtempSync(join(tmpdir(), 'owner-release-test-'));
+  const root = join(sandbox, 'owner-login');
   cpSync(join(__dirname, '../owner-login'), root, { recursive: true });
+  cpSync(join(__dirname, '../lib'), join(sandbox, 'lib'), { recursive: true });
+  cpSync(join(__dirname, '../config.js'), join(sandbox, 'config.js'));
   writeFileSync(
     join(root, 'owner-live-config.js'),
     `module.exports = ${JSON.stringify({
@@ -20,7 +23,7 @@ test('formal package requires approved terms, protects the live route, and accep
   );
   t.after(() => {
     Object.assign(global, saved);
-    rmSync(root, { recursive: true, force: true });
+    rmSync(sandbox, { recursive: true, force: true });
   });
   const config = require(join(root, 'owner-live-config.js'));
   const productionStore = require(join(root, 'fixture-store.js'));
@@ -192,7 +195,7 @@ test('owner login preview separates both entry points and never attempts live au
   envVersion = 'release';
   for (const [index] of pages.entries()) {
     assert.equal(load(index).data.ready, false);
-    assert.equal(destinations.at(-1), '/pages/login/index');
+    assert.equal(destinations.at(-1), '/pages/login/index?manual=1');
   }
 });
 

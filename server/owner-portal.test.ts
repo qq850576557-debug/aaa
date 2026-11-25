@@ -1,3 +1,4 @@
+import { migrateEmployeeWechatTest } from '../deploy/owner-release/migrate-019-test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -10,7 +11,7 @@ import sharp from 'sharp';
 import { createApp } from './app';
 import { config } from './config';
 import { pool, privatePool } from './db';
-import { hash } from './store';
+import { ApiError, hash } from './store';
 import { migrate } from './migrate';
 import { officialOwnerWechat } from './owner-wechat';
 import { passwordHash } from './auth';
@@ -92,7 +93,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       .replaceAll(':"owner_role"', ownerDb.username),
   );
   await admin.query(
-    'GRANT SELECT ON account,auth_session,cloud_workspace,account_avatar,card_avatar TO ' +
+    'GRANT SELECT ON account,auth_session,cloud_workspace,account_avatar,card_avatar,account_note TO ' +
       staff.username,
   );
   await admin.query('GRANT UPDATE ON account TO ' + staff.username);
@@ -157,6 +158,41 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   } finally {
     migrationClient.release();
   }
+  await migrateEmployeeWechatTest(url, staff.username);
+  await migrateEmployeeWechatTest(url, staff.username);
+  const staffBindingLedger = await admin.query(
+    "SELECT name,checksum FROM schema_migration WHERE name LIKE '019_%'",
+  );
+  assert.equal(staffBindingLedger.rowCount, 2);
+  for (const row of staffBindingLedger.rows)
+    assert.equal(row.checksum, hash(await readFile('server/proposed/' + row.name, 'utf8')));
+  await admin.query("UPDATE schema_migration SET checksum='tampered' WHERE name=$1", [
+    staffBindingLedger.rows[0].name,
+  ]);
+  await assert.rejects(() => migrateEmployeeWechatTest(url, staff.username), /checksum mismatch/);
+  await admin.query('UPDATE schema_migration SET checksum=$2 WHERE name=$1', [
+    staffBindingLedger.rows[0].name,
+    staffBindingLedger.rows[0].checksum,
+  ]);
+  assert.equal(
+    (
+      await admin.query(
+        "SELECT has_table_privilege($1,'public.employee_wechat_binding','SELECT') AS staff,has_table_privilege($2,'public.employee_wechat_binding','SELECT') AS owner",
+        [staff.username, ownerDb.username],
+      )
+    ).rows[0].staff,
+    true,
+  );
+  assert.equal(
+    (
+      await admin.query('SELECT has_table_privilege($1,$2,$3) AS ok', [
+        ownerDb.username,
+        'public.employee_wechat_binding',
+        'SELECT',
+      ])
+    ).rows[0].ok,
+    false,
+  );
   const migrationRows = await admin.query(
     'SELECT filename,sha256 FROM owner_portal.purchase_migration ORDER BY filename COLLATE "C"',
   );
@@ -210,10 +246,19 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
 
   let verified = { openid: 'demo_a', phone: '13900000001' };
   let providerCalls = 0;
+  process.env.CHUNMO_OWNER_WECHAT_APP_SECRET = 'synthetic-isolated-secret';
+  t.after(() => {
+    delete process.env.CHUNMO_OWNER_WECHAT_APP_SECRET;
+  });
   const app = createApp({
+    unifiedLogin: true,
     employeeWechat: {
       appId: 'wx1111111111111111',
-      openId: async (code) => code,
+      openId: async (code) => {
+        if (code === 'invalid') throw new ApiError(401, '微信登录已失效，请重新授权');
+        return code;
+      },
+      phone: async (code) => (code === 'different' ? '13900000028' : '13900000027'),
     },
     ownerPortal: {
       key: process.env.CHUNMO_OWNER_DATA_KEY!,
@@ -228,7 +273,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
     },
   });
   const artifacts = process.env.CHUNMO_OWNER_BROWSER_ARTIFACTS;
-  if (artifacts) app.use(express.static('dist'));
+  if (artifacts || process.env.CHUNMO_V21_SCREENSHOTS) app.use(express.static('dist'));
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(
@@ -1245,6 +1290,286 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           }
         },
       );
+    },
+  );
+  await t.test(
+    'unified WeChat login, canonical claims, independent sessions, binding conflicts and permission revocation',
+    async () => {
+      const browserAssets = process.env.CHUNMO_V21_SCREENSHOTS;
+      const pwd = 'Test-unified-2026!';
+      await admin.query(
+        "INSERT INTO account(id,workspace_id,login,password_hash,role,display_name) VALUES('unified-user','w','unified-user',$1,'employee','秦实'),('another-user','w','another-user',$1,'employee','周审')",
+        [await passwordHash(pwd)],
+      );
+      const call = async (path: string, input: object, referer = true) => {
+        const response = await fetch(base + '/api/mini-login/v1/' + path, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(referer
+              ? { Referer: 'https://servicewechat.com/wx1111111111111111/0/page-frame.html' }
+              : {}),
+          },
+          body: JSON.stringify(input),
+        });
+        return {
+          status: response.status,
+          body: await response.json(),
+          cookie: (/chunmo_session=([a-f0-9]{64})/.exec(response.headers.get('set-cookie') ?? '') ??
+            [])[1],
+        };
+      };
+      const which = async (code: string) => (await call('discover', { code })).body.roles;
+      const target = '/accounts/unified-user/wechat';
+      assert.equal((await request('/accounts/wechat', 'GET', undefined, employee)).status, 403);
+      assert.equal((await request('/owner-accounts', 'GET', undefined, employee)).status, 403);
+      assert.equal((await call('discover', { code: 'demo_a' }, false)).status, 403);
+      assert.equal((await call('discover', { code: 'invalid' })).status, 401);
+      assert.equal((await call('discover', { code: 'demo_a', role: 'employee' })).status, 400);
+      assert.deepEqual(await which('demo_a'), ['owner']);
+      assert.deepEqual(await which('stranger'), []);
+      assert.equal((await call('enter', { code: 'stranger', role: 'employee' })).status, 403);
+      assert.equal((await call('enter', { code: 'stranger', role: 'owner' })).status, 403);
+      assert.equal(
+        (await request(target, 'PUT', { action: 'set-phone', phone: '13900000027' }, founder))
+          .status,
+        200,
+      );
+      assert.equal(
+        (
+          await request(
+            '/accounts/another-user/wechat',
+            'PUT',
+            { action: 'set-phone', phone: '13900000027' },
+            founder,
+          )
+        ).status,
+        409,
+      );
+      const attrs = { code: 'demo_a', phoneCode: 'valid', login: 'unified-user', password: pwd };
+      assert.equal(
+        (await call('bind-employee', { ...attrs, password: 'Wrong-password' })).status,
+        401,
+      );
+      assert.equal((await call('bind-employee', { ...attrs, phoneCode: 'different' })).status, 409);
+      const staffResult = await call('bind-employee', attrs);
+      assert.equal(staffResult.status, 200, JSON.stringify(staffResult.body));
+      assert.ok(staffResult.cookie);
+      assert.equal(
+        (await request('/auth/session', 'GET', undefined, staffResult.cookie)).body.user.id,
+        'unified-user',
+      );
+      assert.deepEqual(await which('demo_a'), ['employee', 'owner']);
+      const gatewayHeaders = {
+        'Content-Type': 'application/json',
+        Referer: 'https://servicewechat.com/wx1111111111111111/0/page-frame.html',
+      };
+      const gateway = base + '/api/mini-photo-candidate/';
+      const proofReply = await fetch(gateway + 'bootstrap', {
+        method: 'POST',
+        headers: gatewayHeaders,
+        body: JSON.stringify({ code: 'demo_a' }),
+      });
+      assert.equal(proofReply.status, 200);
+      const proof = (await proofReply.json()).proof;
+      const signed = { ...gatewayHeaders, 'X-Chunmo-Mini-Proof': proof };
+      assert.equal((await fetch(gateway + 'workbench/workspace', { headers: signed })).status, 401);
+      const records = await fetch(gateway + 'workbench/records', {
+        headers: { ...signed, Cookie: 'chunmo_session=' + staffResult.cookie },
+      });
+      assert.equal(records.status, 200);
+      assert.equal(
+        (
+          await fetch(gateway + 'workbench/workspace', {
+            method: 'PUT',
+            headers: { ...signed, Cookie: 'chunmo_session=' + staffResult.cookie },
+            body: JSON.stringify({
+              protocol: 3,
+              changes: [{ collection: 'projects', kind: 'record', after: {} }],
+            }),
+          })
+        ).status,
+        400,
+      );
+
+      assert.equal(
+        (await call('bind-employee', { ...attrs, code: 'other', login: 'another-user' })).status,
+        409,
+      );
+      const ownerResult = await call('enter', { code: 'demo_a', role: 'owner' });
+      assert.equal(ownerResult.status, 200);
+      assert.equal(ownerResult.cookie, undefined);
+      assert.equal(
+        (await request('/auth/session', 'GET', undefined, ownerResult.body.token)).status,
+        401,
+      );
+      assert.equal(
+        (await request(projects, 'GET', undefined, '', staffResult.body.remembered.token)).status,
+        401,
+      );
+      const listing = await request('/owner-accounts', 'GET', undefined, founder);
+      assert.equal(listing.status, 200);
+      assert.equal(
+        listing.body.members.find((r: { name: string }) => r.name === '甲').projects.length,
+        2,
+      );
+      assert.ok(!JSON.stringify(listing).includes('13900000001'));
+      assert.equal(
+        (
+          await request(
+            staffApi('p2') + '/members',
+            'POST',
+            { name: '其他人', phone: '13900000001', create: true },
+            founder,
+          )
+        ).status,
+        409,
+      );
+      const perm = '/accounts/unified-user/project-permissions';
+      assert.equal(
+        (await request(perm, 'PUT', { project: 'p2', granted: true }, employee)).status,
+        403,
+      );
+      assert.equal(
+        (await request(perm, 'PUT', { project: 'secret', granted: true }, founder)).status,
+        404,
+      );
+      assert.equal(
+        (await request(perm, 'PUT', { project: 'p2', granted: true }, founder)).status,
+        200,
+      );
+      assert.equal(
+        (await request(perm, 'GET', undefined, founder)).body.projects.find(
+          (p: { id: string }) => p.id === 'p2',
+        ).granted,
+        true,
+      );
+      assert.equal(
+        (await request(perm, 'PUT', { project: 'p2', granted: false }, founder)).status,
+        200,
+      );
+
+      if (browserAssets) {
+        const { chromium, expect } = await import('@playwright/test');
+        await mkdir(browserAssets, { recursive: true });
+        const browser = await chromium.launch({
+          executablePath: '/usr/bin/chromium',
+          args: ['--no-sandbox'],
+        });
+        try {
+          async function open(
+            token: string,
+            width: number,
+            reducedMotion: 'reduce' | 'no-preference',
+          ) {
+            const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion });
+            await page
+              .context()
+              .addCookies([{ name: 'chunmo_session', value: token, url: base + '/api' }]);
+            await page.addInitScript(() => sessionStorage.setItem('chunmo-space', 'cloud'));
+            await page.goto(base);
+            await page.getByRole('button', { name: '账号管理', exact: true }).click();
+            return page;
+          }
+          const page = await open(founder, 1360, 'no-preference');
+          const dir = page.locator('.account-directory');
+          const person = dir.getByRole('button', { name: '秦实', exact: true });
+          await expect(person).toBeVisible();
+          const bounds = (await person.locator('.account-avatar').boundingBox())!;
+          assert.equal(bounds.height, 36);
+          assert.equal(bounds.width, 36);
+          assert.equal(
+            Math.round((await person.locator('xpath=ancestor::tr').boundingBox())!.height),
+            56,
+          );
+          await page
+            .getByRole('dialog', { name: '账号管理' })
+            .screenshot({ path: join(browserAssets, '03-员工账号.png') });
+          await person.click();
+          await expect(
+            page.getByRole('dialog', { name: '秦实', exact: true }).locator('.member-card'),
+          ).toBeVisible();
+          await page.keyboard.press('Escape');
+          await expect(page.getByRole('dialog', { name: '秦实', exact: true })).toHaveCount(0);
+          await dir.getByRole('button', { name: '秦实的操作' }).press('Enter');
+          const menu = page.locator('.directory-menu:popover-open');
+          await expect(menu).toBeVisible();
+          const menuBounds = (await menu.boundingBox())!;
+          assert(
+            menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= page.viewportSize()!.width,
+          );
+          await menu.getByRole('button', { name: '编辑名片' }).click();
+          await expect(page.getByRole('dialog', { name: '编辑名片 · 秦实' })).toBeVisible();
+          await page.keyboard.press('Escape');
+          await expect(page.getByRole('dialog', { name: '编辑名片 · 秦实' })).toHaveCount(0);
+          await dir.getByRole('button', { name: '部门管理' }).click();
+          await expect(page.getByRole('dialog', { name: '部门管理' })).toBeVisible();
+          await page.keyboard.press('Escape');
+          await page.getByRole('tab', { name: '业主账号' }).click();
+          await expect(dir.getByText('甲', { exact: true }).last()).toBeVisible();
+          await expect(dir.getByRole('button', { name: '部门管理' })).toHaveCount(0);
+          await dir.getByRole('combobox', { name: '按工地筛选' }).selectOption('p2');
+          await expect(dir.getByText('乙', { exact: true })).toHaveCount(0);
+          await dir.getByRole('combobox', { name: '按工地筛选' }).selectOption('');
+          await page
+            .getByRole('dialog', { name: '账号管理' })
+            .screenshot({ path: join(browserAssets, '04-业主账号.png') });
+          await dir.getByRole('button', { name: '新增授权' }).click();
+          await expect(
+            page.getByRole('dialog', { name: '新增业主授权' }).getByLabel('工地'),
+          ).toBeVisible();
+          await page.keyboard.press('Escape');
+          await page.close();
+          const small = await open(employee, 720, 'reduce');
+          await expect(small.getByRole('tab', { name: '业主账号' })).toHaveCount(0);
+          await expect(small.getByRole('button', { name: '部门管理' })).toHaveCount(0);
+          await expect(small.locator('.directory-table')).toBeVisible();
+          assert.equal(await small.evaluate(() => document.documentElement.scrollWidth), 720);
+          await small.close();
+        } finally {
+          await browser.close();
+        }
+      }
+
+      assert.equal((await request(target, 'PUT', { action: 'unlink' }, founder)).status, 200);
+      assert.equal(
+        (await request('/auth/session', 'GET', undefined, staffResult.cookie)).status,
+        401,
+      );
+      assert.deepEqual(await which('demo_a'), ['owner']);
+      assert.equal(
+        (await request(projects, 'GET', undefined, '', ownerResult.body.token)).status,
+        200,
+      );
+      const linkedAgain = await call('bind-employee', attrs);
+      assert.equal(linkedAgain.status, 200);
+      await admin.query(
+        "UPDATE auth_session SET expires_at=now()-interval '1 second' WHERE account_id='unified-user'",
+      );
+      assert.equal(
+        (await request('/auth/session', 'GET', undefined, linkedAgain.cookie)).status,
+        401,
+      );
+      const again = await call('enter', { role: 'employee', code: 'demo_a' });
+      assert.equal(again.status, 200);
+      assert.equal(
+        (
+          await request(
+            '/accounts/unified-user',
+            'PATCH',
+            { active: false, reason: 'departure' },
+            founder,
+          )
+        ).status,
+        200,
+      );
+      assert.equal((await request('/auth/session', 'GET', undefined, again.cookie)).status, 401);
+      assert.deepEqual(await which('demo_a'), ['owner']);
+      assert.equal(
+        (await request('/accounts/unified-user', 'PATCH', { active: true }, founder)).status,
+        200,
+      );
+      assert.equal((await call('enter', { role: 'employee', code: 'demo_a' })).status, 403);
     },
   );
   const list = (await request(staffApi(), 'GET', undefined, founder)).body.members;

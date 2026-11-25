@@ -7,7 +7,7 @@ function startPreview(page, ready = true) {
       ? !ownerSession.availableBuild()
       : version !== 'develop' && version !== 'trial'
   ) {
-    wx.reLaunch({ url: '/pages/login/index' });
+    wx.reLaunch({ url: '/pages/login/index?manual=1' });
     return;
   }
   const statusTop = wx.getWindowInfo?.().statusBarHeight ?? 24;

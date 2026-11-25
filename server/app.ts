@@ -1,3 +1,4 @@
+import { miniUnifiedRoutes, staffWechatAccounts } from './mini-unified';
 import {
   configuredOwnerPortal,
   miniOwnerRoutes,
@@ -98,7 +99,12 @@ const displayNameSchema = z
 export function createApp({
   ownerPortal = configuredOwnerPortal(),
   employeeWechat = configuredEmployeeWechat(),
-}: { ownerPortal?: OwnerPortalOptions; employeeWechat?: EmployeeWechat } = {}) {
+  unifiedLogin = process.env.CHUNMO_MINI_UNIFIED_ENABLED === '1',
+}: {
+  ownerPortal?: OwnerPortalOptions;
+  employeeWechat?: EmployeeWechat;
+  unifiedLogin?: boolean;
+} = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use('/api', (req, res, next) => {
@@ -136,8 +142,28 @@ export function createApp({
       origin: config.APP_ORIGIN,
     }),
   );
+  // The isolated V2.1 site can exercise the same employee workbench contract
+  // without changing a deployed photo sidecar or accepting another host's proof.
+  if (config.APP_ENV === 'test' && unifiedLogin && employeeWechat) {
+    app.use(
+      createMiniPhotoGateway({
+        enabled: true,
+        prefix: '/api/mini-photo-candidate',
+        workbenchEnabled: true,
+        appId: employeeWechat.appId,
+        appSecret:
+          process.env.CHUNMO_MINI_APP_SECRET ?? process.env.CHUNMO_OWNER_WECHAT_APP_SECRET ?? '',
+        signingKey: config.PRIVATE_DATA_KEY,
+        get origin() {
+          return config.APP_ORIGIN;
+        },
+        exchange: async (code) => ({ openid: await employeeWechat.openId(code) }),
+      }),
+    );
+  }
   miniOwnerRoutes(app, ownerPortal);
   miniEmployeeSessions(app, employeeWechat);
+  miniUnifiedRoutes(app, unifiedLogin, employeeWechat, ownerPortal);
   let hashing = 0;
   app.use('/api', (req, res, next) => {
     res.set({
@@ -230,6 +256,9 @@ export function createApp({
     next();
   });
   staffOwnerRoutes(app, ownerPortal);
+  staffWechatAccounts(app, unifiedLogin, (id) => {
+    for (const stream of streams) if (stream.accountId === id) stream.close();
+  });
   if (ownerPortal && ownerPurchasesEnabled()) staffOwnerPurchaseRoutes(app);
   purchaseRoutes(app);
   recordRoutes(app);
@@ -789,10 +818,12 @@ export function createApp({
         const body = z
           .object({
             active: z.boolean().optional(),
+            reason: z.enum(['departure']).optional(),
             displayName: displayNameSchema.optional(),
             password: passwordSchema.optional(),
           })
           .strict()
+          .refine((x) => !x.reason || x.active === false)
           .refine((x) => x.active !== undefined || x.password || x.displayName !== undefined)
           .parse(req.body);
         if (req.params.id === req.actor!.id && body.password)
@@ -828,7 +859,10 @@ export function createApp({
             entityType: 'account',
             entityId: String(req.params.id),
             operation: 'update',
-            changedFields: Object.keys(body).map((k) => (k === 'password' ? 'passwordChanged' : k)),
+            after: body.reason ? { reason: body.reason } : undefined,
+            changedFields: Object.keys(body)
+              .filter((key) => key !== 'reason')
+              .map((k) => (k === 'password' ? 'passwordChanged' : k)),
           });
         });
         if (body.password || body.active !== undefined)

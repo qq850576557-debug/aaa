@@ -53,6 +53,18 @@ async function exchange(api, route, token) {
   return reply;
 }
 
+function sessionCookie(response) {
+  const headers = response.header || {};
+  const cookies = response.cookies?.length
+    ? response.cookies
+    : Object.keys(headers)
+        .filter((key) => key.toLowerCase() === 'set-cookie')
+        .map((key) => headers[key]);
+  return cookies
+    .map((value) => String(value).match(/(?:^|,\s*)(chunmo_session=[a-f0-9]{64})(?:;|$)/))
+    .find(Boolean)?.[1];
+}
+
 function withEmployeeRemember(BaseApi) {
   return class extends BaseApi {
     async login(login, password) {
@@ -76,6 +88,27 @@ function withEmployeeRemember(BaseApi) {
       }
     }
 
+    async acceptWechat(response) {
+      const { token, expiresAt } = response.data.remembered || {};
+      const cookie = sessionCookie(response);
+      if (!cookie || !/^[a-f0-9]{64}$/.test(token) || !(Date.parse(expiresAt) > Date.now()))
+        throw Error('员工登录响应异常，请重试');
+      this.changingSession = true;
+      try {
+        this.clear();
+        this.cookie = cookie;
+        const identity = await super.restore();
+        const prior = rememberedToken();
+        write(rememberedKey, { token, expiresAt });
+        if (prior && prior !== token) await exchange(this, 'forget', prior).catch(() => {});
+        write(entryKey, 'employee');
+        this.cookieValidUntil = Date.now() + cookieDuration;
+        return identity;
+      } finally {
+        this.changingSession = false;
+      }
+    }
+
     async resumeRemembered() {
       if (!this.resuming) {
         const remember = rememberedToken();
@@ -91,17 +124,9 @@ function withEmployeeRemember(BaseApi) {
       const prior = this.identity;
       try {
         const response = await exchange(this, 'resume', token);
-        const headers = response.header || {};
-        const cookies =
-          response.cookies ||
-          Object.keys(headers)
-            .filter((name) => name.toLowerCase() === 'set-cookie')
-            .map((name) => headers[name]);
-        const match = cookies
-          .map((value) => String(value).match(/(?:^|,\s*)(chunmo_session=[a-f0-9]{64})(?:;|$)/))
-          .find(Boolean);
-        if (!match || rememberedToken() !== token) return null;
-        this.cookie = match[1];
+        const cookie = sessionCookie(response);
+        if (!cookie || rememberedToken() !== token) return null;
+        this.cookie = cookie;
         const session = await super.request('session');
         this.csrf = session.csrf;
         const actor = await super.request('identity');

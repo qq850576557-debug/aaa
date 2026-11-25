@@ -1,24 +1,21 @@
 {
   "pages": [
+    "owner-login/pages/welcome/index",
     "pages/login/index",
     "pages/password/index",
     "pages/places/index",
     "pages/camera/index",
-    "pages/results/index"
-  ],
-  "subPackages": [
-    {
-      "root": "owner-login",
-      "pages": [
-        "pages/welcome/index",
-        "pages/employee/index",
-        "pages/home/index",
-        "pages/purchases/index",
-        "pages/purchase/index",
-        "pages/profile/index",
-        "pages/terms/index"
-      ]
-    }
+    "pages/results/index",
+    "pages/workbench/index",
+    "pages/work-edit/index",
+    "pages/photo/index",
+    "pages/me/index",
+    "owner-login/pages/employee/index",
+    "owner-login/pages/home/index",
+    "owner-login/pages/purchases/index",
+    "owner-login/pages/purchase/index",
+    "owner-login/pages/profile/index",
+    "owner-login/pages/terms/index"
   ],
   "window": {
     "navigationBarTitleText": "春茉工地拍照",
@@ -28,14 +25,37 @@
   },
   "usingComponents": {
     "privacy-dialog": "/components/privacy/index",
-    "photo-renderer": "/components/renderer/index"
+    "photo-renderer": "/components/renderer/index",
+    "spring-notice": "/components/notice/index"
   },
   "permission": {
     "scope.userLocation": {
       "desc": "用于查询2公里内拍摄地点并记录照片定位"
     }
   },
-  "requiredPrivateInfos": ["getLocation"],
+  "requiredPrivateInfos": [
+    "getLocation"
+  ],
   "lazyCodeLoading": "requiredComponents",
-  "sitemapLocation": "sitemap.json"
+  "sitemapLocation": "sitemap.json",
+  "tabBar": {
+    "color": "#617269",
+    "selectedColor": "#244e42",
+    "backgroundColor": "#f7f8f4",
+    "list": [
+      {
+        "pagePath": "pages/workbench/index",
+        "text": "工作台"
+      },
+      {
+        "pagePath": "pages/photo/index",
+        "text": "工地拍照"
+      },
+      {
+        "pagePath": "pages/me/index",
+        "text": "我的"
+      }
+    ]
+  },
+  "entryPagePath": "owner-login/pages/welcome/index"
 }

@@ -123,3 +123,44 @@
   width: var(--ui-brand-width);
   height: var(--ui-brand-font-size);
 }
+
+.welcome-feedback {
+  position: relative;
+}
+.binding-screen {
+  z-index: 9;
+}
+.binding-panel {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 320px;
+}
+.binding-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 17px;
+  font-weight: 600;
+}
+.binding-title .owner-link {
+  padding: 0 8px;
+  margin: 0;
+  font-size: 22px;
+}
+.binding-panel label {
+  color: #56675d;
+  font-size: 13px;
+}
+.binding-panel input {
+  min-height: 36px;
+  margin-top: 4px;
+  padding: 0 10px;
+  border: 1px solid #e2e9e2;
+  border-radius: 10px;
+  background: #f7f9f6;
+  color: #23473b;
+}
+.binding-panel .sign-in-button {
+  width: 100%;
+  color: #244e42;
+}

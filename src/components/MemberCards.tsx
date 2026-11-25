@@ -25,6 +25,8 @@ export function MemberCards({
   photoEditor,
   readOnly = false,
   onlineStatus,
+  compactAction,
+  onCompactClose,
 }: {
   user: CloudUser;
   onlyId?: string;
@@ -34,6 +36,8 @@ export function MemberCards({
   photoEditor?: ReactNode;
   readOnly?: boolean;
   onlineStatus?: boolean | PresenceStatus;
+  compactAction?: 'department' | 'edit';
+  onCompactClose?: () => void;
   onSaved: (card: MemberCard) => Promise<void>;
 }) {
   const [cards, setCards] = useState<MemberCard[]>([]),
@@ -48,7 +52,7 @@ export function MemberCards({
     }),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [manage, setManage] = useState(false),
+    [manage, setManage] = useState(compactAction === 'department'),
     [department, setDepartment] = useState<Department | null>(null),
     [removing, setRemoving] = useState<Department | null>(null);
   const [preview, setPreview] = useState<MemberCard | null>(null);
@@ -62,7 +66,14 @@ export function MemberCards({
     return c.cards;
   }
   useEffect(() => {
-    void load().catch((e) => setError(String(e)));
+    void load()
+      .then((result) => {
+        if (compactAction === 'edit') {
+          const selected = result.find((card) => card.id === onlyId);
+          if (selected) edit(selected);
+        }
+      })
+      .catch((e) => setError(String(e)));
   }, [user.id, user.displayName, user.avatarVersion, user.cardAvatarVersion]);
   function edit(card: MemberCard) {
     setError('');
@@ -97,7 +108,7 @@ export function MemberCards({
       const fresh = await load();
       const card = fresh.find((c) => c.id === editing.id)!;
       await onSaved(card);
-      setEditing(null);
+      closeEdit();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -128,6 +139,14 @@ export function MemberCards({
       setBusy(false);
     }
   }
+  function closeEdit() {
+    setEditing(null);
+    onCompactClose?.();
+  }
+  function closeManage() {
+    setManage(false);
+    onCompactClose?.();
+  }
   const headerButtons = (
     <>
       {headerAction}
@@ -145,91 +164,93 @@ export function MemberCards({
   );
   return (
     <section className="member-cards-section" aria-label="员工名片">
-      {!readOnly && !hideHeader && (
+      {!compactAction && !readOnly && !hideHeader && (
         <div className="section-heading">
           <h3>团队名片</h3>
           {headerButtons}
         </div>
       )}
-      <div className="member-cards-grid">
-        {cards
-          .filter((card) => !onlyId || card.id === onlyId)
-          .map((card) => (
-            <article className="member-card" key={card.id} data-member-id={card.id}>
-              <div className="member-card-photo">
-                <button
-                  className="member-photo-preview"
-                  aria-label={`查看${card.displayName}名片照片大图`}
-                  onClick={() => setPreview(card)}
-                >
-                  <Avatar account={card} kind="card" showStatus />
-                </button>
-                {!readOnly && onPhotoClick && card.id === user.id ? (
+      {!compactAction && (
+        <div className="member-cards-grid">
+          {cards
+            .filter((card) => !onlyId || card.id === onlyId)
+            .map((card) => (
+              <article className="member-card" key={card.id} data-member-id={card.id}>
+                <div className="member-card-photo">
                   <button
-                    type="button"
-                    className="member-photo-edit"
-                    aria-label="点击更换名片照片"
-                    onClick={(e) => {
-                      const r = e.currentTarget
-                        .closest('.member-card-photo')!
-                        .getBoundingClientRect();
-                      onPhotoClick(r.width / r.height);
-                    }}
+                    className="member-photo-preview"
+                    aria-label={`查看${card.displayName}名片照片大图`}
+                    onClick={() => setPreview(card)}
                   >
-                    <span>
-                      <Camera size={16} />
-                      更换照片
-                    </span>
+                    <Avatar account={card} kind="card" showStatus />
                   </button>
-                ) : null}
-                {!card.active && <small className="member-card-inactive">账号已停用</small>}
-              </div>
-              <div className="member-card-content">
-                <h3>{card.displayName}</h3>
-                {onlineStatus !== undefined && (
-                  <p className="member-card-presence">
-                    {typeof onlineStatus === 'string'
-                      ? presenceLabel(onlineStatus)
-                      : onlineStatus
-                        ? '● 在线'
-                        : '○ 离线'}
-                  </p>
-                )}
-                {card.englishName ? (
-                  <p className="member-card-english">{card.englishName}</p>
-                ) : (
-                  <p className="member-card-english muted">英文名未设置</p>
-                )}
-                <div className="member-card-department">
-                  <p>{card.departmentName || '部门未设置'}</p>
-                  <p>{card.jobTitle || '岗位未设置'}</p>
-                  {card.departmentEnglishName && <p>{card.departmentEnglishName}</p>}
-                </div>
-                {(user.owner || user.id === card.id) && (
-                  <p className="member-card-joined">
-                    入职日期 {card.joinedOn || '未设置'}
-                    <small>仅本人和负责人可见</small>
-                  </p>
-                )}
-                <footer>
-                  <strong>
-                    {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉品牌 Logo" />}
-                    SJD<span className="brand-name">春茉</span>
-                  </strong>
-                  {!readOnly && (user.owner || user.id === card.id) && (
+                  {!readOnly && onPhotoClick && card.id === user.id ? (
                     <button
-                      className="text-btn member-card-edit"
-                      aria-label={`编辑${card.displayName}名片`}
-                      onClick={() => edit(card)}
+                      type="button"
+                      className="member-photo-edit"
+                      aria-label="点击更换名片照片"
+                      onClick={(e) => {
+                        const r = e.currentTarget
+                          .closest('.member-card-photo')!
+                          .getBoundingClientRect();
+                        onPhotoClick(r.width / r.height);
+                      }}
                     >
-                      编辑名片
+                      <span>
+                        <Camera size={16} />
+                        更换照片
+                      </span>
                     </button>
+                  ) : null}
+                  {!card.active && <small className="member-card-inactive">账号已停用</small>}
+                </div>
+                <div className="member-card-content">
+                  <h3>{card.displayName}</h3>
+                  {onlineStatus !== undefined && (
+                    <p className="member-card-presence">
+                      {typeof onlineStatus === 'string'
+                        ? presenceLabel(onlineStatus)
+                        : onlineStatus
+                          ? '● 在线'
+                          : '○ 离线'}
+                    </p>
                   )}
-                </footer>
-              </div>
-            </article>
-          ))}
-      </div>
+                  {card.englishName ? (
+                    <p className="member-card-english">{card.englishName}</p>
+                  ) : (
+                    <p className="member-card-english muted">英文名未设置</p>
+                  )}
+                  <div className="member-card-department">
+                    <p>{card.departmentName || '部门未设置'}</p>
+                    <p>{card.jobTitle || '岗位未设置'}</p>
+                    {card.departmentEnglishName && <p>{card.departmentEnglishName}</p>}
+                  </div>
+                  {(user.owner || user.id === card.id) && (
+                    <p className="member-card-joined">
+                      入职日期 {card.joinedOn || '未设置'}
+                      <small>仅本人和负责人可见</small>
+                    </p>
+                  )}
+                  <footer>
+                    <strong>
+                      {BRAND_LOGO_SRC && <img src={BRAND_LOGO_SRC} alt="春茉品牌 Logo" />}
+                      SJD<span className="brand-name">春茉</span>
+                    </strong>
+                    {!readOnly && (user.owner || user.id === card.id) && (
+                      <button
+                        className="text-btn member-card-edit"
+                        aria-label={`编辑${card.displayName}名片`}
+                        onClick={() => edit(card)}
+                      >
+                        编辑名片
+                      </button>
+                    )}
+                  </footer>
+                </div>
+              </article>
+            ))}
+        </div>
+      )}
       {preview && <AvatarLightbox account={preview} onClose={() => setPreview(null)} />}
       {error && !editing && !department && (
         <p className="error" role="alert">
@@ -315,7 +336,7 @@ export function MemberCards({
               )}
             </div>
             <footer className="modal-foot">
-              <button type="button" disabled={busy} onClick={() => setEditing(null)}>
+              <button type="button" disabled={busy} onClick={closeEdit}>
                 取消
               </button>
               <button className="primary" disabled={busy}>
@@ -326,7 +347,7 @@ export function MemberCards({
         </Modal>
       )}
       {manage && (
-        <Modal title="部门管理" onClose={() => setManage(false)}>
+        <Modal title="部门管理" onClose={closeManage}>
           <div className="modal-body">
             <div className="department-list">
               {departments.map((d) => (
@@ -367,7 +388,7 @@ export function MemberCards({
             )}
           </div>
           <footer className="modal-foot">
-            <button onClick={() => setManage(false)}>关闭</button>
+            <button onClick={closeManage}>关闭</button>
           </footer>
         </Modal>
       )}

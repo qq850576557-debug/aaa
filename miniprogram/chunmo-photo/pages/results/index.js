@@ -25,6 +25,7 @@ Page({
     busy: false,
     stats: {},
     notice: '',
+    noticeTone: 'info',
     warning: '',
     privacyVisible: false,
   },
@@ -89,6 +90,7 @@ Page({
         ).length,
       },
       notice: this.engine.lastError || this.data.notice,
+      noticeTone: this.engine.lastError ? 'error' : this.data.noticeTone,
     });
   },
   toggle(e) {
@@ -142,6 +144,7 @@ Page({
         task = this.app.store.tasks.get(id);
         if (task.stage !== 'saved') {
           this.setData({
+            noticeTone: 'error',
             notice: task.error || this.engine.lastError || '保存未完成，请核对相册后重试',
           });
           break;
@@ -150,11 +153,12 @@ Page({
       const confirmed = ids.filter((id) => this.app.store.tasks.get(id)?.stage === 'saved').length;
       if (confirmed === ids.length)
         this.setData({
+          noticeTone: 'info',
           notice: '选中的' + confirmed + '张照片均已取得相册保存回执，已保存的照片不会重复写入。',
         });
       this.refresh();
     } catch (error) {
-      this.setData({ notice: message(error) });
+      this.setData({ notice: message(error), noticeTone: 'error' });
     } finally {
       this.engine.autoSave = false;
       this.setData({ busy: false });
@@ -168,7 +172,7 @@ Page({
     return this.saveIds([e.currentTarget.dataset.id]);
   },
   permissionChanged() {
-    this.setData({ notice: '权限已更新，可点击保存重试' });
+    this.setData({ notice: '权限已更新，可点击保存重试', noticeTone: 'info' });
   },
   async clearSelected() {
     if (this.data.busy) return;
@@ -187,7 +191,7 @@ Page({
       for (const id of ids) await this.app.store.remove(id);
       this.refresh();
     } catch (error) {
-      this.setData({ notice: message(error) });
+      this.setData({ notice: message(error), noticeTone: 'error' });
     } finally {
       this.setData({ busy: false });
     }
@@ -207,6 +211,6 @@ Page({
   diagnostics() {
     call('setClipboardData', {
       data: JSON.stringify({ version: '1.2.2', metrics: snapshot() }),
-    }).catch((error) => this.setData({ notice: message(error) }));
+    }).catch((error) => this.setData({ notice: message(error), noticeTone: 'error' }));
   },
 });

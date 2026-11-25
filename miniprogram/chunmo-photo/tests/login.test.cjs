@@ -33,6 +33,7 @@ test('separate account/password pages keep Chinese account text and existing aut
   };
   global.wx = {
     hideKeyboard() {},
+    switchTab: (o) => { routes.push(o.url); o.success({}); },
     requirePrivacyAuthorize: (o) => o.success({}),
     redirectTo: (o) => {
       routes.push(o.url);
@@ -47,9 +48,11 @@ test('separate account/password pages keep Chinese account text and existing aut
   function load(file) {
     delete require.cache[require.resolve(file)];
     require(file);
-    page.onLoad();
+    page.onLoad({ manual: '1' });
   }
   load(files[0]);
+  await page.onLoad();
+  assert.equal(routes.pop(), '/owner-login/pages/welcome/index');
   await page.next();
   assert.equal(authCalls, 0);
   assert.equal(routes.length, 0);
@@ -80,8 +83,8 @@ test('separate account/password pages keep Chinese account text and existing aut
   await page.submit();
   assert.equal(entered, 1);
   assert.equal(app.pendingLogin, '');
-  assert.equal(routes.at(-1), '/pages/places/index');
+  assert.equal(routes.at(-1), '/pages/workbench/index');
   app.pendingLogin = '';
   load(files[1]);
-  assert.equal(routes.at(-1), '/pages/login/index');
+  assert.equal(routes.at(-1), '/pages/login/index?manual=1');
 });
