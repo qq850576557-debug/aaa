@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Promote the pinned owner release on the existing managed host, with access closed.
+# Promote a pinned release on the existing managed host.
 set -Eeuo pipefail
 umask 077
-export PATH="/usr/pgsql-17/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="/usr/pgsql-17/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 base=/opt/chunmo-staging
 conf=/etc/chunmo-staging
@@ -15,6 +15,7 @@ commit=${2:-}
 studio_duty=0
 owner_018=0
 mini_monthly=0
+v21=0
 case $mode in
   --deploy-studio-duty|--rollback-studio-duty)
     studio_duty=1
@@ -32,10 +33,18 @@ case $mode in
     previous=4a6ff34497c67bed7bd71e2e89f4ac6339be1cff
     mode=${mode%-mini-monthly}
     ;;
+  --deploy-v21|--rollback-v21)
+    v21=1
+    owner_018=1
+    previous=8bbd1e818981d9d405dfbac8bc9a581768b648af
+    mode=${mode%-v21}
+    ;;
 esac
 phase=host
 promoted=0
 job=
+sql_source=
+owner_enabled=0
 launch_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 units=(chunmo-staging-web chunmo-staging-api chunmo-mini-photo chunmo-mini-workbench)
 
@@ -43,6 +52,8 @@ fail() { printf 'FAIL %s — %s\n' "$phase" "$*" >&2; exit 1; }
 [[ $# == 2 && ( $mode == --deploy || $mode == --rollback ) && $commit =~ ^[a-f0-9]{40}$ &&
     $commit != "$previous" ]] || fail '请使用已审核的发布入口和完整提交。'
 [[ $EUID == 0 ]] || fail '请在 Workbench 的 root 终端执行。'
+[[ $v21 == 0 || $commit == 53dad25c7161e2af33c008c89ee8fb8cd53902e9 ]] ||
+  fail 'V2.1 只能发布已验收的固定候选。'
 exec 9>/run/lock/chunmo-staging-deploy.lock
 flock -n 9 || fail '已有部署或备份操作在运行。'
 old="$base/releases/$previous"
@@ -54,7 +65,7 @@ export PG_ADMIN_SOCKET
 [[ $NODE_BIN == /* && -x $NODE_BIN && -S $PG_ADMIN_SOCKET/.s.PGSQL.5432 ]] ||
   fail '当前 Node 或 PostgreSQL 工具路径不符合预检。'
 export PATH="$(dirname -- "$NODE_BIN"):$PATH"
-python3 -I -B - "$conf" <<'PY'
+python3 -I -B - "$conf" "$v21" <<'PY'
 import json, sys
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -69,24 +80,34 @@ runtime = dict(line.split('=', 1) for line in (root / 'runtime.env').read_text()
 db = urlsplit(runtime['DATABASE_URL'])
 assert (db.username, db.hostname, db.port, db.path) == ('cm_stg_app', '127.0.0.1', 5432, '/chunmo_staging')
 assert runtime['APP_ENV'] == 'production'
-assert all(runtime.get(name, '0').strip('"\'') != '1' for name in
-           ('CHUNMO_OWNER_PORTAL_ENABLED', 'CHUNMO_OWNER_PURCHASE_ENABLED'))
+if sys.argv[2] == '0':
+    assert all(runtime.get(name, '0').strip('"\'') != '1' for name in
+               ('CHUNMO_OWNER_PORTAL_ENABLED', 'CHUNMO_OWNER_PURCHASE_ENABLED'))
 PY
+
+runtime_v21() {
+  python3 -I -B "$launch_dir/runtime-v21.py" "$1" "$conf" "$commit"
+}
+
+if [[ $v21 == 1 ]]; then
+  owner_enabled=$(runtime_v21 --owner-state) || fail '无法读取当前正式业主服务状态。'
+fi
 
 site() {
   curl -sS --noproxy '*' --proto '=https' --max-time 10 --resolve chmsj.cn:443:127.0.0.1 "$@"
 }
 
 health() {
-  local sha=$1 expected_index actual_index owner_status pid endpoint
+  local sha=$1 expected_index actual_index owner_status pid endpoint expect_new=0
+  if [[ $v21 == 1 && $sha == "$commit" ]]; then expect_new=1; fi
   for unit in "${units[@]}"; do systemctl is-active --quiet "$unit" || return 1; done
   site -f https://chmsj.cn/api/health | python3 -I -B -c '
 import json, sys
 data = json.load(sys.stdin)
 caps = data.get("capabilities", {})
 assert (data.get("ok"), data.get("release"), data.get("environment")) == (True, sys.argv[1], "production")
-assert caps.get("studioDaily") is True and caps.get("ownerPurchases") is not True
-' "$sha" || return 1
+assert caps.get("studioDaily") is True and (caps.get("ownerPurchases") is True) == (sys.argv[2] == "1")
+' "$sha" "$owner_enabled" || return 1
   expected_index=$(sha256sum "$base/releases/$sha/dist/index.html") || return 1
   actual_index=$(site -f https://chmsj.cn/ | sha256sum) || return 1
   [[ ${actual_index%% *} == "${expected_index%% *}" ]] || return 1
@@ -98,16 +119,28 @@ assert data.get("ok") is True and "workbench-v1" in data.get("features", [])
 ' || return 1
   [[ $(site -o /dev/null -w '%{http_code}' https://chmsj.cn/api/workspace) == 401 ]] || return 1
   owner_status=$(site -o /dev/null -w '%{http_code}' https://chmsj.cn/api/mini-owner/v1/session) || return 1
-  [[ $owner_status == 404 || ( $sha == "$previous" && $owner_status == 401 ) ]] || return 1
+  if [[ $v21 == 1 ]]; then
+    [[ ( $owner_enabled == 1 && $owner_status == 401 ) || ( $owner_enabled == 0 && $owner_status == 404 ) ]] || return 1
+  else
+    [[ $owner_status == 404 || ( $sha == "$previous" && $owner_status == 401 ) ]] || return 1
+  fi
   pid=$(systemctl show -p MainPID --value chunmo-staging-api) || return 1
   [[ $pid =~ ^[1-9][0-9]*$ ]] || return 1
-  python3 -I -B - "$pid" <<'PY' || return 1
+  python3 -I -B - "$pid" "$owner_enabled" "$expect_new" <<'PY' || return 1
 import sys
 from pathlib import Path
 environ = (Path('/proc') / sys.argv[1] / 'environ').read_bytes().split(b'\0')
-assert b'CHUNMO_OWNER_PORTAL_ENABLED=1' not in environ
-assert b'CHUNMO_OWNER_PURCHASE_ENABLED=1' not in environ
+for flag in (b'CHUNMO_OWNER_PORTAL_ENABLED=1', b'CHUNMO_OWNER_PURCHASE_ENABLED=1'):
+    assert (flag in environ) == (sys.argv[2] == '1')
+if sys.argv[3] == '1':
+    assert b'CHUNMO_MINI_UNIFIED_ENABLED=1' in environ and b'CHUNMO_OWNER_DESIGN_ENABLED=1' in environ
 PY
+  if [[ $expect_new == 1 ]]; then
+    # Invalid input proves the new route is mounted without fetching a WeChat identity or writing a session.
+    [[ $(site -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+        -H 'Referer: https://servicewechat.com/wxb48a7abb3858a252/0/page-frame.html' --data '{}' \
+        https://chmsj.cn/api/mini-login/v1/discover) == 400 ]] || return 1
+  fi
   if [[ $owner_018 == 1 ]]; then
     for endpoint in /api/records /api/studio-daily; do
       [[ $(site -o /dev/null -w '%{http_code}' "https://chmsj.cn$endpoint") == 401 ]] || return 1
@@ -137,6 +170,7 @@ select_release() {
 }
 
 restore_app() {
+  if [[ $v21 == 1 ]]; then runtime_v21 --restore || return 1; fi
   select_release "$old" &&
     systemctl restart chunmo-staging-api &&
     wait_health "$previous"
@@ -156,6 +190,7 @@ finish() {
     fi
   fi
   if [[ -n $job && $job == /var/lib/chunmo-build/jobs/owner.* ]]; then rm -rf -- "$job"; fi
+  if [[ -n $sql_source && $sql_source == /tmp/chunmo-v21-sql.* ]]; then rm -rf -- "$sql_source"; fi
   exit "$status"
 }
 trap finish EXIT
@@ -167,6 +202,9 @@ if [[ $mode == --rollback ]]; then
   phase=rollback
   [[ $active == "$old" || $active == "$new" ]] || fail '当前版本与本次发布不匹配。'
   if [[ $active == "$old" ]]; then
+    if [[ $v21 == 1 && -d $conf/release-v21-$commit ]]; then
+      runtime_v21 --restore
+    fi
     if ! health "$previous"; then restore_app; fi
   else
     restore_app
@@ -208,7 +246,7 @@ if [[ $mini_monthly == 1 ]]; then
       *) fail "小程序免登录发布包含范围外文件：$path" ;;
     esac
   done <<< "$changes"
-elif [[ $owner_018 == 1 ]]; then
+elif [[ $owner_018 == 1 && $v21 == 0 ]]; then
   features=6bb23cad3f53740ba83bb6294e67be556330f003
   git -C "$repo" merge-base --is-ancestor "$features" "$commit" ||
     fail '缺少已验收的 OWNER-005 基线。'
@@ -272,6 +310,12 @@ check_018() {
   printf '核查 018 状态 %s 现有行数 %s\n' "$db_state" "${report%$'\n'*}"
 }
 
+check_v21() {
+  db_state=$(sql <<< "$migration_check") || fail '019/020 账本、结构或权限检查失败。'
+  [[ $db_state == pending || $db_state == ready ]] || fail '无法识别 019/020 状态。'
+  printf 'PASS 016–018 校验一致；019/020 状态 %s。\n' "$db_state"
+}
+
 backup_and_rehearse_018() {
   local output archive
   output=$(cd "$old" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
@@ -293,9 +337,17 @@ PY
 
 phase=database-preflight
 if [[ $owner_018 == 1 ]]; then
-  migration_check=$(python3 -I -B "$launch_dir/prepare-018.py" --check)
-  check_018
-  [[ $mini_monthly == 0 || $db_state == ready ]] || fail '正式库需要已部署的 018'
+  if [[ $v21 == 1 ]]; then
+    runtime_v21 --verify
+    sql_source=$(mktemp -d /tmp/chunmo-v21-sql.XXXXXXXX)
+    git -C "$repo" archive "$commit" server/proposed deploy/native/approved-migrations.json | tar -xf - -C "$sql_source"
+    migration_check=$(python3 -I -B "$launch_dir/prepare-v21.py" --check "$sql_source")
+    check_v21
+  else
+    migration_check=$(python3 -I -B "$launch_dir/prepare-018.py" --check)
+    check_018
+    [[ $mini_monthly == 0 || $db_state == ready ]] || fail '正式库需要已部署的 018'
+  fi
   pg_data=$(sql -Atc 'SHOW data_directory')
   db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
   python3 -I -B - "$backups" "$pg_data" "$db_bytes" <<'PY'
@@ -364,7 +416,18 @@ fi
 
 phase=database
 health "$previous" || fail '构建期间正式站状态发生变化。'
-if [[ $owner_018 == 1 ]]; then
+if [[ $v21 == 1 ]]; then
+  phase=pre-v21-backup-and-restore
+  backup_and_rehearse_018
+  phase=database-019-020
+  check_v21
+  if [[ $db_state == pending ]]; then
+    migration=$(python3 -I -B "$launch_dir/prepare-v21.py" --apply "$sql_source")
+    sql <<< "$migration" >/dev/null
+  fi
+  check_v21
+  [[ $db_state == ready ]] || fail '019/020 提交后核查失败。'
+elif [[ $owner_018 == 1 ]]; then
   phase=pre-018-backup-and-restore
   backup_and_rehearse_018
   phase=database-018
@@ -393,14 +456,24 @@ phase=backup
 (cd "$new" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
 
 phase=promotion
+if [[ $v21 == 1 ]]; then runtime_v21 --prepare; fi
 promoted=1
+if [[ $v21 == 1 ]]; then runtime_v21 --apply; fi
 select_release "$new"
 systemctl restart chunmo-staging-api
 wait_health "$commit" || fail '新版网页、API 或员工服务未通过验收。'
-if [[ $owner_018 == 1 ]]; then
+if [[ $v21 == 1 ]]; then
+  phase=post-v21-acceptance
+  check_v21
+  [[ $db_state == ready ]] || fail '上线后 019/020 核查失败。'
+elif [[ $owner_018 == 1 ]]; then
   phase=post-018-acceptance
   check_018
   [[ $db_state == ready ]] || fail '上线后 018 核查失败。'
 fi
 phase=complete
-printf 'PASS 正式网页/API/数据库部署通过 %s，业主开放保持关闭。\n' "$commit"
+if [[ $v21 == 1 ]]; then
+  printf 'PASS 正式 V2.1 网页/API/数据库部署通过 %s，业主服务开关保持 %s。\n' "$commit" "$owner_enabled"
+else
+  printf 'PASS 正式网页/API/数据库部署通过 %s，业主开放保持关闭。\n' "$commit"
+fi

@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 from urllib.parse import urlsplit
@@ -48,11 +49,17 @@ def run(candidate):
     except (subprocess.SubprocessError, AssertionError, KeyError, ValueError):
         print('测试站 现场健康接口未通过')
 
-    env = {'PATH': '/usr/pgsql-17/bin:/usr/local/bin:/usr/bin:/bin', 'LC_ALL': 'C'}
+    env = {'PATH': '/usr/pgsql-17/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LC_ALL': 'C'}
     tool_config = (conf.parent / 'tools.env').read_text()
     setting = re.search(r'^PG_ADMIN_SOCKET=["\']?(/[A-Za-z0-9._/-]+)["\']?$', tool_config, re.M)
     candidates = ([setting.group(1)] if setting else []) + ['/var/run/postgresql', '/run/postgresql', '/tmp']
-    socket = next(path for path in candidates if (Path(path) / '.s.PGSQL.5432').is_socket())
+    socket = next((path for path in candidates if (Path(path) / '.s.PGSQL.5432').is_socket()), None)
+    if not socket:
+        raise SystemExit('FAIL 未找到正式 PostgreSQL 5432 本机套接字。')
+    runuser = shutil.which('runuser', path=env['PATH'])
+    psql = shutil.which('psql', path=env['PATH'])
+    if not runuser or not psql:
+        raise SystemExit('FAIL 正式库检查缺少 runuser 或 psql。')
     sql = """
 BEGIN READ ONLY;
 SELECT jsonb_build_object(
@@ -65,11 +72,14 @@ SELECT jsonb_build_object(
 );
 ROLLBACK;
 """
-    record = json.loads(command([
-        'runuser', '-u', 'postgres', '--', 'env', '-i', *[k + '=' + v for k, v in env.items()],
-        'psql', '-XqAtw', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-h', socket,
-        '-p', '5432', '-d', 'chunmo_staging',
-    ], input=sql, env=env))
+    try:
+        record = json.loads(command([
+            runuser, '-u', 'postgres', '--', 'env', '-i', *[k + '=' + v for k, v in env.items()],
+            psql, '-XqAtw', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-h', socket,
+            '-p', '5432', '-d', 'chunmo_staging',
+        ], input=sql, env=env))
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(f'FAIL 正式库只读 SQL 未通过，psql 退出码 {error.returncode}。') from None
     assert record.pop('database') == 'chunmo_staging'
     for key, value in record.items():
         print(key[-3:], '结构已存在' if value else '结构缺失或未启用')
