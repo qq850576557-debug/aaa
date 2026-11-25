@@ -1,5 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { runInNewContext } = require('node:vm');
 const { WorkbenchClient } = require('../lib/workbench-client');
 function fixture() {
   const disk = new Map();
@@ -34,6 +36,31 @@ function fixture() {
     setQuota: (v) => (quota = v),
   };
 }
+test('the bundled record validator works in WeChat without dynamic functions', () => {
+  let generated = 0;
+  function RestrictedFunction() {
+    generated++;
+    return new Proxy(function () {}, {
+      apply: () => Reflect.apply(Function.prototype.apply, {}, [null, []]),
+    });
+  }
+  const sandbox = { module: { exports: {} }, Function: RestrictedFunction };
+  runInNewContext(readFileSync(require.resolve('../lib/shared-workbench'), 'utf8'), sandbox);
+  const { planRecord } = sandbox.module.exports;
+  const requestId = '05d36df8-db9e-4ef6-ad2b-2529e584d322';
+  const value = {
+    projectId: 'p',
+    title: '测试事项',
+    nodeDate: '2026-11-25',
+    status: '持续跟进',
+    notes: '',
+    followUp: '',
+  };
+  assert.equal(planRecord(value, requestId).value.title, value.title);
+  assert.equal(planRecord(value, requestId, { version: 3 }).version, 3);
+  assert.throws(() => planRecord({ ...value, nodeDate: '无效日期' }, requestId));
+  assert.equal(generated, 0);
+});
 test('offline mutation survives restart with same requestId; only server confirmation removes it', async () => {
   const f = fixture();
   let c = new WorkbenchClient(f.api, f.storage);

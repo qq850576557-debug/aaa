@@ -1,5 +1,6 @@
 // Shared by desktop-model tests and the generated Mini Program bundle. No new
 // business models: reuse exactly the existing deadline, agenda and save planners.
+import './mini-workbench-validation';
 import {
   purchaseStatuses,
   purchaseDue,
