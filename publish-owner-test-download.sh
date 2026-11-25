@@ -17,6 +17,16 @@ site() {
   curl -fsS --noproxy '*' --resolve owner-test.chmsj.cn:443:127.0.0.1 --max-time 15 "$origin/$1"
 }
 
+archive=
+case $# in
+  0) ;;
+  2)
+    [[ $1 == --zip && -f $2 && ! -L $2 ]] || fail '请指定有效的本地 ZIP 文件'
+    archive=$2
+    ;;
+  *) fail '用法 publish-owner-test-download.sh [--zip ZIP文件]' ;;
+esac
+
 [[ $EUID == 0 ]] || fail '请在 Workbench root 终端执行'
 exec 9>/run/lock/chunmo-staging-deploy.lock
 flock -n 9 || fail '已有站点操作正在执行'
@@ -67,7 +77,11 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
-curl -fLsS --proto '=https' --max-time 45 "$source_url" -o "$pending"
+if [[ -n $archive ]]; then
+  cp -- "$archive" "$pending"
+else
+  curl -fLsS --proto '=https' --max-time 45 "$source_url" -o "$pending"
+fi
 [[ $(digest "$pending") == "$updated" ]] || fail '新版 ZIP 校验未通过'
 chmod 0644 "$pending"
 rollback=$(mktemp "$job/.handset-rollback.XXXXXXXX")
