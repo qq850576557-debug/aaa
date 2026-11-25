@@ -1,5 +1,6 @@
+import { createPortal } from 'react-dom';
 import { AccountDirectory } from './AccountDirectory';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Modal, Confirm } from './Modal';
 import { PASSWORD_MIN, PASSWORD_MAX, passwordSchema } from '../lib/password';
 import { cloudApi, cloudSession, selectSpace, CloudError, type CloudUser } from '../lib/cloud';
@@ -49,6 +50,17 @@ export function CloudControl({
     </>
   );
 }
+const accountTabs = [
+  ['accounts', '账号管理'],
+  ['profile', '个人中心'],
+  ['audit', '操作记录'],
+  ['import', '备份导入'],
+] as const;
+const accountCategories = [
+  ['staff', '员工账号'],
+  ['owner', '业主账号'],
+] as const;
+
 function CloudPanel({
   isCloud,
   dirty,
@@ -60,12 +72,14 @@ function CloudPanel({
   onClose: () => void;
   initialUser?: CloudUser | null;
 }) {
+  const id = useId();
   const profileTouched = useRef(false),
     sessionCheck = useRef<Promise<void>>(Promise.resolve());
   const [user, setUser] = useState<CloudUser | null>(initialUser ?? null),
     [loading, setLoading] = useState(!initialUser),
     [accounts, setAccounts] = useState<DirectoryAccount[]>([]),
-    [tab, setTab] = useState('staff'),
+    [tab, setTab] = useState<(typeof accountTabs)[number][0]>('accounts'),
+    [category, setCategory] = useState<(typeof accountCategories)[number][0]>('staff'),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false),
@@ -143,16 +157,9 @@ function CloudPanel({
       });
     else run();
   };
-  return (
+  return createPortal(
     <>
-      <Modal
-        title="账号管理"
-        onClose={onClose}
-        wide
-        className={
-          'account-dialog' + (['staff', 'owner'].includes(tab) ? ' account-directory-dialog' : '')
-        }
-      >
+      <Modal title="账号管理" onClose={onClose} wide className="account-dialog">
         <div className="modal-body account-body">
           {loading ? (
             <p role="status">正在读取账号…</p>
@@ -165,215 +172,254 @@ function CloudPanel({
             </div>
           ) : (
             <>
-              {tab === 'profile' && (
-                <div className="account-identity">
-                  <Avatar account={user} />
-                  <div>
-                    <h3>{user.displayName || user.login}</h3>
-                    <p>
-                      {user.owner ? '工作室负责人' : '普通员工'} · 登录名 {user.login}
-                    </p>
-                  </div>
-                </div>
-              )}
               <div className="account-tabs" role="tablist" aria-label="账号管理功能">
-                {[
-                  ['staff', '员工账号'],
-                  ...(user.owner ? [['owner', '业主账号']] : []),
-                  ['profile', '账号与安全'],
-                  ['audit', '操作记录'],
-                  ...(accountPermissions(user.owner).backupImport ? [['import', '备份导入']] : []),
-                ].map(([key, label]) => (
-                  <button
-                    key={key}
-                    role="tab"
-                    aria-selected={tab === key}
-                    onClick={() => {
-                      setTab(key);
-                      setError('');
-                      setNotice('');
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
+                {accountTabs
+                  .filter(
+                    ([key]) => key !== 'import' || accountPermissions(user.owner).backupImport,
+                  )
+                  .map(([key, label]) => (
+                    <button
+                      key={key}
+                      id={id + '-' + key}
+                      role="tab"
+                      aria-controls={id + '-panel'}
+                      aria-selected={tab === key}
+                      onClick={() => {
+                        if (tab === key) return;
+                        setTab(key);
+                        setError('');
+                        setNotice('');
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
               </div>
-              {tab === 'profile' && (
-                <section className="account-section" aria-label="账号与安全">
-                  <form
-                    aria-label="修改我的展示名称"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (!profileTouched.current) {
-                        setNotice('没有需要保存的名称修改。');
-                        return;
-                      }
-                      void action(async () => {
-                        await cloudApi('/auth/profile', 'PATCH', { displayName });
-                        const updated = await cloudSession();
-                        setUser(updated);
-                        profileTouched.current = false;
-                        window.dispatchEvent(
-                          new CustomEvent('chunmo-profile-updated', { detail: updated }),
-                        );
-                        await directory();
-                        setNotice('展示名称已保存，登录名和账号ID保持不变。');
-                      });
-                    }}
-                  >
-                    <label>
-                      我的展示名称
-                      <input
-                        aria-label="我的展示名称"
-                        required
-                        maxLength={80}
-                        value={displayName}
-                        disabled={busy}
-                        onChange={(e) => {
-                          profileTouched.current = true;
-                          setDisplayName(e.target.value);
+              <div
+                key={tab}
+                id={id + '-panel'}
+                role="tabpanel"
+                aria-labelledby={id + '-' + tab}
+                className={
+                  tab === 'accounts'
+                    ? 'account-tab-content account-list-panel'
+                    : 'account-tab-content'
+                }
+              >
+                {tab === 'profile' && (
+                  <section className="account-section" aria-label="个人中心">
+                    <div className="account-identity">
+                      <Avatar account={user} />
+                      <div>
+                        <h3>{user.displayName || user.login}</h3>
+                        <p>
+                          {user.owner ? '工作室负责人' : '普通员工'} · 登录名 {user.login}
+                        </p>
+                      </div>
+                    </div>
+                    <form
+                      aria-label="修改我的展示名称"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!profileTouched.current) {
+                          setNotice('没有需要保存的名称修改。');
+                          return;
+                        }
+                        void action(async () => {
+                          await cloudApi('/auth/profile', 'PATCH', { displayName });
+                          const updated = await cloudSession();
+                          setUser(updated);
+                          profileTouched.current = false;
+                          window.dispatchEvent(
+                            new CustomEvent('chunmo-profile-updated', { detail: updated }),
+                          );
+                          await directory();
+                          setNotice('展示名称已保存，登录名和账号ID保持不变。');
+                        });
+                      }}
+                    >
+                      <label>
+                        我的展示名称
+                        <input
+                          aria-label="我的展示名称"
+                          required
+                          maxLength={80}
+                          value={displayName}
+                          disabled={busy}
+                          onChange={(e) => {
+                            profileTouched.current = true;
+                            setDisplayName(e.target.value);
+                          }}
+                        />
+                      </label>
+                      <button disabled={busy}>保存展示名称</button>
+                    </form>
+                    <AvatarEditor user={user} onUpdated={setUser} />
+                    <PersonalWechatStatus key={user.id} />
+                    {accountPermissions(user.owner).changeLogin && (
+                      <LoginNameEditor dirty={dirty} onExpired={expired} />
+                    )}
+                    <details className="account-card">
+                      <summary>修改我的密码</summary>
+                      <p className="account-muted">
+                        8–128位，不限制字符组合。修改后该账号全部旧会话失效。
+                      </p>
+                      <PasswordForm
+                        requireCurrent
+                        onExpired={expired}
+                        onSave={async (currentPassword, newPassword) => {
+                          if (isCloud && dirty)
+                            throw Error('请先保存云端草稿或下载紧急备份，再修改密码');
+                          await cloudApi('/auth/password', 'POST', {
+                            currentPassword,
+                            newPassword,
+                            confirmPassword: newPassword,
+                          });
+                          expired();
+                          setNotice('密码已修改，全部旧会话已撤销。请使用新密码重新登录。');
                         }}
                       />
-                    </label>
-                    <button disabled={busy}>保存展示名称</button>
-                  </form>
-                  <AvatarEditor user={user} onUpdated={setUser} />
-                  {accountPermissions(user.owner).changeLogin && (
-                    <LoginNameEditor dirty={dirty} onExpired={expired} />
-                  )}
-                  <details className="account-card">
-                    <summary>修改我的密码</summary>
+                    </details>
+                    <div className="account-session-actions">
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          leave(
+                            () =>
+                              void action(async () => {
+                                await cloudApi('/auth/logout', 'POST', {});
+                                window.dispatchEvent(
+                                  new CustomEvent('chunmo-auth-expired', {
+                                    detail: { clearWorkspace: true },
+                                  }),
+                                );
+                              }),
+                          )
+                        }
+                      >
+                        退出登录
+                      </button>
+                      {!isCloud && (
+                        <button onClick={() => leave(() => selectSpace('cloud'))}>
+                          进入云空间
+                        </button>
+                      )}
+                    </div>
+                  </section>
+                )}
+                {tab === 'accounts' && (
+                  <>
+                    <div className="account-segments" role="tablist" aria-label="账号分类">
+                      {accountCategories
+                        .filter(([key]) => key === 'staff' || user.owner)
+                        .map(([key, label]) => (
+                          <button
+                            key={key}
+                            id={id + '-' + key}
+                            role="tab"
+                            aria-controls={id + '-directory'}
+                            aria-selected={category === key}
+                            onClick={() => setCategory(key)}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                    </div>
+                    <div
+                      key={category}
+                      id={id + '-directory'}
+                      role="tabpanel"
+                      aria-labelledby={id + '-' + category}
+                      className="account-directory-panel"
+                    >
+                      <AccountDirectory
+                        category={category}
+                        user={user}
+                        onProfile={async (card) => {
+                          if (card.id === user.id) {
+                            const updated = await cloudSession();
+                            setUser(updated);
+                            setDisplayName(updated.displayName || updated.login);
+                            window.dispatchEvent(
+                              new CustomEvent('chunmo-profile-updated', { detail: updated }),
+                            );
+                          }
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
+                {tab === 'audit' && accountPermissions(user.owner).audit && (
+                  <AuditLog accounts={accounts} />
+                )}
+                {tab === 'import' && accountPermissions(user.owner).backupImport && (
+                  <section className="account-section">
+                    <h3>导入本地业务与版本备份</h3>
                     <p className="account-muted">
-                      8–128位，不限制字符组合。修改后该账号全部旧会话失效。
+                      只合并无冲突的稳定ID；同ID不同内容拒绝，不覆盖已有记录。原浏览器资料保留。材料台账、人员考核、名片、入职日期与账号授权由独立服务端记录保存，不在项目
+                      JSON 范围内；完整恢复需服务器加密数据库备份。
                     </p>
-                    <PasswordForm
-                      requireCurrent
-                      onExpired={expired}
-                      onSave={async (currentPassword, newPassword) => {
-                        if (isCloud && dirty)
-                          throw Error('请先保存云端草稿或下载紧急备份，再修改密码');
-                        await cloudApi('/auth/password', 'POST', {
-                          currentPassword,
-                          newPassword,
-                          confirmPassword: newPassword,
+                    {isCloud && (
+                      <div className="local-backup-access">
+                        <button onClick={() => leave(() => selectSpace('local'))}>
+                          切换本地空间（保留账号会话）
+                        </button>
+                      </div>
+                    )}
+                    <input
+                      aria-label="选择云端导入备份"
+                      type="file"
+                      accept="application/json,.json"
+                      disabled={busy}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setPreview(null);
+                        await action(async () => {
+                          if (file.size > 16 * 1024 * 1024)
+                            throw Error('备份超过16MiB，请先分批整理');
+                          setPreview(
+                            await cloudApi('/import/preview', 'POST', {
+                              archive: JSON.parse(await file.text()),
+                            }),
+                          );
                         });
-                        expired();
-                        setNotice('密码已修改，全部旧会话已撤销。请使用新密码重新登录。');
+                        e.target.value = '';
                       }}
                     />
-                  </details>
-                  <div className="account-session-actions">
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        leave(
-                          () =>
-                            void action(async () => {
-                              await cloudApi('/auth/logout', 'POST', {});
-                              window.dispatchEvent(
-                                new CustomEvent('chunmo-auth-expired', {
-                                  detail: { clearWorkspace: true },
-                                }),
-                              );
-                            }),
-                        )
-                      }
-                    >
-                      退出登录
-                    </button>
-                    {!isCloud && (
-                      <button onClick={() => leave(() => selectSpace('cloud'))}>进入云空间</button>
-                    )}
-                  </div>
-                </section>
-              )}
-              {(tab === 'staff' || (tab === 'owner' && user.owner)) && (
-                <AccountDirectory
-                  key={tab}
-                  category={tab}
-                  user={user}
-                  onProfile={async (card) => {
-                    if (card.id === user.id) {
-                      const updated = await cloudSession();
-                      setUser(updated);
-                      setDisplayName(updated.displayName || updated.login);
-                      window.dispatchEvent(
-                        new CustomEvent('chunmo-profile-updated', { detail: updated }),
-                      );
-                    }
-                  }}
-                />
-              )}
-              {tab === 'audit' && accountPermissions(user.owner).audit && (
-                <AuditLog accounts={accounts} />
-              )}
-              {tab === 'import' && accountPermissions(user.owner).backupImport && (
-                <section className="account-section">
-                  <h3>导入本地业务与版本备份</h3>
-                  <p className="account-muted">
-                    只合并无冲突的稳定ID；同ID不同内容拒绝，不覆盖已有记录。原浏览器资料保留。材料台账、人员考核、名片、入职日期与账号授权由独立服务端记录保存，不在项目
-                    JSON 范围内；完整恢复需服务器加密数据库备份。
-                  </p>
-                  {isCloud && (
-                    <div className="local-backup-access">
-                      <button onClick={() => leave(() => selectSpace('local'))}>
-                        切换本地空间（保留账号会话）
-                      </button>
-                    </div>
-                  )}
-                  <input
-                    aria-label="选择云端导入备份"
-                    type="file"
-                    accept="application/json,.json"
-                    disabled={busy}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      setPreview(null);
-                      await action(async () => {
-                        if (file.size > 16 * 1024 * 1024)
-                          throw Error('备份超过16MiB，请先分批整理');
-                        setPreview(
-                          await cloudApi('/import/preview', 'POST', {
-                            archive: JSON.parse(await file.text()),
-                          }),
-                        );
-                      });
-                      e.target.value = '';
-                    }}
-                  />
-                  {preview &&
-                    (preview.alreadyImported ? (
-                      <p>此备份已导入，不会重复创建。</p>
-                    ) : (
-                      <>
-                        <p>校验预览：{JSON.stringify(preview.counts)}</p>
-                        <button
-                          disabled={busy}
-                          onClick={() =>
-                            setConfirmation({
-                              title: '导入到云工作空间？',
-                              message:
-                                '预览的无冲突业务将合并并记录真实操作账号。他人修改后须重新预览，原浏览器资料保留。',
-                              run: () =>
-                                void action(async () => {
-                                  await cloudApi('/import/commit', 'POST', {
-                                    id: preview.id,
-                                    revision: preview.revision,
-                                    confirm: true,
-                                  });
-                                  setPreview(null);
-                                  setNotice('导入成功，云空间将自动刷新。');
-                                }),
-                            })
-                          }
-                        >
-                          确认导入预览
-                        </button>
-                      </>
-                    ))}
-                </section>
-              )}
+                    {preview &&
+                      (preview.alreadyImported ? (
+                        <p>此备份已导入，不会重复创建。</p>
+                      ) : (
+                        <>
+                          <p>校验预览：{JSON.stringify(preview.counts)}</p>
+                          <button
+                            disabled={busy}
+                            onClick={() =>
+                              setConfirmation({
+                                title: '导入到云工作空间？',
+                                message:
+                                  '预览的无冲突业务将合并并记录真实操作账号。他人修改后须重新预览，原浏览器资料保留。',
+                                run: () =>
+                                  void action(async () => {
+                                    await cloudApi('/import/commit', 'POST', {
+                                      id: preview.id,
+                                      revision: preview.revision,
+                                      confirm: true,
+                                    });
+                                    setPreview(null);
+                                    setNotice('导入成功，云空间将自动刷新。');
+                                  }),
+                              })
+                            }
+                          >
+                            确认导入预览
+                          </button>
+                        </>
+                      ))}
+                  </section>
+                )}
+              </div>
             </>
           )}
           {error && (
@@ -403,7 +449,48 @@ function CloudPanel({
           }}
         />
       )}
-    </>
+    </>,
+    document.body,
+  );
+}
+function PersonalWechatStatus() {
+  const [binding, setBinding] = useState<{ phoneSuffix?: string | null; bound: boolean }>();
+  const [unavailable, setUnavailable] = useState('');
+  useEffect(() => {
+    let active = true;
+    cloudApi<{ phoneSuffix?: string | null; bound: boolean }>('/auth/wechat-binding').then(
+      (value) => {
+        if (active) setBinding(value);
+      },
+      (error) => {
+        if (active)
+          setUnavailable(
+            error instanceof CloudError && error.status === 404 ? '暂未开放' : '读取失败',
+          );
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+  return (
+    <dl className="account-personal-binding">
+      <div>
+        <dt>手机号</dt>
+        <dd>
+          {unavailable ||
+            (!binding
+              ? '读取中…'
+              : binding.phoneSuffix
+                ? '•••••••' + binding.phoneSuffix
+                : '未绑定')}
+        </dd>
+      </div>
+      <div>
+        <dt>微信绑定</dt>
+        <dd>{unavailable || (!binding ? '读取中…' : binding.bound ? '已绑定' : '待绑定')}</dd>
+      </div>
+    </dl>
   );
 }
 function PasswordForm({

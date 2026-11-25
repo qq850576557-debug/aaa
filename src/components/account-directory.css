@@ -1,5 +1,9 @@
 .account-directory {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
   color: var(--account-ink, #244238);
 }
 .directory-toolbar {
@@ -7,6 +11,7 @@
   justify-content: flex-end;
   align-items: center;
   flex-wrap: wrap;
+  flex-shrink: 0;
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -28,17 +33,25 @@
   gap: 5px;
 }
 .directory-table-wrap {
-  overflow-x: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   border-radius: 15px;
   background: #fff9;
 }
 .directory-table {
   width: 100%;
+  min-width: 670px;
   text-align: left;
   border-collapse: collapse;
   font-size: 13px;
 }
 .directory-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f2f5ef;
   color: #64736a;
   font-weight: 500;
   padding: 8px 10px;
@@ -149,6 +162,9 @@ button.directory-more:hover {
 .directory-muted {
   color: #737b68;
 }
+.account-directory > .directory-state {
+  flex: 1 1 auto;
+}
 .directory-state {
   padding: 10px;
   color: #5f7166;
@@ -180,20 +196,37 @@ button.directory-more:hover {
 .directory-card-dialog .member-cards-grid {
   grid-template-columns: minmax(0, 1fr);
 }
-.account-dialog.account-directory-dialog {
-  width: min(1070px, calc(100vw - 24px));
+.directory-pagination,
+.directory-page-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-.account-directory-dialog .account-body {
-  padding-top: 4px;
+.directory-pagination {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  padding-top: 8px;
+  color: #52695c;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
-.account-directory-dialog .account-tabs {
-  margin-bottom: 12px;
+.directory-page-controls button {
+  min-height: 32px;
+  padding: 4px 9px;
+}
+.directory-page-controls > span {
+  min-width: 34px;
+  text-align: center;
+}
+.directory-announcer {
+  flex: 0 0 auto;
+}
+.directory-announcer:empty {
+  display: none;
 }
 @media (max-width: 690px) {
   .directory-toolbar > input[type='search'] {
     flex-basis: 100%;
-  }
-  .directory-table {
-    min-width: 670px;
   }
 }

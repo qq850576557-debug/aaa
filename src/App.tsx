@@ -1,3 +1,4 @@
+import { ProjectOwnerDesign } from './components/ProjectOwnerDesign';
 import { ProjectOwnerAccess } from './components/ProjectOwnerAccess';
 import { StudioDaily } from './components/StudioDaily';
 import { MOBILE_QUERY, mobileRequested } from './mobile/mode';
@@ -1833,7 +1834,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             isCloud && edit.kind === 'purchase' && isExisting ? (
               <LegacySource kind="purchase" id={edit.value.id} />
             ) : !mobile && isCloud && cloudUser?.owner && isExisting && edit.kind === 'project' ? (
-              <ProjectOwnerAccess projectId={edit.value.id} />
+              <>
+                <ProjectOwnerAccess projectId={edit.value.id} />
+                <ProjectOwnerDesign projectId={edit.value.id} projectName={edit.value.name} />
+              </>
             ) : undefined
           }
           onForgetName={(name) => {

@@ -1,0 +1,10 @@
+<view class="owner-nav" aria-role="tablist" aria-label="业主导航">
+  <button class="owner-nav-tab {{active === 'home' ? 'selected' : ''}}" aria-role="tab"
+    aria-selected="{{active === 'home'}}" data-tab="home" bindtap="switchTab">
+    <view class="owner-nav-sheet" aria-hidden="{{true}}"><view></view></view><text>事项</text>
+  </button>
+  <button class="owner-nav-tab {{active === 'profile' ? 'selected' : ''}}" aria-role="tab"
+    aria-selected="{{active === 'profile'}}" data-tab="profile" bindtap="switchTab">
+    <view class="owner-nav-person" aria-hidden="{{true}}"><view></view></view><text>我的</text>
+  </button>
+</view>

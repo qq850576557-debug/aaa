@@ -23,9 +23,15 @@ Page(
     onShow() {
       if (!this.data.ready) return;
       if (store.isVerified()) {
+        const previous = this.data.project?.id;
+        const scrollTop = this.scrollTop || 0;
         this.setData({ project: null, recent: [], loading: true, error: '' });
         return store.refreshVerified().then(
-          () => this.renderSnapshot(),
+          () => {
+            this.renderSnapshot();
+            if (scrollTop && previous === this.data.project?.id)
+              wx.nextTick(() => wx.pageScrollTo({scrollTop,duration:0}));
+          },
           (error) => {
             this.setData({ project: null, loading: false, error: error.message });
             if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
@@ -33,6 +39,9 @@ Page(
         );
       }
       this.renderSnapshot();
+    },
+    onPageScroll({ scrollTop }) {
+      this.scrollTop = scrollTop;
     },
     onPullDownRefresh() {
       return Promise.resolve(this.onShow()).finally(() => wx.stopPullDownRefresh());

@@ -1,3 +1,4 @@
+import { ownerDesignMiniRoutes } from './owner-design';
 import express, { type Express, type Request } from 'express';
 import pg from 'pg';
 import { createCipheriv, createHmac, randomBytes, randomUUID } from 'node:crypto';
@@ -173,6 +174,7 @@ export function miniOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     return { id: String(row.id), label: String(row.label), hash };
   }
   if (ownerPurchasesEnabled()) ownerPurchaseRoutes(router, db, current);
+  ownerDesignMiniRoutes(router, db, current);
   router.use(express.json({ limit: '8kb' }));
   const projects = (id: string) =>
     db.query(

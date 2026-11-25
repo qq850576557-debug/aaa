@@ -202,6 +202,13 @@ export function staffWechatAccounts(
   revokeStreams: (id: string) => void,
 ) {
   if (!enabled) return;
+  app.get('/api/auth/wechat-binding', async (req: AuthRequest, res) => {
+    const result = await pool.query(
+      'SELECT phone_suffix AS "phoneSuffix", identity_digest IS NOT NULL AS bound FROM employee_wechat_binding WHERE account_id=$1',
+      [req.actor!.id],
+    );
+    res.json(result.rows[0] ?? { phoneSuffix: null, bound: false });
+  });
   app.get('/api/accounts/wechat', owner, async (req: AuthRequest, res) => {
     const rows = await pool.query(
       `SELECT a.id,b.phone_suffix AS "phoneSuffix",COALESCE(b.identity_digest IS NOT NULL,false) AS bound

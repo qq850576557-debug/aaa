@@ -1,0 +1,2 @@
+.design-screen { padding: 24px 20px; color: #536a5e; }
+.design-screen button { margin-top: 14px; }

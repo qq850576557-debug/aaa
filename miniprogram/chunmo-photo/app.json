@@ -15,7 +15,8 @@
     "owner-login/pages/purchases/index",
     "owner-login/pages/purchase/index",
     "owner-login/pages/profile/index",
-    "owner-login/pages/terms/index"
+    "owner-login/pages/terms/index",
+    "owner-login/pages/design/index"
   ],
   "window": {
     "navigationBarTitleText": "春茉工地拍照",

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Ellipsis, Plus } from 'lucide-react';
 import { cloudApi, CloudError, type CloudUser } from '../lib/cloud';
 import type { MemberCard } from '../lib/member-cards';
@@ -20,6 +20,7 @@ type OwnerMember = {
   projects: (Project & { active: boolean })[];
 };
 type OwnerDirectory = { members: OwnerMember[]; projects: Project[] };
+const pageSize = 10;
 
 function More({ name, children }: { name: string; children: ReactNode }) {
   const id = useId();
@@ -64,6 +65,8 @@ export function AccountDirectory({
   onProfile: (card: MemberCard) => Promise<void>;
 }) {
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const scrollArea = useRef<HTMLDivElement>(null);
   const [projectFilter, filter] = useState('');
   const [people, setPeople] = useState<Staff[]>([]);
   const [ownerDirectory, setOwners] = useState<OwnerDirectory>({ members: [], projects: [] });
@@ -124,6 +127,13 @@ export function AccountDirectory({
       matches(m.name, m.maskedPhone, ...m.projects.map((p) => p.name)),
   );
   const isStaff = category === 'staff';
+  const total = isStaff ? staffRows.length : ownerRows.length;
+  const pages = Math.ceil(total / pageSize);
+  const currentPage = Math.min(page, Math.max(0, pages - 1));
+  const from = currentPage * pageSize;
+  useEffect(() => {
+    if (scrollArea.current) scrollArea.current.scrollTop = 0;
+  }, [currentPage, query, projectFilter]);
   const close = () => setDialog(undefined);
 
   return (
@@ -134,13 +144,19 @@ export function AccountDirectory({
           aria-label="搜索账号"
           value={query}
           placeholder={isStaff ? '搜索姓名、部门、账号…' : '搜索姓名、手机号尾号、工地…'}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPage(0);
+          }}
         />
         {!isStaff && (
           <select
             aria-label="按工地筛选"
             value={projectFilter}
-            onChange={(e) => filter(e.target.value)}
+            onChange={(e) => {
+              filter(e.target.value);
+              setPage(0);
+            }}
           >
             <option value="">全部工地</option>
             {ownerDirectory.projects.map((p) => (
@@ -172,7 +188,12 @@ export function AccountDirectory({
           正在读取账号…
         </p>
       ) : (
-        <div className="directory-table-wrap">
+        <div
+          className="directory-table-wrap"
+          ref={scrollArea}
+          tabIndex={0}
+          aria-label="账号列表滚动区"
+        >
           <table className="directory-table">
             <thead>
               <tr>
@@ -187,7 +208,7 @@ export function AccountDirectory({
             </thead>
             <tbody>
               {isStaff
-                ? staffRows.map((a) => (
+                ? staffRows.slice(from, from + pageSize).map((a) => (
                     <tr key={a.id}>
                       <td>
                         <button
@@ -255,7 +276,7 @@ export function AccountDirectory({
                       </td>
                     </tr>
                   ))
-                : ownerRows.map((m) => {
+                : ownerRows.slice(from, from + pageSize).map((m) => {
                     const active = m.projects.filter((p) => p.active);
                     return (
                       <tr key={m.id}>
@@ -313,11 +334,31 @@ export function AccountDirectory({
                   })}
             </tbody>
           </table>
-          {!(isStaff ? staffRows.length : ownerRows.length) && (
-            <p className="directory-state">没有符合条件的账号</p>
-          )}
+          {total === 0 && <p className="directory-state">没有符合条件的账号</p>}
         </div>
       )}
+      <div className="directory-pagination" aria-label="账号列表分页">
+        <span aria-live="polite">共 {total} 条</span>
+        <div className="directory-page-controls">
+          <button
+            type="button"
+            disabled={currentPage === 0}
+            onClick={() => setPage(currentPage - 1)}
+          >
+            上一页
+          </button>
+          <span aria-live="polite">
+            {pages ? currentPage + 1 : 0} / {pages}
+          </span>
+          <button
+            type="button"
+            disabled={currentPage + 1 >= pages}
+            onClick={() => setPage(currentPage + 1)}
+          >
+            下一页
+          </button>
+        </div>
+      </div>
       <div className="directory-announcer" role="status">
         {notice}
       </div>

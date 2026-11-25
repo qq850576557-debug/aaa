@@ -2,7 +2,7 @@
 <import src="../../portal.wxml" />
 <view
   wx:if="{{ready}}"
-  class="portal"
+  class="portal owner-tab-page"
   style="padding-top: calc({{statusTop}}px + var(--ui-header-top)); {{uiStyle}}"
 >
   <view class="portal-wrap">
@@ -62,5 +62,6 @@
       <view wx:if="{{!recent.length}}" class="portal-card empty-state">近期暂无采购安排</view>
     </block>
   </view>
+  <owner-nav wx:if="{{project}}" active="home" />
   <template wx:if="{{uiDev}}" is="ui-tuning" data="{{fields: uiFields, open: uiOpen}}" />
 </view>

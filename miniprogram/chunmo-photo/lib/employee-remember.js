@@ -88,6 +88,21 @@ function withEmployeeRemember(BaseApi) {
       }
     }
 
+    async personalProfile() {
+      // Refresh expired eight-hour staff cookies through the existing remembered session.
+      if (!this.cookie || this.cookieValidUntil <= Date.now()) await this.resumeRemembered();
+      const identity = this.identity;
+      if (!identity || !this.cookie) return null;
+      const response = await call('request', {
+        url: origin + '/api/mini-employee/v1/profile',
+        method: 'GET',
+        timeout: 15000,
+        header: { Cookie: this.cookie },
+      });
+      if (this.identity !== identity || response.statusCode !== 200) return null;
+      return response.data;
+    }
+
     async acceptWechat(response) {
       const { token, expiresAt } = response.data.remembered || {};
       const cookie = sessionCookie(response);

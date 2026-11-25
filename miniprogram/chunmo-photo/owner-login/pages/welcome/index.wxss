@@ -164,3 +164,5 @@
   width: 100%;
   color: #244e42;
 }
+
+.binding-cancel { min-height: 38px; margin: 0; color: #586b5e; }

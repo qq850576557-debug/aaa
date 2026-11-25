@@ -439,3 +439,130 @@
 .presence-offline {
   background: #a1aaa5;
 }
+
+dialog.modal.account-dialog.floating-panel[open] {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 1120px;
+  height: 760px;
+  max-width: 94vw;
+  max-height: 90dvh;
+  overflow: hidden;
+  transition: none;
+  animation: none;
+}
+.account-dialog > :is(.modal-head, .modal-foot) {
+  flex: 0 0 auto;
+}
+.account-dialog > .account-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: 8px;
+}
+.account-dialog .account-tabs {
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+}
+.account-dialog .account-tabs button {
+  min-width: 0;
+  flex: 1;
+}
+.account-tab-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 2px 2px 6px;
+}
+.account-list-panel,
+.account-directory-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.account-directory-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 2px;
+}
+.account-tab-content,
+.account-directory-panel {
+  animation: account-content-enter 150ms ease-out;
+}
+.account-list-panel {
+  animation: none;
+}
+@keyframes account-content-enter {
+  from {
+    opacity: 0.82;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.account-segments {
+  align-self: flex-start;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px;
+  margin: 0 0 10px 2px;
+  border-radius: 999px;
+  background: #edf2eb;
+}
+.account-segments button {
+  min-height: 32px;
+  border: 0;
+  padding: 5px 14px;
+  border-radius: inherit;
+  background: transparent;
+  color: #53695c;
+  box-shadow: none;
+}
+.account-segments button[aria-selected='true'] {
+  color: #244e42;
+  background: #fffefa;
+  box-shadow: 0 1px 4px #243b2a15;
+}
+.account-personal-binding {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 32px;
+  background: #f2f5ef;
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.account-personal-binding > div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.account-personal-binding dt {
+  color: #59695f;
+}
+.account-personal-binding dd {
+  margin: 0;
+  color: #244238;
+}
+@media (prefers-reduced-motion: reduce) {
+  .account-tab-content,
+  .account-directory-panel {
+    animation: none;
+  }
+}
+@media (max-width: 640px) {
+  .account-dialog > .account-body {
+    padding: 8px 8px 6px;
+  }
+  .account-dialog .account-tabs button {
+    font-size: 12px;
+    padding-inline: 3px;
+  }
+}

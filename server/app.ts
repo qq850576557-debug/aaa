@@ -1,3 +1,4 @@
+import { ownerDesignStaffRoutes } from './owner-design';
 import { miniUnifiedRoutes, staffWechatAccounts } from './mini-unified';
 import {
   configuredOwnerPortal,
@@ -256,6 +257,7 @@ export function createApp({
     next();
   });
   staffOwnerRoutes(app, ownerPortal);
+  if (ownerPortal) ownerDesignStaffRoutes(app);
   staffWechatAccounts(app, unifiedLogin, (id) => {
     for (const stream of streams) if (stream.accountId === id) stream.close();
   });

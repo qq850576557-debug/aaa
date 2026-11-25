@@ -107,6 +107,13 @@ test('unified entry renders after session restoration and keeps first bind and d
   await entry.quickLogin();
   assert.equal(entry.data.binding, 'employee');
   assert.equal(entry.data.roles.length, 0);
+  const attempted = routeCalls.length;
+  entry.setData({ password: 'temporary' });
+  entry.closeBinding();
+  assert.equal(entry.data.binding, '');
+  assert.equal(entry.data.password, '');
+  assert.equal(routeCalls.length, attempted);
+  assert.equal(entry.data.ready, true);
 
   roles = ['owner', 'employee'];
   entry = page();

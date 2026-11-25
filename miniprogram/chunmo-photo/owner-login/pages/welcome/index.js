@@ -163,7 +163,15 @@ Page(
       this.setData({ binding: 'employee', feedback: '' });
     },
     closeBinding() {
-      if (!this.data.busy) this.setData({ binding: '', roles: [], password: '', feedback: '' });
+      if (!this.data.busy)
+        this.setData({
+          binding: '',
+          roles: [],
+          password: '',
+          staffLogin: '',
+          inviteDraft: '',
+          feedback: '',
+        });
     },
     editBinding(event) {
       const key = event.currentTarget.dataset.field;

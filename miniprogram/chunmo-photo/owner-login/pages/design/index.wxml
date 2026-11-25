@@ -1,0 +1,6 @@
+<web-view wx:if="{{src}}" src="{{src}}" binderror="failed" />
+<view wx:else class="design-screen">
+  <view wx:if="{{loading}}">正在读取设计成果…</view>
+  <spring-notice wx:else text="{{feedback}}" />
+  <button wx:if="{{!loading && feedback !== '暂未发布'}}" class="quiet" bindtap="retry">重试</button>
+</view>

@@ -120,6 +120,12 @@ function purchaseRequest(project, suffix, method, body) {
 const purchases = (project) => purchaseRequest(project, '', 'GET');
 const feedback = (project, id, body) =>
   purchaseRequest(project, '/' + encodeURIComponent(id) + '/feedback', 'POST', body);
+function projectDesign(project) {
+  const token = enabled() && wx.getStorageSync(storageKey);
+  if (!token) return Promise.reject(new SessionError('业主登录已失效', 401));
+  return request('/projects/' + encodeURIComponent(project) + '/design','GET',undefined,token);
+}
+
 const photo = (project, id, imageId) =>
   purchaseRequest(
     project,
@@ -138,6 +144,7 @@ module.exports = {
   session,
   logout,
   purchases,
+  projectDesign,
   feedback,
   photo,
 };

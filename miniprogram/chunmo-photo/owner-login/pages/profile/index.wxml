@@ -1,45 +1,26 @@
+<import src="../../profile-card.wxml" />
 <import src="../../ui-tuning.wxml" />
 <import src="../../portal.wxml" />
 <view
   wx:if="{{ready}}"
-  class="portal profile-page"
+  class="portal profile-page owner-tab-page"
   style="padding-top: {{statusTop + 44}}px; {{uiStyle}}"
 >
   <view class="portal-wrap profile-wrap" aria-hidden="{{cropOpen || privacyVisible}}">
     <template is="navigation" data="{{title: '个人中心'}}" />
     <template is="load-state" data="{{error: error, loading: loading}}" />
-    <view wx:if="{{owner}}" class="portal-card profile-summary">
-      <button
-        class="profile-avatar-trigger"
-        bindtap="chooseAvatar"
-        disabled="{{avatarLoading}}"
-        aria-label="更换头像"
-        hover-class="profile-pressed"
-      >
-        <view class="profile-avatar">
-          <image
-            wx:if="{{owner.avatar}}"
-            class="profile-avatar-photo"
-            src="{{owner.avatar}}"
-            mode="aspectFill"
-            aria-hidden="{{true}}"
-          />
-          <image
-            wx:else
-            class="profile-avatar-icon"
-            src="/owner-login/assets/account.png"
-            mode="aspectFit"
-            aria-hidden="{{true}}"
-          />
-        </view>
-        <text class="profile-avatar-label" aria-hidden="{{true}}">更换头像</text>
+    <template is="profile-summary" data="{{person: owner, subtitle: project.title, ownerBadge: true, avatarLoading: avatarLoading}}" />
+    <view wx:if="{{project}}" class="design-card-grid">
+      <button class="portal-card design-card" data-kind="rendering" bindtap="openDesign" disabled="{{designLoading}}">
+        <view class="design-icon rendering-icon" aria-hidden="{{true}}"><view></view></view>
+        <text>效果图</text><text wx:if="{{!design.rendering && !designLoading && !designError}}" class="design-unpublished">暂未发布</text>
       </button>
-      <view class="profile-identity">
-        <text class="profile-name">{{owner.name}}</text>
-        <text class="portal-muted">业主身份</text>
-        <text wx:if="{{project}}" class="profile-residence">{{project.title}}</text>
-      </view>
+      <button class="portal-card design-card" data-kind="panorama" bindtap="openDesign" disabled="{{designLoading}}">
+        <view class="design-icon panorama-icon" aria-hidden="{{true}}"></view>
+        <text>全景图</text><text wx:if="{{!design.panorama && !designLoading && !designError}}" class="design-unpublished">暂未发布</text>
+      </button>
     </view>
+    <spring-notice text="{{designError}}" />
     <view class="profile-settings portal-card">
       <block wx:if="{{projects.length > 1}}">
         <button
@@ -106,72 +87,7 @@
       />
     </view>
   </view>
-  <view wx:if="{{cropOpen}}" class="avatar-overlay">
-    <view class="avatar-backdrop" bindtap="closeCrop" catchtouchmove="stop"></view>
-    <view class="avatar-dialog" aria-role="dialog" aria-label="裁切头像">
-      <text class="avatar-title">裁切头像</text>
-      <text class="avatar-hint">拖动照片或调整缩放</text>
-      <view class="avatar-frame">
-        <canvas
-          id="avatar-canvas"
-          type="2d"
-          class="avatar-canvas"
-          aria-label="正方形头像预览"
-          bindtouchstart="gestureStart"
-          catchtouchmove="gestureMove"
-          bindtouchend="gestureEnd"
-          bindtouchcancel="gestureEnd"
-        />
-      </view>
-      <view class="avatar-scale">
-        <text>缩放</text>
-        <slider
-          aria-label="缩放"
-          min="1"
-          max="{{maxZoom}}"
-          step="0.01"
-          value="1"
-          block-size="16"
-          activeColor="#698e74"
-          backgroundColor="#e5efe2"
-          disabled="{{!cropReady || savingAvatar}}"
-          bindchanging="changeZoom"
-          bindchange="changeZoom"
-        />
-      </view>
-      <view class="avatar-actions">
-        <button class="small-button" bindtap="closeCrop" disabled="{{savingAvatar}}">取消</button>
-        <button
-          class="small-button avatar-save"
-          bindtap="saveAvatar"
-          disabled="{{!cropReady || savingAvatar}}"
-          loading="{{savingAvatar}}"
-        >
-          保存头像
-        </button>
-      </view>
-    </view>
-  </view>
-  <view wx:if="{{privacyVisible}}" class="avatar-overlay">
-    <view class="avatar-backdrop" catchtouchmove="stop"></view>
-    <view class="avatar-dialog" aria-role="dialog" aria-label="头像隐私保护">
-      <text class="avatar-title">头像隐私保护</text>
-      <text class="privacy-copy"
-        >仅使用你从相册选中的照片裁切头像。头像在本机的当前会话中显示。</text
-      >
-      <button class="privacy-policy-button" bindtap="openAvatarPrivacy">查看隐私保护指引</button>
-      <view class="avatar-actions">
-        <button class="small-button" bindtap="rejectAvatarPrivacy">暂不同意</button>
-        <button
-          id="chunmo-privacy-agree"
-          class="small-button avatar-save"
-          open-type="agreePrivacyAuthorization"
-          bindagreeprivacyauthorization="agreeAvatarPrivacy"
-        >
-          同意并继续
-        </button>
-      </view>
-    </view>
-  </view>
+  <owner-nav wx:if="{{project}}" active="profile" />
+  <template is="avatar-editor" data="{{cropOpen: cropOpen, cropReady: cropReady, maxZoom: maxZoom, savingAvatar: savingAvatar, privacyVisible: privacyVisible}}" />
   <template wx:if="{{uiDev}}" is="ui-tuning" data="{{fields: uiFields, open: uiOpen}}" />
 </view>

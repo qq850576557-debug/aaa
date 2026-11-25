@@ -12,3 +12,35 @@
   flex-wrap: wrap;
   gap: 6px;
 }
+
+.owner-design-copy {
+  margin: 0;
+  color: #59695f;
+  font-size: 13px;
+}
+.owner-design-input,
+.owner-design-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.owner-design-input input {
+  flex: 1;
+  min-width: 0;
+}
+.owner-design-input a,
+.owner-design-input button {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.owner-design-input a {
+  color: #244e42;
+}
+.owner-design-actions {
+  justify-content: flex-end;
+}
+.owner-design-actions span {
+  margin-inline-end: auto;
+  color: #3c6753;
+  font-size: 13px;
+}

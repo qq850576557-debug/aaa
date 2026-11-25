@@ -1,1 +1,15 @@
-<view class="page"><view class="title">{{name}}</view><spring-notice text="{{error}}" reserved="{{true}}" tone="error" /><view class="panel"><view>待同步工作记录 {{pending}}</view><view>冲突草稿归档 {{archive || 0}}</view><button class="quiet" bindtap="exportDrafts">复制本机工作草稿与归档</button><button class="quiet" bindtap="photos">本机照片与恢复</button><button wx:if="{{canSwitch}}" class="quiet" bindtap="switchIdentity">切换身份</button><button class="quiet" bindtap="logout">退出登录</button></view></view><privacy-dialog show="{{privacyVisible}}" />
+<import src="../../owner-login/profile-card.wxml" />
+<view class="portal employee-profile profile-page">
+  <view class="portal-wrap profile-wrap">
+    <template is="profile-summary" data="{{person: profile, subtitle: subtitle, avatarLoading: avatarLoading}}" />
+    <spring-notice text="{{error}}" tone="error" />
+    <view class="profile-settings portal-card">
+      <view class="employee-profile-stats">待同步工作记录 {{pending}} · 冲突草稿归档 {{archive || 0}}</view>
+      <button class="portal-row" bindtap="exportDrafts"><text>复制本机工作草稿与归档</text><view class="portal-arrow" /></button>
+      <button class="portal-row" bindtap="photos"><text>本机照片与恢复</text><view class="portal-arrow" /></button>
+      <button wx:if="{{canSwitch}}" class="portal-row" bindtap="switchIdentity"><text>切换身份</text><view class="portal-arrow" /></button>
+      <button class="portal-row" bindtap="logout"><text>退出登录</text><view class="portal-arrow" /></button>
+    </view>
+  </view>
+  <template is="avatar-editor" data="{{cropOpen: cropOpen, cropReady: cropReady, maxZoom: maxZoom, savingAvatar: savingAvatar, privacyVisible: privacyVisible}}" />
+</view>

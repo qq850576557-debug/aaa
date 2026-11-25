@@ -47,7 +47,8 @@ export function miniEmployeeSessions(app: Express, wechat?: EmployeeWechat) {
       !req.get('referer')?.startsWith(`https://servicewechat.com/${wechat.appId}/`)
     )
       throw new ApiError(403, '小程序请求来源不允许');
-    if (!req.is('application/json')) throw new ApiError(415, '需要JSON请求');
+    if (!(req.method === 'GET' && req.path === '/profile') && !req.is('application/json'))
+      throw new ApiError(415, '需要JSON请求');
     next();
   });
   if (!wechat) return;
@@ -76,6 +77,18 @@ export function miniEmployeeSessions(app: Express, wechat?: EmployeeWechat) {
     return account.rows[0]?.id as string | undefined;
   }
 
+  router.get('/profile', authenticate, async (req: AuthRequest, res) => {
+    const actor = req.actor!;
+    const result = await pool.query(
+      `SELECT coalesce(d.name,'') AS department,coalesce(c.job_title,'') AS "jobTitle"
+       FROM account a LEFT JOIN member_card c ON c.account_id=a.id AND c.workspace_id=a.workspace_id
+       LEFT JOIN department d ON d.id=c.department_id AND d.workspace_id=c.workspace_id
+       WHERE a.id=$1 AND a.workspace_id=$2 AND a.active`,
+      [actor.id, actor.workspaceId],
+    );
+    if (!result.rowCount) throw new ApiError(401, '员工登录已失效，请重新登录');
+    res.json({ name: actor.displayName, ...result.rows[0] });
+  });
   router.post('/remember', authenticate, async (req: AuthRequest, res) => {
     const { code } = rememberInput.parse(req.body);
     const token = randomToken();

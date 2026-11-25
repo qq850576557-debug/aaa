@@ -32,3 +32,17 @@
 .footer .primary {
   width: 100%;
 }
+
+.edit .first-label {
+  margin-top: 0;
+}
+.edit-with-notice {
+  padding-bottom: calc(150px + env(safe-area-inset-bottom));
+}
+.footer > spring-notice {
+  display: block;
+  width: 100%;
+}
+.work-edit-actions {
+  flex-wrap: wrap;
+}

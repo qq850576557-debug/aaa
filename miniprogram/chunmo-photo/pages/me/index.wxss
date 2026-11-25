@@ -1,9 +1,13 @@
-.title {
-  margin-bottom: 18px;
+@import '../../owner-login/pages/profile/index.wxss';
+.employee-profile {
+  --ui-avatar-size: 60px;
+  --ui-avatar-text-gap: 16px;
+  --ui-info-card-padding: 20px;
+  --ui-info-card-top: 0px;
+  padding-top: 16px;
 }
-.panel view {
-  margin: 12px 0;
-}
-.panel button {
-  margin-top: 14px;
+.employee-profile-stats {
+  padding: 12px 16px;
+  color: var(--portal-muted);
+  border-bottom: 1px solid var(--portal-line);
 }

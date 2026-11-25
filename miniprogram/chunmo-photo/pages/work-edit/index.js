@@ -20,10 +20,13 @@ Page({
     info: '',
     history: [],
     privacyVisible: false,
+    keyboardOpen: false,
   },
   async onLoad(options) {
     this.app = requireSession();
     if (!this.app) return;
+    this.keyboardChanged = ({ height }) => this.setData({ keyboardOpen: height > 0 });
+    wx.onKeyboardHeightChange?.(this.keyboardChanged);
     this.setData({ busy: true });
     try {
       this.client = client(this.app);
@@ -152,6 +155,9 @@ Page({
     } catch (e) {
       this.setData({ error: message(e) });
     }
+  },
+  onUnload() {
+    if (this.keyboardChanged) wx.offKeyboardHeightChange?.(this.keyboardChanged);
   },
   async save() {
     if (this.data.busy || !this.ready) return;

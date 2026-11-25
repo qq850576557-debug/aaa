@@ -70,7 +70,7 @@
         <label>员工账号<input value="{{staffLogin}}" data-field="staffLogin" bindinput="editBinding" maxlength="160" /></label>
         <label>原账号密码<input password value="{{password}}" data-field="password" bindinput="editBinding" maxlength="128" /></label>
         <button class="sign-in-button" open-type="getPhoneNumber" bindgetphonenumber="bindPhone" disabled="{{busy || !phoneBinding || !staffLogin || !password}}"><view class="sign-in-label">验证手机号并绑定</view></button>
-        <button wx:if="{{ownerBinding}}" class="owner-link employee-link" bindtap="showOwnerBinding">我有业主邀请</button>
+        <button wx:if="{{ownerBinding}}" class="owner-link employee-link" bindtap="showOwnerBinding">我是业主</button>
       </block>
       <block wx:else>
         <label>邀请口令<input value="{{inviteDraft}}" data-field="inviteDraft" bindinput="editBinding" maxlength="64" /></label>
@@ -78,6 +78,7 @@
         <button class="owner-link employee-link" bindtap="showEmployeeBinding">使用员工账号绑定</button>
       </block>
       <spring-notice text="{{feedback}}" tone="{{feedbackTone}}" />
+      <button class="owner-link binding-cancel" bindtap="closeBinding" disabled="{{busy}}">取消</button>
     </view>
   </view>
   <view wx:if="{{formal && privacyVisible}}" class="owner-privacy-screen">
