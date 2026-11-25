@@ -4,8 +4,8 @@ umask 077
 
 release=6bb23cad3f53740ba83bb6294e67be556330f003
 previous=6d41027635bb776113199ecbce297bd6bb95eac65e90763fcbd7f8a48ecd6e9d
-updated=93b98a7ece1430c664e525e3fce2a6f5d03bcf349b9076b48ae83e4347dec81f
-source_url=https://github.com/qq850576557-debug/aaa/raw/ce247adb9bff876518495ffb86700a040f1740fe/chunmo-owner-test-handset.zip
+previous_handset=93b98a7ece1430c664e525e3fce2a6f5d03bcf349b9076b48ae83e4347dec81f
+updated=3779cdd55c3dbab5f1b2942ab9ce448c846409ed4bbfac95b5932d381f0e5062
 origin=https://owner-test.chmsj.cn
 state=/etc/chunmo-owner-test
 unit=/etc/systemd/system/chunmo-owner-test-api.service
@@ -17,15 +17,9 @@ site() {
   curl -fsS --noproxy '*' --resolve owner-test.chmsj.cn:443:127.0.0.1 --max-time 15 "$origin/$1"
 }
 
-archive=
-case $# in
-  0) ;;
-  2)
-    [[ $1 == --zip && -f $2 && ! -L $2 ]] || fail '请指定有效的本地 ZIP 文件'
-    archive=$2
-    ;;
-  *) fail '用法 publish-owner-test-download.sh [--zip ZIP文件]' ;;
-esac
+[[ $# == 2 && $1 == --zip && -f $2 && ! -L $2 ]] ||
+  fail '用法 publish-owner-test-download.sh --zip ZIP文件'
+archive=$2
 
 [[ $EUID == 0 ]] || fail '请在 Workbench root 终端执行'
 exec 9>/run/lock/chunmo-staging-deploy.lock
@@ -48,7 +42,7 @@ health=json.load(sys.stdin)
 assert (health.get("ok"),health.get("environment"),health.get("release")) == (True,"test",sys.argv[1])
 ' "$release" || fail '隔离测试站健康检查失败'
 current=$(digest "$zip")
-[[ $current == "$previous" || $current == "$updated" ]] || fail '现有测试包哈希与已核对版本不一致'
+[[ $current == "$previous" || $current == "$previous_handset" || $current == "$updated" ]] || fail '现有测试包哈希与已核对版本不一致'
 [[ $(site chunmo-owner-test.zip | digest) == "$current" ]] || fail '网页下载与测试文件不一致'
 if [[ $current == "$updated" ]]; then
   printf 'PASS %s/chunmo-owner-test.zip\n' "$origin"
@@ -77,11 +71,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
-if [[ -n $archive ]]; then
-  cp -- "$archive" "$pending"
-else
-  curl -fLsS --proto '=https' --max-time 45 "$source_url" -o "$pending"
-fi
+cp -- "$archive" "$pending"
 [[ $(digest "$pending") == "$updated" ]] || fail '新版 ZIP 校验未通过'
 chmod 0644 "$pending"
 rollback=$(mktemp "$job/.handset-rollback.XXXXXXXX")
