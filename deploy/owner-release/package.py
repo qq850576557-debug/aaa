@@ -15,7 +15,7 @@ APP = "miniprogram/chunmo-photo/"
 APP_ID = "wxb48a7abb3858a252"
 BASELINES = {
     "photo": "76737c345ec4abc4d0445e69b660162609003eec",
-    "workbench": "1904785647c91f0ad524dbf156650898fcdd4921",
+    "workbench": "01797e7a1b3467035b6a5d404fef9a526a9f3a5e",
 }
 REMEMBER_MODULE = "lib/employee-remember.js"
 

@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 umask 077
-[[ $# == 2 && $EUID == 0 ]] || { printf '请在 Workbench root 终端提供项目名称与隐私邮箱。\n' >&2; exit 1; }
+[[ $# == 2 && $EUID == 0 ]] || { printf '请在 Workbench root 终端使用「项目名称 隐私邮箱」或「--package-only 隐私邮箱」。\n' >&2; exit 1; }
 dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 repo=/opt/chunmo-source
-staff=1904785647c91f0ad524dbf156650898fcdd4921
+staff=01797e7a1b3467035b6a5d404fef9a526a9f3a5e
 if ! git -C "$repo" cat-file -e "$staff^{commit}" 2>/dev/null; then
   timeout 120 git -C "$repo" -c http.version=HTTP/1.1 fetch --no-tags \
-    https://github.com/qq850576557-debug/aaa.git refs/heads/fix/mini-workbench-ios-save
+    https://github.com/qq850576557-debug/aaa.git refs/heads/fix/mini-workbench-login-storage
   [[ $(git -C "$repo" rev-parse FETCH_HEAD) == "$staff" ]]
 fi
 builder=python3
 if [[ -x /usr/bin/python3.11 ]]; then builder=/usr/bin/python3.11; fi
 downloads=$(mktemp -d /root/chunmo-wechat.XXXXXXXX)
 "$builder" -I -B "$dir/build-pilot-package.py" "$repo" "$downloads" "$2"
+if [[ $1 == --package-only ]]; then
+  mv -- "$downloads/chunmo-wechat-formal-candidate.zip" "$downloads/chunmo-wechat-formal-hotfix.zip"
+  printf 'PASS 正式小程序修复包 %s/chunmo-wechat-formal-hotfix.zip\n' "$downloads"
+  exit 0
+fi
 printf '正式小程序包 %s/chunmo-wechat-formal-candidate.zip\n隐私指引文案 %s/wechat-privacy-text.txt\n' "$downloads" "$downloads"
 active=$(readlink -e /opt/chunmo-staging/current)
 case "${active##*/}" in
