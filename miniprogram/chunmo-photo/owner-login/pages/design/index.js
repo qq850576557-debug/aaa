@@ -8,7 +8,7 @@ Page({
     this.kind = ['rendering', 'panorama'].includes(options.kind) ? options.kind : '';
     this.project = typeof options.project === 'string' ? options.project : '';
     if (this.kind)
-      wx.setNavigationBarTitle({ title: this.kind === 'rendering' ? '效果图' : '全景图' });
+      wx.setNavigationBarTitle({ title: this.kind === 'rendering' ? '效果图' : '水电图' });
   },
   onShow() {
     return this.load();

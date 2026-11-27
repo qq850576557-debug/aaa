@@ -24,7 +24,7 @@
       </button>
       <button class="portal-card design-card" data-kind="panorama" bindtap="openDesign" disabled="{{designLoading}}">
         <view class="design-icon panorama-icon" aria-hidden="{{true}}"></view>
-        <text>全景图</text><text wx:if="{{!design.panorama && !designLoading && !designError}}" class="design-unpublished">暂未发布</text>
+        <text>水电图</text><text wx:if="{{!design.panorama && !designLoading && !designError}}" class="design-unpublished">暂未发布</text>
       </button>
     </view>
     <spring-notice wx:if="{{designError}}" text="{{designError}}" />

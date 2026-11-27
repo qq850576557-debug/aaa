@@ -6,8 +6,13 @@ const owner = require('../owner-login/owner-session');
 test('design viewer only opens a current authenticated residence, clears stale content and handles empty or failed links', async (t) => {
   const saved = { wx: global.wx, Page: global.Page, projectDesign: owner.projectDesign };
   let next = {},
-    calls = [];
-  global.wx = { setNavigationBarTitle() {} };
+    calls = [],
+    title;
+  global.wx = {
+    setNavigationBarTitle(options) {
+      title = options.title;
+    },
+  };
   let page;
   global.Page = (definition) => {
     page = definition;
@@ -28,6 +33,7 @@ test('design viewer only opens a current authenticated residence, clears stale c
   page.data = { ...page.data };
   page.setData = (patch) => Object.assign(page.data, patch);
   page.onLoad({ kind: 'rendering', project: 'p1' });
+  assert.equal(title, '效果图');
   await page.onShow();
   assert.equal(calls.length, 0);
   store.beginVerified({
@@ -52,6 +58,11 @@ test('design viewer only opens a current authenticated residence, clears stale c
   next = { rendering: 'http://outside.example.com/render' };
   await page.retry();
   assert.equal(page.data.src, '');
+  page.onLoad({ kind: 'panorama', project: 'p1' });
+  assert.equal(title, '水电图');
+  next = { panorama: 'https://design.example.com/utility-plan' };
+  await page.onShow();
+  assert.equal(page.data.src, next.panorama);
   store.choose('p2');
   const before = calls.length;
   await page.onShow();
