@@ -196,7 +196,7 @@ try {
             // The platform chrome is simulated separately to check the real page uses its reported bounds.
             const chrome = document.createElement('div');
             chrome.style.cssText =
-              'position:fixed;inset:0 0 auto;pointer-events:none;font:600 14px system-ui;color:#191919';
+              'position:fixed;inset:0 0 auto;z-index:10;pointer-events:none;font:600 14px system-ui;color:#191919';
             chrome.innerHTML =
               '<span style="position:absolute;left:9%;top:calc(' +
               statusBar +
