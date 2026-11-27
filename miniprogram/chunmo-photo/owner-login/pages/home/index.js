@@ -2,11 +2,19 @@ const { withUi } = require('../../ui-tuning');
 const store = require('../../fixture-store');
 const { go } = require('../../preview');
 
+function scheduleDate(due, today) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(due);
+  if (!match) return due;
+  const [, year, month, day] = match;
+  return '预计 ' + (year === today.slice(0, 4) ? '' : year + '年') + month + '月' + day + '日';
+}
+
 Page(
   withUi('home', {
     data: {
       ready: false,
       statusTop: 24,
+      capsuleStyle: '',
       loading: true,
       error: '',
       project: null,
@@ -19,6 +27,10 @@ Page(
     },
     onLoad() {
       store.open(this);
+      if (!this.data.ready) return;
+      const capsule = wx.getMenuButtonBoundingClientRect?.();
+      if (Number.isFinite(capsule?.left) && capsule.left > 0)
+        this.setData({ capsuleStyle: `--home-capsule-left: ${capsule.left}px;` });
     },
     onShow() {
       if (!this.data.ready) return;
@@ -42,13 +54,15 @@ Page(
     },
     onPageScroll({ scrollTop }) {
       this.scrollTop = scrollTop;
+      const scrolled = scrollTop > 0;
+      if (this.data.scrolled !== scrolled) this.setData({ scrolled });
     },
     onPullDownRefresh() {
       return Promise.resolve(this.onShow()).finally(() => wx.stopPullDownRefresh());
     },
     renderSnapshot() {
       try {
-        const { project, projects, groups } = store.snapshot();
+        const { project, projects, groups, today } = store.snapshot();
         this.setData({
           project,
           canSwitch: projects.length > 1,
@@ -56,7 +70,7 @@ Page(
           boughtCount: groups.bought.length,
           overdueCount: groups.pending.filter(({ overdue }) => overdue).length,
           totalCount: groups.pending.length + groups.bought.length + groups.complete.length,
-          recent: groups.pending,
+          recent: groups.pending.map((item) => ({ ...item, homeDate: scheduleDate(item.due, today) })),
           error: '',
           loading: false,
         });
@@ -79,9 +93,6 @@ Page(
     },
     openPurchase(event) {
       go('purchase', '?id=' + encodeURIComponent(event.currentTarget.dataset.id));
-    },
-    profile() {
-      go('profile');
     },
     switchResidence() {
       if (this.data.canSwitch) go('profile', '?switch=1');

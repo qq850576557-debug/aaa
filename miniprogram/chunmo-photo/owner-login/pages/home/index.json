@@ -1,7 +1,7 @@
 {
   "navigationStyle": "custom",
   "navigationBarTextStyle": "black",
-  "backgroundColor": "#f5f7f3",
+  "backgroundColor": "#F8F5F3",
   "enablePullDownRefresh": true,
   "usingComponents": {
     "owner-nav": "/owner-login/components/owner-nav/index"

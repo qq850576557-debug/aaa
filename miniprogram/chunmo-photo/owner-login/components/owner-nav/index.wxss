@@ -70,3 +70,25 @@
   border: 1.5px solid currentColor;
   border-bottom: 0;
 }
+
+.owner-nav-home {
+  justify-content: space-around;
+  padding: 10rpx 28rpx calc(10rpx + max(env(safe-area-inset-bottom), 10px));
+  border-color: #FFFFFFA3;
+  background: linear-gradient(#FBF9F7, #F8F5F3);
+}
+.owner-nav-home .owner-nav-tab {
+  flex: 0 0 178rpx;
+  gap: 3rpx;
+  min-height: max(88rpx, 44px);
+  border-radius: 40rpx;
+  font-size: 21rpx;
+  color: #626A65;
+}
+.owner-nav-home .selected {
+  color: #496D28;
+  background: linear-gradient(125deg, #F3F5EA, #EBEEE1);
+  box-shadow: 0 4rpx 12rpx rgba(63, 72, 40, .05);
+}
+.owner-nav-icon { width: 43rpx; height: 43rpx; }
+.owner-nav-home .owner-nav-tab:not(.selected) .owner-nav-icon { filter: grayscale(1); opacity: .74; }

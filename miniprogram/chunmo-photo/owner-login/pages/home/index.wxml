@@ -1,67 +1,76 @@
 <import src="../../ui-tuning.wxml" />
 <import src="../../portal.wxml" />
-<view
-  wx:if="{{ready}}"
-  class="portal owner-tab-page"
-  style="padding-top: calc({{statusTop}}px + var(--ui-header-top)); {{uiStyle}}"
->
+
+<template name="home-icon">
+  <image class="{{iconClass}}" src="/owner-login/assets/home-v1/{{icon}}.svg" mode="aspectFit" aria-hidden="{{true}}" />
+</template>
+
+<view wx:if="{{ready}}" class="portal owner-home {{scrolled ? 'home-scrolled' : ''}}" style="--home-status: {{statusTop}}px; {{capsuleStyle}} {{uiStyle}}">
   <view class="portal-wrap">
-    <view class="residence-top">
-      <view wx:if="{{project}}" class="residence-heading">
-        <text class="portal-heading">{{project.title}}</text>
-        <view class="residence-meta">
-          <text class="phase-label">{{project.phase}}</text>
-          <button
-            wx:if="{{canSwitch}}"
-            class="small-button residence-switch"
-            bindtap="switchResidence"
-            hover-class="row-pressed"
-          >
-            切换住宅
-          </button>
-        </view>
-      </view>
-      <button class="profile-button" aria-label="个人中心" bindtap="profile">
-        <image
-          class="profile-button-icon"
-          src="/owner-login/assets/account.png"
-          mode="aspectFit"
-          aria-hidden="{{true}}"
-        />
-      </button>
-    </view>
     <template is="load-state" data="{{error: error, loading: loading}}" />
     <block wx:if="{{project}}">
-      <button class="pending-card" bindtap="pending" hover-class="pending-pressed">
-        <view class="pending-quantity">
-          <text class="pending-title">未采购</text>
-          <text class="pending-number">{{pendingCount}}</text>
-          <text class="pending-total">/ 共 {{totalCount}} 项</text>
+      <view class="home-residence">
+        <view class="home-plaque">
+          <text class="home-eyebrow">MY HOME</text>
+          <text class="home-title">{{project.title}}</text>
+          <view class="home-meta">
+            <text wx:if="{{project.phase}}" class="home-phase">{{project.phase}}</text>
+            <button wx:if="{{canSwitch}}" class="home-phase home-switch" bindtap="switchResidence" hover-class="home-pressed">
+              切换住宅
+            </button>
+          </view>
         </view>
-        <view class="pending-arrow"><view class="portal-arrow" aria-hidden="{{true}}"></view></view>
+        <image class="home-mascot" src="/owner-login/assets/home-v1/xiaokui-peek.png" mode="aspectFit" aria-hidden="{{true}}" />
+      </view>
+
+      <button class="home-pending" bindtap="pending" hover-class="home-pressed">
+        <view class="home-icon-tile">
+          <template is="home-icon" data="{{icon: 'cart', iconClass: 'home-icon'}}" />
+        </view>
+        <view class="home-counts">
+          <text class="home-pending-title">待采购</text>
+          <text class="home-pending-count">{{pendingCount}}</text>
+          <text class="home-total">/ 共{{totalCount}}项</text>
+        </view>
+        <template is="home-icon" data="{{icon: 'chevron', iconClass: 'home-chevron'}}" />
       </button>
-      <view class="quick-cards">
-        <button class="portal-row overdue-card" bindtap="overdue" hover-class="row-pressed">
-          <view
-            ><text>已逾期</text
-            ><text class="quick-count {{overdueCount ? 'overdue-count' : ''}}"
-              >{{overdueCount}} 项</text
-            ></view
-          >
-          <view class="portal-arrow" aria-hidden="{{true}}"></view>
+
+      <view class="home-quick">
+        <button class="home-stat {{overdueCount ? 'home-stat-warning' : ''}}" bindtap="overdue" hover-class="home-pressed">
+          <view class="home-icon-tile">
+            <template is="home-icon" data="{{icon: 'overdue', iconClass: 'home-icon'}}" />
+          </view>
+          <text class="home-stat-title">已逾期</text>
+          <text class="home-stat-count">{{overdueCount}}</text>
+          <template is="home-icon" data="{{icon: 'chevron', iconClass: 'home-chevron'}}" />
         </button>
-        <button class="portal-row bought-card" bindtap="bought" hover-class="row-pressed">
-          <view><text>已下单</text><text class="quick-count">{{boughtCount}} 项</text></view>
-          <view class="portal-arrow" aria-hidden="{{true}}"></view>
+        <button class="home-stat" bindtap="bought" hover-class="home-pressed">
+          <view class="home-icon-tile">
+            <template is="home-icon" data="{{icon: 'ordered', iconClass: 'home-icon'}}" />
+          </view>
+          <text class="home-stat-title">已下单</text>
+          <text class="home-stat-count">{{boughtCount}}</text>
+          <template is="home-icon" data="{{icon: 'chevron', iconClass: 'home-chevron'}}" />
         </button>
       </view>
-      <text class="portal-section-title">近期采购安排</text>
-      <block wx:for="{{recent}}" wx:key="id"
-        ><template is="purchase-row" data="{{item: item}}"
-      /></block>
-      <view wx:if="{{!recent.length}}" class="portal-card empty-state">近期暂无采购安排</view>
+
+      <text class="home-schedule-title">近期采购安排</text>
+      <view class="home-schedule">
+        <button wx:for="{{recent}}" wx:key="id" class="home-row" data-id="{{item.id}}" bindtap="openPurchase" hover-class="home-pressed">
+          <view class="home-row-copy">
+            <text class="home-row-name">{{item.title}}</text>
+            <text wx:if="{{item.description}}" class="home-description">{{item.description}}</text>
+          </view>
+          <view wx:if="{{item.homeDate || item.overdue}}" class="home-row-meta">
+            <text wx:if="{{item.homeDate}}" class="home-date" aria-label="{{item.due}}">{{item.homeDate}}</text>
+            <text wx:if="{{item.overdue}}" class="home-late">已逾期</text>
+          </view>
+          <template is="home-icon" data="{{icon: 'chevron', iconClass: 'home-chevron'}}" />
+        </button>
+        <view wx:if="{{!recent.length}}" class="home-empty">近期暂无采购安排</view>
+      </view>
     </block>
   </view>
-  <owner-nav wx:if="{{project}}" active="home" />
+  <owner-nav active="home" />
   <template wx:if="{{uiDev}}" is="ui-tuning" data="{{fields: uiFields, open: uiOpen}}" />
 </view>
