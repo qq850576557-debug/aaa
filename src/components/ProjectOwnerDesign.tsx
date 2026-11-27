@@ -8,7 +8,7 @@ export type DesignSettings = ProjectDesign & { origins: string[] };
 
 const fields = [
   ['rendering', '效果图'],
-  ['panorama', '全景图'],
+  ['panorama', '水电图'],
 ] as const;
 
 export function ProjectOwnerDesign({

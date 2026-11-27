@@ -1835,7 +1835,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           assert.equal(await footerPosition(), startFooter);
           const bodyBox = (await projectBody.boundingBox())!;
           assert.ok(bodyBox.y + bodyBox.height <= (await projectFooter.boundingBox())!.y + 1);
-          await expect(narrowProject.getByLabel('全景图链接')).toBeInViewport();
+          await expect(narrowProject.getByLabel('水电图链接')).toBeInViewport();
           await narrowProject.screenshot({ path: join(browserAssets, '09-窄屏编辑项目.png') });
           await narrow.close();
 
