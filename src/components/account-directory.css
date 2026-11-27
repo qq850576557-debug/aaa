@@ -230,3 +230,7 @@ button.directory-more:hover {
     flex-basis: 100%;
   }
 }
+
+.directory-menu .directory-delete {
+  color: #924f48;
+}

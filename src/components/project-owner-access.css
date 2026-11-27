@@ -1,28 +1,73 @@
-.owner-access .form-grid {
-  margin-top: 10px;
-}
-.owner-access-member {
+.project-owner-section {
   display: grid;
-  gap: 5px;
-  padding-top: 8px;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 14px;
   border-top: 1px solid var(--line);
 }
-.owner-access-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.owner-design-copy {
+.project-owner-section h3 {
   margin: 0;
-  color: #59695f;
-  font-size: 13px;
+  color: var(--ink);
+  font-size: 14px;
 }
-.owner-design-input,
-.owner-design-actions {
+.project-owner-heading,
+.owner-access-actions,
+.owner-design-input {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+.project-owner-heading {
+  justify-content: space-between;
+}
+.project-owner-heading .check {
+  margin: 0;
+}
+.owner-access-list {
+  display: grid;
+  background: #eaf0e7;
+  border-radius: 12px;
+  padding: 4px 10px;
+}
+.owner-access-member {
+  display: grid;
+  grid-template-columns: minmax(45px, 1fr) auto auto auto;
+  align-items: center;
+  gap: 6px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+.owner-access-member strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.owner-access-member button,
+.owner-access-add-button {
+  padding: 6px 2px;
+  background: none;
+  border: 0;
+  min-height: 32px;
+  font-size: 12px;
+}
+.owner-access-add-button {
+  justify-self: start;
+}
+.owner-access-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  padding: 8px 0;
+}
+.owner-access-add .owner-access-actions {
+  grid-column: 1 / -1;
+}
+.owner-access-add input {
+  width: 100%;
+}
+.project-name-field > label {
+  display: grid;
 }
 .owner-design-input input {
   flex: 1;
@@ -30,17 +75,35 @@
 }
 .owner-design-input a,
 .owner-design-input button {
-  flex-shrink: 0;
-  font-size: 12px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
 }
-.owner-design-input a {
-  color: #244e42;
+
+dialog.modal.project-editor[open] {
+  display: flex;
+  flex-direction: column;
+  max-height: min(850px, calc(100dvh - 40px));
+  overflow: hidden;
 }
-.owner-design-actions {
-  justify-content: flex-end;
+.project-editor > .modal-head {
+  flex: 0 0 auto;
 }
-.owner-design-actions span {
-  margin-inline-end: auto;
-  color: #3c6753;
-  font-size: 13px;
+.project-editor > form {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+.project-editor > form > .modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.project-editor > form > .modal-foot {
+  flex: 0 0 auto;
+}
+.owner-access-members {
+  max-height: 168px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }

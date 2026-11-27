@@ -13,7 +13,6 @@ test('review: color and editors are nonblocking panels; confirmation remains mod
   await boot(page);
   await restore(page);
   await closeToast(page);
-  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByRole('button', { name: '编辑水电改造', exact: true }).click({ button: 'right' });
   let panel = page.getByRole('dialog');
   await expect(panel).toHaveAttribute('aria-modal', 'false');
@@ -29,6 +28,8 @@ test('review: color and editors are nonblocking panels; confirmation remains mod
   await mkdir('/workspace/chunmo-review/after', { recursive: true });
   await page.screenshot({ path: '/workspace/chunmo-review/after/color.png' });
   await page.mouse.click(8, 8);
+  await expect(panel).toBeVisible();
+  await panel.getByRole('button', { name: '关闭浮窗' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await editTask(page, page.getByTestId('task-bar').filter({ hasText: '水电定位与布线' }));
   panel = page.getByRole('dialog');
@@ -46,6 +47,11 @@ test('review: color and editors are nonblocking panels; confirmation remains mod
   await expect(panel).toBeVisible();
   await panel.getByLabel('任务名称', { exact: true }).fill('待保存修改');
   await page.mouse.click(8, 8);
+  await expect(page.getByRole('dialog', { name: '放弃未保存的修改？' })).toHaveCount(0);
+  await page
+    .getByRole('dialog', { name: '编辑施工任务' })
+    .getByRole('button', { name: '关闭浮窗' })
+    .click();
   const confirm = page.getByRole('dialog', { name: '放弃未保存的修改？' });
   await expect(confirm).toHaveAttribute('aria-modal', 'true');
   expect(await confirm.evaluate((e) => e.matches(':modal'))).toBe(true);
@@ -70,7 +76,6 @@ test('review: extending predecessor prompts atomically while merged display pres
   d.purchases[0].taskId = root.id;
   await boot(page);
   await restore(page, d);
-  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   const segment = page.getByTestId('task-bar').filter({ hasText: root.name }).first();
   await editTask(page, segment);
   let panel = page.getByRole('dialog');
@@ -110,7 +115,6 @@ test('review: an invalid downstream shift cannot block valid current-only edits'
   d.purchases = [];
   await boot(page);
   await restore(page, d);
-  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await page.getByLabel('定位日期', { exact: true }).fill('2200-12-28');
   await editTask(page, page.getByTestId('task-bar').first());
   let panel = page.getByRole('dialog');
@@ -176,7 +180,6 @@ test('review: export locks options, invalidates stale files and draws all dates 
   expect(draws.some((x) => x.text === '周四' && x.font.includes('14px'))).toBe(true);
   await mkdir('/workspace/chunmo-review/after', { recursive: true });
   await file.saveAs('/workspace/chunmo-review/after/full-schedule.png');
-  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   await page.screenshot({ path: '/workspace/chunmo-review/after/desktop.png', fullPage: true });
 });

@@ -266,7 +266,7 @@ export function TransferPanel({
         </Modal>
       )}
       {log && (
-        <Modal title="调拨操作历史" onClose={() => setLog(null)}>
+        <Modal protect="view" title="调拨操作历史" onClose={() => setLog(null)}>
           <div className="modal-body">
             {log.map((x, i) => (
               <p key={i}>

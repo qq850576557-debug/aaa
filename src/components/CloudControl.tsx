@@ -105,6 +105,22 @@ function CloudPanel({
     if (e instanceof CloudError && e.status === 401) expired();
     else setError(String(e));
   };
+  useEffect(() => {
+    const refreshProfile = () => {
+      if (!user || document.visibilityState !== 'visible') return;
+      void cloudSession()
+        .then((next) => {
+          if (next.id === user.id) setUser(next);
+        })
+        .catch(() => {});
+    };
+    window.addEventListener('focus', refreshProfile);
+    document.addEventListener('visibilitychange', refreshProfile);
+    return () => {
+      window.removeEventListener('focus', refreshProfile);
+      document.removeEventListener('visibilitychange', refreshProfile);
+    };
+  }, [user?.id]);
   async function directory() {
     const result = await cloudApi<{ accounts: DirectoryAccount[] }>('/directory');
     setAccounts(result.accounts);
@@ -174,9 +190,7 @@ function CloudPanel({
             <>
               <div className="account-tabs" role="tablist" aria-label="账号管理功能">
                 {accountTabs
-                  .filter(
-                    ([key]) => key !== 'import' || accountPermissions(user.owner).backupImport,
-                  )
+                  .filter(([key]) => key === 'accounts' || key === 'profile')
                   .map(([key, label]) => (
                     <button
                       key={key}

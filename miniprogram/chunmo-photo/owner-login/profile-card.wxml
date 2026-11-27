@@ -13,6 +13,8 @@
             class="profile-avatar-photo"
             src="{{person.avatar}}"
             mode="aspectFill"
+            data-avatar="{{person.avatar}}"
+            binderror="avatarFailed"
             aria-hidden="{{true}}"
           />
           <image

@@ -218,6 +218,16 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   } finally {
     designMigration.release();
   }
+  const retirement = await readFile('server/proposed/021_account_retirement.sql', 'utf8');
+  await admin.query(retirement);
+  await admin.query('INSERT INTO schema_migration(name,checksum) VALUES($1,$2)', [
+    '021_account_retirement.sql',
+    hash(retirement),
+  ]);
+  await admin.query('GRANT INSERT,UPDATE ON account_avatar TO ' + staff.username);
+  await admin.query(
+    'GRANT SELECT,DELETE ON material_operator,assessment_recorder TO ' + staff.username,
+  );
   const designRoles = (
     await admin.query(
       `SELECT
@@ -1589,12 +1599,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           }
           const page = await open(founder, 1440, 920, 'no-preference');
           const { shell, primary, secondary, dir, frame } = panel(page);
-          await expect(primary.getByRole('tab')).toHaveText([
-            '账号管理',
-            '个人中心',
-            '操作记录',
-            '备份导入',
-          ]);
+          await expect(primary.getByRole('tab')).toHaveText(['账号管理', '个人中心']);
           await expect(secondary.getByRole('tab')).toHaveText(['员工账号', '业主账号']);
           const original = await frame();
           assert.deepEqual(original.shell, [160, 80, 1120, 760]);
@@ -1653,15 +1658,22 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           assert(
             menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= page.viewportSize()!.width,
           );
+          await expect(menu.getByRole('button').last()).toHaveText('删除账号');
+          await menu.getByRole('button', { name: '删除账号' }).click();
+          const retirementConfirm = page.getByRole('dialog', { name: '删除账号 · 秦实' });
+          await expect(retirementConfirm).toBeVisible();
+          await retirementConfirm.screenshot({ path: join(browserAssets, '05-删除账号确认.png') });
+          await retirementConfirm.getByRole('button', { name: '取消' }).click();
+          await dir.getByRole('button', { name: '秦实的操作' }).click();
           await menu.getByRole('button', { name: '编辑名片' }).click();
           const cardEditor = page.getByRole('dialog', { name: '编辑名片 · 秦实' });
           await expect(cardEditor).toBeVisible();
-          await page.keyboard.press('Escape');
+          await cardEditor.getByRole('button', { name: '关闭浮窗' }).click();
           await expect(cardEditor).toHaveCount(0);
           await dir.getByRole('button', { name: '部门管理' }).click();
           const departments = page.getByRole('dialog', { name: '部门管理' });
           await expect(departments).toBeVisible();
-          await page.keyboard.press('Escape');
+          await departments.getByRole('button', { name: '关闭浮窗' }).click();
           await expect(departments).toHaveCount(0);
 
           await secondary.getByRole('tab', { name: '业主账号' }).click();
@@ -1690,14 +1702,10 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await dir.getByRole('button', { name: '新增授权' }).click();
           const grant = page.getByRole('dialog', { name: '新增业主授权' });
           await expect(grant.getByLabel('工地')).toBeVisible();
-          await page.keyboard.press('Escape');
+          await grant.getByRole('button', { name: '关闭浮窗' }).click();
           await expect(grant).toHaveCount(0);
 
-          for (const [name, file] of [
-            ['个人中心', '04-个人中心.png'],
-            ['操作记录', '05-操作记录.png'],
-            ['备份导入', '06-备份导入.png'],
-          ]) {
+          for (const [name, file] of [['个人中心', '04-个人中心.png']]) {
             await primary.getByRole('tab', { name, exact: true }).click();
             await expect(primary.getByRole('tab', { name, exact: true })).toHaveAttribute(
               'aria-selected',
@@ -1716,23 +1724,55 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await shell.getByRole('button', { name: '关闭', exact: true }).click();
           await expect(shell).toHaveCount(0);
           await page.getByRole('button', { name: '编辑项目一号住宅' }).click();
-          const designPanel = page.locator('dialog .owner-design');
-          await designPanel.getByText('业主设计成果', { exact: true }).click();
-          const rendering = designPanel.getByLabel('效果图链接', { exact: true });
-          await rendering.fill('https://external.example.com/invalid');
-          await expect(designPanel.getByRole('button', { name: '保存设计成果' })).toBeDisabled();
-          await rendering.fill('https://design.example.com/render/one');
-          await designPanel
-            .getByLabel('全景图链接', { exact: true })
-            .fill('https://design.example.com/360/one');
-          await expect(designPanel.getByRole('link', { name: '预览效果图' })).toHaveAttribute(
+          const projectDialog = page.getByRole('dialog', { name: '编辑项目', exact: true });
+          const rendering = projectDialog.getByLabel('效果图链接', { exact: true });
+          await rendering.fill('https://vr.shinewonder.com/isolated-sample');
+          await page.mouse.click(4, 4);
+          await expect(projectDialog).toBeVisible();
+          await projectDialog.getByRole('button', { name: '取消', exact: true }).click();
+          const discard = page.getByRole('dialog', { name: '放弃未保存的修改？' });
+          await expect(discard).toBeVisible();
+          await discard.getByRole('button', { name: '取消' }).click();
+          await expect(rendering).toHaveValue('https://vr.shinewonder.com/isolated-sample');
+          await expect(projectDialog.getByRole('link', { name: '预览效果图' })).toHaveAttribute(
             'rel',
             'noopener noreferrer',
           );
-          await designPanel.getByRole('button', { name: '保存设计成果' }).scrollIntoViewIfNeeded();
-          await designPanel.screenshot({ path: join(browserAssets, '08-业主设计成果设置.png') });
-          await designPanel.getByRole('button', { name: '取消', exact: true }).click();
-          await expect(rendering).toHaveValue('');
+          await projectDialog.locator('.modal-body').evaluate((body) => {
+            body.scrollTop = 0;
+          });
+          await projectDialog.screenshot({ path: join(browserAssets, '08-编辑项目.png') });
+          await projectDialog.getByLabel('项目备注').fill('PROJECT-LINK-ATOMIC');
+          const save = projectDialog.getByRole('button', { name: '保存', exact: true });
+          await page.route(
+            '**/api/projects/p1/owner-design',
+            async (route) => {
+              const committed = await route.fetch();
+              assert.equal(committed.status(), 200);
+              await route.fulfill({ status: 503, json: { error: '隔离测试模拟网络异常' } });
+            },
+            { times: 1 },
+          );
+          await save.click();
+          await expect(projectDialog.getByRole('alert')).toContainText('隔离测试模拟网络异常');
+          await expect(rendering).toHaveValue('https://vr.shinewonder.com/isolated-sample');
+          await save.click();
+          await expect(projectDialog).toHaveCount(0);
+          assert.equal(
+            (await request('/projects/p1/owner-design', 'GET', undefined, founder)).body.rendering,
+            'https://vr.shinewonder.com/isolated-sample',
+          );
+          assert.equal(
+            (await request('/workspace', 'GET', undefined, founder)).body.data.projects.find(
+              (project: { id: string }) => project.id === 'p1',
+            ).notes,
+            'PROJECT-LINK-ATOMIC',
+          );
+          await page.getByRole('button', { name: '编辑当前项目' }).click();
+          await rendering.waitFor();
+          await projectDialog.getByRole('button', { name: '清空效果图' }).click();
+          await save.click();
+          await expect(projectDialog).toHaveCount(0);
           await page.close();
 
           const narrow = await open(founder, 720, 650, 'reduce', true);
@@ -1741,7 +1781,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           assert.ok(Math.abs(compactFrame.shell[2] - 720 * 0.94) < 1);
           assert.equal(compactFrame.shell[3], 585);
           assert.equal(compactFrame.animation, 'none');
-          for (const name of ['个人中心', '操作记录', '备份导入', '账号管理']) {
+          for (const name of ['个人中心', '账号管理']) {
             await compact.primary.getByRole('tab', { name, exact: true }).click();
             await expect.poll(compact.frame).toEqual(compactFrame);
           }
@@ -1769,6 +1809,34 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           });
           await compact.shell.screenshot({ path: join(browserAssets, '07-窄屏账号管理.png') });
           await expect.poll(compact.frame).toEqual(compactFrame);
+          await compact.shell.getByRole('button', { name: '关闭', exact: true }).click();
+          await narrow.locator('.mobile-project-toggle').click();
+          await narrow.getByTitle('一号住宅 · 项目设置').click();
+          const narrowProject = narrow.getByRole('dialog', { name: '编辑项目', exact: true });
+          await expect(
+            narrowProject.getByRole('button', { name: '保存', exact: true }),
+          ).toBeEnabled();
+          const projectBody = narrowProject.locator('.modal-body');
+          const projectFooter = narrowProject.locator('.modal-foot');
+          await narrowProject.evaluate(async (modal) => {
+            await Promise.all(
+              modal.getAnimations().map((animation) => animation.finished.catch(() => {})),
+            );
+          });
+          const footerPosition = () =>
+            projectFooter.evaluate((footer) => (footer as HTMLElement).offsetTop);
+          const startFooter = await footerPosition();
+          await projectBody.evaluate((body) => {
+            body.scrollTop = body.scrollHeight;
+          });
+          await expect
+            .poll(() => projectBody.evaluate((body) => body.scrollTop))
+            .toBeGreaterThan(0);
+          assert.equal(await footerPosition(), startFooter);
+          const bodyBox = (await projectBody.boundingBox())!;
+          assert.ok(bodyBox.y + bodyBox.height <= (await projectFooter.boundingBox())!.y + 1);
+          await expect(narrowProject.getByLabel('全景图链接')).toBeInViewport();
+          await narrowProject.screenshot({ path: join(browserAssets, '09-窄屏编辑项目.png') });
           await narrow.close();
 
           const staffBrowser = await open(staffResult.cookie, 720, 850, 'reduce');
@@ -1833,10 +1901,13 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       const settings = (id: string) => '/projects/' + id + '/owner-design';
       const feedDesign = (id: string, token: string) =>
         request('/mini-owner/v1/projects/' + id + '/design', 'GET', undefined, '', token);
+      const startingAudits = (
+        await admin.query("SELECT 1 FROM audit_event WHERE action='owner.design.update'")
+      ).rowCount!;
       const body = {
         rendering: 'https://design.example.com/render/one',
         panorama: 'https://design.example.com/360/one',
-        version: 0,
+        version: (await request(settings('p1'), 'GET', undefined, founder)).body.version as number,
       };
       assert.equal((await request(settings('p1'), 'GET', undefined, employee)).status, 403);
       assert.equal((await request(settings('p1'), 'PUT', body, employee)).status, 403);
@@ -1845,9 +1916,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       assert.deepEqual((await feedDesign('p1', tokenA)).body, { rendering: '', panorama: '' });
       for (const rendering of [
         'http://design.example.com/one',
-        'https://external.example.com/one',
         'https://design.example.com@external.example.com/one',
-        'https://design.example.com:8443/one',
       ]) {
         assert.equal(
           (await request(settings('p1'), 'PUT', { ...body, rendering }, founder)).status,
@@ -1856,7 +1925,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       }
       const stored = await request(settings('p1'), 'PUT', body, founder);
       assert.equal(stored.status, 200);
-      assert.equal(stored.body.version, 1);
+      assert.equal(stored.body.version, body.version + 1);
       assert.deepEqual((await feedDesign('p1', tokenA)).body, {
         rendering: body.rendering,
         panorama: body.panorama,
@@ -1874,7 +1943,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await request(
             settings('p1'),
             'PUT',
-            { rendering: '', panorama: body.panorama, version: 1 },
+            { rendering: '', panorama: body.panorama, version: stored.body.version },
             founder,
           )
         ).status,
@@ -1884,12 +1953,28 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         rendering: '',
         panorama: body.panorama,
       });
+      const outside = await request(
+        settings('p1'),
+        'PUT',
+        {
+          rendering: 'https://vr.shinewonder.com/isolated-sample',
+          panorama: '',
+          version: stored.body.version + 1,
+        },
+        founder,
+      );
+      assert.equal(outside.status, 200);
+      assert.deepEqual((await feedDesign('p1', tokenA)).body, {
+        rendering: '',
+        panorama: '',
+        renderingUnavailable: true,
+      });
       const auditRows = (
         await admin.query(
           "SELECT after_value,changed_fields FROM audit_event WHERE action='owner.design.update'",
         )
       ).rows;
-      assert.equal(auditRows.length, 2);
+      assert.equal(auditRows.length, startingAudits + 3);
       assert.ok(!JSON.stringify(auditRows).includes('https://'));
     },
   );
@@ -1928,4 +2013,142 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
   assert.equal((await request(projects, 'GET', undefined, '', tokenB)).status, 200);
   assert.equal((await request('/mini-owner/v1/auth/logout', 'POST', {}, '', tokenB)).status, 200);
   assert.equal((await request(projects, 'GET', undefined, '', tokenB)).status, 401);
+  await t.test(
+    'employee avatar shares both authenticated surfaces; logical deletions revoke access and retain history',
+    async () => {
+      const localImage = async (width: number, background: string) =>
+        'data:image/jpeg;base64,' +
+        (
+          await sharp({ create: { width, height: width, channels: 3, background } })
+            .jpeg()
+            .toBuffer()
+        ).toString('base64');
+      const miniHeaders = {
+        Cookie: 'chunmo_session=' + employee,
+        Referer: 'https://servicewechat.com/wx1111111111111111/0/page-frame.html',
+      };
+      const miniAvatar = base + '/api/mini-employee/v1/avatar';
+      const miniRead = () => fetch(miniAvatar, { headers: miniHeaders });
+      assert.equal((await miniRead()).status, 404);
+      assert.equal(
+        (
+          await request(
+            '/auth/avatar',
+            'PUT',
+            { image: await localImage(800, '#335b49') },
+            employee,
+          )
+        ).status,
+        200,
+      );
+      const saved = await miniRead();
+      assert.equal(saved.status, 200);
+      const savedBytes = await saved.arrayBuffer();
+      assert.match(saved.headers.get('cache-control') ?? '', /no-store/);
+      const upload = (csrf: string) =>
+        localImage(512, '#2e403b').then((image) =>
+          fetch(miniAvatar, {
+            method: 'PUT',
+            headers: { ...miniHeaders, 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+            body: JSON.stringify({ image }),
+          }),
+        );
+      assert.equal((await upload('')).status, 403);
+      assert.equal((await upload(hash('csrf:' + employee))).status, 200);
+      const web = await fetch(base + '/api/accounts/employee/avatar', {
+        headers: { Cookie: miniHeaders.Cookie },
+      });
+      assert.equal(web.status, 200);
+      const webBytes = await web.arrayBuffer();
+      assert.notDeepEqual(webBytes, savedBytes);
+      assert.deepEqual(await (await miniRead()).arrayBuffer(), webBytes);
+      assert.equal((await request('/accounts/employee', 'DELETE', {}, employee)).status, 403);
+      assert.equal((await request('/accounts/founder', 'DELETE', {}, founder)).status, 409);
+      assert.equal((await request('/accounts/employee', 'DELETE', {}, founder)).status, 200);
+      assert.equal((await miniRead()).status, 401);
+      assert.equal(
+        (await request('/accounts/employee', 'PATCH', { active: true }, founder)).status,
+        404,
+      );
+      assert.equal(
+        (await request('/directory', 'GET', undefined, founder)).body.accounts.some(
+          (account: { id: string }) => account.id === 'employee',
+        ),
+        false,
+      );
+      assert.equal(
+        (await admin.query("SELECT active FROM account WHERE id='employee'")).rows[0].active,
+        false,
+      );
+      assert.equal(
+        (
+          await admin.query(
+            "SELECT id FROM audit_event WHERE action='account.delete' AND entity_id='employee'",
+          )
+        ).rowCount,
+        1,
+      );
+
+      await admin.query('DELETE FROM owner_portal.login_limit');
+      verified = { openid: 'retirement', phone: '13900000112' };
+      const authorization = async () =>
+        request(
+          staffApi() + '/members',
+          'POST',
+          { name: '隔离账号', phone: verified.phone, create: true },
+          founder,
+        );
+      const original = await authorization();
+      const signed = await login(original.body.invite);
+      assert.equal(signed.status, 200);
+      const id = signed.body.owner.id;
+      assert.equal(
+        (await request('/owner-accounts/' + id + '/unlink', 'POST', {}, founder)).status,
+        200,
+      );
+      assert.equal((await request(projects, 'GET', undefined, '', signed.body.token)).status, 401);
+      const stillAuthorized = (
+        await request(staffApi(), 'GET', undefined, founder)
+      ).body.members.find((member: { id: string }) => member.id === id);
+      assert.equal(stillAuthorized.active, true);
+      assert.equal(stillAuthorized.bound, false);
+      const invitedAgain = await request(
+        staffApi() + '/members/' + id + '/invite',
+        'POST',
+        {},
+        founder,
+      );
+      const signedAgain = await login(invitedAgain.body.invite);
+      assert.equal(signedAgain.status, 200);
+      assert.equal((await request('/owner-accounts/' + id, 'DELETE', {}, founder)).status, 200);
+      assert.equal(
+        (await request(projects, 'GET', undefined, '', signedAgain.body.token)).status,
+        401,
+      );
+      assert.equal(
+        (await request('/owner-accounts', 'GET', undefined, founder)).body.members.some(
+          (member: { id: string }) => member.id === id,
+        ),
+        false,
+      );
+      assert.equal(
+        (await request(staffApi() + '/members', 'POST', { memberId: id }, founder)).status,
+        404,
+      );
+      assert.equal(
+        (
+          await admin.query(
+            'SELECT revoked_at FROM owner_portal.project_grant WHERE member_id=$1 AND revoked_at IS NOT NULL',
+            [id],
+          )
+        ).rowCount,
+        1,
+      );
+      const replacement = await authorization();
+      assert.equal(replacement.status, 200);
+      const again = await login(replacement.body.invite);
+      assert.equal(again.status, 200);
+      assert.notEqual(again.body.owner.id, id);
+    },
+  );
 });

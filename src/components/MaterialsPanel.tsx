@@ -1162,7 +1162,7 @@ export function MaterialsPanel({
         />
       )}
       {history && (
-        <Modal title={history.title} onClose={() => setHistory(null)} wide>
+        <Modal protect="view" title={history.title} onClose={() => setHistory(null)} wide>
           <div className="modal-body">
             {history.events.map((r, i) => (
               <details key={i} open>

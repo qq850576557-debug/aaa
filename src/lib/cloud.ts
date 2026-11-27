@@ -48,6 +48,7 @@ async function sendApi<T = Record<string, unknown>>(
   const saving =
     (path.startsWith('/owner-purchases/') && method === 'POST') ||
     (path === '/workspace' && method === 'PUT') ||
+    (/^\/projects\/[^/]+\/owner-design$/.test(path) && method === 'PUT') ||
     (path === '/assessments/batch' && method === 'POST') ||
     (path.startsWith('/site-photos') && method !== 'GET') ||
     (/^\/records(?:\/[^/]+)?$/.test(path) && method !== 'GET');

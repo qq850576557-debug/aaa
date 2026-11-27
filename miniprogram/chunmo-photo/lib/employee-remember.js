@@ -103,6 +103,32 @@ function withEmployeeRemember(BaseApi) {
       return response.data;
     }
 
+    async personalAvatar(image) {
+      if (!this.cookie || this.cookieValidUntil <= Date.now()) await this.resumeRemembered();
+      if (!this.identity || !this.cookie) throw Error('员工登录已失效，请重新登录');
+      const url = origin + '/api/mini-employee/v1/avatar';
+      const header = { Cookie: this.cookie };
+      if (!image) {
+        const result = await call('request', {
+          url,
+          header,
+          responseType: 'arraybuffer',
+          timeout: 15000,
+        });
+        if (result.statusCode === 404) return '';
+        if (result.statusCode !== 200) throw Error('头像读取失败');
+        return result.data;
+      }
+      const response = await call('request', {
+        url,
+        method: 'PUT',
+        timeout: 15000,
+        data: { image },
+        header: { ...header, 'X-CSRF-Token': this.csrf, 'content-type': 'application/json' },
+      });
+      if (response.statusCode !== 200) throw Error(response.data?.error || '头像保存失败');
+    }
+
     async acceptWechat(response) {
       const { token, expiresAt } = response.data.remembered || {};
       const cookie = sessionCookie(response);

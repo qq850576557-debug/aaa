@@ -24,7 +24,7 @@ export function AgendaEntryDialog({
   isCloud: boolean;
   ownerPurchase?: ComponentProps<typeof Editor>['ownerPurchase'];
   onClose: () => void;
-  onPurchase: (kind: Edit['kind'], value: Entity) => void;
+  onPurchase: (kind: Edit['kind'], value: Entity) => Promise<void>;
   onRecord: (record: WorkRecord) => void;
 }) {
   const [saving, setSaving] = useState(false);
@@ -118,6 +118,7 @@ export function AgendaEntryDialog({
   return (
     <>
       <Modal
+        protect="managed"
         title={category === 'purchase' ? '新建采购事项' : '新增记录'}
         subtitle={`${data.projects.find((p) => p.id === request.projectId)?.name} · ${request.date}`}
         className="agenda-entry-dialog"

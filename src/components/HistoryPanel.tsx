@@ -47,6 +47,7 @@ export function HistoryPanel({
   return (
     <>
       <Modal
+        protect="view"
         title={full ? '完整修改历史' : '最近15天修改历史'}
         subtitle={`${name} · ${isCloud ? '云端确认记录' : '本地操作记录'}`}
         onClose={onClose}

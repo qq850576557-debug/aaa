@@ -153,7 +153,7 @@ systemctl is-active --quiet chunmo-owner-test-pg.service
 systemctl is-active --quiet chunmo-owner-test-api.service
 [[ $(sql -Atc "SELECT current_database() || ':' || current_user || ':' || current_setting('port')") == chunmo_test:chunmo_ownerpg:5441 ]] ||
   fail '数据库身份未通过测试环境校验'
-[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT IN ('019_employee_wechat.sql','019_employee_wechat_grants.sql','020_owner_design.sql','020_owner_design_grants.sql')") == 15 ]] ||
+[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT IN ('019_employee_wechat.sql','019_employee_wechat_grants.sql','020_owner_design.sql','020_owner_design_grants.sql','021_account_retirement.sql')") == 15 ]] ||
   fail '隔离库基础迁移数量与预期不同'
 test_db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
 [[ $test_db_bytes =~ ^[0-9]+$ ]] || fail '无法核对测试备份大小'
@@ -354,6 +354,34 @@ SQL
     AND NOT has_table_privilege('owner_runtime','owner_portal.project_design','SELECT,INSERT,UPDATE,DELETE')
     AND has_function_privilege('owner_runtime','owner_portal.authorized_design(text,text)','EXECUTE')") == t ]] ||
     fail '测试库 020 角色隔离校验失败'
+  retirement_sql="$job/server/proposed/021_account_retirement.sql"
+  if [[ -f $retirement_sql ]]; then
+    retirement_sha=598a3af4f31670f55358755c441e4036273ca57f0bff1148b00a0fd45ac973ea
+    [[ $(sha256sum "$retirement_sql" | awk '{print $1}') == "$retirement_sha" ]] ||
+      fail '测试库 021 迁移文件校验失败'
+    retirement_ledger() {
+      sql -Atc "SELECT checksum FROM schema_migration WHERE name='021_account_retirement.sql'"
+    }
+    [[ ! $(retirement_ledger) || $(retirement_ledger) == "$retirement_sha" ]] ||
+      fail '测试库 021 账本校验失败'
+    if [[ -z $(retirement_ledger) ]]; then
+      {
+        printf "SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s'; SELECT pg_advisory_xact_lock(62109684);
+"
+        cat "$retirement_sql"
+        cat <<'SQL'
+INSERT INTO schema_migration(name,checksum) VALUES('021_account_retirement.sql', :'retirement_sha');
+SQL
+      } | sql --single-transaction -v retirement_sha="$retirement_sha" -f -
+    fi
+    [[ $(retirement_ledger) == "$retirement_sha" ]] ||
+      fail '测试库 021 迁移登记失败'
+    [[ $(sql -Atc "SELECT
+      (SELECT count(*) FROM pg_constraint WHERE conname IN ('retired_employee_inactive','retired_owner_unbound'))=2
+      AND position('deleted_at IS NULL' in pg_get_viewdef('owner_portal.available_project'::regclass,true))>0
+      AND NOT has_column_privilege('owner_runtime','owner_portal.member','deleted_at','UPDATE')") == t ]] ||
+      fail '测试库 021 结构或权限隔离检查失败'
+  fi
 fi
 cmp -s "$nginx" "$upgrade/nginx.before"
 cmp -s "$unit" "$upgrade/api.before"

@@ -230,7 +230,7 @@ test('phase 3: compact rows/picker and actual supplied brand font fit desktop, m
       'border-color',
       await displayedTradeRGB(page, '#244e42'),
     );
-    await page.keyboard.press('Escape');
+    await panel.getByRole('button', { name: '完成', exact: true }).click();
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.evaluate(() => {

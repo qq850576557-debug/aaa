@@ -30,7 +30,12 @@ Page({
       const result = await owner.projectDesign(this.project);
       if (epoch !== this.epoch) return;
       const url = result[this.kind];
-      if (!url) this.setData({ feedback: '暂未发布' });
+      if (!url)
+        this.setData({
+          feedback: result[this.kind + 'Unavailable']
+            ? '此链接暂不能在微信内打开，请联系春茉'
+            : '暂未发布',
+        });
       else if (/^https:\/\/[a-z0-9.-]+\//i.test(url) && !/[\s\\]/u.test(url))
         this.setData({ src: url });
       else this.setData({ feedback: '链接与微信业务域名配置不一致，请联系春茉' });

@@ -39,6 +39,10 @@ test('design viewer only opens a current authenticated residence, clears stale c
   });
   await page.onShow();
   assert.equal(page.data.feedback, '暂未发布');
+  next = { rendering: '', renderingUnavailable: true };
+  await page.onShow();
+  assert.equal(page.data.src, '');
+  assert.match(page.data.feedback, /暂不能在微信内打开/);
   next = { rendering: 'https://design.example.com/render' };
   await page.onShow();
   assert.equal(page.data.src, next.rendering);

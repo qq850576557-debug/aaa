@@ -12,6 +12,7 @@ export function PersonalCard({ user, onClose }: { user: CloudUser; onClose: () =
   const photoInput = useRef<HTMLInputElement>(null);
   return (
     <Modal
+      protect="view"
       title="我的个人名片"
       className="personal-card-dialog"
       onClose={onClose}

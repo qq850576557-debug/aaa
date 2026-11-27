@@ -212,10 +212,55 @@ export function staffWechatAccounts(
   app.get('/api/accounts/wechat', owner, async (req: AuthRequest, res) => {
     const rows = await pool.query(
       `SELECT a.id,b.phone_suffix AS "phoneSuffix",COALESCE(b.identity_digest IS NOT NULL,false) AS bound
-       FROM account a LEFT JOIN employee_wechat_binding b ON b.account_id=a.id WHERE a.workspace_id=$1`,
+       FROM account a LEFT JOIN employee_wechat_binding b ON b.account_id=a.id WHERE a.workspace_id=$1 AND to_jsonb(a)->>'deleted_at' IS NULL`,
       [req.actor!.workspaceId],
     );
     res.json({ accounts: rows.rows });
+  });
+  app.delete('/api/accounts/:id', owner, async (req: AuthRequest, res) => {
+    const actor = req.actor!,
+      id = String(req.params.id);
+    if (id === actor.id) throw new ApiError(409, '不能删除负责人账号');
+    await transaction(async (c) => {
+      const retired = await c.query(
+        "UPDATE public.account SET deleted_at=now(),active=false WHERE workspace_id=$1 AND id=$2 AND role='employee' AND deleted_at IS NULL RETURNING id",
+        [actor.workspaceId, id],
+      );
+      if (!retired.rowCount) {
+        if (
+          (
+            await c.query(
+              'SELECT 1 FROM public.account WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NOT NULL',
+              [actor.workspaceId, id],
+            )
+          ).rowCount
+        )
+          return;
+        throw new ApiError(404, '员工账号不存在');
+      }
+      await c.query('DELETE FROM auth_session WHERE account_id=$1', [id]);
+      await c.query('DELETE FROM employee_wechat_binding WHERE account_id=$1', [id]);
+      await c.query('DELETE FROM project_permission WHERE workspace_id=$1 AND account_id=$2', [
+        actor.workspaceId,
+        id,
+      ]);
+      await c.query('DELETE FROM assessment_recorder WHERE workspace_id=$1 AND account_id=$2', [
+        actor.workspaceId,
+        id,
+      ]);
+      await c.query('DELETE FROM material_operator WHERE workspace_id=$1 AND account_id=$2', [
+        actor.workspaceId,
+        id,
+      ]);
+      await audit(c, actor, 'account.delete', undefined, {
+        entityType: 'account',
+        entityId: id,
+        operation: 'delete',
+        changedFields: ['deletedAt', 'active', 'wechatBinding', 'permissions'],
+      });
+    });
+    revokeStreams(id);
+    res.json({ ok: true });
   });
   const projectAccess = '/api/accounts/:id/project-permissions';
   app.get(projectAccess, owner, async (req: AuthRequest, res) => {
@@ -225,7 +270,7 @@ export function staffWechatAccounts(
       `SELECT p.id,p.payload->>'name' AS name,COALESCE(g.can_write,false) AS granted
        FROM account a JOIN project p ON p.workspace_id=a.workspace_id
        LEFT JOIN project_permission g ON g.workspace_id=p.workspace_id AND g.project_id=p.id AND g.account_id=a.id
-       WHERE a.workspace_id=$1 AND a.id=$2 ORDER BY p.payload->>'name',p.id`,
+       WHERE a.workspace_id=$1 AND a.id=$2 AND to_jsonb(a)->>'deleted_at' IS NULL ORDER BY p.payload->>'name',p.id`,
       [workspace, id],
     );
     res.json({ projects: rows.rows });
@@ -240,7 +285,7 @@ export function staffWechatAccounts(
     if (req.actor!.id === id) throw new ApiError(409, '负责人已有全部项目权限');
     await transaction(async (c) => {
       const account = await c.query(
-        'SELECT id FROM account WHERE workspace_id=$1 AND id=$2 FOR UPDATE',
+        `SELECT id FROM account a WHERE workspace_id=$1 AND id=$2 AND to_jsonb(a)->>'deleted_at' IS NULL FOR UPDATE`,
         [workspace, id],
       );
       const target = await c.query(
@@ -279,7 +324,7 @@ export function staffWechatAccounts(
     try {
       const changed = await transaction(async (c) => {
         const account = await c.query(
-          'SELECT id FROM account WHERE workspace_id=$1 AND id=$2 FOR UPDATE',
+          `SELECT id FROM account a WHERE workspace_id=$1 AND id=$2 AND to_jsonb(a)->>'deleted_at' IS NULL FOR UPDATE`,
           [req.actor!.workspaceId, id],
         );
         if (!account.rowCount) throw new ApiError(404, '员工账号不存在');

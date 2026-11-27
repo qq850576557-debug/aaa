@@ -44,7 +44,7 @@ import { memberCardRoutes } from './member-cards';
 import { assessmentRoutes } from './assessments';
 import express from 'express';
 import { requireAccountPermission } from './permissions';
-import { validateAvatar, avatarInput, avatarMime } from './avatar';
+import { validateAvatar, avatarInput, avatarMime, saveAccountAvatar } from './avatar';
 import { auditDevice } from './audit';
 import { loginSchema, loginInputSchema } from '../src/lib/login';
 import { passwordSchema } from '../src/lib/password';
@@ -163,7 +163,7 @@ export function createApp({
     );
   }
   miniOwnerRoutes(app, ownerPortal);
-  miniEmployeeSessions(app, employeeWechat);
+  miniEmployeeSessions(app, employeeWechat, announcePresence);
   miniUnifiedRoutes(app, unifiedLogin, employeeWechat, ownerPortal);
   let hashing = 0;
   app.use('/api', (req, res, next) => {
@@ -305,19 +305,7 @@ export function createApp({
     try {
       const body = avatarInput.parse(req.body);
       const image = await validateAvatar(body);
-      await transaction(async (c) => {
-        const changed = await c.query(
-          'INSERT INTO account_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now() WHERE account_avatar.png IS DISTINCT FROM $2 RETURNING version',
-          [req.actor!.id, image.bytes, image.version],
-        );
-        if (changed.rowCount)
-          await audit(c, req.actor!, 'account.avatar', undefined, {
-            entityType: 'account',
-            entityId: req.actor!.id,
-            operation: 'update',
-            changedFields: ['avatar'],
-          });
-      });
+      await saveAccountAvatar(req.actor!, image);
       announcePresence(req.actor!.workspaceId);
       res.json({ ok: true });
     } catch (e) {
@@ -474,7 +462,7 @@ export function createApp({
         FROM account a JOIN cloud_workspace w ON w.id=a.workspace_id
         LEFT JOIN account_avatar v ON v.account_id=a.id
         LEFT JOIN account_note n ON n.workspace_id=a.workspace_id AND n.target_id=a.id AND n.author_id=$2
-        WHERE a.workspace_id=$1 ORDER BY a.login`,
+        WHERE a.workspace_id=$1 AND to_jsonb(a)->>'deleted_at' IS NULL ORDER BY a.login`,
           [req.actor!.workspaceId, req.actor!.id],
         );
         res.json({ accounts: q.rows });
@@ -767,7 +755,7 @@ export function createApp({
     async (req: AuthRequest, res, next) => {
       try {
         const q = await pool.query(
-          `SELECT id,login,COALESCE(NULLIF(display_name,''),login) AS "displayName",active FROM account WHERE workspace_id=$1 AND id<>$2 ORDER BY login`,
+          `SELECT id,login,COALESCE(NULLIF(display_name,''),login) AS "displayName",active FROM account WHERE workspace_id=$1 AND id<>$2 AND to_jsonb(account)->>'deleted_at' IS NULL ORDER BY login`,
           [req.actor!.workspaceId, req.actor!.id],
         );
         res.json({ accounts: q.rows });
@@ -845,7 +833,8 @@ export function createApp({
         }
         await transaction(async (c) => {
           const q = await c.query(
-            'UPDATE account SET active=COALESCE($3,active),password_hash=COALESCE($4,password_hash),display_name=COALESCE($5,display_name) WHERE id=$1 AND workspace_id=$2 RETURNING id',
+            `UPDATE account SET active=COALESCE($3,active),password_hash=COALESCE($4,password_hash),display_name=COALESCE($5,display_name)
+            WHERE id=$1 AND workspace_id=$2 AND to_jsonb(account)->>'deleted_at' IS NULL RETURNING id`,
             [
               req.params.id,
               req.actor!.workspaceId,

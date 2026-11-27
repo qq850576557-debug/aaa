@@ -1,3 +1,5 @@
+import type { ProjectDesign } from '../components/ProjectOwnerDesign';
+import type { Project } from './model';
 import { rememberWorkspace } from './workspace-undo';
 import { businessUndo } from './undo-manager';
 import { deletedDraftView } from './deleted-draft-view';
@@ -544,12 +546,19 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
         void refresh().catch((e) => setError(String(e)));
     }, 1000);
     const resume = () => {
-      if (!initialized.current) return;
+      if (!initialized.current || document.visibilityState !== 'visible') return;
       if (pending.current && !blocked.current) void wake.current();
       else if (!blocked.current) void refresh().catch((e) => setError(String(e)));
+      if (!blocked.current && document.visibilityState === 'visible')
+        void cloudSession()
+          .then((user) => {
+            if (active) setUser((old) => (old?.id === user.id ? user : old));
+          })
+          .catch(() => {});
     };
     window.addEventListener('online', resume);
     window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', resume);
     return () => {
       active = false;
       alive.current = false;
@@ -559,6 +568,7 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
       clearTimeout(retryTimer.current);
       window.removeEventListener('online', resume);
       window.removeEventListener('focus', resume);
+      document.removeEventListener('visibilitychange', resume);
       events?.close();
       window.removeEventListener('chunmo-profile-updated', profileUpdated);
     };
@@ -734,6 +744,47 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     },
     [apply, persist],
   );
+  const projectDesignReceipt = useRef<
+    { key: string; revision: number; requestId: string } | undefined
+  >(undefined);
+  const saveProjectDesign = useCallback(
+    async (project: Project, design: ProjectDesign) => {
+      await working.current;
+      if (exclusive.current || pending.current || blocked.current || !baseline.current)
+        throw Error('请先完成其他云端保存，当前项目修改已保留。');
+      const key = JSON.stringify({ project, design });
+      if (projectDesignReceipt.current?.key !== key)
+        projectDesignReceipt.current = {
+          key,
+          revision: baseline.current.revision,
+          requestId: crypto.randomUUID(),
+        };
+      const { revision, requestId } = projectDesignReceipt.current;
+      exclusive.current = true;
+      try {
+        const result = await cloudApi<{ workspace: CloudState }>(
+          '/projects/' + encodeURIComponent(project.id) + '/owner-design',
+          'PUT',
+          { ...design, project: { revision, requestId, value: project } },
+        );
+        apply(validState(result.workspace));
+        projectDesignReceipt.current = undefined;
+        savedFeedback(requestId, 'workspace');
+      } catch (error) {
+        if (error instanceof CloudError && error.status >= 400 && error.status < 500)
+          projectDesignReceipt.current = undefined;
+        throw error;
+      } finally {
+        exclusive.current = false;
+      }
+    },
+    [apply],
+  );
+  const confirmEditorSave = useCallback(async () => {
+    await journal.current;
+    await persist();
+    if (pending.current) throw Error('云端保存尚未确认。当前内容已保留，请重试保存。');
+  }, [persist]);
   const reloadCloud = useCallback(async () => {
     if (interacting()) throw Error('请先关闭编辑弹窗；当前表单内容未被替换。');
     await working.current;
@@ -892,6 +943,8 @@ export function useCloudWorkspace(enabled: boolean, initialUser?: CloudUser) {
     reloadCloud,
     changeDeadline,
     saveOwnerPurchase,
+    saveProjectDesign,
+    confirmEditorSave,
     saveConflict,
     resolveSaveConflict,
     dismissSaveConflict: () => setSaveConflict(null),

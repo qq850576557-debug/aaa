@@ -1,5 +1,3 @@
-import { ProjectOwnerDesign } from './components/ProjectOwnerDesign';
-import { ProjectOwnerAccess } from './components/ProjectOwnerAccess';
 import { StudioDaily } from './components/StudioDaily';
 import { MOBILE_QUERY, mobileRequested } from './mobile/mode';
 import { desktopV1Enabled } from './ui-v1/mode';
@@ -161,6 +159,8 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     reloadCloud,
     changeDeadline,
     saveOwnerPurchase,
+    saveProjectDesign,
+    confirmEditorSave,
     hasUnsavedChanges,
     saveConflict,
     resolveSaveConflict,
@@ -1773,9 +1773,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
                 : undefined
             }
             onClose={() => setAgendaEntry(null)}
-            onPurchase={(kind, value) => {
+            onPurchase={async (kind, value) => {
               save(kind, value);
-              setAgendaEntry(null);
+              await confirmEditorSave();
             }}
             onRecord={(record) => {
               recordSource.accept(record);
@@ -1833,12 +1833,15 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           intro={
             isCloud && edit.kind === 'purchase' && isExisting ? (
               <LegacySource kind="purchase" id={edit.value.id} />
-            ) : !mobile && isCloud && cloudUser?.owner && isExisting && edit.kind === 'project' ? (
-              <>
-                <ProjectOwnerAccess projectId={edit.value.id} />
-                <ProjectOwnerDesign projectId={edit.value.id} projectName={edit.value.name} />
-              </>
             ) : undefined
+          }
+          saveProjectDesign={
+            !mobile && isCloud && cloudUser?.owner && isExisting && edit.kind === 'project'
+              ? async (project, design) => {
+                  await saveProjectDesign(project, design);
+                  navigate({ view: 'project-detail', projectId: project.id }, { guard: false });
+                }
+              : undefined
           }
           onForgetName={(name) => {
             const projectsUsing = data.projects.filter(
@@ -1893,7 +1896,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
               : undefined
           }
           onClose={() => setEdit(null)}
-          onSave={save}
+          onSave={async (...args) => {
+            save(...args);
+            await confirmEditorSave();
+          }}
           onDelete={
             isExisting && (!isCloud || !!cloudUser?.owner || edit.kind !== 'project')
               ? () => deleteEntity()
@@ -1947,6 +1953,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
       )}
       {day && p && (
         <Modal
+          protect="view"
           title={`${day} · 每日事项`}
           subtitle={`${p.name} / 施工、采购与现场安排`}
           onClose={() => setDay(null)}

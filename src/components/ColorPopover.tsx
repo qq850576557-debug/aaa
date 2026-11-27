@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Wheel from '@uiw/react-color-wheel';
 import { hexToHsva, hsvaToHex } from '@uiw/color-convert';
-import { Modal, type Anchor } from './Modal';
+import { Confirm, Modal, type Anchor } from './Modal';
 import { palette, type Trade } from '../lib/model';
 import { defaultTradeColor, resolvedTradeColor } from '../lib/trade-colors';
 export function ColorControls({
@@ -118,6 +118,7 @@ export function ColorPopover({
 }) {
   const initial = useRef(trade.color);
   const [draft, setDraft] = useState(resolvedTradeColor(trade));
+  const [discard, setDiscard] = useState(false);
   const edited = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -129,43 +130,55 @@ export function ColorPopover({
     flush();
     onClose();
   };
+  const discardPreview = () => {
+    clearTimeout(timer.current);
+    if (edited.current && trade.color !== initial.current) onChange(initial.current);
+    onClose();
+  };
+  const requestCancel = () => {
+    if (edited.current) setDiscard(true);
+    else onClose();
+  };
   return (
-    <Modal
-      title={`${trade.name} · 工种颜色`}
-      className="color-panel"
-      subtitle="独立工种配色 · 完成后同步工作空间内同名工序"
-      anchor={anchor}
-      onClose={close}
-    >
-      <div className="modal-body">
-        <ColorControls
-          compact
-          color={draft}
-          defaultColor={defaultTradeColor(trade.name) || trade.defaultColor}
-          recent={recent}
-          onChange={(color) => {
-            edited.current = true;
-            setDraft(color);
-            clearTimeout(timer.current);
-            if (/^#[0-9a-fA-F]{6}$/.test(color))
-              timer.current = setTimeout(() => onChange(color), 400);
-          }}
+    <>
+      <Modal
+        protect="managed"
+        title={`${trade.name} · 工种颜色`}
+        className="color-panel"
+        subtitle="独立工种配色 · 完成后同步工作空间内同名工序"
+        anchor={anchor}
+        onClose={requestCancel}
+      >
+        <div className="modal-body">
+          <ColorControls
+            compact
+            color={draft}
+            defaultColor={defaultTradeColor(trade.name) || trade.defaultColor}
+            recent={recent}
+            onChange={(color) => {
+              edited.current = true;
+              setDraft(color);
+              clearTimeout(timer.current);
+              if (/^#[0-9a-fA-F]{6}$/.test(color))
+                timer.current = setTimeout(() => onChange(color), 400);
+            }}
+          />
+        </div>
+        <footer className="modal-foot">
+          <button onClick={requestCancel}>取消并恢复</button>
+          <button className="primary" onClick={close}>
+            完成
+          </button>
+        </footer>
+      </Modal>
+      {discard && (
+        <Confirm
+          title="放弃配色修改？"
+          message="确认后恢复编辑前的工种颜色。"
+          onCancel={() => setDiscard(false)}
+          onConfirm={discardPreview}
         />
-      </div>
-      <footer className="modal-foot">
-        <button
-          onClick={() => {
-            clearTimeout(timer.current);
-            if (edited.current && trade.color !== initial.current) onChange(initial.current);
-            onClose();
-          }}
-        >
-          取消并恢复
-        </button>
-        <button className="primary" onClick={close}>
-          完成
-        </button>
-      </footer>
-    </Modal>
+      )}
+    </>
   );
 }

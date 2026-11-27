@@ -953,7 +953,7 @@ export function AssessmentPanel({ data, isCloud }: { data: Data; isCloud: boolea
         </Modal>
       )}
       {history && (
-        <Modal title={`考核历史 · ${history.name}`} onClose={() => setHistory(null)}>
+        <Modal protect="view" title={`考核历史 · ${history.name}`} onClose={() => setHistory(null)}>
           <div className="modal-body assessment-history">
             {history.sources.map((r) => (
               <p key={r.id}>

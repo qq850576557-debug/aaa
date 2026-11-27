@@ -5,7 +5,6 @@ import { readFile } from 'node:fs/promises';
 import { boot, closeToast, fixture, restore, state } from './helpers';
 import { id } from '../src/lib/model';
 async function schedule(page: Page) {
-  await page.getByRole('button', { name: '项目工作空间', exact: true }).click();
   await closeToast(page);
   await page.locator('.schedule-section').scrollIntoViewIfNeeded();
 }
@@ -58,6 +57,9 @@ test('dirty form protection, anchored quick create, real calendar and duration s
   await expect(modal.getByLabel('开始日期', { exact: true })).toHaveValue('2026-11-02');
   await expect(modal.getByLabel('结束日期', { exact: true })).toHaveValue('2026-11-06');
   await page.keyboard.press('Escape');
+  await expect(modal).toBeVisible();
+  await expect(page.getByRole('heading', { name: '放弃未保存的修改？' })).toHaveCount(0);
+  await modal.getByRole('button', { name: '关闭浮窗' }).click();
   await expect(page.getByRole('heading', { name: '放弃未保存的修改？' })).toBeVisible();
   await page.getByRole('button', { name: '取消', exact: true }).last().click();
   await expect(modal).toBeVisible();
@@ -209,7 +211,7 @@ test('trade drag sorting has a drop line, inserts inline, and live color persist
     await displayedTradeRGB(page, '#244e42'),
   );
   await m.getByLabel('明度', { exact: true }).fill('60');
-  await page.keyboard.press('Escape');
+  await m.getByRole('button', { name: '完成', exact: true }).click();
   await page.reload();
   await expect(page.locator('.save-state')).toContainText('已保存');
   expect((await state(page)).trades.find((t) => t.name === '水电改造')?.color).not.toBe('#648b9c');

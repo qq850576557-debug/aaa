@@ -13,7 +13,7 @@ export function memberCardRoutes(app: Express, announce: (workspaceId: string) =
         async (c) =>
           (
             await c.query(
-              `SELECT a.id,a.login,coalesce(nullif(a.display_name,''),a.login) AS "displayName",a.active,(w.owner_account_id=a.id) AS owner,v.version AS "avatarVersion",cv.version AS "cardAvatarVersion",coalesce(m.job_title,'') AS "jobTitle",coalesce(m.english_name,'') AS "englishName",m.department_id AS "departmentId",d.name AS "departmentName",d.english_name AS "departmentEnglishName",to_char(m.joined_on,'YYYY-MM-DD') AS "joinedOn" FROM account a JOIN cloud_workspace w ON w.id=a.workspace_id LEFT JOIN member_card m ON m.account_id=a.id AND m.workspace_id=a.workspace_id LEFT JOIN department d ON d.workspace_id=a.workspace_id AND d.id=m.department_id LEFT JOIN account_avatar v ON v.account_id=a.id LEFT JOIN card_avatar cv ON cv.account_id=a.id WHERE a.workspace_id=$1 ORDER BY a.active DESC,a.login`,
+              `SELECT a.id,a.login,coalesce(nullif(a.display_name,''),a.login) AS "displayName",a.active,(w.owner_account_id=a.id) AS owner,v.version AS "avatarVersion",cv.version AS "cardAvatarVersion",coalesce(m.job_title,'') AS "jobTitle",coalesce(m.english_name,'') AS "englishName",m.department_id AS "departmentId",d.name AS "departmentName",d.english_name AS "departmentEnglishName",to_char(m.joined_on,'YYYY-MM-DD') AS "joinedOn" FROM account a JOIN cloud_workspace w ON w.id=a.workspace_id LEFT JOIN member_card m ON m.account_id=a.id AND m.workspace_id=a.workspace_id LEFT JOIN department d ON d.workspace_id=a.workspace_id AND d.id=m.department_id LEFT JOIN account_avatar v ON v.account_id=a.id LEFT JOIN card_avatar cv ON cv.account_id=a.id WHERE a.workspace_id=$1 AND to_jsonb(a)->>'deleted_at' IS NULL ORDER BY a.active DESC,a.login`,
               [a.workspaceId],
             )
           ).rows,
@@ -122,7 +122,7 @@ export function memberCardRoutes(app: Express, announce: (workspaceId: string) =
     const b = managed ? managedCardEdit.parse(req.body) : cardEdit.parse(req.body),
       a = req.actor!;
     const account = await c.query(
-      'SELECT id FROM account WHERE workspace_id=$1 AND id=$2 FOR UPDATE',
+      `SELECT id FROM account a WHERE workspace_id=$1 AND id=$2 AND to_jsonb(a)->>'deleted_at' IS NULL FOR UPDATE`,
       [a.workspaceId, target],
     );
     if (!account.rowCount) throw new ApiError(404, '账号不存在');

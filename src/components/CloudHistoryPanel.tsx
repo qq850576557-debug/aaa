@@ -155,6 +155,7 @@ export function CloudHistoryPanel({
   return (
     <>
       <Modal
+        protect="view"
         title="云端历史版本"
         subtitle="最近15天 · 服务端已确认的修改"
         anchor={anchor}

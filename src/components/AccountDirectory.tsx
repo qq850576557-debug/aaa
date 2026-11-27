@@ -6,7 +6,7 @@ import { LOGIN_HELP } from '../lib/login';
 import { PASSWORD_MAX, PASSWORD_MIN } from '../lib/password';
 import { Avatar } from './Avatar';
 import { MemberCards } from './MemberCards';
-import { Modal } from './Modal';
+import { Confirm, Modal } from './Modal';
 import { useProjectThemeStyles } from './ProjectThemes';
 import './account-directory.css';
 
@@ -80,6 +80,27 @@ export function AccountDirectory({
     | { staff: Staff; action: StaffAction }
     | { member?: OwnerMember; action: OwnerAction }
   >();
+  const [retire, setRetire] = useState<{
+    name: string;
+    path: string;
+    owner?: boolean;
+    unlink?: boolean;
+  }>();
+  const [retiring, setRetiring] = useState(false);
+  const [retireError, setRetireError] = useState('');
+  async function retireAccount() {
+    if (retiring || !retire) return;
+    setRetiring(true);
+    try {
+      await cloudApi(retire.path, retire.unlink ? 'POST' : 'DELETE', {});
+      setRetire(undefined);
+      await refresh(retire.unlink ? '微信已解绑' : '账号已删除');
+    } catch (error) {
+      setRetireError(error instanceof Error ? error.message : '账号操作失败');
+    } finally {
+      setRetiring(false);
+    }
+  }
   const theme = useProjectThemeStyles();
   async function load() {
     if (category === 'owner') {
@@ -138,7 +159,7 @@ export function AccountDirectory({
 
   return (
     <section className="account-directory" aria-label={isStaff ? '员工账号' : '业主账号'}>
-      <div className="directory-toolbar">
+      <div className="directory-toolbar" data-modal-ignore>
         <input
           type="search"
           aria-label="搜索账号"
@@ -268,6 +289,20 @@ export function AccountDirectory({
                                   <button onClick={() => setDialog({ staff: a, action: 'status' })}>
                                     {a.active ? '停用 / 离职' : '恢复账号'}
                                   </button>
+                                  {staffBindings && (
+                                    <button
+                                      className="directory-delete"
+                                      onClick={() => {
+                                        setRetireError('');
+                                        setRetire({
+                                          name: a.displayName,
+                                          path: '/accounts/' + encodeURIComponent(a.id),
+                                        });
+                                      }}
+                                    >
+                                      删除账号
+                                    </button>
+                                  )}
                                 </>
                               )}
                             </>
@@ -317,6 +352,20 @@ export function AccountDirectory({
                             <button onClick={() => setDialog({ member: m, action: 'grant' })}>
                               关联工地 / 发邀请
                             </button>
+                            {m.bound && (
+                              <button
+                                onClick={() => {
+                                  setRetireError('');
+                                  setRetire({
+                                    name: m.name,
+                                    path: '/owner-accounts/' + encodeURIComponent(m.id) + '/unlink',
+                                    unlink: true,
+                                  });
+                                }}
+                              >
+                                解绑微信
+                              </button>
+                            )}
                             {active.length > 0 && (
                               <>
                                 <button onClick={() => setDialog({ member: m, action: 'rebind' })}>
@@ -327,6 +376,19 @@ export function AccountDirectory({
                                 </button>
                               </>
                             )}
+                            <button
+                              className="directory-delete"
+                              onClick={() => {
+                                setRetireError('');
+                                setRetire({
+                                  name: m.name,
+                                  path: '/owner-accounts/' + encodeURIComponent(m.id),
+                                  owner: true,
+                                });
+                              }}
+                            >
+                              删除账号
+                            </button>
                           </More>
                         </td>
                       </tr>
@@ -362,6 +424,22 @@ export function AccountDirectory({
       <div className="directory-announcer" role="status">
         {notice}
       </div>
+      {retire && (
+        <Confirm
+          title={(retire.unlink ? '解绑微信 · ' : '删除账号 · ') + retire.name}
+          message={
+            retire.unlink
+              ? '会话和未使用邀请将失效，原住宅授权保留。'
+              : (retire.owner
+                  ? '该业主的全部住宅授权、会话及邀请将立即失效。'
+                  : '该员工的登录会话、微信绑定及工地权限将立即撤销。') + '历史业务记录保留。'
+          }
+          error={retireError}
+          busy={retiring}
+          onCancel={() => setRetire(undefined)}
+          onConfirm={() => void retireAccount()}
+        />
+      )}
       {dialog === 'department' && (
         <MemberCards
           user={user}
@@ -452,6 +530,7 @@ function StaffEditor({
   if (action === 'card')
     return (
       <Modal
+        protect="view"
         title={staff.displayName}
         onClose={onClose}
         animateClose

@@ -324,7 +324,7 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
             LEFT JOIN owner_portal.project_service s ON s.workspace_id=g.workspace_id AND s.project_id=g.project_id
             WHERE g.workspace_id=m.workspace_id AND g.member_id=m.id
           ),'[]'::jsonb) AS projects
-        FROM owner_portal.member m WHERE m.workspace_id=$1 ORDER BY m.label,m.id`,
+        FROM owner_portal.member m WHERE m.workspace_id=$1 AND to_jsonb(m)->>'deleted_at' IS NULL ORDER BY m.label,m.id`,
           [workspace],
         ),
       ),
@@ -340,6 +340,78 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     res.json({ members: members.rows, projects: projects.rows });
   });
 
+  app.post(
+    '/api/owner-accounts/:memberId/unlink',
+    owner,
+    available,
+    async (req: AuthRequest, res) => {
+      const actor = req.actor!,
+        id = memberId.parse(req.params.memberId);
+      await transaction(async (c) => {
+        await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 16))', [
+          actor.workspaceId,
+        ]);
+        const member = await c.query(
+          'UPDATE owner_portal.member SET app_id=NULL,identity_digest=NULL,bound_at=NULL WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING id',
+          [actor.workspaceId, id],
+        );
+        if (!member.rowCount) throw new ApiError(404, '业主账号不存在');
+        await c.query('DELETE FROM owner_portal.session WHERE member_id=$1', [id]);
+        await c.query(
+          'UPDATE owner_portal.invite SET consumed_at=now() WHERE member_id=$1 AND consumed_at IS NULL',
+          [id],
+        );
+        await audit(c, actor, 'owner.identity.unlink', undefined, {
+          entityType: 'owner_member',
+          entityId: id,
+          operation: 'unlink',
+        });
+      });
+      res.json({ ok: true });
+    },
+  );
+
+  app.delete('/api/owner-accounts/:memberId', owner, available, async (req: AuthRequest, res) => {
+    const actor = req.actor!,
+      id = memberId.parse(req.params.memberId);
+    await transaction(async (c) => {
+      await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 16))', [actor.workspaceId]);
+      const retired = await c.query(
+        `UPDATE owner_portal.member SET deleted_at=now(),app_id=NULL,identity_digest=NULL,bound_at=NULL,phone_digest=$3
+         WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NULL RETURNING id`,
+        [actor.workspaceId, id, 'retired:' + id],
+      );
+      if (!retired.rowCount) {
+        if (
+          (
+            await c.query(
+              'SELECT 1 FROM owner_portal.member WHERE workspace_id=$1 AND id=$2 AND deleted_at IS NOT NULL',
+              [actor.workspaceId, id],
+            )
+          ).rowCount
+        )
+          return;
+        throw new ApiError(404, '业主账号不存在');
+      }
+      await c.query(
+        'UPDATE owner_portal.project_grant SET revoked_at=now() WHERE member_id=$1 AND revoked_at IS NULL',
+        [id],
+      );
+      await c.query(
+        'UPDATE owner_portal.invite SET consumed_at=now() WHERE member_id=$1 AND consumed_at IS NULL',
+        [id],
+      );
+      await c.query('DELETE FROM owner_portal.session WHERE member_id=$1', [id]);
+      await audit(c, actor, 'owner.identity.delete', undefined, {
+        entityType: 'owner_member',
+        entityId: id,
+        operation: 'delete',
+        changedFields: ['deletedAt', 'wechatBinding', 'projectGrants'],
+      });
+    });
+    res.json({ ok: true });
+  });
+
   app.get(prefix, owner, available, async (req: AuthRequest, res) => {
     const data = await transaction(async (c) => {
       const [workspace, project] = await lock(c, req);
@@ -351,7 +423,7 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
         `SELECT m.id,m.label AS name,'*******' || m.phone_suffix AS "maskedPhone",
          m.identity_digest IS NOT NULL AS bound,g.revoked_at IS NULL AS active
          FROM owner_portal.project_grant g JOIN owner_portal.member m ON m.id=g.member_id
-         WHERE g.workspace_id=$1 AND g.project_id=$2 ORDER BY m.label,m.id`,
+         WHERE g.workspace_id=$1 AND g.project_id=$2 AND to_jsonb(m)->>'deleted_at' IS NULL ORDER BY m.label,m.id`,
         [workspace, project],
       );
       return { enabled: service.rows[0]?.enabled === true, members: members.rows };
@@ -397,7 +469,7 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
         'memberId' in body
           ? (
               await c.query(
-                'SELECT id FROM owner_portal.member WHERE workspace_id=$1 AND id=$2 FOR UPDATE',
+                `SELECT id FROM owner_portal.member m WHERE workspace_id=$1 AND id=$2 AND to_jsonb(m)->>'deleted_at' IS NULL FOR UPDATE`,
                 [workspace, body.memberId],
               )
             ).rows[0]
@@ -447,7 +519,7 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     await transaction(async (c) => {
       const [workspace, project] = await lock(c, req);
       await c.query(
-        'SELECT id FROM owner_portal.member WHERE workspace_id=$1 AND id=$2 FOR UPDATE',
+        `SELECT id FROM owner_portal.member m WHERE workspace_id=$1 AND id=$2 AND to_jsonb(m)->>'deleted_at' IS NULL FOR UPDATE`,
         [workspace, id],
       );
       const changed = await c.query(
@@ -474,12 +546,15 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
     res.json({ ok: true });
   });
   app.post(
-    prefix + '/members/:memberId/rebind',
+    ['/rebind', '/unlink', '/invite'].map((path) => prefix + '/members/:memberId' + path),
     owner,
     available,
     async (req: AuthRequest, res) => {
       const id = memberId.parse(req.params.memberId);
+      const inviting = req.path.endsWith('/invite');
+      const unlinking = req.path.endsWith('/unlink');
       const body = z.object({ phone: phone.optional() }).strict().parse(req.body);
+      if ((inviting || unlinking) && body.phone) throw new ApiError(400, '此操作无法更换手机号');
       const { digest, sealPhone } = keys();
       const invite = randomToken();
       await transaction(async (c) => {
@@ -489,38 +564,57 @@ export function staffOwnerRoutes(app: Express, options?: OwnerPortalOptions) {
           [workspace, project, id],
         );
         if (!grant.rowCount) throw new ApiError(404, '授权不存在');
-        if (body.phone)
-          await c.query(
-            'UPDATE owner_portal.member SET app_id=NULL,identity_digest=NULL,bound_at=NULL,phone_digest=$3,phone_sealed=$4,phone_suffix=$5 WHERE workspace_id=$1 AND id=$2',
-            [
-              workspace,
-              id,
-              digest('phone', workspace, body.phone),
-              sealPhone(body.phone),
-              body.phone.slice(-4),
-            ],
-          );
-        else
-          await c.query(
-            'UPDATE owner_portal.member SET app_id=NULL,identity_digest=NULL,bound_at=NULL WHERE workspace_id=$1 AND id=$2',
-            [workspace, id],
-          );
-        await c.query('DELETE FROM owner_portal.session WHERE member_id=$1', [id]);
-        await c.query(
-          'UPDATE owner_portal.invite SET consumed_at=now() WHERE member_id=$1 AND consumed_at IS NULL',
-          [id],
+        const member = await c.query(
+          'SELECT identity_digest FROM owner_portal.member WHERE workspace_id=$1 AND id=$2 FOR UPDATE',
+          [workspace, id],
         );
+        if (!member.rowCount || (inviting && member.rows[0].identity_digest))
+          throw new ApiError(409, '绑定状态已变化，请重新读取');
+        if (!inviting) {
+          if (body.phone)
+            await c.query(
+              'UPDATE owner_portal.member SET app_id=NULL,identity_digest=NULL,bound_at=NULL,phone_digest=$3,phone_sealed=$4,phone_suffix=$5 WHERE workspace_id=$1 AND id=$2',
+              [
+                workspace,
+                id,
+                digest('phone', workspace, body.phone),
+                sealPhone(body.phone),
+                body.phone.slice(-4),
+              ],
+            );
+          else
+            await c.query(
+              'UPDATE owner_portal.member SET app_id=NULL,identity_digest=NULL,bound_at=NULL WHERE workspace_id=$1 AND id=$2',
+              [workspace, id],
+            );
+          await c.query('DELETE FROM owner_portal.session WHERE member_id=$1', [id]);
+        }
         await c.query(
-          "INSERT INTO owner_portal.invite VALUES($1,$2,$3,$4,now()+interval '24 hours',NULL)",
-          [digest('invite', invite), workspace, project, id],
+          'UPDATE owner_portal.invite SET consumed_at=now() WHERE member_id=$1 AND consumed_at IS NULL AND ($2::text IS NULL OR project_id=$2)',
+          [id, inviting ? project : null],
         );
-        await audit(c, req.actor!, 'owner.identity.rebind', undefined, {
-          entityType: 'owner_member',
-          entityId: id,
-          operation: 'rebind',
-        });
+        if (!unlinking)
+          await c.query(
+            "INSERT INTO owner_portal.invite VALUES($1,$2,$3,$4,now()+interval '24 hours',NULL)",
+            [digest('invite', invite), workspace, project, id],
+          );
+        await audit(
+          c,
+          req.actor!,
+          inviting
+            ? 'owner.invite.issue'
+            : unlinking
+              ? 'owner.identity.unlink'
+              : 'owner.identity.rebind',
+          undefined,
+          {
+            entityType: 'owner_member',
+            entityId: id,
+            operation: inviting ? 'invite' : unlinking ? 'unlink' : 'rebind',
+          },
+        );
       });
-      res.json({ invite });
+      res.json(unlinking ? { ok: true } : { invite });
     },
   );
 }

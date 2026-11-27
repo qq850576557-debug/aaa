@@ -3,6 +3,8 @@ import express, { type Express, type Request } from 'express';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { authenticate, randomToken, setCookie, type AuthRequest } from './auth';
+import { saveAccountAvatar, avatarInput, avatarMime, validateAvatar } from './avatar';
+import { auditDevice } from './audit';
 import { config } from './config';
 import { pool, transaction } from './db';
 import { officialOwnerWechat, wechatOpenId } from './owner-wechat';
@@ -36,7 +38,11 @@ export function employeeRememberHash(appId: string, openId: string, token: strin
     .digest('hex');
 }
 
-export function miniEmployeeSessions(app: Express, wechat?: EmployeeWechat) {
+export function miniEmployeeSessions(
+  app: Express,
+  wechat?: EmployeeWechat,
+  onAvatarChanged?: (workspaceId: string) => void,
+) {
   const router = express.Router();
   app.use('/api/mini-employee/v1', router);
   router.use((req, res, next) => {
@@ -47,11 +53,15 @@ export function miniEmployeeSessions(app: Express, wechat?: EmployeeWechat) {
       !req.get('referer')?.startsWith(`https://servicewechat.com/${wechat.appId}/`)
     )
       throw new ApiError(403, '小程序请求来源不允许');
-    if (!(req.method === 'GET' && req.path === '/profile') && !req.is('application/json'))
+    if (
+      !(req.method === 'GET' && ['/profile', '/avatar'].includes(req.path)) &&
+      !req.is('application/json')
+    )
       throw new ApiError(415, '需要JSON请求');
     next();
   });
   if (!wechat) return;
+  router.use('/avatar', express.json({ limit: '1mb', strict: true }));
   router.use(express.json({ limit: '8kb', strict: true }));
 
   // A remembered token is never an employee cookie. Its distinct hash cannot
@@ -89,6 +99,21 @@ export function miniEmployeeSessions(app: Express, wechat?: EmployeeWechat) {
     if (!result.rowCount) throw new ApiError(401, '员工登录已失效，请重新登录');
     res.json({ name: actor.displayName, ...result.rows[0] });
   });
+  router.get('/avatar', authenticate, async (req: AuthRequest, res) => {
+    const record = (
+      await pool.query('SELECT png FROM account_avatar WHERE account_id=$1', [req.actor!.id])
+    ).rows[0];
+    if (!record) throw new ApiError(404, '头像不存在');
+    res.type(avatarMime(record.png)).send(record.png);
+  });
+  router.put('/avatar', authenticate, async (req: AuthRequest, res) => {
+    const image = await validateAvatar(avatarInput.parse(req.body), 512);
+    req.actor!.auditDevice = auditDevice(req.get('user-agent') ?? '');
+    await saveAccountAvatar(req.actor!, image);
+    onAvatarChanged?.(req.actor!.workspaceId);
+    res.json({ version: image.version });
+  });
+
   router.post('/remember', authenticate, async (req: AuthRequest, res) => {
     const { code } = rememberInput.parse(req.body);
     const token = randomToken();

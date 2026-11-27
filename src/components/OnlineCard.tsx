@@ -20,6 +20,7 @@ export function OnlineCard({
   if (account.id === user.id) return <PersonalCard user={user} onClose={onClose} />;
   return (
     <Modal
+      protect="view"
       title="在线人员名片"
       className="personal-card-dialog"
       onClose={onClose}

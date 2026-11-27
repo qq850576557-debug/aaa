@@ -73,6 +73,7 @@ export function ExportDialog({
   }
   return (
     <Modal
+      protect="view"
       title="导出施工工期长图"
       subtitle="完整日期与任务按实际数据绘制，不截取当前屏幕。"
       onClose={() => {

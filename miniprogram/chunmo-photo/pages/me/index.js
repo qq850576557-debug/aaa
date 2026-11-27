@@ -1,6 +1,5 @@
 const avatar = require('../../owner-login/avatar');
 const { avatarEditor } = require('../../owner-login/profile-avatar');
-const { origin } = require('../../config');
 const unified = require('../../lib/unified-login');
 const { requireSession } = require('../../lib/session');
 const { client } = require('../../lib/workbench-client');
@@ -9,15 +8,19 @@ Page({
   ...avatarEditor('profile', async function (path) {
     const epoch = this.avatarEpoch;
     const key = this.avatarKey;
-    const { savedFilePath } = await new Promise((resolve, reject) => {
-      wx.getFileSystemManager().saveFile({ tempFilePath: path, success: resolve, fail: reject });
+    const image = await new Promise((resolve, reject) => {
+      wx.getFileSystemManager().readFile({
+        filePath: path,
+        encoding: 'base64',
+        success: ({ data }) => resolve(data),
+        fail: reject,
+      });
     });
-    if (epoch !== this.avatarEpoch || key !== this.avatarKey) return;
-    const previous = wx.getStorageSync(key);
-    wx.setStorageSync(key, savedFilePath);
-    if (previous && previous !== savedFilePath)
-      wx.getFileSystemManager().removeSavedFile({ filePath: previous, fail() {} });
-    this.setData({ 'profile.avatar': savedFilePath });
+    await this.app.api.personalAvatar('data:image/jpeg;base64,' + image);
+    if (epoch === this.avatarEpoch && key === this.avatarKey) {
+      this.avatarFetch = (this.avatarFetch || 0) + 1;
+      this.showEmployeeAvatar(path);
+    }
   }),
   data: {
     profile: null,
@@ -34,16 +37,37 @@ Page({
       const c = client(this.app);
       const api = this.app.api;
       const identity = api.identity;
-      const key =
-        'chunmo.employee.avatar.v1:' + JSON.stringify([origin, identity.workspaceId, identity.id]);
+      const key = JSON.stringify([identity.workspaceId, identity.id]);
+      const previousAvatar = this.avatarKey === key ? this.data.profile?.avatar : '';
+      const fetch = (this.avatarFetch = (this.avatarFetch || 0) + 1);
       this.avatarKey = key;
       this.setData({
-        profile: { name: identity.name, avatar: wx.getStorageSync(key) || '' },
+        profile: { name: identity.name, avatar: previousAvatar || '' },
         subtitle: '',
         canSwitch: unified.canSwitch(),
         pending: c.pending.length,
         archive: c.archive.length,
       });
+      void api
+        .personalAvatar()
+        .then(async (bytes) => {
+          if (fetch !== this.avatarFetch || key !== this.avatarKey) return;
+          if (!bytes) return this.showEmployeeAvatar('');
+          const path =
+            wx.env.USER_DATA_PATH +
+            '/employee-avatar-' +
+            Date.now() +
+            '-' +
+            Math.random().toString(36).slice(2);
+          const fs = wx.getFileSystemManager();
+          await new Promise((resolve, reject) => {
+            fs.writeFile({ filePath: path, data: bytes, success: resolve, fail: reject });
+          });
+          if (fetch === this.avatarFetch && key === this.avatarKey)
+            this.showEmployeeAvatar(path, path);
+          else fs.unlink({ filePath: path, fail() {} });
+        })
+        .catch(() => {});
       void api
         .personalProfile?.()
         .then((value) => {
@@ -58,8 +82,18 @@ Page({
       this.setData({ error: message(e) });
     }
   },
+  showEmployeeAvatar(path, downloaded) {
+    const previous = this.downloadedAvatar;
+    this.downloadedAvatar = downloaded;
+    if (previous) wx.getFileSystemManager().unlink({ filePath: previous, fail() {} });
+    if (this.data.profile) this.setData({ 'profile.avatar': path });
+  },
+  avatarFailed(event) {
+    if (event.target.dataset.avatar === this.data.profile?.avatar) this.showEmployeeAvatar('');
+  },
   onUnload() {
     this.avatarKey = undefined;
+    this.showEmployeeAvatar('');
     this.releaseAvatar();
   },
   switchIdentity() {

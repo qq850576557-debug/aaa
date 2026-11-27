@@ -166,6 +166,10 @@ export function useLocalWorkspace(enabled = true) {
     error,
     update,
     restoreVersion,
+    confirmEditorSave: async () => {
+      await queue.current;
+      if (pending.current) throw Error('保存失败，当前内容已保留，请重试保存。');
+    },
     retry: () => persist(current.current),
   };
 }

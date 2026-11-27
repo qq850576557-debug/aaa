@@ -1,3 +1,5 @@
+import { ProjectOwnerDesign, type DesignSettings, type ProjectDesign } from './ProjectOwnerDesign';
+import { ProjectOwnerAccess } from './ProjectOwnerAccess';
 import { inCloud } from '../lib/cloud';
 import { desktopV1Enabled } from '../ui-v1/mode';
 import { PurchaseDateHistory } from './PurchaseDateHistory';
@@ -57,8 +59,10 @@ export function Editor({
   onDirtyChange,
   onDraftChange,
   ownerPurchase,
+  saveProjectDesign,
 }: {
   intro?: ReactNode;
+  saveProjectDesign?: (project: Project, design: ProjectDesign) => Promise<void>;
   ownerPurchase?: {
     projects: OwnerPurchaseProject[];
     published: boolean;
@@ -78,7 +82,11 @@ export function Editor({
   edit: Edit;
   data: Data;
   onClose: () => void;
-  onSave: (kind: Edit['kind'], v: Entity, intent?: { colorChanged?: boolean }) => void;
+  onSave: (
+    kind: Edit['kind'],
+    v: Entity,
+    intent?: { colorChanged?: boolean },
+  ) => void | Promise<void>;
   onDelete?: () => void;
   onCopy?: () => void;
   onContinue?: (t: Task) => void;
@@ -109,8 +117,16 @@ export function Editor({
     version?: string;
   }>();
   const [ownerItem, setOwnerItem] = useState<OwnerPurchaseItem>();
-  const [savingOwnerPurchase, setSavingOwnerPurchase] = useState(false);
-  const dirty = JSON.stringify(v) !== JSON.stringify(initial);
+  const [saving, setSaving] = useState(false);
+  const [designDraft, setDesignDraft] = useState<DesignSettings>();
+  const [savedDesign, setSavedDesign] = useState<DesignSettings>();
+  const [designLoaded, setDesignLoaded] = useState(!saveProjectDesign);
+  const [designError, setDesignError] = useState('');
+  const [ownerAccessDraft, setOwnerAccessDraft] = useState(false);
+  const designDirty =
+    designDraft?.rendering !== savedDesign?.rendering ||
+    designDraft?.panorama !== savedDesign?.panorama;
+  const dirty = JSON.stringify(v) !== JSON.stringify(initial) || designDirty || ownerAccessDraft;
   const collection = {
     project: data.projects,
     trade: data.trades,
@@ -118,7 +134,7 @@ export function Editor({
     note: data.notes,
     purchase: data.purchases,
   }[edit.kind];
-  const isExisting = collection.some(({ id }) => id === edit.value.id);
+  const [isExisting] = useState(() => collection.some(({ id }) => id === edit.value.id));
   const journal = useEditorJournal(
     `editor:${edit.kind}:${isExisting ? edit.value.id : 'new'}`,
     v,
@@ -132,7 +148,7 @@ export function Editor({
   );
   useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
   const close = () => {
-    if (!savingOwnerPurchase) {
+    if (!saving) {
       if (dirty || ownerDraft) setDiscard(true);
       else onClose();
     }
@@ -207,7 +223,7 @@ export function Editor({
             : undefined
         }
         required={key === 'projectId'}
-        disabled={kind === 'purchase' && key === 'status' && savingOwnerPurchase}
+        disabled={kind === 'purchase' && key === 'status' && saving}
         value={
           key === 'dependency'
             ? String((v.dependsOn as string[] | undefined)?.[0] ?? '')
@@ -314,7 +330,7 @@ export function Editor({
   }
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (savingOwnerPurchase) return;
+    if (saving || !designLoaded || ownerAccessDraft) return;
     try {
       const { orderBrand, orderModel, ...payload } = v;
       const order = enteringOrder
@@ -342,7 +358,7 @@ export function Editor({
       ) {
         const purchase = value as Purchase;
         const version = visibility ? visibility.version : ownerItem?.version;
-        setSavingOwnerPurchase(true);
+        setSaving(true);
         await ownerPurchase.save(
           purchase,
           checked,
@@ -351,8 +367,15 @@ export function Editor({
         );
         await journal.clear().catch(() => {});
         ownerPurchase.refresh();
+      } else if (kind === 'project' && saveProjectDesign && designDraft) {
+        const { origins: _origins, ...design } = designDraft;
+        setSaving(true);
+        await saveProjectDesign(value as Project, design);
+        await journal.clear().catch(() => {});
       } else {
-        onSave(kind, value, { colorChanged: kind === 'trade' && colorChanged.current });
+        setSaving(true);
+        await onSave(kind, value, { colorChanged: kind === 'trade' && colorChanged.current });
+        await journal.clear().catch(() => {});
       }
       if (again && kind === 'task' && onContinue) {
         onContinue(value as Task);
@@ -366,7 +389,7 @@ export function Editor({
             : String(err),
       );
     } finally {
-      setSavingOwnerPurchase(false);
+      setSaving(false);
     }
   }
   const labels = {
@@ -380,9 +403,9 @@ export function Editor({
   if (kind === 'project')
     fields = (
       <>
-        {input('name', '项目名称', 'text', true)}
-        {select('status', '项目状态', ['施工中', '已完工', '暂停'])}
+        <div className="span2 project-name-field">{input('name', '项目名称', 'text', true)}</div>
         {input('owner', '业主称呼')}
+        {select('status', '项目状态', ['施工中', '已完工', '暂停'])}
         {input('start', '计划开工日期', 'date', true)}
         {input('end', '计划完工日期', 'date', true)}
         {area('notes', '项目备注')}
@@ -526,7 +549,7 @@ export function Editor({
                 type="checkbox"
                 checked={checked}
                 disabled={
-                  savingOwnerPurchase ||
+                  saving ||
                   (!isNew && !awaitingCloudPurchase && !ownerItem && !visibility) ||
                   (!ownerProject?.enabled && !checked)
                 }
@@ -552,7 +575,7 @@ export function Editor({
             dirty={dirty || !!visibility}
             onChanged={ownerPurchase.refresh}
             onLoaded={setOwnerItem}
-            saving={savingOwnerPurchase}
+            saving={saving}
           />
         )}
       </>
@@ -562,6 +585,7 @@ export function Editor({
       {' '}
       <Modal
         inline={embedded}
+        protect="managed"
         title={`${isNew ? '新建' : '编辑'}${labels[kind]}`}
         subtitle={
           kind === 'trade' || desktopV1Enabled() ? undefined : '每一处细节，都让项目更有序。'
@@ -580,7 +604,7 @@ export function Editor({
         }
       >
         <form onSubmit={submit}>
-          <div className="modal-body" inert={savingOwnerPurchase}>
+          <div className="modal-body" inert={saving}>
             {intro}
             <div className="form-grid">
               {kind === 'trade' && peopleFields}
@@ -604,6 +628,27 @@ export function Editor({
               )}
               {kind !== 'trade' && peopleFields}
             </div>
+            {saveProjectDesign && (
+              <>
+                <ProjectOwnerAccess projectId={edit.value.id} onDraft={setOwnerAccessDraft} />
+                <ProjectOwnerDesign
+                  projectId={edit.value.id}
+                  draft={designDraft}
+                  onLoad={(settings) => {
+                    setSavedDesign(settings);
+                    setDesignDraft(settings);
+                    setDesignLoaded(true);
+                  }}
+                  onChange={setDesignDraft}
+                  onError={setDesignError}
+                />
+                {designError && (
+                  <p role="alert" className="error">
+                    {designError}
+                  </p>
+                )}
+              </>
+            )}
             {journal.status && <p role="status">{journal.status}</p>}
             {!!journal.recovery && (
               <details>
@@ -623,7 +668,7 @@ export function Editor({
                 <button
                   type="button"
                   className="text-btn destructive"
-                  disabled={savingOwnerPurchase}
+                  disabled={saving}
                   onClick={onDelete}
                 >
                   删除
@@ -647,7 +692,7 @@ export function Editor({
             {kind === 'purchase' && !isNew && onDeadlineChange && (
               <button
                 type="button"
-                disabled={savingOwnerPurchase}
+                disabled={saving}
                 onClick={() => {
                   if (dirty) {
                     setError('请先保存当前修改，再变更原定期限。');
@@ -676,7 +721,11 @@ export function Editor({
                 新增时间段
               </button>
             )}
-            <button type="submit" className="primary" disabled={savingOwnerPurchase}>
+            <button
+              type="submit"
+              className="primary"
+              disabled={saving || !designLoaded || ownerAccessDraft}
+            >
               {again ? '保存并继续' : '保存'}
             </button>
           </footer>

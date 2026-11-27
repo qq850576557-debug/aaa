@@ -17,7 +17,9 @@ export function Modal({
   topAligned = false,
   compactHeader = false,
   enhancedGlass = false,
+  protect = 'draft',
 }: {
+  protect?: 'draft' | 'managed' | 'view';
   inline?: boolean;
   topAligned?: boolean;
   compactHeader?: boolean;
@@ -34,6 +36,14 @@ export function Modal({
   animateClose?: boolean;
 }) {
   const [closing, setClosing] = useState(false);
+  const [discard, setDiscard] = useState(false);
+  const edited = useRef(false);
+  const policy = useRef(protect);
+  policy.current = protect;
+  const requestClose = () => {
+    if (policy.current === 'draft' && edited.current) setDiscard(true);
+    else closeRef.current();
+  };
   const glass = !inline && desktopV1Enabled();
   const optical =
     glass &&
@@ -97,6 +107,7 @@ export function Modal({
       if (e.detail > 0 && !outsidePress) return;
       outsidePress = false;
       if (
+        policy.current !== 'view' ||
         blocking ||
         placement === 'right' ||
         d.contains(e.target as Node) ||
@@ -123,7 +134,7 @@ export function Modal({
       const last = [...document.querySelectorAll('dialog[open]')].at(-1);
       if (last === d) {
         e.preventDefault();
-        closeRef.current();
+        if (policy.current === 'view') closeRef.current();
       }
     };
     window.addEventListener('resize', position);
@@ -167,36 +178,76 @@ export function Modal({
   }, [optical]);
   if (inline) return <section className={`inline-form ${className}`}>{children}</section>;
   return (
-    <dialog
-      ref={ref}
-      data-cm-glass={glass ? 'frosted' : undefined}
-      data-cm-glass-enhanced={optical ? '' : undefined}
-      className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${closing ? 'closing' : ''} ${glass ? 'cm-glass' : ''} ${className}`}
-      aria-modal={blocking}
-      aria-labelledby={headingId}
-      onCancel={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        closeRef.current();
-      }}
-      onClick={(e) => {
-        if (!blocking || e.target !== ref.current) return;
-        const r = ref.current.getBoundingClientRect();
-        if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)
-          closeRef.current();
-      }}
-    >
-      <header className={`modal-head${compactHeader ? ' modal-head-compact' : ''}`}>
-        <div className={compactHeader ? 'sr-only' : undefined}>
-          <h2 id={headingId}>{title}</h2>
-          {subtitle && <p>{subtitle}</p>}
-        </div>
-        <button className="icon-btn" aria-label="关闭浮窗" onClick={() => closeRef.current()}>
-          <X size={20} />
-        </button>
-      </header>
-      {children}
-    </dialog>
+    <>
+      <dialog
+        ref={ref}
+        data-cm-glass={glass ? 'frosted' : undefined}
+        data-cm-glass-enhanced={optical ? '' : undefined}
+        className={`modal ${wide ? 'wide' : ''} ${anchor ? 'anchored' : ''} ${blocking ? 'blocking-panel' : 'floating-panel'} ${placement === 'right' ? 'drawer' : ''} ${closing ? 'closing' : ''} ${glass ? 'cm-glass' : ''} ${className}`}
+        aria-modal={blocking}
+        aria-labelledby={headingId}
+        onCancel={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (protect === 'view') closeRef.current();
+        }}
+        onChangeCapture={(event) => {
+          if (protect !== 'draft' || !(event.target instanceof HTMLElement)) return;
+          const field = event.target;
+          if (field.closest('dialog') !== ref.current || field.closest('[data-modal-ignore]'))
+            return;
+          if (
+            field.matches(
+              'input:not([readonly]):not([type=search]), select, textarea:not([readonly])',
+            )
+          )
+            edited.current = true;
+        }}
+        onClickCapture={(event) => {
+          if (protect !== 'draft' || !edited.current || !(event.target instanceof Element)) return;
+          const button = event.target.closest('button');
+          if (button?.closest('dialog') !== ref.current || !button?.closest('footer')) return;
+          if (!['取消', '关闭'].includes(button?.textContent?.trim() ?? '')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          requestClose();
+        }}
+        onClick={(e) => {
+          if (protect !== 'view' || !blocking || e.target !== ref.current) return;
+          const r = ref.current.getBoundingClientRect();
+          if (
+            e.clientX < r.left ||
+            e.clientX > r.right ||
+            e.clientY < r.top ||
+            e.clientY > r.bottom
+          )
+            closeRef.current();
+        }}
+      >
+        <header className={`modal-head${compactHeader ? ' modal-head-compact' : ''}`}>
+          <div className={compactHeader ? 'sr-only' : undefined}>
+            <h2 id={headingId}>{title}</h2>
+            {subtitle && <p>{subtitle}</p>}
+          </div>
+          <button className="icon-btn" aria-label="关闭浮窗" onClick={requestClose}>
+            <X size={20} />
+          </button>
+        </header>
+        {children}
+      </dialog>
+      {discard && (
+        <Confirm
+          title="放弃未保存的修改？"
+          message="返回可继续编辑，确认后会关闭当前弹窗。"
+          onCancel={() => setDiscard(false)}
+          onConfirm={() => {
+            setDiscard(false);
+            edited.current = false;
+            closeRef.current();
+          }}
+        />
+      )}
+    </>
   );
 }
 export function Confirm({
@@ -206,6 +257,7 @@ export function Confirm({
   onConfirm,
   danger = true,
   busy = false,
+  error,
 }: {
   title: string;
   message: string;
@@ -213,11 +265,17 @@ export function Confirm({
   onConfirm: () => void;
   danger?: boolean;
   busy?: boolean;
+  error?: string;
 }) {
   return (
     <Modal title={title} onClose={() => !busy && onCancel()} blocking>
       <div className="modal-body">
         <p className="confirm-message">{message}</p>
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
       </div>
       <footer className="modal-foot">
         <button disabled={busy} onClick={onCancel}>

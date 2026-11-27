@@ -125,6 +125,10 @@ Page(
     switchIdentity() {
       wx.reLaunch({ url: unified.entry + '?choose=1' });
     },
+    avatarFailed(event) {
+      if (event.target.dataset.avatar === this.data.owner?.avatar)
+        this.setData({ 'owner.avatar': '' });
+    },
     retry() {
       store.retry();
       this.onShow();

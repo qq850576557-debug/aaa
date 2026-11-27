@@ -1,7 +1,8 @@
 import sharp from 'sharp';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { ApiError } from './store';
+import { transaction } from './db';
+import { ApiError, audit, type Actor } from './store';
 import { AVATAR_MIN_SIDE, AVATAR_MAX_BYTES, AVATAR_RESOLUTION_ERROR } from '../src/lib/avatar-crop';
 export const avatarInput = z
   .object({
@@ -19,7 +20,10 @@ export const avatarInput = z
   .strict();
 let processing = 0;
 /** Decode the actual uploaded source, orient, crop without enlargement, and encode under the existing DB bound. */
-export async function validateAvatar(body: z.infer<typeof avatarInput>) {
+export async function validateAvatar(
+  body: z.infer<typeof avatarInput>,
+  minimumWidth = AVATAR_MIN_SIDE,
+) {
   if (processing >= 2) throw new ApiError(429, '照片处理中，请稍后重试；已选照片和裁切位置会保留');
   processing++;
   try {
@@ -37,12 +41,12 @@ export async function validateAvatar(body: z.infer<typeof avatarInput>) {
       .flatten({ background: '#edf3ee' })
       .raw()
       .toBuffer({ resolveWithObject: true });
-    if (Math.min(info.width, info.height) < AVATAR_MIN_SIDE)
+    if (Math.min(info.width, info.height) < minimumWidth)
       throw new ApiError(400, AVATAR_RESOLUTION_ERROR);
     const crop = body.crop || { x: 0, y: 0, width: info.width, height: info.height };
     if (crop.x + crop.width > info.width || crop.y + crop.height > info.height)
       throw new ApiError(400, '裁切区域超出原图，请重新调整位置');
-    if (crop.width < AVATAR_MIN_SIDE)
+    if (crop.width < minimumWidth)
       throw new ApiError(400, '裁切区域像素不足，请缩小缩放倍数，保留至少720px的实际宽度');
     if (crop.height < 360 || crop.width / crop.height > 4 || crop.height / crop.width > 4)
       throw new ApiError(400, '裁切区域过窄，请按名片照片框调整，保留清晰的实际像素');
@@ -67,3 +71,27 @@ export async function validateAvatar(body: z.infer<typeof avatarInput>) {
 }
 export const avatarMime = (bytes: Buffer) =>
   bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg' : 'image/png';
+
+export async function saveAccountAvatar(
+  actor: Actor,
+  image: Awaited<ReturnType<typeof validateAvatar>>,
+) {
+  await transaction(async (c) => {
+    if (
+      !(await c.query('SELECT 1 FROM account WHERE id=$1 AND active FOR UPDATE', [actor.id]))
+        .rowCount
+    )
+      throw new ApiError(401, '会话已失效，请登录');
+    const { rowCount } = await c.query(
+      'INSERT INTO account_avatar(account_id,png,version) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET png=$2,version=$3,updated_at=now() WHERE account_avatar.png IS DISTINCT FROM $2 RETURNING version',
+      [actor.id, image.bytes, image.version],
+    );
+    if (rowCount)
+      await audit(c, actor, 'account.avatar', undefined, {
+        entityType: 'account',
+        entityId: actor.id,
+        operation: 'update',
+        changedFields: ['avatar'],
+      });
+  });
+}

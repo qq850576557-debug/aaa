@@ -161,6 +161,7 @@ export function RecordDrawer({
   return (
     <>
       <Modal
+        protect="managed"
         inline={embedded}
         title={base ? base.title : '新增记录'}
         subtitle={base ? '项目跟进记录' : '把需要跟进的事项留在项目中'}

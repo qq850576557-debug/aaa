@@ -85,6 +85,7 @@ export function MentionInbox() {
       </button>
       {open && (
         <Modal
+          protect="view"
           title="我的@消息"
           anchor={anchor ?? undefined}
           onClose={() => {

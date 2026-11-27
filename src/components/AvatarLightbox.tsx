@@ -15,7 +15,14 @@ export function AvatarLightbox({
     ? `/api/accounts/${encodeURIComponent(account.id)}/card-avatar?v=${encodeURIComponent(account.cardAvatarVersion)}`
     : '';
   return (
-    <Modal title="名片照片预览" className="avatar-lightbox" blocking animateClose onClose={onClose}>
+    <Modal
+      protect="view"
+      title="名片照片预览"
+      className="avatar-lightbox"
+      blocking
+      animateClose
+      onClose={onClose}
+    >
       <div className="modal-body">
         {!source ? (
           <p>尚未设置名片照片，可返回名片更换照片。</p>

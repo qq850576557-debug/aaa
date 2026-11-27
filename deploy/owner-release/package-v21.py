@@ -42,7 +42,7 @@ def build(repo, commit, app_id, output, contact=None):
         text = (release / 'pilot-terms.txt').read_text(encoding='utf-8').strip().replace('@CONTACT@', contact)
         text += (
             '\n\n员工首次绑定微信时，使用原员工账号密码及微信授权手机号确认本人。'
-            '员工主动选择的头像保存在本机对应账号下。经授权的业主可查看本住宅已发布的效果图和全景图，'
+            '员工主动选择并保存的头像与账号关联，用于网页和小程序同步显示。经授权的业主可查看本住宅已发布的效果图和全景图，'
             '设计成果通过微信允许的业务域名页面展示。'
         )
         terms = {'version': 'V2.1', 'text': text}
