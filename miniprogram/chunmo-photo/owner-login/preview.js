@@ -38,6 +38,8 @@ function showPolicy(event) {
       if (typeof wx.openPrivacyContract === 'function')
         wx.openPrivacyContract({ fail: unavailable });
       else unavailable();
+    } else if (event.currentTarget.dataset.title === '隐私政策') {
+      wx.navigateTo({ url: '/owner-login/pages/terms/index?type=privacy' });
     } else if (ownerSession.terms()) {
       wx.navigateTo({ url: '/owner-login/pages/terms/index' });
     } else {

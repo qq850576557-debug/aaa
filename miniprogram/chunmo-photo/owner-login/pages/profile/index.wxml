@@ -60,19 +60,19 @@
       </block>
       <button
         class="portal-row"
-        data-title="用户协议"
+        data-title="用户服务协议"
         bindtap="showPolicy"
         hover-class="row-pressed"
       >
-        <text>用户协议</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
+        <text>用户服务协议</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
       <button
         class="portal-row"
-        data-title="隐私保护指引"
+        data-title="隐私政策"
         bindtap="showPolicy"
         hover-class="row-pressed"
       >
-        <text>隐私保护指引</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
+        <text>隐私政策</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
       <button wx:if="{{canSwitch}}" class="portal-row" bindtap="switchIdentity" hover-class="row-pressed"><text>切换身份</text><view class="portal-arrow" aria-hidden="{{true}}"></view></button>
       <button class="portal-row" bindtap="logOut" hover-class="row-pressed">

@@ -423,14 +423,14 @@ try {
           if (owner) {
             await tap(page.getByText('效果图', { exact: true }));
             await tap(page.getByText('水电图', { exact: true }));
-            await tap(page.getByText('用户协议', { exact: true }));
-            await tap(page.getByText('隐私保护指引', { exact: true }));
+            await tap(page.getByText('用户服务协议', { exact: true }));
+            await tap(page.getByText('隐私政策', { exact: true }));
             await tap(page.getByText('事项', { exact: true }));
             assert.deepEqual(events.slice(0, 5), [
               '/owner-login/pages/design/index?kind=rendering&project=one',
               '/owner-login/pages/design/index?kind=panorama&project=one',
               '/owner-login/pages/terms/index',
-              '隐私保护指引',
+              '/owner-login/pages/terms/index?type=privacy',
               '返回',
             ]);
           } else {

@@ -7,8 +7,8 @@ const storageKey = isolated() ? 'chunmo.owner.v21.isolated.session' : production
   : 'chunmo.owner.v1.session';
 const entryKey = 'chunmo.mini.entry.v1';
 
-function terms() {
-  const policy = config.terms;
+function policyDocument(kind) {
+  const policy = kind === 'privacy' ? config.privacy : config.terms;
   return typeof policy?.version === 'string' &&
     policy.version.trim() &&
     typeof policy.text === 'string' &&
@@ -16,6 +16,9 @@ function terms() {
     ? policy
     : null;
 }
+
+const terms = () => policyDocument('terms');
+const privacyPolicy = () => policyDocument('privacy');
 
 function availableBuild() {
   const account = wx.getAccountInfoSync?.()?.miniProgram;
@@ -139,6 +142,7 @@ module.exports = {
   accept,
   availableBuild,
   terms,
+  privacyPolicy,
   enabled,
   login,
   session,
