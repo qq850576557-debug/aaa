@@ -16,6 +16,8 @@ studio_duty=0
 owner_018=0
 mini_monthly=0
 v21=0
+v21_pc=0
+v21_pc_label=0
 case $mode in
   --deploy-studio-duty|--rollback-studio-duty)
     studio_duty=1
@@ -39,6 +41,21 @@ case $mode in
     previous=8bbd1e818981d9d405dfbac8bc9a581768b648af
     mode=${mode%-v21}
     ;;
+  --deploy-v21-pc|--rollback-v21-pc)
+    v21=1
+    v21_pc=1
+    owner_018=1
+    previous=53dad25c7161e2af33c008c89ee8fb8cd53902e9
+    mode=${mode%-v21-pc}
+    ;;
+  --deploy-v21-pc-label|--rollback-v21-pc-label)
+    v21=1
+    v21_pc=1
+    v21_pc_label=1
+    owner_018=1
+    previous=b696aab3e28299eb69fd134391dec8b5278d9e1c
+    mode=${mode%-v21-pc-label}
+    ;;
 esac
 phase=host
 promoted=0
@@ -52,8 +69,13 @@ fail() { printf 'FAIL %s — %s\n' "$phase" "$*" >&2; exit 1; }
 [[ $# == 2 && ( $mode == --deploy || $mode == --rollback ) && $commit =~ ^[a-f0-9]{40}$ &&
     $commit != "$previous" ]] || fail '请使用已审核的发布入口和完整提交。'
 [[ $EUID == 0 ]] || fail '请在 Workbench 的 root 终端执行。'
-[[ $v21 == 0 || $commit == 53dad25c7161e2af33c008c89ee8fb8cd53902e9 ]] ||
-  fail 'V2.1 只能发布已验收的固定候选。'
+if [[ $v21_pc_label == 1 ]]; then
+  [[ $commit == b50c1b676ae8605f1e196521f690cc0788030f57 ]] || fail '文案补丁仅允许固定候选 b50c1b6。'
+elif [[ $v21_pc == 1 ]]; then
+  [[ $commit == b696aab3e28299eb69fd134391dec8b5278d9e1c ]] || fail '本次正式网页升级仅允许固定候选 b696aab。'
+elif [[ $v21 == 1 ]]; then
+  [[ $commit == 53dad25c7161e2af33c008c89ee8fb8cd53902e9 ]] || fail 'V2.1 只能发布已验收的固定候选。'
+fi
 exec 9>/run/lock/chunmo-staging-deploy.lock
 flock -n 9 || fail '已有部署或备份操作在运行。'
 old="$base/releases/$previous"
@@ -62,7 +84,8 @@ new="$base/releases/$commit"
   fail '找不到已核验的旧版本。'
 source "$conf/tools.env"
 export PG_ADMIN_SOCKET
-[[ $NODE_BIN == /* && -x $NODE_BIN && -S $PG_ADMIN_SOCKET/.s.PGSQL.5432 ]] ||
+[[ $NODE_BIN == /* && -x $NODE_BIN &&
+  ( ( $v21_pc == 1 && $mode == --rollback ) || -S $PG_ADMIN_SOCKET/.s.PGSQL.5432 ) ]] ||
   fail '当前 Node 或 PostgreSQL 工具路径不符合预检。'
 export PATH="$(dirname -- "$NODE_BIN"):$PATH"
 python3 -I -B - "$conf" "$v21" <<'PY'
@@ -92,14 +115,32 @@ runtime_v21() {
 if [[ $v21 == 1 ]]; then
   owner_enabled=$(runtime_v21 --owner-state) || fail '无法读取当前正式业主服务状态。'
 fi
+if [[ $v21_pc == 1 ]]; then
+  [[ $owner_enabled == 1 ]] || fail '本次发布需要保留已开启的正式业主采购服务，请核对现有配置。'
+  runtime_digest=$(sha256sum "$conf/runtime.env")
+fi
 
 site() {
-  curl -sS --noproxy '*' --proto '=https' --max-time 10 --resolve chmsj.cn:443:127.0.0.1 "$@"
+  curl -q -sS --noproxy '*' --proto '=https' --max-time 10 --resolve chmsj.cn:443:127.0.0.1 "$@"
+}
+
+label_asset() {
+  python3 -I -B - "$new/dist" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+dist = Path(sys.argv[1])
+links = re.findall(r'\bsrc="(/assets/index-[A-Za-z0-9_-]+\.js)"', (dist / 'index.html').read_text(encoding='utf-8'))
+if len(links) != 1 or '"panorama","水电图"'.encode() not in (dist / links[0][1:]).read_bytes():
+    raise SystemExit('找不到带水电图栏位的正式网页入口资源。')
+print(links[0])
+PY
 }
 
 health() {
-  local sha=$1 expected_index actual_index owner_status pid endpoint expect_new=0
-  if [[ $v21 == 1 && $sha == "$commit" ]]; then expect_new=1; fi
+  local sha=$1 expected_index actual_index owner_status pid endpoint asset expected_asset actual_asset expect_new=0
+  if [[ $v21 == 1 && ( $sha == "$commit" || $v21_pc == 1 ) ]]; then expect_new=1; fi
   for unit in "${units[@]}"; do systemctl is-active --quiet "$unit" || return 1; done
   site -f https://chmsj.cn/api/health | python3 -I -B -c '
 import json, sys
@@ -146,6 +187,26 @@ PY
       [[ $(site -o /dev/null -w '%{http_code}' "https://chmsj.cn$endpoint") == 401 ]] || return 1
     done
   fi
+  if [[ $v21_pc == 1 ]]; then
+    [[ $(sha256sum "$conf/runtime.env") == "$runtime_digest" ]] || return 1
+    for endpoint in /api/accounts/wechat /api/owner-accounts /api/projects/release-probe/owner-design \
+      /api/mini-owner/v1/projects/release-probe/design; do
+      [[ $(site -o /dev/null -w '%{http_code}' "https://chmsj.cn$endpoint") == 401 ]] || return 1
+    done
+    if [[ $sha == "$commit" || $v21_pc_label == 1 ]]; then
+      for endpoint in /api/mini-employee/v1/profile /api/mini-employee/v1/avatar; do
+        [[ $(site -o /dev/null -w '%{http_code}' \
+          -H 'Referer: https://servicewechat.com/wxb48a7abb3858a252/0/page-frame.html' \
+          "https://chmsj.cn$endpoint") == 401 ]] || return 1
+      done
+    fi
+  fi
+  if [[ $v21_pc_label == 1 && $sha == "$commit" ]]; then
+    asset=$(label_asset) || return 1
+    expected_asset=$(sha256sum "$new/dist$asset") || return 1
+    actual_asset=$(site -f "https://chmsj.cn$asset" | sha256sum) || return 1
+    [[ ${actual_asset%% *} == "${expected_asset%% *}" ]] || return 1
+  fi
 }
 
 wait_health() {
@@ -170,10 +231,10 @@ select_release() {
 }
 
 restore_app() {
-  if [[ $v21 == 1 ]]; then runtime_v21 --restore || return 1; fi
-  select_release "$old" &&
-    systemctl restart chunmo-staging-api &&
-    wait_health "$previous"
+  if [[ $v21 == 1 && $v21_pc == 0 ]]; then runtime_v21 --restore || return 1; fi
+  select_release "$old" || return 1
+  if [[ $v21_pc == 1 ]]; then systemctl reset-failed chunmo-staging-api || return 1; fi
+  systemctl restart chunmo-staging-api && wait_health "$previous"
 }
 
 finish() {
@@ -202,7 +263,7 @@ if [[ $mode == --rollback ]]; then
   phase=rollback
   [[ $active == "$old" || $active == "$new" ]] || fail '当前版本与本次发布不匹配。'
   if [[ $active == "$old" ]]; then
-    if [[ $v21 == 1 && -d $conf/release-v21-$commit ]]; then
+    if [[ $v21 == 1 && $v21_pc == 0 && -d $conf/release-v21-$commit ]]; then
       runtime_v21 --restore
     fi
     if ! health "$previous"; then restore_app; fi
@@ -220,6 +281,12 @@ git -C "$repo" merge-base --is-ancestor "$previous" "$commit" ||
   fail '发布版本并非当前正式基线的后继。'
 git -C "$repo" diff --quiet "$previous" "$commit" -- server/migrations package-lock.json ||
   fail '基础迁移或依赖锁定文件已变化。'
+if [[ $v21_pc_label == 1 ]]; then
+  [[ $(git -C "$repo" rev-parse "$commit^") == "$previous" ]] &&
+    git -C "$repo" diff --quiet "$previous" "$commit" -- . \
+      ':(exclude)src/components/ProjectOwnerDesign.tsx' ':(exclude)server/owner-portal.test.ts' ||
+    fail '文案补丁的版本或变更范围不匹配。'
+fi
 if [[ $studio_duty == 1 ]]; then
   changes=$(git -C "$repo" diff --name-only "$previous" "$commit")
   while IFS= read -r path; do
@@ -316,6 +383,12 @@ check_v21() {
   printf 'PASS 016–018 校验一致；019/020 状态 %s。\n' "$db_state"
 }
 
+check_021() {
+  db_state=$(sql <<< "$migration_check") || fail '019/020 正式账本或 021 结构核查失败。'
+  [[ $db_state == pending || $db_state == ready ]] || fail '无法识别 021 状态。'
+  printf 'PASS 019/020 已安装且核验通过；021 状态 %s。\n' "$db_state"
+}
+
 backup_and_rehearse_018() {
   local output archive
   output=$(cd "$old" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
@@ -341,16 +414,23 @@ if [[ $owner_018 == 1 ]]; then
     runtime_v21 --verify
     sql_source=$(mktemp -d /tmp/chunmo-v21-sql.XXXXXXXX)
     git -C "$repo" archive "$commit" server/proposed deploy/native/approved-migrations.json | tar -xf - -C "$sql_source"
-    migration_check=$(python3 -I -B "$launch_dir/prepare-v21.py" --check "$sql_source")
-    check_v21
+    if [[ $v21_pc == 1 ]]; then
+      migration_check=$(python3 -I -B "$launch_dir/prepare-021.py" --check "$sql_source")
+      check_021
+      [[ $v21_pc_label == 0 || $db_state == ready ]] || fail '先前发布的 021 必须已经完成。'
+    else
+      migration_check=$(python3 -I -B "$launch_dir/prepare-v21.py" --check "$sql_source")
+      check_v21
+    fi
   else
     migration_check=$(python3 -I -B "$launch_dir/prepare-018.py" --check)
     check_018
     [[ $mini_monthly == 0 || $db_state == ready ]] || fail '正式库需要已部署的 018'
   fi
-  pg_data=$(sql -Atc 'SHOW data_directory')
-  db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
-  python3 -I -B - "$backups" "$pg_data" "$db_bytes" <<'PY'
+  if [[ $v21_pc_label == 0 ]]; then
+    pg_data=$(sql -Atc 'SHOW data_directory')
+    db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
+    python3 -I -B - "$backups" "$pg_data" "$db_bytes" <<'PY'
 from pathlib import Path
 import os, sys
 backup, database = map(Path, sys.argv[1:3])
@@ -366,6 +446,7 @@ if available(backup) < max(gib, 2*size) + (size if shared else 0) or available(d
     raise SystemExit('FAIL 加密备份及新建隔离恢复库的可用空间不足')
 print('PASS 加密备份及隔离恢复空间核查')
 PY
+  fi
 elif [[ $studio_duty == 0 ]]; then
   migration_check=$(python3 -I -B "$launch_dir/prepare-migration.py" --check)
   db_state=$(sql <<< "$migration_check")
@@ -411,12 +492,27 @@ if [[ ! -e $new ]]; then
 fi
 [[ -d $new && ! -L $new && -r $new/.verified-build && $(<"$new/.verified-build") == "$commit" ]] ||
   fail '候选目录没有匹配的构建标记。'
+if [[ $v21_pc_label == 1 ]]; then label_asset >/dev/null || fail '候选网页文案核查失败。'; fi
 (cd "$new" && "$NODE_BIN" scripts/verify-release.mjs && "$NODE_BIN" scripts/verify-native.mjs --production &&
   "$NODE_BIN" dist-deploy/ops.mjs studio-db-ready "$conf")
 
 phase=database
 health "$previous" || fail '构建期间正式站状态发生变化。'
-if [[ $v21 == 1 ]]; then
+if [[ $v21_pc_label == 1 ]]; then
+  check_021
+  [[ $db_state == ready ]] || fail '切换前 021 核查失败。'
+elif [[ $v21_pc == 1 ]]; then
+  phase=pre-021-backup-and-restore
+  backup_and_rehearse_018
+  phase=database-021
+  check_021
+  if [[ $db_state == pending ]]; then
+    migration=$(python3 -I -B "$launch_dir/prepare-021.py" --apply "$sql_source")
+    sql <<< "$migration" >/dev/null
+  fi
+  check_021
+  [[ $db_state == ready ]] || fail '021 提交后核查失败。'
+elif [[ $v21 == 1 ]]; then
   phase=pre-v21-backup-and-restore
   backup_and_rehearse_018
   phase=database-019-020
@@ -452,17 +548,26 @@ elif [[ $studio_duty == 0 ]]; then
 else
   printf 'PASS 卫生值日发布只切换代码，已核验数据库就绪状态。\n'
 fi
-phase=backup
-(cd "$new" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
+if [[ $v21_pc == 0 ]]; then
+  phase=backup
+  (cd "$new" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
+fi
 
 phase=promotion
-if [[ $v21 == 1 ]]; then runtime_v21 --prepare; fi
+if [[ $v21_pc == 1 ]]; then
+  [[ $(readlink -e "$base/current") == "$old" && $(sha256sum "$conf/runtime.env") == "$runtime_digest" ]] ||
+    fail '候选构建期间正式版本或原有配置已变化。'
+elif [[ $v21 == 1 ]]; then runtime_v21 --prepare; fi
 promoted=1
-if [[ $v21 == 1 ]]; then runtime_v21 --apply; fi
+if [[ $v21 == 1 && $v21_pc == 0 ]]; then runtime_v21 --apply; fi
 select_release "$new"
 systemctl restart chunmo-staging-api
 wait_health "$commit" || fail '新版网页、API 或员工服务未通过验收。'
-if [[ $v21 == 1 ]]; then
+if [[ $v21_pc == 1 ]]; then
+  phase=post-021-acceptance
+  check_021
+  [[ $db_state == ready ]] || fail '上线后 021 核查失败。'
+elif [[ $v21 == 1 ]]; then
   phase=post-v21-acceptance
   check_v21
   [[ $db_state == ready ]] || fail '上线后 019/020 核查失败。'
@@ -472,7 +577,9 @@ elif [[ $owner_018 == 1 ]]; then
   [[ $db_state == ready ]] || fail '上线后 018 核查失败。'
 fi
 phase=complete
-if [[ $v21 == 1 ]]; then
+if [[ $v21_pc_label == 1 ]]; then
+  printf 'PASS 正式站水电图链接补丁已发布 %s\n' "$commit"
+elif [[ $v21 == 1 ]]; then
   printf 'PASS 正式 V2.1 网页/API/数据库部署通过 %s，业主服务开关保持 %s。\n' "$commit" "$owner_enabled"
 else
   printf 'PASS 正式网页/API/数据库部署通过 %s，业主开放保持关闭。\n' "$commit"
