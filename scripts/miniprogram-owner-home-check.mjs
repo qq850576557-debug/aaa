@@ -244,7 +244,7 @@ try {
           mascot: rect('.home-mascot'),
           pending: rect('.home-pending'),
           schedule: rect('.home-schedule'),
-          nav: rect('.owner-nav-home'),
+          nav: rect('.owner-nav'),
           overflow: document.documentElement.scrollWidth > innerWidth,
           mascotPointerEvents: getComputedStyle(document.querySelector('.home-mascot'))
             .pointerEvents,
@@ -305,7 +305,7 @@ try {
             }),
         );
         const row = await page.locator('.home-row').last().boundingBox();
-        const tab = await page.locator('.owner-nav-home').boundingBox();
+        const tab = await page.locator('.owner-nav').boundingBox();
         assert.ok(
           row.y > 0 && row.y + row.height < tab.y,
           JSON.stringify({

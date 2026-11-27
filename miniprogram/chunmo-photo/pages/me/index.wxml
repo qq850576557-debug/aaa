@@ -1,8 +1,10 @@
 <import src="../../owner-login/profile-card.wxml" />
 <view class="portal employee-profile profile-page">
   <view class="portal-wrap profile-wrap">
-    <template is="profile-summary" data="{{person: profile, subtitle: subtitle, avatarLoading: avatarLoading}}" />
-    <spring-notice text="{{error}}" tone="error" />
+    <view wx:if="{{profile}}" class="profile-card profile-card-employee">
+      <template is="profile-summary" data="{{person: profile, subtitle: subtitle, avatarLoading: avatarLoading}}" />
+    </view>
+    <spring-notice wx:if="{{error}}" text="{{error}}" tone="error" />
     <view class="profile-settings portal-card">
       <view class="employee-profile-stats">待同步工作记录 {{pending}} · 冲突草稿归档 {{archive || 0}}</view>
       <button class="portal-row" bindtap="exportDrafts"><text>复制本机工作草稿与归档</text><view class="portal-arrow" /></button>
@@ -10,6 +12,7 @@
       <button wx:if="{{canSwitch}}" class="portal-row" bindtap="switchIdentity"><text>切换身份</text><view class="portal-arrow" /></button>
       <button class="portal-row" bindtap="logout"><text>退出登录</text><view class="portal-arrow" /></button>
     </view>
+    <template is="profile-footer" />
   </view>
   <template is="avatar-editor" data="{{cropOpen: cropOpen, cropReady: cropReady, maxZoom: maxZoom, savingAvatar: savingAvatar, privacyVisible: privacyVisible}}" />
 </view>

@@ -1,5 +1,5 @@
 <template name="profile-summary">
-    <view wx:if="{{person}}" class="portal-card profile-summary">
+    <view class="profile-summary">
       <button
         class="profile-avatar-trigger"
         bindtap="chooseAvatar"
@@ -27,12 +27,20 @@
         </view>
         <text class="profile-avatar-label" aria-hidden="{{true}}">更换头像</text>
       </button>
-      <text wx:if="{{ownerBadge}}" class="profile-badge">屋主</text>
       <view class="profile-identity">
         <text class="profile-name">{{person.name}}</text>
-        <text wx:if="{{subtitle}}" class="profile-residence">{{subtitle}}</text>
+        <view wx:if="{{subtitle}}" class="profile-detail">
+          <image wx:if="{{residence}}" class="profile-residence-icon" src="/owner-login/assets/home-v1/home.svg" mode="aspectFit" aria-hidden="{{true}}" />
+          <text class="profile-subtitle">{{subtitle}}</text>
+        </view>
       </view>
     </view>
+</template>
+<template name="profile-footer">
+  <view class="profile-footer" aria-label="春茉空间设计">
+    <image class="profile-footer-logo" src="/owner-login/assets/brand-logo.png" mode="aspectFit" aria-hidden="{{true}}" />
+    <image class="profile-footer-wordmark" src="/owner-login/assets/brand-name.png" mode="aspectFit" aria-hidden="{{true}}" />
+  </view>
 </template>
 <template name="avatar-editor">
   <view wx:if="{{cropOpen}}" class="avatar-overlay">

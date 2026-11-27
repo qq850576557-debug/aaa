@@ -1,10 +1,7 @@
-@import '../../owner-login/pages/profile/index.wxss';
+@import '../../owner-login/profile-card.wxss';
+
 .employee-profile {
-  --ui-avatar-size: 60px;
-  --ui-avatar-text-gap: 16px;
-  --ui-info-card-padding: 20px;
-  --ui-info-card-top: 0px;
-  padding-top: 16px;
+  padding-top: 28rpx;
 }
 .employee-profile-stats {
   padding: 12px 16px;
