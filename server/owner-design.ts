@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { canonical } from '../src/lib/history';
 import { projectSchema, rememberNames } from '../src/lib/model';
 import { workspaceStateWithProof } from './workspace-save';
-import { designUrl } from '../src/lib/owner-design';
+import { configuredDesignOrigins, designUrl } from '../src/lib/owner-design';
 import { owner, type AuthRequest } from './auth';
 import { transaction } from './db';
 import { ApiError, audit, commit, getState, hash } from './store';
@@ -28,21 +28,7 @@ const edit = z
   .strict();
 
 function designOrigins() {
-  return [
-    ...new Set(
-      (process.env.CHUNMO_OWNER_DESIGN_ORIGINS ?? '').split(',').flatMap((entry) => {
-        const candidate = entry.trim();
-        try {
-          const url = new URL(candidate);
-          if (/^https:\/\/[a-z0-9.-]+\/?$/i.test(candidate) && /\.[a-z]{2,}$/i.test(url.hostname))
-            return [url.origin];
-        } catch {
-          // Invalid entries grant no access.
-        }
-        return [];
-      }),
-    ),
-  ];
+  return configuredDesignOrigins(process.env.CHUNMO_OWNER_DESIGN_ORIGINS ?? '');
 }
 
 export function ownerDesignStaffRoutes(app: Express) {
@@ -190,13 +176,17 @@ export function ownerDesignMiniRoutes(
     ).rows[0];
     if (!data) throw new ApiError(404, '当前住宅没有访问授权');
     const origins = designOrigins();
-    const rendering = designUrl(data.rendering, origins);
-    const panorama = designUrl(data.panorama, origins);
-    res.json({
-      rendering,
-      panorama,
-      ...(data.rendering && !rendering ? { renderingUnavailable: true } : {}),
-      ...(data.panorama && !panorama ? { panoramaUnavailable: true } : {}),
-    });
+    const result: Record<string, string | boolean> = {};
+    for (const field of fields) {
+      const stored = data[field];
+      const valid = designUrl(stored);
+      const allowed = valid && designUrl(valid, origins);
+      result[field] = allowed;
+      if (stored && !allowed) {
+        result[field + 'Unavailable'] = true;
+        result[field + 'Issue'] = valid ? 'domain_unconfigured' : 'invalid_link';
+      }
+    }
+    res.json(result);
   });
 }

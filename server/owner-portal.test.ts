@@ -1953,11 +1953,12 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         rendering: '',
         panorama: body.panorama,
       });
+      const shinewonderLink = 'https://vr.shinewonder.com/pano/page/publik/pklimit?inf=sample@@demo&sig=a%2Fb#scene';
       const outside = await request(
         settings('p1'),
         'PUT',
         {
-          rendering: 'https://vr.shinewonder.com/isolated-sample',
+          rendering: shinewonderLink,
           panorama: '',
           version: stored.body.version + 1,
         },
@@ -1968,7 +1969,18 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         rendering: '',
         panorama: '',
         renderingUnavailable: true,
+        renderingIssue: 'domain_unconfigured',
       });
+      process.env.CHUNMO_OWNER_DESIGN_ORIGINS = 'vr.shinewonder.com,https://design.example.com';
+      try {
+        assert.deepEqual((await feedDesign('p1', tokenA)).body, {
+          rendering: shinewonderLink,
+          panorama: '',
+        });
+        assert.equal((await feedDesign('secret', tokenA)).status, 404);
+      } finally {
+        process.env.CHUNMO_OWNER_DESIGN_ORIGINS = 'https://design.example.com';
+      }
       const auditRows = (
         await admin.query(
           "SELECT after_value,changed_fields FROM audit_event WHERE action='owner.design.update'",

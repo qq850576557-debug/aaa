@@ -3,7 +3,7 @@ export function designUrl(input: string, origins?: readonly string[]) {
   if (
     input.length > 1500 ||
     /[\s\\\u0000-\u001f\u007f]/u.test(input) ||
-    !/^https:\/\//i.test(input)
+    !/^https:\/\/[a-z0-9.-]+(?::[0-9]+)?(?=[/?#]|$)/i.test(input)
   )
     return '';
   try {
@@ -15,8 +15,27 @@ export function designUrl(input: string, origins?: readonly string[]) {
       (origins && !origins.includes(url.origin))
     )
       return '';
-    return url.href.length <= 1500 ? url.href : '';
+    // Keep the provider's path, query and fragment intact, including share signatures.
+    return input.replace(/^https:/i, 'https:');
   } catch {
     return '';
   }
+}
+
+export function configuredDesignOrigins(config: string) {
+  return [
+    ...new Set(
+      config.split(/[,，\n]/).flatMap((entry) => {
+        const value = entry.trim();
+        if (
+          !/^(?:https:\/\/)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::443)?\/?$/i.test(
+            value,
+          )
+        )
+          return [];
+        const origin = /^https:/i.test(value) ? value : 'https://' + value;
+        return [new URL(origin).origin];
+      }),
+    ),
+  ];
 }

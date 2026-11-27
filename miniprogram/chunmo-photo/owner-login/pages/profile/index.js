@@ -95,7 +95,12 @@ Page(
       try {
         const data = await ownerSession.projectDesign(project);
         if (epoch === this.designEpoch)
-          this.setData({ design: { rendering: !!data.rendering, panorama: !!data.panorama } });
+          this.setData({
+            design: {
+              rendering: !!(data.rendering || data.renderingUnavailable),
+              panorama: !!(data.panorama || data.panoramaUnavailable),
+            },
+          });
       } catch (error) {
         if (epoch !== this.designEpoch) return;
         if (error.statusCode === 401) {

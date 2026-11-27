@@ -1,6 +1,10 @@
 const store = require('../../fixture-store');
 const owner = require('../../owner-session');
 const { routes } = require('../../preview');
+const domainMessage = '该链接的域名尚未配置为微信业务域名，请联系春茉核对。';
+const invalidMessage = '设计成果链接格式不正确，请联系春茉更换链接。';
+const expiredMessage = '设计成果链接已失效，请联系春茉获取新链接。';
+const loadMessage = '设计成果网页加载失败，请检查网络后重试。';
 
 Page({
   data: { src: '', loading: true, feedback: '' },
@@ -30,15 +34,21 @@ Page({
       const result = await owner.projectDesign(this.project);
       if (epoch !== this.epoch) return;
       const url = result[this.kind];
-      if (!url)
+      const issue = result[this.kind + 'Issue'];
+      if (issue === 'domain_unconfigured') this.setData({ feedback: domainMessage });
+      else if (issue === 'invalid_link') this.setData({ feedback: invalidMessage });
+      else if (!url)
         this.setData({
           feedback: result[this.kind + 'Unavailable']
             ? '此链接暂不能在微信内打开，请联系春茉'
             : '暂未发布',
         });
-      else if (/^https:\/\/[a-z0-9.-]+\//i.test(url) && !/[\s\\]/u.test(url))
+      else if (
+        /^https:\/\/[a-z0-9.-]+(?::443)?(?=[/?#]|$)/i.test(url) &&
+        !/[\s\\\u0000-\u001f\u007f]/u.test(url)
+      )
         this.setData({ src: url });
-      else this.setData({ feedback: '链接与微信业务域名配置不一致，请联系春茉' });
+      else this.setData({ feedback: invalidMessage });
     } catch (error) {
       if (epoch !== this.epoch) return;
       if (error.statusCode === 401) {
@@ -59,11 +69,12 @@ Page({
   retry() {
     return this.load();
   },
-  failed() {
-    this.setData({
-      src: '',
-      loading: false,
-      feedback: '内容加载失败，请检查网络；如反复失败，请联系春茉核对微信业务域名。',
-    });
+  failed({ detail = {} } = {}) {
+    if (!this.data.src) return;
+    let feedback = loadMessage;
+    if (/业务域名|not in (?:the )?domain list|domain.*not allowed/i.test(detail.errMsg || ''))
+      feedback = domainMessage;
+    else if ([404, 410].includes(Number(detail.statusCode))) feedback = expiredMessage;
+    this.setData({ src: '', loading: false, feedback });
   },
 });
