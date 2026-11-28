@@ -1,7 +1,7 @@
 import { useEffect, useId } from 'react';
 import { ExternalLink, X } from 'lucide-react';
 import { CloudError, cloudApi } from '../lib/cloud';
-import { designUrl } from '../lib/owner-design';
+import { resolveDesignLink } from '../lib/owner-design';
 
 export type ProjectDesign = { rendering: string; panorama: string; version: number };
 export type DesignSettings = ProjectDesign & { origins: string[] };
@@ -46,7 +46,7 @@ export function ProjectOwnerDesign({
     <section className="project-owner-section owner-design" aria-label="设计成果">
       <h3>设计成果</h3>
       {fields.map(([key, label]) => {
-        const preview = designUrl(draft[key].trim());
+        const preview = resolveDesignLink(draft[key], draft.origins).url;
         return (
           <div key={key} className="form-field">
             <label htmlFor={id + key}>{label}链接</label>

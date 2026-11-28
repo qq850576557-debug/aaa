@@ -9,6 +9,7 @@ from package import APP, APP_ID, archive, encoded
 
 TEST_ORIGIN = 'https://owner-test.chmsj.cn'
 FORMAL_ORIGIN = 'https://chmsj.cn'
+PRIVACY_CONTACT = '850576557@qq.com'
 
 
 def build(repo, commit, app_id, output, contact=None):
@@ -23,7 +24,13 @@ def build(repo, commit, app_id, output, contact=None):
     formal = contact is not None
     origin = FORMAL_ORIGIN if formal else TEST_ORIGIN
     folder = 'chunmo-v21-formal' if formal else 'chunmo-v21-test'
-    terms = {'version': 'V2.1-test', 'text': '本包仅限隔离测试。请使用已授权测试账号及演示数据。'}
+    release = Path(__file__).resolve().parent
+    version = 'V2.1' if formal else 'V2.1-test'
+
+    def document(name):
+        text = (release / name).read_text(encoding='utf-8').strip()
+        return {'version': version, 'text': text.replace('@CONTACT@', contact or PRIVACY_CONTACT)}
+
     files = archive(repo, commit, [APP.rstrip('/')])
     app = json.loads(files['app.json'])
     if app['pages'][0] != 'owner-login/pages/welcome/index':
@@ -37,21 +44,13 @@ def build(repo, commit, app_id, output, contact=None):
         'apiPrefix': '/api/mini-photo-candidate/',
         'version': '2.1-formal' if formal else '2.1-isolated',
     }).rstrip() + b');\n'
-    if formal:
-        release = Path(__file__).resolve().parent
-        text = (release / 'pilot-terms.txt').read_text(encoding='utf-8').strip().replace('@CONTACT@', contact)
-        text += (
-            '\n\n员工首次绑定微信时，使用原员工账号密码及微信授权手机号确认本人。'
-            '员工主动选择并保存的头像与账号关联，用于网页和小程序同步显示。经授权的业主可查看本住宅已发布的效果图和全景图，'
-            '设计成果通过微信允许的业务域名页面展示。'
-        )
-        terms = {'version': 'V2.1', 'text': text}
     files['owner-login/owner-live-config.js'] = b'module.exports = ' + encoded({
         'deployment': 'production' if formal else 'isolated',
         'unified': True,
         'origin': origin,
         'appId': app_id,
-        'terms': terms,
+        'terms': document('v21-terms.txt'),
+        'privacy': document('v21-privacy.txt'),
     }).rstrip() + b';\n'
     if formal:
         files['README-正式候选包.txt'] = (
@@ -65,17 +64,24 @@ def build(repo, commit, app_id, output, contact=None):
             '请使用隔离测试 AppID、允许访问该域名的体验成员及合成测试账号。\n'
             '导入本目录并预览。统一登录、员工工作台和业主采购需隔离环境的对应 API。\n'
         ).encode()
+    files = {
+        name: data for name, data in files.items()
+        if not name.startswith(('tests/', 'tools/')) and name not in ('README.md', 'package.json')
+    }
+    roots = [entry['root'].rstrip('/') + '/' for entry in app.get('subPackages', [])]
+    sizes = dict.fromkeys(['', *roots], 0)
+    for name, data in files.items():
+        root = next((root for root in roots if name.startswith(root)), '')
+        sizes[root] += len(data)
+    for root, size in sizes.items():
+        if size > 2_000_000:
+            raise ValueError(f'Mini Program package {root or "(main)"} exceeds 2 MB ({size} bytes)')
+
     with ZipFile(output, 'w', compression=ZIP_DEFLATED) as package:
-        size = 0
         for name, data in sorted(files.items()):
-            if name.startswith(('tests/', 'tools/')) or name in ('README.md', 'package.json'):
-                continue
-            size += len(data)
             item = ZipInfo(folder + '/' + name, (2026, 11, 25, 0, 0, 0))
             item.compress_type = ZIP_DEFLATED
             package.writestr(item, data)
-        if size > 2_000_000:
-            raise ValueError('The single Mini Program package exceeds 2 MB')
 
 
 if __name__ == '__main__':

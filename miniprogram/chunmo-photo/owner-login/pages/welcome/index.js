@@ -3,7 +3,7 @@ const { startPreview, routes, showPolicy } = require('../../preview');
 const { begin, beginVerified, modes } = require('../../fixture-store');
 const ownerSession = require('../../owner-session');
 const unified = require('../../../lib/unified-login');
-const { call } = require('../../../lib/platform');
+const { call, privacy } = require('../../../lib/platform');
 const invitePattern = /^[a-f0-9]{64}$/;
 
 Page(
@@ -224,13 +224,14 @@ Page(
       if (!this.data.ready || this.data.busy) return;
       if (this.data.unified) {
         if (!this.data.agreed) {
-          this.setData({ feedback: '请先阅读并勾选协议及隐私指引', feedbackTone: 'info' });
+          this.setData({ feedback: '请先阅读并勾选用户服务协议和隐私政策', feedbackTone: 'info' });
           return;
         }
         this.setData({ busy: true, feedback: '' });
-        return this.discover()
+        return privacy()
+          .then(() => this.discover())
           .catch((error) => {
-            this.setData({ feedback: error.message, feedbackTone: 'error' });
+            this.setData({ feedback: error.message || '请同意微信隐私保护指引后再登录', feedbackTone: 'error' });
           })
           .finally(() => this.setData({ busy: false }));
       }
@@ -290,23 +291,24 @@ Page(
     async openEmployee() {
       if (this.data.unified) {
         if (this.data.busy) return;
+        if (!this.data.agreed) {
+          this.setData({ feedback: '请先阅读并勾选用户服务协议和隐私政策', feedbackTone: 'info' });
+          return;
+        }
         try {
           const result = await call('showActionSheet', {
             itemList: ['员工账号密码登录', '首次绑定'],
           });
           if (result.tapIndex === 0) wx.navigateTo({ url: '/pages/login/index?manual=1' });
           if (result.tapIndex === 1) {
-            if (!this.data.agreed) {
-              this.setData({ feedback: '请先阅读并勾选协议及隐私指引', feedbackTone: 'info' });
-              return;
-            }
             this.setData({ busy: true, feedback: '' });
+            await privacy();
             await this.discover(false, true);
           }
         } catch (error) {
           if (!/cancel/i.test(error.errMsg ?? ''))
             this.setData({
-              feedback: error.message || '暂时无法打开，请重试。',
+              feedback: error.message || '请同意微信隐私保护指引后再登录',
               feedbackTone: 'error',
             });
         } finally {

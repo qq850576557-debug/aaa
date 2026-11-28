@@ -1,5 +1,11 @@
 @import '../../portal.wxss';
 
+.terms-card {
+  padding: 16px;
+}
 .terms-text {
+  display: block;
+  margin: 12px 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

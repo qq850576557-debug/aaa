@@ -1726,17 +1726,24 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await page.getByRole('button', { name: '编辑项目一号住宅' }).click();
           const projectDialog = page.getByRole('dialog', { name: '编辑项目', exact: true });
           const rendering = projectDialog.getByLabel('效果图链接', { exact: true });
-          await rendering.fill('https://vr.shinewonder.com/isolated-sample');
+          const sharePath = '/pano/page/publik/pklimit?inf=isolated@@sample&sig=a%2Fb#scene';
+          const pastedLink = 'https://vr.shinewonder.com' + sharePath;
+          const publishedLink = 'https://8ec387dc.shinewonder.com' + sharePath;
+          await rendering.fill(pastedLink);
           await page.mouse.click(4, 4);
           await expect(projectDialog).toBeVisible();
           await projectDialog.getByRole('button', { name: '取消', exact: true }).click();
           const discard = page.getByRole('dialog', { name: '放弃未保存的修改？' });
           await expect(discard).toBeVisible();
           await discard.getByRole('button', { name: '取消' }).click();
-          await expect(rendering).toHaveValue('https://vr.shinewonder.com/isolated-sample');
+          await expect(rendering).toHaveValue(pastedLink);
           await expect(projectDialog.getByRole('link', { name: '预览效果图' })).toHaveAttribute(
             'rel',
             'noopener noreferrer',
+          );
+          await expect(projectDialog.getByRole('link', { name: '预览效果图' })).toHaveAttribute(
+            'href',
+            publishedLink,
           );
           await projectDialog.locator('.modal-body').evaluate((body) => {
             body.scrollTop = 0;
@@ -1749,18 +1756,25 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
             async (route) => {
               const committed = await route.fetch();
               assert.equal(committed.status(), 200);
+              assert.equal((await committed.json()).rendering, publishedLink);
               await route.fulfill({ status: 503, json: { error: '隔离测试模拟网络异常' } });
             },
             { times: 1 },
           );
           await save.click();
           await expect(projectDialog.getByRole('alert')).toContainText('隔离测试模拟网络异常');
-          await expect(rendering).toHaveValue('https://vr.shinewonder.com/isolated-sample');
+          await expect(rendering).toHaveValue(pastedLink);
+          const replay = page.waitForResponse(
+            (response) =>
+              response.url().endsWith('/api/projects/p1/owner-design') &&
+              response.request().method() === 'PUT',
+          );
           await save.click();
+          assert.equal((await (await replay).json()).rendering, publishedLink);
           await expect(projectDialog).toHaveCount(0);
           assert.equal(
             (await request('/projects/p1/owner-design', 'GET', undefined, founder)).body.rendering,
-            'https://vr.shinewonder.com/isolated-sample',
+            publishedLink,
           );
           assert.equal(
             (await request('/workspace', 'GET', undefined, founder)).body.data.projects.find(
@@ -1953,22 +1967,63 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         rendering: '',
         panorama: body.panorama,
       });
-      const outside = await request(
+      const sharePath = '/pano/page/publik/pklimit?inf=sample@@demo&sig=a%2Fb&n=1&n=2#scene';
+      const publicShare = 'https://vr.shinewonder.com' + sharePath;
+      const dedicatedShare = 'https://8ec387dc.shinewonder.com' + sharePath;
+      const submission = {
+        rendering: publicShare,
+        panorama: dedicatedShare,
+        version: stored.body.version + 1,
+      };
+      for (const [rendering, message] of [
+        ['https://vr.shinewonder.com/pano/page/preview?inf=sample', /预览/],
+        ['https://8ec387dc.shinewonder.com/pano/page/publik/pklimit?inf=', /格式不正确/],
+        ['https://8ec387dc.shinewonder.com.external.example.com' + sharePath, /域名未加入/],
+        ['https://another.shinewonder.com' + sharePath, /域名未加入/],
+      ] as const) {
+        const rejected = await request(
+          settings('p1'),
+          'PUT',
+          { ...submission, rendering },
+          founder,
+        );
+        assert.equal(rejected.status, 400);
+        assert.match(rejected.body.error, message);
+      }
+      const published = await request(settings('p1'), 'PUT', submission, founder);
+      assert.equal(published.status, 200);
+      assert.ok(published.body.origins.includes('https://8ec387dc.shinewonder.com'));
+      assert.equal(published.body.rendering, dedicatedShare);
+      assert.equal(published.body.panorama, dedicatedShare);
+      assert.deepEqual((await feedDesign('p1', tokenA)).body, {
+        rendering: dedicatedShare,
+        panorama: dedicatedShare,
+      });
+
+      await admin.query(
+        "UPDATE owner_portal.project_design SET rendering=$1,panorama=$2 WHERE project_id='p1'",
+        [publicShare, 'https://outside.example.com/old'],
+      );
+      assert.deepEqual((await feedDesign('p1', tokenB)).body, {
+        rendering: dedicatedShare,
+        panorama: '',
+        panoramaUnavailable: true,
+        panoramaIssue: 'domain_unconfigured',
+      });
+      assert.equal((await feedDesign('secret', tokenA)).status, 404);
+      const retained = await request(
         settings('p1'),
         'PUT',
         {
-          rendering: 'https://vr.shinewonder.com/isolated-sample',
-          panorama: '',
-          version: stored.body.version + 1,
+          rendering: publicShare,
+          panorama: 'https://outside.example.com/old',
+          version: published.body.version,
         },
         founder,
       );
-      assert.equal(outside.status, 200);
-      assert.deepEqual((await feedDesign('p1', tokenA)).body, {
-        rendering: '',
-        panorama: '',
-        renderingUnavailable: true,
-      });
+      assert.equal(retained.status, 200);
+      assert.equal(retained.body.version, published.body.version);
+      assert.equal((await request(settings('p1'), 'GET', undefined, founder)).body.rendering, publicShare);
       const auditRows = (
         await admin.query(
           "SELECT after_value,changed_fields FROM audit_event WHERE action='owner.design.update'",

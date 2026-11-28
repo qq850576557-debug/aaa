@@ -4,7 +4,12 @@ import { z } from 'zod';
 import { canonical } from '../src/lib/history';
 import { projectSchema, rememberNames } from '../src/lib/model';
 import { workspaceStateWithProof } from './workspace-save';
-import { designUrl } from '../src/lib/owner-design';
+import {
+  configuredDesignOrigins,
+  designUrl,
+  resolveDesignLink,
+  shinewonderOrigin,
+} from '../src/lib/owner-design';
 import { owner, type AuthRequest } from './auth';
 import { transaction } from './db';
 import { ApiError, audit, commit, getState, hash } from './store';
@@ -29,21 +34,18 @@ const edit = z
 
 function designOrigins() {
   return [
-    ...new Set(
-      (process.env.CHUNMO_OWNER_DESIGN_ORIGINS ?? '').split(',').flatMap((entry) => {
-        const candidate = entry.trim();
-        try {
-          const url = new URL(candidate);
-          if (/^https:\/\/[a-z0-9.-]+\/?$/i.test(candidate) && /\.[a-z]{2,}$/i.test(url.hostname))
-            return [url.origin];
-        } catch {
-          // Invalid entries grant no access.
-        }
-        return [];
-      }),
-    ),
+    ...new Set([
+      shinewonderOrigin,
+      ...configuredDesignOrigins(process.env.CHUNMO_OWNER_DESIGN_ORIGINS ?? ''),
+    ]),
   ];
 }
+
+const designIssueMessages = {
+  invalid_link: '设计成果链接格式不正确，请复制完整的 HTTPS 正式分享链接。',
+  preview_link: '请使用炫云正式分享链接，预览页和编辑页链接无法发布。',
+  domain_unconfigured: '该链接域名未加入设计成果允许名单，请核对微信业务域名。',
+};
 
 export function ownerDesignStaffRoutes(app: Express) {
   if (process.env.CHUNMO_OWNER_DESIGN_ENABLED !== '1') return;
@@ -69,12 +71,6 @@ export function ownerDesignStaffRoutes(app: Express) {
     const actor = req.actor!,
       target = projectId.parse(req.params.projectId);
     const origins = designOrigins();
-    const accepted = {
-      rendering: designUrl(body.rendering.trim()),
-      panorama: designUrl(body.panorama.trim()),
-    };
-    if (fields.some((field) => body[field].trim() && !accepted[field]))
-      throw new ApiError(400, '请填写有效的 HTTPS 链接');
     const result = await transaction(async (c) => {
       const current = body.project && (await getState(c, actor.workspaceId, 'UPDATE'));
       const requestHash = body.project && hash(canonical({ target, body }));
@@ -90,7 +86,15 @@ export function ownerDesignStaffRoutes(app: Express) {
         if (receipt) {
           if (receipt.requestHash !== requestHash)
             throw new ApiError(409, '提交编号已用于其他修改');
+          const links = { rendering: body.rendering, panorama: body.panorama };
+          for (const field of fields) {
+            if (!Array.isArray(receipt.normalizedFields))
+              links[field] = designUrl(body[field].trim());
+            else if (receipt.normalizedFields.includes(field))
+              links[field] = resolveDesignLink(body[field]).url;
+          }
           return {
+            ...links,
             version: receipt.version as number,
             workspace: workspaceStateWithProof(current, actor),
           };
@@ -111,6 +115,13 @@ export function ownerDesignStaffRoutes(app: Express) {
         )
       ).rows[0] ?? { rendering: '', panorama: '', version: 0 };
       if (old.version !== body.version) throw new ApiError(409, '设置已更新，请重新读取后再保存');
+      const accepted = { rendering: old.rendering as string, panorama: old.panorama as string };
+      for (const field of fields) {
+        if (body[field] === old[field]) continue;
+        const { url, issue } = resolveDesignLink(body[field], origins);
+        if (issue) throw new ApiError(400, designIssueMessages[issue]);
+        accepted[field] = url;
+      }
       const changed = fields.filter((field) => old[field] !== accepted[field]);
       const next = Number(old.version) + Number(changed.length > 0);
       if (changed.length) {
@@ -165,11 +176,15 @@ export function ownerDesignStaffRoutes(app: Express) {
           entityType: 'workspace_submission',
           entityId: body.project.requestId,
           operation: 'submit',
-          after: { requestHash, version: next },
+          after: {
+            requestHash,
+            version: next,
+            normalizedFields: fields.filter((field) => accepted[field] !== body[field]),
+          },
         });
-      return { version: next, workspace };
+      return { version: next, workspace, ...accepted };
     });
-    res.json({ ...accepted, ...result, origins });
+    res.json({ ...result, origins });
   });
 }
 
@@ -190,13 +205,15 @@ export function ownerDesignMiniRoutes(
     ).rows[0];
     if (!data) throw new ApiError(404, '当前住宅没有访问授权');
     const origins = designOrigins();
-    const rendering = designUrl(data.rendering, origins);
-    const panorama = designUrl(data.panorama, origins);
-    res.json({
-      rendering,
-      panorama,
-      ...(data.rendering && !rendering ? { renderingUnavailable: true } : {}),
-      ...(data.panorama && !panorama ? { panoramaUnavailable: true } : {}),
-    });
+    const result: Record<string, string | boolean> = {};
+    for (const field of fields) {
+      const { url, issue } = resolveDesignLink(data[field], origins);
+      result[field] = url;
+      if (issue) {
+        result[field + 'Unavailable'] = true;
+        result[field + 'Issue'] = issue;
+      }
+    }
+    res.json(result);
   });
 }

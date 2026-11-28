@@ -24,7 +24,7 @@ module.exports = {
     avatarSize: 63,
     avatarTextGap: 22,
     footerVisible: true,
-    footerTopGap: 55,
+    footerTopGap: 28,
     footerFontSize: 12,
   },
 };

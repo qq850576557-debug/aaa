@@ -1,11 +1,12 @@
 <import src="../../portal.wxml" />
 <view wx:if="{{ready}}" class="portal" style="padding-top: {{statusTop + 44}}px">
   <view class="portal-wrap">
-    <template is="navigation" data="{{title: '用户协议'}}" />
-    <view wx:if="{{text}}" class="portal-card detail-card">
+    <template is="navigation" data="{{title: title}}" />
+    <view wx:if="{{text}}" class="portal-card terms-card">
       <text class="portal-muted">版本 {{version}}</text>
-      <text class="detail-description terms-text" selectable="{{true}}">{{text}}</text>
+      <text class="terms-text" selectable="{{true}}">{{text}}</text>
+      <button wx:if="{{privacy}}" class="small-button" data-title="隐私保护指引" bindtap="showPolicy">查看微信隐私保护指引</button>
     </view>
-    <view wx:else class="portal-card empty-state">正式用户协议待确认</view>
+    <view wx:else class="portal-card empty-state">{{title}}暂未配置，请联系春茉</view>
   </view>
 </view>

@@ -4,12 +4,19 @@
 <view
   wx:if="{{ready}}"
   class="portal profile-page owner-tab-page"
-  style="padding-top: {{statusTop + 44}}px; {{uiStyle}}"
+  style="--profile-header-height: {{statusTop + 44}}px; {{uiStyle}}"
 >
   <view class="portal-wrap profile-wrap" aria-hidden="{{cropOpen || privacyVisible}}">
     <template is="navigation" data="{{title: '个人中心'}}" />
     <template is="load-state" data="{{error: error, loading: loading}}" />
-    <template is="profile-summary" data="{{person: owner, subtitle: project.title, ownerBadge: true, avatarLoading: avatarLoading}}" />
+    <view wx:if="{{owner}}" class="profile-card profile-card-svip">
+      <image class="profile-frame" src="/owner-login/pages/profile/assets/chunmo_svip_frame_v2.svg" mode="aspectFit" aria-hidden="{{true}}" />
+      <template is="profile-summary" data="{{person: owner, subtitle: project.title, residence: true, avatarLoading: avatarLoading}}" />
+      <view class="svip-emblem">
+        <image class="svip-mascot" src="/owner-login/pages/profile/assets/xiaokui-svip.png" mode="aspectFit" aria-hidden="{{true}}" />
+        <image class="svip-badge" src="/owner-login/pages/profile/assets/chunmo_svip_badge_v2.svg" mode="aspectFit" aria-role="img" aria-label="SVIP｜屋主" />
+      </view>
+    </view>
     <view wx:if="{{project}}" class="design-card-grid">
       <button class="portal-card design-card" data-kind="rendering" bindtap="openDesign" disabled="{{designLoading}}">
         <view class="design-icon rendering-icon" aria-hidden="{{true}}"><view></view></view>
@@ -17,10 +24,10 @@
       </button>
       <button class="portal-card design-card" data-kind="panorama" bindtap="openDesign" disabled="{{designLoading}}">
         <view class="design-icon panorama-icon" aria-hidden="{{true}}"></view>
-        <text>全景图</text><text wx:if="{{!design.panorama && !designLoading && !designError}}" class="design-unpublished">暂未发布</text>
+        <text>水电图</text><text wx:if="{{!design.panorama && !designLoading && !designError}}" class="design-unpublished">暂未发布</text>
       </button>
     </view>
-    <spring-notice text="{{designError}}" />
+    <spring-notice wx:if="{{designError}}" text="{{designError}}" />
     <view class="profile-settings portal-card">
       <block wx:if="{{projects.length > 1}}">
         <button
@@ -53,39 +60,26 @@
       </block>
       <button
         class="portal-row"
-        data-title="用户协议"
+        data-title="用户服务协议"
         bindtap="showPolicy"
         hover-class="row-pressed"
       >
-        <text>用户协议</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
+        <text>用户服务协议</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
       <button
         class="portal-row"
-        data-title="隐私保护指引"
+        data-title="隐私政策"
         bindtap="showPolicy"
         hover-class="row-pressed"
       >
-        <text>隐私保护指引</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
+        <text>隐私政策</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
       <button wx:if="{{canSwitch}}" class="portal-row" bindtap="switchIdentity" hover-class="row-pressed"><text>切换身份</text><view class="portal-arrow" aria-hidden="{{true}}"></view></button>
       <button class="portal-row" bindtap="logOut" hover-class="row-pressed">
         <text>退出登录</text><view class="portal-arrow" aria-hidden="{{true}}"></view>
       </button>
     </view>
-    <view wx:if="{{ui.footerVisible}}" class="profile-footer" aria-label="春茉空间设计">
-      <image
-        class="profile-footer-logo"
-        src="/owner-login/assets/brand-logo.png"
-        mode="aspectFit"
-        aria-hidden="{{true}}"
-      />
-      <image
-        class="profile-footer-wordmark"
-        src="/owner-login/assets/brand-name.png"
-        mode="aspectFit"
-        aria-hidden="{{true}}"
-      />
-    </view>
+    <template wx:if="{{ui.footerVisible}}" is="profile-footer" />
   </view>
   <owner-nav wx:if="{{project}}" active="profile" />
   <template is="avatar-editor" data="{{cropOpen: cropOpen, cropReady: cropReady, maxZoom: maxZoom, savingAvatar: savingAvatar, privacyVisible: privacyVisible}}" />

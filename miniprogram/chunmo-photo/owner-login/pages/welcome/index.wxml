@@ -39,19 +39,19 @@
       hover-class="owner-link-down"
       aria-role="checkbox"
       aria-checked="{{agreed}}"
-      aria-label="同意用户协议和隐私保护指引"
+      aria-label="同意用户服务协议和隐私政策"
       bindtap="toggleAgreement"
     >
       <view class="consent-dot" aria-hidden="{{true}}"></view>
     </button>
     <view class="consent-copy">
       <text bindtap="toggleAgreement">我已阅读并同意</text>
-      <text class="policy-link" aria-role="link" data-title="用户协议" bindtap="showPolicy"
-        >《用户协议》</text
+      <text class="policy-link" aria-role="link" data-title="用户服务协议" bindtap="showPolicy"
+        >《用户服务协议》</text
       >
       <text>和</text>
-      <text class="policy-link" aria-role="link" data-title="隐私保护指引" bindtap="showPolicy"
-        >《隐私保护指引》</text
+      <text class="policy-link" aria-role="link" data-title="隐私政策" bindtap="showPolicy"
+        >《隐私政策》</text
       >
     </view>
   </view>
