@@ -62,7 +62,11 @@ export function AgendaItem({
         <button
           className="agenda-complete"
           disabled={busy || !canToggle}
-          aria-label={`${item.done ? '恢复待处理' : '完成'}${item.title}`}
+          aria-label={
+            item.kind === 'purchase'
+              ? `更改采购状态：${item.title}`
+              : `${item.done ? '恢复待处理' : '完成'}${item.title}`
+          }
           onClick={onToggle}
         >
           <Check size={15} />

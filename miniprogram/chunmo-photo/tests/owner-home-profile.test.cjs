@@ -71,6 +71,31 @@ function preview(t) {
 
 const fixtureDate = Date.parse('2026-11-21T00:00:00+08:00');
 
+test('owner purchase detail confirms arrival and reverses each status separately', async (t) => {
+  const { load } = preview(t);
+  store.begin('review', fixtureDate);
+  const page = load('purchase', { id: 'sink' });
+  const before = page.data.item.feedback;
+  let prompt;
+  wx.showModal = (config) => { prompt = config; };
+  let writing;
+  const save = page.saveVerified.bind(page);
+  page.saveVerified = (...args) => (writing = save(...args));
+  const action = async (kind, title) => {
+    page.confirmStatus({ currentTarget: { dataset: { action: kind } } });
+    assert.equal(prompt.title, title);
+    prompt.success({ confirm: true });
+    await writing;
+  };
+  await action('finish', '确认到货');
+  assert.equal(page.data.item.state, 'complete');
+  await action('reopen', '撤销到货');
+  assert.equal(page.data.item.state, 'bought');
+  await action('withdraw', '撤销下单');
+  assert.equal(page.data.item.state, 'pending');
+  assert.deepEqual(page.data.item.feedback, before);
+});
+
 test('owner status refresh after a write ignores older purchase reads', async (t) => {
   const saved = { session: ownerSession.session, purchases: ownerSession.purchases };
   t.after(() => {

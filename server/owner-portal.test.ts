@@ -16,7 +16,7 @@ import { ApiError, hash } from './store';
 import { migrate } from './migrate';
 import { officialOwnerWechat } from './owner-wechat';
 import { passwordHash } from './auth';
-import { emptyData, newProject } from '../src/lib/model';
+import { emptyData, newProject, plus } from '../src/lib/model';
 import { emptyHistory } from '../src/lib/history';
 
 test('official adapter binds the verified phone to the configured app and never accepts a client phone', async () => {
@@ -154,12 +154,29 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
     ]);
     await migrationClient.query('COMMIT');
     await migrationClient.query(await readFile('server/proposed/022_owner_purchase_status.sql', 'utf8'));
+    const transitions = await readFile('server/proposed/023_owner_purchase_transitions.sql', 'utf8');
+    const transitionChecksum = hash(transitions);
+    assert.ok(
+      (await readFile('deploy/owner-test/upgrade-purchases.sh', 'utf8'))
+        .includes('transitions_sha=' + transitionChecksum),
+    );
+    await migrationClient.query('BEGIN');
+    await migrationClient.query(transitions.replaceAll(':"staff_role"', staff.username));
+    await migrationClient.query(
+      "INSERT INTO schema_migration(name,checksum) VALUES ('023_owner_purchase_transitions.sql',$1)",
+      [transitionChecksum],
+    );
+    await migrationClient.query('COMMIT');
   } catch (error) {
     await migrationClient.query('ROLLBACK');
     throw error;
   } finally {
     migrationClient.release();
   }
+  await assert.rejects(
+    () => runtime.query("SELECT owner_portal.purchase_transition('reopen',true,false,'w','existing')"),
+    (error: { code?: string }) => error.code === '42501',
+  );
   await migrateEmployeeWechatTest(url, staff.username);
   await migrateEmployeeWechatTest(url, staff.username);
   const staffBindingLedger = await admin.query(
@@ -1479,6 +1496,131 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           }
         },
       );
+      await purchaseTest.test('home and project reminders share purchase status and owner reversals', async () => {
+        const shanghai = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+        const entries = [
+          { id: 'reminder-today', name: '今日采购测试', due: shanghai, status: '待采购' },
+          { id: 'reminder-tomorrow', name: '明日采购测试', due: plus(shanghai, 1), status: '待采购' },
+          { id: 'legacy-arrival', name: '历史直接到货', due: plus(shanghai, 3), status: '已到货' },
+        ];
+        for (const entry of entries) {
+          const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
+          const created = await request('/owner-purchases/p1/' + entry.id, 'POST', {
+            action: 'create', revision: workspace.revision, requestId: randomUUID(),
+            purchase: { ...original, ...entry }, publication: { visible: true },
+          }, founder);
+          assert.equal(created.status, 200, JSON.stringify(created.body));
+        }
+        const phoneItem = async (key: string) =>
+          (await feed()).body.items.find(({ id }: { id: string }) => id === key);
+        const ownerAction = async (key: string, action: string, project = 'p1', token = tokenB) =>
+          respond({ action, requestId: randomUUID(), version: (await phoneItem(key)).version },
+            token, projects + '/' + project + '/purchases/' + key + '/feedback');
+        const afterLegacy = await ownerAction('legacy-arrival', 'reopen');
+        assert.equal(afterLegacy.status, 200);
+        assert.equal((await phoneItem('legacy-arrival')).state, 'pending');
+        assert.equal((await ownerAction('reminder-today', 'finish')).status, 409);
+        assert.equal((await ownerAction('reminder-today', 'reopen', 'p2')).status, 404);
+
+        async function statusIs(key: string, state: string, status: string) {
+          const database = await admin.query("SELECT payload->>'status' AS status FROM purchase WHERE id=$1", [key]);
+          const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
+          assert.equal(database.rows[0].status, status);
+          assert.equal(workspace.data.purchases.find(({ id }: { id: string }) => id === key).status, status);
+          assert.equal((await phoneItem(key)).state, state);
+        }
+        const evidence = process.env.CHUNMO_V21_SCREENSHOTS;
+        if (evidence) {
+          const { chromium, expect } = await import('@playwright/test');
+          const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox'] });
+          try {
+            const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+            await page.context().addCookies([{ name: 'chunmo_session', value: founder, url: base + '/api' }]);
+            await page.addInitScript(() => sessionStorage.setItem('chunmo-space', 'cloud'));
+            await page.goto(base + '/?view=overview');
+            const change = (name: string) => page.getByRole('button', { name: '更改采购状态：' + name });
+            const choose = page.getByRole('dialog', { name: '更改采购状态' });
+            const order = page.getByRole('dialog', { name: '标为已下单' });
+            const arrival = page.getByRole('dialog', { name: '标为已到货' });
+            const fillOrder = async (dialog: typeof order) => {
+              await dialog.getByLabel('品牌').fill('测试品牌');
+              await dialog.getByLabel('型号').fill('QA-01');
+              await dialog.getByRole('button', { name: '确认', exact: true }).click();
+            };
+            const today = page.getByTestId('today-panel');
+            await today.getByRole('button', { name: '更改采购状态：今日采购测试' }).click();
+            await expect(choose.getByRole('button', { name: '已下单', exact: true })).toBeVisible();
+            await expect(choose.getByRole('button', { name: '已到货', exact: true })).toBeVisible();
+            assert.equal((await phoneItem('reminder-today')).state, 'pending');
+            await choose.screenshot({ path: join(evidence, '今日提醒采购状态选项.png') });
+            await page.emulateMedia({ reducedMotion: 'reduce' });
+            await page.setViewportSize({ width: 1024, height: 730 });
+            const option = choose.getByRole('button', { name: '已下单', exact: true });
+            await option.focus();
+            await expect(option).toBeFocused();
+            const [left, right, frame] = await Promise.all([
+              option.boundingBox(),
+              choose.getByRole('button', { name: '已到货', exact: true }).boundingBox(),
+              choose.boundingBox(),
+            ]);
+            assert.ok(left && right && frame && left.x >= frame.x && left.x + left.width <= right.x);
+            assert.ok(right.x + right.width <= frame.x + frame.width && frame.x + frame.width <= 1024);
+            await page.setViewportSize({ width: 1440, height: 900 });
+            await choose.getByRole('button', { name: '已下单', exact: true }).click();
+            await fillOrder(order);
+            await expect(page.locator('[data-agenda-id="reminder-today"]')).toHaveAttribute('data-purchase-status', '已下单');
+            await statusIs('reminder-today', 'bought', '已下单');
+
+            await page.getByRole('button', { name: '打开工地：一号住宅' }).click();
+            await page.getByTestId('tomorrow-panel').getByRole('button', { name: '更改采购状态：明日采购测试' }).click();
+            await choose.getByRole('button', { name: '已到货', exact: true }).click();
+            await arrival.getByRole('button', { name: '填写下单信息' }).click();
+            await fillOrder(arrival);
+            await arrival.getByRole('button', { name: '确认', exact: true }).click();
+            await expect(arrival).toHaveCount(0);
+            await expect(page.locator('[data-agenda-id="reminder-tomorrow"]')).toHaveAttribute('data-purchase-status', '已到货');
+            await statusIs('reminder-tomorrow', 'complete', '已到货');
+            const before = (await phoneItem('reminder-tomorrow')).feedback;
+            const reopen = { action: 'reopen', requestId: randomUUID(), version: (await phoneItem('reminder-tomorrow')).version };
+            const endpoint = phone + '/reminder-tomorrow/feedback';
+            const competing = { ...reopen, requestId: randomUUID() };
+            const race = await Promise.all([
+              respond(reopen, tokenB, endpoint), respond(competing, tokenB, endpoint),
+            ]);
+            assert.deepEqual(race.map((result) => result.status).sort(), [200, 409]);
+            assert.equal((await respond(race[0].status === 200 ? reopen : competing, tokenB, endpoint)).status, 200);
+            await expect(page.locator('[data-agenda-id="reminder-tomorrow"]')).toHaveAttribute('data-purchase-status', '已下单');
+            await statusIs('reminder-tomorrow', 'bought', '已下单');
+            assert.equal((await ownerAction('reminder-tomorrow', 'withdraw')).status, 200);
+            await expect(page.getByTestId('tomorrow-panel').locator('[data-agenda-id="reminder-tomorrow"]')).toHaveAttribute('data-purchase-status', '待采购');
+            assert.deepEqual((await phoneItem('reminder-tomorrow')).feedback, before);
+
+            await page.getByRole('button', { name: '采购管理', exact: true }).click();
+            const card = page.getByRole('combobox', { name: '采购状态今日采购测试' });
+            await expect(card).toHaveValue('已下单');
+            assert.equal((await ownerAction('reminder-today', 'finish')).status, 200);
+            await expect(card).toHaveValue('已到货');
+            const completion = await admin.query(
+              `SELECT r.completed_name,e.actor_name FROM purchase_record r
+               JOIN owner_portal.purchase_event e ON e.workspace_id=r.workspace_id AND e.purchase_id=r.id
+               WHERE r.id='reminder-today' AND e.actor_kind='owner' AND e.operation='finish'`,
+            );
+            assert.ok(completion.rows[0].completed_name);
+            assert.equal(completion.rows[0].completed_name, completion.rows[0].actor_name);
+            assert.equal((await ownerAction('reminder-today', 'reopen')).status, 200);
+            await expect(card).toHaveValue('已下单');
+            assert.equal((await ownerAction('reminder-today', 'withdraw')).status, 200);
+            await expect(card).toHaveValue('待采购');
+            await page.reload();
+            await expect(card).toHaveValue('待采购');
+            await statusIs('reminder-today', 'pending', '待采购');
+            await statusIs('reminder-tomorrow', 'pending', '待采购');
+            await expect(change('明日采购测试')).toHaveCount(0);
+          } finally {
+            await browser.close();
+          }
+        }
+      });
     },
   );
   await t.test(

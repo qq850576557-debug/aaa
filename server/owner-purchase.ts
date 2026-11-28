@@ -10,8 +10,7 @@ import {
   getState,
   hash,
   lockOwnerPurchases,
-  orderedBeforeArrival,
-  statusBeforeArrival,
+  purchaseTransition,
   type Actor,
 } from './store';
 import { purchaseSchema } from '../src/lib/model';
@@ -99,6 +98,14 @@ const ownerBought = markBought.extend({
   }),
 });
 const withdraw = z.object({ ...stamp, action: z.literal('withdraw') }).strict();
+const ownerFinish = z.object({ ...stamp, action: z.literal('finish') }).strict();
+const ownerReopen = z.object({ ...stamp, action: z.literal('reopen') }).strict();
+const ownerInput = z.discriminatedUnion('action', [
+  ownerBought,
+  withdraw,
+  ownerFinish,
+  ownerReopen,
+]);
 const staffInput = z.discriminatedUnion('action', [
   publish,
   create,
@@ -400,22 +407,16 @@ export function staffOwnerPurchaseRoutes(app: Express) {
           );
         if (!previousPurchase || previousPurchase.projectId !== project)
           throw new ApiError(409, '采购已移除或所属项目已变更');
-        if (input.action === 'return' && !before.bought)
-          throw new ApiError(409, '采购已处于待采购');
-        if (input.action === 'finish' && !before.bought && previousPurchase.status !== '已下单')
-          throw new ApiError(409, '请先确认下单，再确认到货');
-        const status =
-          input.action === 'finish'
-            ? '已到货'
-            : input.action === 'order' || input.action === 'purchase'
-              ? '已下单'
-              : input.action === 'reopen'
-                ? statusBeforeArrival(
-                    before.bought || (await orderedBeforeArrival(c, workspace, purchase)),
-                  )
-                : '待采购';
+        const status = await purchaseTransition(
+          c,
+          input.action === 'order' && before.complete ? 'reopen' : input.action,
+          before.complete,
+          before.bought || previousPurchase.status === '已下单',
+          workspace,
+          purchase,
+        );
         if (!before.published) await ensureInternalFeedback(c, key, previousPurchase.name);
-        if (input.action === 'order' || input.action === 'purchase') {
+        if ((input.action === 'order' && !before.complete) || input.action === 'purchase') {
           if (!orderFeedback.safeParse(input.feedback).success)
             throw new ApiError(400, '请填写品牌和型号');
           await recordFeedback(
@@ -447,13 +448,14 @@ export function staffOwnerPurchaseRoutes(app: Express) {
           );
         } else if (
           input.action === 'reopen' ||
+          (input.action === 'order' && before.complete) ||
           input.action === 'reset' ||
           input.action === 'return'
         ) {
           await c.query(
             `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=$5,return_reason=$4
                WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3`,
-            [...key, input.action === 'reset' ? '' : input.reason, status === '已下单'],
+            [...key, input.action === 'reset' ? '' : (input.reason ?? ''), status === '已下单'],
           );
         }
       }
@@ -471,7 +473,9 @@ export function staffOwnerPurchaseRoutes(app: Express) {
           input.action === 'create' || input.action === 'edit'
             ? 'publication'
             : input.action === 'order'
-              ? 'purchase'
+              ? before?.complete
+                ? 'reopen'
+                : 'purchase'
               : input.action === 'reset'
                 ? 'return'
                 : input.action,
@@ -556,7 +560,7 @@ export function ownerPurchaseRoutes(
     async (req, res) => {
       if (!req.is('application/json')) throw new ApiError(415, '需要JSON请求');
       const actor: { hash: string } = res.locals.ownerPurchaseActor;
-      const input = z.discriminatedUnion('action', [ownerBought, withdraw]).parse(req.body);
+      const input = ownerInput.parse(req.body);
       const project = id.parse(req.params.projectId),
         purchase = id.parse(req.params.purchaseId);
       if (input.action === 'purchase' && input.feedback.image !== undefined)

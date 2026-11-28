@@ -153,7 +153,7 @@ systemctl is-active --quiet chunmo-owner-test-pg.service
 systemctl is-active --quiet chunmo-owner-test-api.service
 [[ $(sql -Atc "SELECT current_database() || ':' || current_user || ':' || current_setting('port')") == chunmo_test:chunmo_ownerpg:5441 ]] ||
   fail '数据库身份未通过测试环境校验'
-[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT IN ('019_employee_wechat.sql','019_employee_wechat_grants.sql','020_owner_design.sql','020_owner_design_grants.sql','021_account_retirement.sql','022_owner_purchase_status.sql')") == 15 ]] ||
+[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT IN ('019_employee_wechat.sql','019_employee_wechat_grants.sql','020_owner_design.sql','020_owner_design_grants.sql','021_account_retirement.sql','022_owner_purchase_status.sql','023_owner_purchase_transitions.sql')") == 15 ]] ||
   fail '隔离库基础迁移数量与预期不同'
 test_db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
 [[ $test_db_bytes =~ ^[0-9]+$ ]] || fail '无法核对测试备份大小'
@@ -404,6 +404,27 @@ SQL
       AND NOT has_table_privilege('owner_runtime','public.purchase','SELECT,UPDATE')
       AND position('chunmo_updates' in pg_get_functiondef('owner_portal.owner_purchase_feedback(text,text,text,uuid,text,text,jsonb)'::regprocedure))>0") == t ]] ||
       fail '测试库 022 状态写入或业主权限校验失败'
+  fi
+  transitions_sql="$job/server/proposed/023_owner_purchase_transitions.sql"
+  if [[ -f $transitions_sql ]]; then
+    transitions_sha=f3cdecaf6e5c7e9cc7bb731c815610118556eaf7a7a8483ac9f41dbe208bbf9d
+    [[ $(sha256sum "$transitions_sql" | awk '{print $1}') == "$transitions_sha" ]] ||
+      fail '测试库 023 迁移文件校验失败'
+    transitions_ledger() {
+      sql -Atc "SELECT checksum FROM schema_migration WHERE name='023_owner_purchase_transitions.sql'"
+    }
+    if [[ -z $(transitions_ledger) ]]; then
+      {
+        printf "SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s'; SELECT pg_advisory_xact_lock(62109684);\n"
+        cat "$transitions_sql"
+        printf "INSERT INTO schema_migration(name,checksum) VALUES('023_owner_purchase_transitions.sql', :'transitions_sha');\n"
+      } | sql --single-transaction -v staff_role=chunmo_app -v transitions_sha="$transitions_sha" -f -
+    fi
+    [[ $(transitions_ledger) == "$transitions_sha" ]] || fail '测试库 023 账本校验失败'
+    [[ $(sql -Atc "SELECT has_function_privilege('chunmo_app','owner_portal.purchase_transition(text,boolean,boolean,text,text)','EXECUTE')
+      AND NOT has_function_privilege('owner_runtime','owner_portal.purchase_transition(text,boolean,boolean,text,text)','EXECUTE')
+      AND position('owner_portal.purchase_transition' in pg_get_functiondef('owner_portal.owner_purchase_feedback(text,text,text,uuid,text,text,jsonb)'::regprocedure))>0") == t ]] ||
+      fail '测试库 023 共享状态规则或角色权限检查失败'
   fi
 fi
 cmp -s "$nginx" "$upgrade/nginx.before"

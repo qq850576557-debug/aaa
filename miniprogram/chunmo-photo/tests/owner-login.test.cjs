@@ -231,12 +231,22 @@ test('owner fixtures scope purchases, preserve edits, and gate status changes', 
   store.update(item.id, project.id, change.version, { ...feedback, model: 'CM-015' });
   change = store.snapshot().groups.bought.find(({ id }) => id === item.id);
   assert.equal(change.feedback.model, 'CM-015');
+  store.changeStatus(item.id, project.id, change.version, 'finish');
+  const arrived = store.snapshot().groups.complete.find(({ id }) => id === item.id);
+  assert.equal(arrived.feedback.model, 'CM-015');
+  assert.throws(
+    () => store.changeStatus(item.id, project.id, arrived.version, 'withdraw'),
+    /状态已变化/,
+  );
+  store.changeStatus(item.id, project.id, arrived.version, 'reopen');
+  change = store.snapshot().groups.bought.find(({ id }) => id === item.id);
+  assert.deepEqual(change.feedback, arrived.feedback);
   store.revoke(item.id, project.id, change.version);
   assert.equal(store.snapshot().groups.pending[0].id, item.id);
   const completed = groups.complete[0];
   assert.throws(
     () => store.update(completed.id, project.id, completed.version, feedback),
-    /已确认到货/,
+    /先撤销到货/,
   );
   assert.throws(() => store.choose('other-project'), /不可访问/);
   store.choose(projects[1].id);

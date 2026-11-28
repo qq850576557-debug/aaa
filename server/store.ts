@@ -17,6 +17,7 @@ import {
   purchaseDue,
   purchaseComplete,
   type Purchase,
+  type PurchaseStatus,
   rawPurchaseDue,
   type Data,
 } from '../src/lib/model';
@@ -238,16 +239,25 @@ export async function lockOwnerPurchases(c: Db, workspace: string) {
   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,16))', [workspace]);
 }
 
-export const statusBeforeArrival = (wasOrdered: boolean) => (wasOrdered ? '已下单' : '待采购');
-
-export async function orderedBeforeArrival(c: Db, workspace: string, purchase: string) {
-  const { rows } = await c.query<{ ordered: boolean }>(
-    `SELECT before_value->>'status'='已下单' AS ordered FROM purchase_action
-     WHERE workspace_id=$1 AND purchase_id=$2 AND operation='完成'
-     ORDER BY at DESC,id DESC LIMIT 1`,
-    [workspace, purchase],
+export async function purchaseTransition(
+  c: Db,
+  action: string,
+  arrived: boolean,
+  ordered: boolean,
+  workspace: string,
+  purchase: string,
+) {
+  const { rows } = await c.query<{ status: PurchaseStatus | null }>(
+    'SELECT owner_portal.purchase_transition($1,$2,$3,$4,$5) AS status',
+    [action, arrived, ordered, workspace, purchase],
   );
-  return rows[0]?.ordered === true;
+  const status = rows[0].status;
+  if (!status)
+    throw new ApiError(
+      409,
+      action === 'finish' && !arrived ? '请先确认下单，再确认到货' : '采购状态已变化，请重新读取',
+    );
+  return status;
 }
 
 async function syncCollaborativeStatus(
@@ -278,11 +288,15 @@ async function syncCollaborativeStatus(
         409,
         '已设为业主可见的采购，请通过采购编辑窗口内的购买反馈操作确认完成或重新开启',
       );
-    if (completes && !wasOrdered) throw new ApiError(409, '请先确认下单，再确认到货');
   }
-  if (miniPurchase && wasComplete && !completes)
-    next.status = statusBeforeArrival(
-      wasOrdered || (await orderedBeforeArrival(c, actor.workspaceId, old.id)),
+  if (miniPurchase && (wasComplete !== completes || !completes))
+    next.status = await purchaseTransition(
+      c,
+      wasComplete ? 'reopen' : completes ? 'finish' : next.status === '已下单' ? 'order' : 'reset',
+      wasComplete,
+      wasOrdered,
+      actor.workspaceId,
+      old.id,
     );
   if (collaboration && next.projectId === old.projectId)
     await c.query(

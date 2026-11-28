@@ -69,6 +69,7 @@ function begin(mode = 'review', now = Date.now()) {
       id: 'floor',
       title: '客卧木地板',
       state: 'complete',
+      arrivalFrom: 'bought',
       due: dateAt(-4, now),
       description: '公司已核对色号及用量。',
       specification: '浅橡木色，哑光面',
@@ -221,7 +222,8 @@ function feedbackRequest(project, id, version, action, fields) {
       (error) => {
         if (error.statusCode >= 400 && error.statusCode < 500)
           activeSession.pendingFeedback.delete(key);
-        if (error.statusCode === 401 && session?.owner.id === activeSession.owner.id) end();
+        if ([401, 403].includes(error.statusCode) && session?.owner.id === activeSession.owner.id)
+          end();
         throw error;
       },
     );
@@ -284,13 +286,13 @@ function itemInProject(id, projectId, version) {
   const s = current();
   const item = s.active === projectId && s.records[s.active].find((entry) => entry.id === id);
   if (!item) throw Error('此条采购已不可见');
-  if (item.state === 'complete') throw Error('公司已确认到货');
   if (item.version !== version) throw Error('采购已更新，请重新读取后再操作');
   return item;
 }
 
 function update(id, projectId, version, draft) {
   const item = itemInProject(id, projectId, version);
+  if (item.state === 'complete') throw Error('请先撤销到货，再修改购买信息');
   const limits = { brand: 80, model: 80, note: 1000 };
   for (const [key, max] of Object.entries(limits)) {
     if (typeof draft[key] !== 'string' || draft[key].length > max)
@@ -313,13 +315,22 @@ function update(id, projectId, version, draft) {
   item.version++;
 }
 
-function revoke(id, projectId, version) {
+const statusActions = { finish: 'bought', reopen: 'complete', withdraw: 'bought' };
+function changeStatus(id, projectId, version, action) {
   const item = itemInProject(id, projectId, version);
-  if (item.state !== 'bought') throw Error('该采购尚未确认购买');
-  if (isVerified()) return feedbackRequest(projectId, id, version, 'withdraw');
-  item.state = 'pending';
+  if (item.state !== statusActions[action]) throw Error('采购状态已变化，请重新读取');
+  if (isVerified()) return feedbackRequest(projectId, id, version, action);
+  if (action === 'finish') item.arrivalFrom = item.state;
+  item.state =
+    action === 'finish'
+      ? 'complete'
+      : action === 'reopen'
+        ? item.arrivalFrom || 'pending'
+        : 'pending';
   item.version++;
 }
+
+const revoke = (id, projectId, version) => changeStatus(id, projectId, version, 'withdraw');
 
 function open(page) {
   if (!startPreview(page, !!session)) return false;
@@ -351,6 +362,7 @@ module.exports = {
   setAvatar,
   update,
   revoke,
+  changeStatus,
   photo: ownerSession.photo,
   open,
   retry,

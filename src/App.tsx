@@ -25,7 +25,8 @@ import { AgendaItem } from './components/AgendaItem';
 import { useWorkRecords } from './lib/useWorkRecords';
 import type { WorkRecord } from './lib/records';
 import type { AgendaEntryRequest } from './components/AgendaEntryDialog';
-import type { CloudUser } from './lib/cloud';
+import { cloudApi, CloudError, type CloudUser } from './lib/cloud';
+import type { OwnerPurchaseIndex } from './lib/owner-purchases';
 import {
   nextTradeColor,
   saveTradeColor,
@@ -239,6 +240,7 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
     purchase: Purchase;
     status: PurchaseStatus;
   }>();
+  const [agendaPurchase, setAgendaPurchase] = useState<Purchase>();
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [day, setDay] = useState<string | null>(null);
   const [archived, setArchived] = useState(route.view === 'completed');
@@ -794,11 +796,23 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         purchaseDue(a, data).localeCompare(purchaseDue(b, data)),
     );
   function changePurchaseStatus(purchase: Purchase, status: PurchaseStatus) {
-    if (ownerPurchases.projects.some(({ id }) => id === purchase.projectId)) {
-      setOwnerStatus({ purchase, status });
-      return;
-    }
-    save('purchase', { ...purchase, due: purchaseDue(purchase, data), status });
+    const saveWorkspace = () =>
+      save('purchase', { ...purchase, due: purchaseDue(purchase, data), status });
+    if (!isCloud) return saveWorkspace();
+    if (ownerPurchases.projects.some(({ id }) => id === purchase.projectId))
+      return setOwnerStatus({ purchase, status });
+    // The index can still be loading when a reminder first becomes clickable.
+    void cloudApi<OwnerPurchaseIndex>('/owner-purchases').then(
+      ({ projects }) => {
+        if (projects.some(({ id }) => id === purchase.projectId))
+          setOwnerStatus({ purchase, status });
+        else notify('无此项目采购状态操作权限');
+      },
+      (error) => {
+        if (error instanceof CloudError && error.status === 404) saveWorkspace();
+        else notify(error instanceof Error ? error.message : '暂时无法读取采购状态，请重试');
+      },
+    );
   }
   function purchaseCard(x: Purchase) {
     const collaboration = ownerPurchases.items.find(
@@ -899,9 +913,10 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
           }
         }}
         onToggle={() => {
-          if (item.kind === 'purchase')
-            changePurchaseStatus(item.value, item.done ? '待采购' : '已到货');
-          else if (item.kind === 'record') void recordSource.toggle(item.value);
+          if (item.kind === 'purchase') {
+            if (item.status === '待采购') setAgendaPurchase(item.value);
+            else changePurchaseStatus(item.value, item.done ? '待采购' : '已到货');
+          } else if (item.kind === 'record') void recordSource.toggle(item.value);
         }}
       />
     );
@@ -1820,6 +1835,37 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
             }}
           />
         </DeferredPanel>
+      )}
+      {agendaPurchase && (
+        <Modal
+          title="更改采购状态"
+          subtitle={agendaPurchase.name}
+          onClose={() => setAgendaPurchase(undefined)}
+          blocking
+          protect="view"
+        >
+          <div className="modal-body">
+            <div className="owner-purchase-actions">
+              {(['已下单', '已到货'] as const).map((status) => (
+                <button
+                  type="button"
+                  key={status}
+                  onClick={() => {
+                    const purchase = data.purchases.find(
+                      ({ id, projectId }) =>
+                        id === agendaPurchase.id && projectId === agendaPurchase.projectId,
+                    );
+                    setAgendaPurchase(undefined);
+                    if (purchase && !purchaseComplete(purchase) && purchase.status !== status)
+                      changePurchaseStatus(purchase, status);
+                  }}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+          </div>
+        </Modal>
       )}
       {ownerStatus && (
         <OwnerPurchaseStatusDialog

@@ -2,6 +2,26 @@ const store = require('../../fixture-store');
 const { back } = require('../../preview');
 const { setChanged } = require('../../../lib/page-data');
 const maxPhoto = 512 * 1024;
+const statusActions = {
+  finish: {
+    state: 'bought',
+    title: '确认到货',
+    text: '确认这项采购已到货？',
+    success: '已确认到货',
+  },
+  reopen: {
+    state: 'complete',
+    title: '撤销到货',
+    text: '撤销后，此项会恢复到货前的采购状态。',
+    success: '已撤销到货',
+  },
+  withdraw: {
+    state: 'bought',
+    title: '撤销下单',
+    text: '撤销后，此项会回到待采购。',
+    success: '已恢复待采购',
+  },
+};
 
 async function encodePhoto(path) {
   const fs = wx.getFileSystemManager();
@@ -207,6 +227,7 @@ Page({
     }
   },
   async saveVerified(action, item, project, draft) {
+    const verified = store.isVerified();
     this.setData({ saving: true, draftError: '' });
     try {
       if (action === 'purchase') {
@@ -218,10 +239,10 @@ Page({
             ? ''
             : undefined;
         await store.update(item.id, project.id, item.version, { ...draft, image });
-      } else await store.revoke(item.id, project.id, item.version);
+      } else await store.changeStatus(item.id, project.id, item.version, action);
     } catch (error) {
       this.setData({ saving: false });
-      if (!store.isVerified()) {
+      if (verified && !store.isVerified()) {
         wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
       } else if ([404, 409].includes(error.statusCode)) {
         this.closeSheet();
@@ -238,30 +259,22 @@ Page({
     this.closeSheet();
     await this.onShow(true);
     wx.showToast({
-      title: action === 'purchase' ? '购买信息已保存' : '已恢复待采购',
+      title: action === 'purchase' ? '购买信息已保存' : statusActions[action].success,
       icon: 'none',
     });
   },
-  cancelPurchase() {
+  confirmStatus(event) {
     const { item, project } = this.data;
-    if (item?.state !== 'bought' || !project || this.data.saving) return;
+    const { action } = event.currentTarget.dataset;
+    const option = statusActions[action];
+    if (!option || item?.state !== option.state || !project || this.data.saving) return;
     wx.showModal({
-      title: '撤销购买确认',
-      content: '撤销后，此项会回到待采购。',
-      confirmText: '撤销',
+      title: option.title,
+      content: option.text,
+      confirmText: action === 'finish' ? '确认' : '撤销',
       success: ({ confirm }) => {
         if (!confirm || this.data.saving) return;
-        if (store.isVerified()) {
-          void this.saveVerified('withdraw', item, project);
-          return;
-        }
-        try {
-          store.revoke(item.id, project.id, item.version);
-          this.onShow();
-          wx.showToast({ title: '已恢复待采购', icon: 'none' });
-        } catch (error) {
-          wx.showToast({ title: error.message, icon: 'none' });
-        }
+        void this.saveVerified(action, item, project);
       },
     });
   },

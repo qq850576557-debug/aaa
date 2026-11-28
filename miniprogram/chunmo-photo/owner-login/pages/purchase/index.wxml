@@ -60,17 +60,21 @@
           >{{item.feedback.note}}</text
         >
       </view>
-      <view wx:if="{{item.state !== 'complete'}}" class="detail-actions">
-        <button class="detail-primary" bindtap="openSheet" disabled="{{saving}}" hover-class="row-pressed">
+      <view class="detail-actions">
+        <button wx:if="{{item.state !== 'complete'}}" class="detail-primary" bindtap="openSheet" disabled="{{saving}}" hover-class="row-pressed">
           {{item.state === 'bought' ? '修改购买信息' : '确认下单'}}
         </button>
         <button
           wx:if="{{item.state === 'bought'}}"
           class="detail-secondary"
-          bindtap="cancelPurchase" disabled="{{saving}}"
+          data-action="withdraw" bindtap="confirmStatus" disabled="{{saving}}"
         >
-          撤销购买确认
+          撤销下单
         </button>
+        <button wx:if="{{item.state === 'bought'}}" class="detail-secondary"
+          data-action="finish" bindtap="confirmStatus" disabled="{{saving}}">确认到货</button>
+        <button wx:if="{{item.state === 'complete'}}" class="detail-secondary"
+          data-action="reopen" bindtap="confirmStatus" disabled="{{saving}}">撤销到货</button>
       </view>
     </block>
   </view>
