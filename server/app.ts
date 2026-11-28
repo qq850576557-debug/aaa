@@ -931,7 +931,7 @@ export function createApp({
           .strict()
           .parse(req.body);
         const result = await transaction((c) =>
-          saveWorkspaceDelta(c, req.actor!, delta, res.locals.miniPurchase === true),
+          saveWorkspaceDelta(c, req.actor!, delta),
         );
         await sendWorkspaceState(req, res, result);
         return;

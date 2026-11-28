@@ -87,7 +87,7 @@ async function completeSubmission(
   b: Pick<WorkspaceSubmission, 'base' | 'data' | 'requestId'>,
   current: State,
   requestHash: string,
-  miniPurchase = false,
+  purchaseDelta = false,
 ) {
   const merged = mergeWorkspace(b.base, b.data, current.data);
   const latest = workspaceStateWithProof(current, actor);
@@ -105,7 +105,7 @@ async function completeSubmission(
   const result =
     canonical(data) === canonical(current.data)
       ? current
-      : await commit(c, actor, current.revision, data, { prior: current, miniPurchase });
+      : await commit(c, actor, current.revision, data, { prior: current, purchaseDelta });
   // Existing append-only audit storage is also the durable idempotency receipt, in this same transaction.
   await audit(c, actor, 'workspace.submit', result.revision, {
     entityType: 'workspace_submission',
@@ -121,7 +121,6 @@ export async function saveWorkspaceDelta(
   c: Pick<PoolClient, 'query'>,
   actor: Actor,
   b: WorkspaceDelta,
-  miniPurchase = false,
 ) {
   const current = await getState(c, actor.workspaceId, 'UPDATE');
   const requestHash = hash(canonical(b));
@@ -181,12 +180,20 @@ export async function saveWorkspaceDelta(
   }
   const base = applyDeltaSide(current.data, b.changes, 'before'),
     data = applyDeltaSide(current.data, b.changes, 'after');
+  // The production mini gateway forwards the same signed resource delta over HTTP.
+  const [change] = b.changes;
+  const purchaseDelta =
+    b.changes.length === 1 &&
+    change.collection === 'purchases' &&
+    change.kind === 'record' &&
+    change.before !== null &&
+    change.after !== null;
   return completeSubmission(
     c,
     actor,
     { base, data, requestId: b.requestId },
     current,
     requestHash,
-    miniPurchase,
+    purchaseDelta,
   );
 }

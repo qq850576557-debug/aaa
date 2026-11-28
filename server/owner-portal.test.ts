@@ -1729,7 +1729,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         headers: { ...signed, Cookie: 'chunmo_session=' + staffResult.cookie },
       });
       assert.equal(records.status, 200);
-      async function saveMiniStatus(status: string, cookie = founder) {
+      async function saveMiniStatus(status: string, cookie = founder, viaSidecar = false) {
         const headers = {
           ...signed,
           Cookie: 'chunmo_session=' + cookie,
@@ -1738,20 +1738,19 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         const url = gateway + 'workbench/workspace';
         const snapshot = await (await fetch(url, { headers })).json();
         const item = snapshot.data.purchases.find((row: { id: string }) => row.id === 'existing');
-        return fetch(url, {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify({
-            protocol: 3,
-            revision: snapshot.revision,
-            requestId: randomUUID(),
-            changes: [{
-              collection: 'purchases', kind: 'record', id: item.id,
-              before: item, after: { ...item, status },
-              proof: snapshot.resourceProofs[JSON.stringify(['purchases', 'record', item.id])],
-            }],
-          }),
-        });
+        const body = {
+          protocol: 3,
+          revision: snapshot.revision,
+          requestId: randomUUID(),
+          changes: [{
+            collection: 'purchases', kind: 'record', id: item.id,
+            before: item, after: { ...item, status },
+            proof: snapshot.resourceProofs[JSON.stringify(['purchases', 'record', item.id])],
+          }],
+        };
+        // The production sidecar forwards only the body, trusted Origin, session and CSRF.
+        if (viaSidecar) return request('/workspace', 'PUT', body, cookie);
+        return fetch(url, { method: 'PUT', headers, body: JSON.stringify(body) });
       }
       const expectMiniStatus = async (status: string, ownerState: string) => {
         const browser = (await request('/workspace', 'GET', undefined, founder)).body;
@@ -1765,10 +1764,12 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       await expectMiniStatus('待采购', 'pending');
       assert.equal((await saveMiniStatus('已下单')).status, 200);
       await expectMiniStatus('已下单', 'bought');
-      assert.equal((await saveMiniStatus('已到货')).status, 200);
+      assert.equal((await saveMiniStatus('已到货', founder, true)).status, 200);
       await expectMiniStatus('已到货', 'complete');
       assert.equal((await saveMiniStatus('待采购', staffResult.cookie)).status, 403);
-      assert.equal((await saveMiniStatus('待采购')).status, 200);
+      assert.equal((await saveMiniStatus('待采购', staffResult.cookie, true)).status, 403);
+      assert.equal((await saveMiniStatus('待采购', employee, true)).status, 403);
+      assert.equal((await saveMiniStatus('待采购', founder, true)).status, 200);
       await expectMiniStatus('已下单', 'bought');
       assert.equal((await saveMiniStatus('待采购')).status, 200);
       await expectMiniStatus('待采购', 'pending');

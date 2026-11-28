@@ -265,7 +265,7 @@ async function syncCollaborativeStatus(
   actor: Actor,
   old: Purchase,
   next: Purchase,
-  miniPurchase: boolean,
+  purchaseDelta: boolean,
 ) {
   const {
     rows: [collaboration],
@@ -280,16 +280,20 @@ async function syncCollaborativeStatus(
   const wasComplete = purchaseComplete(old);
   const completes = purchaseComplete(next);
   const wasOrdered = old.status === '已下单' || collaboration?.bought === true;
-  if (miniPurchase && collaboration?.published && !actor.owner && !collaboration.can_write)
-    throw new ApiError(403, '无此项目采购协同权限');
-  if (collaboration?.published && wasComplete !== completes) {
-    if (!miniPurchase)
+  if (collaboration?.published) {
+    if (!actor.owner && !collaboration.can_write)
+      throw new ApiError(403, '无此项目采购协同权限');
+    if (wasComplete !== completes && !purchaseDelta)
       throw new ApiError(
         409,
         '已设为业主可见的采购，请通过采购编辑窗口内的购买反馈操作确认完成或重新开启',
       );
+    if (wasComplete && !completes && !actor.owner)
+      throw new ApiError(403, '仅负责人可重新开启已到货采购');
+    if (purchaseDelta && next.projectId !== old.projectId)
+      throw new ApiError(409, '请分别保存采购状态和所属项目变更');
   }
-  if (miniPurchase && (wasComplete !== completes || !completes))
+  if (purchaseDelta && (wasComplete !== completes || !completes))
     next.status = await purchaseTransition(
       c,
       wasComplete ? 'reopen' : completes ? 'finish' : next.status === '已下单' ? 'order' : 'reset',
@@ -324,7 +328,7 @@ export async function commit(
     importing?: boolean;
     deadlineChange?: { id: string; date: string; reason: string };
     ownerPurchaseAction?: string;
-    miniPurchase?: boolean;
+    purchaseDelta?: boolean;
   },
 ) {
   const prior = opts?.prior ?? (await getState(c, a.workspaceId, 'UPDATE'));
@@ -451,7 +455,7 @@ export async function commit(
     for (const next of d.purchases) {
       const old = previousPurchases.get(next.id);
       if (old && old.status !== next.status && old.id !== opts?.ownerPurchaseAction)
-        await syncCollaborativeStatus(c, a, old, next, opts?.miniPurchase === true);
+        await syncCollaborativeStatus(c, a, old, next, opts?.purchaseDelta === true);
     }
   }
   const result = recordChanges(
