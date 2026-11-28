@@ -17,6 +17,7 @@ owner_018=0
 mini_monthly=0
 v21=0
 v21_shine=0
+v21_purchases=0
 expected_args=2
 v21_pc=0
 v21_pc_label=0
@@ -68,6 +69,16 @@ case $mode in
     previous=${3:-}
     mode=${mode%-v21-shinewonder}
     ;;
+  --deploy-v21-purchases|--rollback-v21-purchases)
+    v21=1
+    v21_pc=1
+    v21_pc_label=1
+    v21_purchases=1
+    owner_018=1
+    expected_args=3
+    previous=${3:-}
+    mode=${mode%-v21-purchases}
+    ;;
 esac
 phase=host
 promoted=0
@@ -81,7 +92,13 @@ fail() { printf 'FAIL %s — %s\n' "$phase" "$*" >&2; exit 1; }
 [[ $# == "$expected_args" && ( $mode == --deploy || $mode == --rollback ) && $commit =~ ^[a-f0-9]{40}$ &&
     $commit != "$previous" ]] || fail '请使用已审核的发布入口和完整提交。'
 [[ $EUID == 0 ]] || fail '请在 Workbench 的 root 终端执行。'
-if [[ $v21_shine == 1 ]]; then
+if [[ $v21_purchases == 1 ]]; then
+  [[ $commit == ec8583960b643cc635497b94ce2fa16bcaab9e30 &&
+    ( $previous == d30b08ac143f15d88a35909ddb0111caf79e43bb ||
+      $previous == b50c1b676ae8605f1e196521f690cc0788030f57 ||
+      $previous == b696aab3e28299eb69fd134391dec8b5278d9e1c ) ]] ||
+    fail '采购正式更新仅支持固定候选及已知正式基线。'
+elif [[ $v21_shine == 1 ]]; then
   [[ $commit == d30b08ac143f15d88a35909ddb0111caf79e43bb &&
     ( $previous == b50c1b676ae8605f1e196521f690cc0788030f57 ||
       $previous == b696aab3e28299eb69fd134391dec8b5278d9e1c ) ]] ||
@@ -142,7 +159,7 @@ site() {
 }
 
 label_asset() {
-  python3 -I -B - "$new/dist" "$v21_shine" <<'PY'
+  python3 -I -B - "$new/dist" "$v21_shine" "$v21_purchases" <<'PY'
 from pathlib import Path
 import re
 import sys
@@ -152,8 +169,10 @@ links = re.findall(r'\bsrc="(/assets/index-[A-Za-z0-9_-]+\.js)"', (dist / 'index
 asset = (dist / links[0][1:]).read_bytes() if len(links) == 1 else b''
 if '"panorama","水电图"'.encode() not in asset:
     raise SystemExit('找不到带水电图栏位的正式网页入口资源。')
-if sys.argv[2] == '1' and b'https://8ec387dc.shinewonder.com' not in asset:
+if '1' in sys.argv[2:] and b'https://8ec387dc.shinewonder.com' not in asset:
     raise SystemExit('正式网页入口资源缺少炫云专属域名。')
+if sys.argv[3] == '1' and any(text.encode() not in asset for text in ('更改采购状态', '7天免登录')):
+    raise SystemExit('正式网页入口资源缺少采购快捷状态或七天免登录。')
 print(links[0])
 PY
 }
@@ -226,6 +245,11 @@ PY
     expected_asset=$(sha256sum "$new/dist$asset") || return 1
     actual_asset=$(site -f "https://chmsj.cn$asset" | sha256sum) || return 1
     [[ ${actual_asset%% *} == "${expected_asset%% *}" ]] || return 1
+  fi
+  if [[ $v21_purchases == 1 && $sha == "$commit" ]]; then
+    [[ $(site -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' --data '{}' \
+      https://chmsj.cn/api/mini-owner/v1/projects/release-probe/purchases/release-probe/feedback) == 401 ]] ||
+      return 1
   fi
 }
 
@@ -301,7 +325,12 @@ git -C "$repo" merge-base --is-ancestor "$previous" "$commit" ||
   fail '发布版本并非当前正式基线的后继。'
 git -C "$repo" diff --quiet "$previous" "$commit" -- server/migrations package-lock.json ||
   fail '基础迁移或依赖锁定文件已变化。'
-if [[ $v21_shine == 1 ]]; then
+if [[ $v21_purchases == 1 ]]; then
+  git -C "$repo" diff --quiet "$previous" "$commit" -- server/proposed \
+    ':(exclude)server/proposed/022_owner_purchase_status.sql' \
+    ':(exclude)server/proposed/023_owner_purchase_transitions.sql' ||
+    fail '仅允许新增正式 022/023 采购迁移。'
+elif [[ $v21_shine == 1 ]]; then
   git -C "$repo" diff --quiet "$previous" "$commit" -- server/proposed ||
     fail '炫云更新包含未授权的数据库迁移文件变更。'
 elif [[ $v21_pc_label == 1 ]]; then
@@ -412,6 +441,12 @@ check_021() {
   printf 'PASS 019/020 已安装且核验通过；021 状态 %s。\n' "$db_state"
 }
 
+check_023() {
+  db_state=$(sql <<< "$migration_check") || fail '采购迁移账本、函数或权限核验失败。'
+  [[ $db_state == pending || $db_state == ready ]] || fail '无法识别正式 022/023 状态。'
+  printf 'PASS 019–021 正式基线通过，022/023 状态 %s。\n' "$db_state"
+}
+
 backup_and_rehearse_018() {
   local output archive
   output=$(cd "$old" && "$NODE_BIN" dist-deploy/ops.mjs backup "$conf" "$backups" "$PG_DUMP_BIN")
@@ -437,7 +472,10 @@ if [[ $owner_018 == 1 ]]; then
     runtime_v21 --verify
     sql_source=$(mktemp -d /tmp/chunmo-v21-sql.XXXXXXXX)
     git -C "$repo" archive "$commit" server/proposed deploy/native/approved-migrations.json | tar -xf - -C "$sql_source"
-    if [[ $v21_pc == 1 ]]; then
+    if [[ $v21_purchases == 1 ]]; then
+      migration_check=$(python3 -I -B "$launch_dir/prepare-023.py" --check "$sql_source")
+      check_023
+    elif [[ $v21_pc == 1 ]]; then
       migration_check=$(python3 -I -B "$launch_dir/prepare-021.py" --check "$sql_source")
       check_021
       [[ $v21_pc_label == 0 || $db_state == ready ]] || fail '先前发布的 021 必须已经完成。'
@@ -450,7 +488,7 @@ if [[ $owner_018 == 1 ]]; then
     check_018
     [[ $mini_monthly == 0 || $db_state == ready ]] || fail '正式库需要已部署的 018'
   fi
-  if [[ $v21_pc_label == 0 ]]; then
+  if [[ $v21_pc_label == 0 || ( $v21_purchases == 1 && $db_state == pending ) ]]; then
     pg_data=$(sql -Atc 'SHOW data_directory')
     db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
     python3 -I -B - "$backups" "$pg_data" "$db_bytes" <<'PY'
@@ -521,7 +559,25 @@ if [[ $v21_pc_label == 1 ]]; then label_asset >/dev/null || fail '候选网页�
 
 phase=database
 health "$previous" || fail '构建期间正式站状态发生变化。'
-if [[ $v21_pc_label == 1 ]]; then
+if [[ $v21_purchases == 1 ]]; then
+  check_023
+  if [[ $db_state == pending ]]; then
+    phase=approve-022-023
+    printf '将备份并验证恢复，再对正式库增量应用缺失的 022/023。确认请输入 APPLY-022-023：' >/dev/tty
+    IFS= read -r consent </dev/tty && [[ $consent == APPLY-022-023 ]] ||
+      fail '未确认正式库 022/023 增量迁移。'
+    phase=pre-022-023-backup-and-restore
+    backup_and_rehearse_018
+    phase=database-022-023
+    check_023
+    if [[ $db_state == pending ]]; then
+      migration=$(python3 -I -B "$launch_dir/prepare-023.py" --apply "$sql_source")
+      sql <<< "$migration" >/dev/null
+    fi
+    check_023
+    [[ $db_state == ready ]] || fail '022/023 提交后核查失败。'
+  fi
+elif [[ $v21_pc_label == 1 ]]; then
   check_021
   [[ $db_state == ready ]] || fail '切换前 021 核查失败。'
 elif [[ $v21_pc == 1 ]]; then
@@ -586,7 +642,11 @@ if [[ $v21 == 1 && $v21_pc == 0 ]]; then runtime_v21 --apply; fi
 select_release "$new"
 systemctl restart chunmo-staging-api
 wait_health "$commit" || fail '新版网页、API 或员工服务未通过验收。'
-if [[ $v21_pc == 1 ]]; then
+if [[ $v21_purchases == 1 ]]; then
+  phase=post-022-023-acceptance
+  check_023
+  [[ $db_state == ready ]] || fail '上线后 022/023 核查失败。'
+elif [[ $v21_pc == 1 ]]; then
   phase=post-021-acceptance
   check_021
   [[ $db_state == ready ]] || fail '上线后 021 核查失败。'
@@ -600,7 +660,9 @@ elif [[ $owner_018 == 1 ]]; then
   [[ $db_state == ready ]] || fail '上线后 018 核查失败。'
 fi
 phase=complete
-if [[ $v21_shine == 1 ]]; then
+if [[ $v21_purchases == 1 ]]; then
+  printf 'PASS 正式网页和 API 已更新 %s，升级前版本 %s，业主服务保持开启。\n' "$commit" "$previous"
+elif [[ $v21_shine == 1 ]]; then
   printf 'PASS 正式站已更新炫云域名及水电图链接 %s，升级前版本 %s。\n' "$commit" "$previous"
 elif [[ $v21_pc_label == 1 ]]; then
   printf 'PASS 正式站水电图链接补丁已发布 %s\n' "$commit"
