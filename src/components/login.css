@@ -99,6 +99,20 @@
   outline: 2px solid #90a581;
   outline-offset: 3px;
 }
+.login-card .login-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #536b5d;
+}
+.login-card .login-remember input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: #244e42;
+}
 .login-card form > button {
   height: 52px;
   border-radius: 12px;

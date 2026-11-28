@@ -43,7 +43,9 @@ for (const name of [
   'person.svg',
   'xiaokui-peek.png',
 ]) {
-  const path = 'owner-login/assets/home-v1/' + name;
+  const path = name.endsWith('.png')
+    ? 'owner-login/pages/home/assets/' + name
+    : 'owner-login/assets/home-v1/' + name;
   const mime = name.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
   assets['/' + path] =
     'data:' + mime + ';base64,' + (await readFile(join(root, path))).toString('base64');
@@ -118,7 +120,10 @@ function setup({ title, multi = false, empty = false, counts = [3, 12] }) {
   store.end();
   store.beginVerified(auth);
   const page = { ...definition, data: structuredClone(definition.data) };
-  page.setData = (values) => Object.assign(page.data, values);
+  page.setData = (values, done) => {
+    Object.assign(page.data, values);
+    done?.();
+  };
   page.onLoad();
   return page;
 }
@@ -142,15 +147,22 @@ try {
     capsuleLeft = capsule;
     const page = await browser.newPage({ viewport: { width, height } });
     try {
-      const navInstance = { ...component.methods, data: { active: 'home' } };
       const instance = setup({ title: name });
+      const navInstance = {
+        ...component.methods,
+        data: { active: 'home' },
+        triggerEvent: (_, detail) => instance.changeTab({ detail }),
+      };
       await instance.onShow();
       await page.exposeFunction('tapMini', (handler, dataset) => {
         const event = { currentTarget: { dataset } };
-        return handler === 'switchTab' ? navInstance.switchTab(event) : instance[handler](event);
+        if (handler !== 'switchTab') return instance[handler](event);
+        navInstance.data.active = instance.data.activeTab;
+        navInstance.switchTab(event);
+        return instance.data.activeTab;
       });
       await page.exposeFunction('miniPageScroll', (scrollTop) => {
-        instance.onPageScroll({ scrollTop });
+        instance.onHomeScroll({ detail: { scrollTop } });
         return instance.data.scrolled;
       });
       const render = async () => {
@@ -173,10 +185,11 @@ try {
               if (typeof node === 'string' || typeof node === 'number')
                 return document.createTextNode(String(node));
               if (node.tag === 'wx-owner-nav')
-                return mount(generate(nav + '.wxml')({ active: 'home' }));
+                return mount(generate(nav + '.wxml')({ active: data.activeTab }));
               const tag =
                 { 'wx-image': 'img', 'wx-button': 'button', 'wx-text': 'text' }[node.tag] || 'view';
               const el = document.createElement(tag);
+              if (node.tag === 'wx-scroll-view') el.style.overflowY = 'auto';
               let tap = '';
               for (const [key, value] of Object.entries(node.attr || {})) {
                 if (key === 'src') el.src = assets[value] || '';
@@ -185,12 +198,27 @@ try {
                 else if (key === 'style') el.style.cssText += ';' + value;
               }
               for (const child of node.children || []) el.append(mount(child));
-              if (tap) el.addEventListener('click', () => window.tapMini(tap, { ...el.dataset }));
+              if (tap)
+                el.addEventListener('click', async () => {
+                  const tab = await window.tapMini(tap, { ...el.dataset });
+                  if (tap !== 'switchTab') return;
+                  const panes = document.querySelectorAll('.owner-pane');
+                  if (panes.length !== 2) return;
+                  panes.forEach((item, index) =>
+                    item.classList.toggle(
+                      'owner-pane-inactive',
+                      tab !== (index ? 'profile' : 'home'),
+                    ),
+                  );
+                  for (const button of document.querySelectorAll('.owner-nav-tab'))
+                    button.classList.toggle('selected', button.dataset.tab === tab);
+                });
               return el;
             }
             document.body.append(mount(generate(home + '.wxml')(data)));
-            window.onscroll = async () => {
-              const scrolled = await window.miniPageScroll(scrollY);
+            const pane = document.querySelector('.owner-pane');
+            pane.onscroll = async () => {
+              const scrolled = await window.miniPageScroll(pane.scrollTop);
               document.querySelector('.owner-home')?.classList.toggle('home-scrolled', scrolled);
             };
             // The platform chrome is simulated separately to check the real page uses its reported bounds.
@@ -276,8 +304,8 @@ try {
           '/owner-login/pages/purchases/index?overdue=1',
           '/owner-login/pages/purchases/index?state=bought',
           '/owner-login/pages/purchase/index?id=pending-0000',
-          '/owner-login/pages/profile/index',
         ]);
+        assert.equal(instance.data.activeTab, 'profile');
       }
       if (width === 320) {
         const long = setup({
@@ -295,12 +323,39 @@ try {
         assert.equal(await page.locator('.home-late').textContent(), '已逾期');
         events.length = 0;
         await page.locator('.home-switch').click();
-        assert.deepEqual(events, ['/owner-login/pages/profile/index?switch=1']);
+        assert.equal(instance.data.activeTab, 'profile');
+        instance.showHome();
+        await render();
+        const position = await page.evaluate(() => {
+          const panes = document.querySelectorAll('.owner-pane');
+          window.originalHomePane = panes[0];
+          window.originalProfilePane = panes[1];
+          panes[0].scrollTop = 155;
+          return panes[0].scrollTop;
+        });
+        assert.ok(position > 0);
+        for (let step = 0; step < 20; step++) {
+          const tab = step % 2 ? 'home' : 'profile';
+          await page.locator('.owner-nav-tab[data-tab="' + tab + '"]').click();
+          await page.locator('.owner-nav-tab.selected[data-tab="' + tab + '"]').waitFor();
+          assert.equal(instance.data.activeTab, tab);
+          assert.equal(
+            await page.evaluate(() => {
+              const panes = document.querySelectorAll('.owner-pane');
+              return panes[0] === window.originalHomePane && panes[1] === window.originalProfilePane
+                ? panes[0].scrollTop
+                : -1;
+            }),
+            position,
+          );
+        }
+        assert.deepEqual(events, []);
         await page.screenshot({ path: join(out, '320px-长住宅名和多住宅.png') });
         await page.evaluate(
           () =>
             new Promise((done) => {
-              window.scrollTo(0, document.documentElement.scrollHeight);
+              const pane = document.querySelector('.owner-pane');
+              pane.scrollTop = pane.scrollHeight;
               requestAnimationFrame(() => requestAnimationFrame(done));
             }),
         );
@@ -312,8 +367,8 @@ try {
             row,
             tab,
             scroll: await page.evaluate(() => [
-              scrollY,
-              document.documentElement.scrollHeight,
+              document.querySelector('.owner-pane').scrollTop,
+              document.querySelector('.owner-pane').scrollHeight,
               getComputedStyle(document.querySelector('.owner-home')).paddingBottom,
             ]),
           }),

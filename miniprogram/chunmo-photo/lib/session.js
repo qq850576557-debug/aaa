@@ -28,6 +28,14 @@ function requireSession() {
   wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
   return null;
 }
+function clearEmployeeViews(app) {
+  if (app.workbench) {
+    app.workbench.state = null;
+    app.workbench.records = [];
+    app.workbench = null;
+  }
+  if (app.engine) app.engine.active = false;
+}
 async function enableAlbum(engine, activate = true) {
   const setting = await call('getSetting');
   if (setting.authSetting['scope.writePhotosAlbum'] === false) {
@@ -37,4 +45,4 @@ async function enableAlbum(engine, activate = true) {
   await call('authorize', { scope: 'scope.writePhotosAlbum' });
   engine.autoSave = activate;
 }
-module.exports = { enter, requireSession, enableAlbum };
+module.exports = { enter, requireSession, enableAlbum, clearEmployeeViews };

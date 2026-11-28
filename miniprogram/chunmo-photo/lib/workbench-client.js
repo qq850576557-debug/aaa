@@ -64,7 +64,22 @@ class WorkbenchClient {
       throw e;
     }
   }
-  async refresh() {
+  refresh(fresh = false) {
+    if (this.reading) {
+      if (!fresh) return this.reading;
+      return this.reading.catch(() => {}).then(() => this.refresh());
+    }
+    const changed = this.statusChanged;
+    this.reading = this.readWorkspace()
+      .then(() => {
+        if (this.statusChanged === changed) this.statusChanged = null;
+      })
+      .finally(() => {
+        this.reading = null;
+      });
+    return this.reading;
+  }
+  async readWorkspace() {
     this.checkActor();
     const [state, result] = await Promise.all([
       this.api.request('workbench/workspace'),
@@ -155,6 +170,7 @@ class WorkbenchClient {
               Number.isInteger(result.version) &&
               result.version >= 1;
         if (!confirmed) throw Error('云端未返回有效保存回执，原提交已保留');
+        this.statusChanged = Symbol();
       } catch (error) {
         if ([400, 403, 404, 409, 422].includes(error.status)) {
           const reason =

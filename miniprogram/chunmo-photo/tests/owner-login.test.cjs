@@ -113,8 +113,8 @@ test('formal package requires approved terms, protects the live route, and accep
 });
 
 test('owner login preview separates both entry points and never attempts live authentication', (t) => {
-  const saved = { Page: global.Page, wx: global.wx };
-  const pages = ['welcome', 'employee', 'home', 'purchases', 'purchase', 'profile'].map(
+  const saved = { Page: global.Page, Component: global.Component, wx: global.wx };
+  const pages = ['welcome', 'employee', 'home', 'purchases', 'purchase', 'home/profile'].map(
     (name) => '../owner-login/pages/' + name + '/index',
   );
   t.after(() => {
@@ -126,7 +126,7 @@ test('owner login preview separates both entry points and never attempts live au
   let definition;
   const destinations = [];
   const policies = [];
-  global.Page = (value) => {
+  global.Page = global.Component = (value) => {
     definition = value;
   };
   global.wx = {
@@ -148,9 +148,10 @@ test('owner login preview separates both entry points and never attempts live au
   function load(index) {
     delete require.cache[require.resolve(pages[index])];
     require(pages[index]);
-    const page = { ...definition, data: structuredClone(definition.data) };
+    const page = { ...(definition.methods || definition), data: structuredClone(definition.data) };
     page.setData = (patch) => Object.assign(page.data, patch);
-    page.onLoad();
+    if (definition.lifetimes) definition.lifetimes.attached.call(page);
+    else page.onLoad();
     return page;
   }
   const welcome = load(0);

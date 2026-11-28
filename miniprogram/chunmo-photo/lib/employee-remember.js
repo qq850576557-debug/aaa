@@ -99,7 +99,12 @@ function withEmployeeRemember(BaseApi) {
         timeout: 15000,
         header: { Cookie: this.cookie },
       });
-      if (this.identity !== identity || response.statusCode !== 200) return null;
+      if (this.identity !== identity) return null;
+      if ([401, 403].includes(response.statusCode)) {
+        this.clear();
+        throw Object.assign(Error('员工登录已失效，请重新登录'), { status: response.statusCode });
+      }
+      if (response.statusCode !== 200) return null;
       return response.data;
     }
 
@@ -116,7 +121,8 @@ function withEmployeeRemember(BaseApi) {
           timeout: 15000,
         });
         if (result.statusCode === 404) return '';
-        if (result.statusCode !== 200) throw Error('头像读取失败');
+        if (result.statusCode !== 200)
+          throw Object.assign(Error('头像读取失败'), { status: result.statusCode });
         return result.data;
       }
       const response = await call('request', {

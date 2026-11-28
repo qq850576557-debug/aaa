@@ -69,6 +69,8 @@ import {
   argon2,
   randomToken,
   setCookie,
+  ordinarySessionMs,
+  rememberedWebSessionMs,
   seal,
   unseal,
   privatePool,
@@ -207,7 +209,11 @@ export function createApp({
   });
   app.post('/api/auth/login', async (req, res, next) => {
     try {
-      const body = credentials.extend({ login: loginInputSchema }).parse(req.body);
+      const body = credentials
+        .extend({ login: loginInputSchema, remember: z.boolean().optional() })
+        .parse(req.body);
+      const maxAge =
+        body.remember && !res.locals.miniTransport ? rememberedWebSessionMs : ordinarySessionMs;
       for (const bucket of ['login:' + body.login + ':' + req.ip, 'ip:' + req.ip]) {
         const q = await pool.query(
           "INSERT INTO login_limit VALUES($1,1,now()+interval '1 minute') ON CONFLICT(bucket) DO UPDATE SET attempts=CASE WHEN login_limit.expires_at<now() THEN 1 ELSE login_limit.attempts+1 END,expires_at=CASE WHEN login_limit.expires_at<now() THEN now()+interval '1 minute' ELSE login_limit.expires_at END RETURNING attempts",
@@ -234,12 +240,12 @@ export function createApp({
           if (previous)
             await c.query('DELETE FROM auth_session WHERE token_hash=$1', [hash(previous)]);
           await c.query(
-            "INSERT INTO auth_session(token_hash,account_id,expires_at) VALUES($1,$2,now()+interval '8 hours')",
-            [hash(token), user.id],
+            "INSERT INTO auth_session(token_hash,account_id,expires_at) VALUES($1,$2,now()+($3::bigint * interval '1 millisecond'))",
+            [hash(token), user.id, maxAge],
           );
         });
         if (previous) for (const s of streams) if (s.tokenHash === hash(previous)) s.close();
-        setCookie(res, token);
+        setCookie(res, token, false, maxAge);
         res.json({ ok: true });
       } finally {
         hashing--;

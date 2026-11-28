@@ -2,7 +2,8 @@ import { migrateEmployeeWechatTest } from '../deploy/owner-release/migrate-019-t
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import express from 'express';
 import test from 'node:test';
@@ -361,6 +362,98 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
     });
     return { status: response.status, body: await response.json() };
   }
+  await t.test('desktop seven-day cookie persists across browser restarts and revokes immediately', async () => {
+    const password = 'Web-remember-2026!';
+    for (const id of ['remember-web', 'remember-delete']) {
+      await admin.query(
+        "INSERT INTO account(id,workspace_id,login,password_hash,role) VALUES($1,'w',$1,$2,'employee')",
+        [id, await passwordHash(password)],
+      );
+    }
+    const signIn = async (remember: boolean, login = 'remember-web') => {
+      const response = await fetch(base + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: base },
+        body: JSON.stringify({ login, password, remember }),
+      });
+      assert.equal(response.status, 200);
+      const cookie = response.headers.get('set-cookie')!;
+      assert.match(cookie, remember ? /Max-Age=604800/ : /Max-Age=28800/);
+      assert.match(cookie, /HttpOnly;.*SameSite=Strict/);
+      if (remember) assert.match(cookie, /; Secure;/);
+      return /chunmo_session=([a-f0-9]{64})/.exec(cookie)![1];
+    };
+    const ordinary = await signIn(false);
+    assert.equal((await request('/auth/session', 'GET', undefined, ordinary)).status, 200);
+    const seven = await signIn(true);
+    const expiry = await admin.query(
+      "SELECT extract(epoch FROM expires_at-now()) AS seconds FROM auth_session WHERE token_hash=$1",
+      [hash(seven)],
+    );
+    assert.ok(Number(expiry.rows[0].seconds) > 604790);
+    await admin.query("UPDATE auth_session SET expires_at=now()-interval '1 second' WHERE token_hash=$1", [hash(seven)]);
+    assert.equal((await request('/auth/session', 'GET', undefined, seven)).status, 401);
+    const signedOut = await signIn(true);
+    assert.equal((await request('/auth/logout', 'POST', {}, signedOut)).status, 200);
+    assert.equal((await request('/auth/session', 'GET', undefined, signedOut)).status, 401);
+
+    if (process.env.CHUNMO_V21_SCREENSHOTS) {
+      const { chromium, expect } = await import('@playwright/test');
+      const directory = await mkdtemp(join(tmpdir(), 'chunmo-remember-web-'));
+      const launch = () => chromium.launchPersistentContext(directory, {
+        executablePath: '/usr/bin/chromium', args: ['--no-sandbox'], viewport: { width: 1440, height: 900 },
+      });
+      let context = await launch();
+      try {
+        let page = context.pages()[0];
+        await page.goto(base);
+        const remember = page.getByRole('checkbox', { name: '7天免登录' });
+        await expect(remember).toBeChecked();
+        await remember.uncheck();
+        await expect(remember).not.toBeChecked();
+        await remember.check();
+        await page.getByRole('textbox', { name: '登录账号' }).fill('remember-web');
+        await page.getByLabel('登录密码').fill(password);
+        const login = page.waitForResponse((r) => r.url().endsWith('/api/auth/login'));
+        await page.getByRole('button', { name: '登录', exact: true }).click();
+        assert.equal((await login).status(), 200);
+        await expect(page.getByRole('form', { name: '登录' })).toHaveCount(0);
+        await context.close();
+        context = await launch();
+        page = context.pages()[0];
+        let check = page.waitForResponse((r) => r.url().endsWith('/api/auth/session'));
+        await page.goto(base);
+        assert.equal((await check).status(), 200);
+        await expect(page.getByRole('form', { name: '登录' })).toHaveCount(0);
+        check = page.waitForResponse((r) => r.url().endsWith('/api/auth/session'));
+        await page.reload();
+        assert.equal((await check).status(), 200);
+        const token = (await context.cookies(base + '/api/auth/session')).find(({ name }) => name === 'chunmo_session');
+        assert.ok(token);
+        await admin.query("UPDATE auth_session SET expires_at=now()-interval '1 second' WHERE token_hash=$1", [hash(token.value)]);
+        await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+        await expect(page.getByRole('form', { name: '登录' })).toBeVisible();
+      } finally {
+        await context.close();
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+    const beforeChange = await signIn(true);
+    const next = 'Web-changed-2026!';
+    assert.equal((await request('/auth/password', 'POST', {
+      currentPassword: password, newPassword: next, confirmPassword: next,
+    }, beforeChange)).status, 200);
+    for (const token of [beforeChange, ordinary])
+      assert.equal((await request('/auth/session', 'GET', undefined, token)).status, 401);
+    const deleted = await signIn(true, 'remember-delete');
+    assert.equal((await request('/accounts/remember-delete', 'PATCH', { active: false }, founder)).status, 200);
+    assert.equal((await request('/auth/session', 'GET', undefined, deleted)).status, 401);
+    assert.equal((await request('/accounts/remember-delete', 'PATCH', { active: true }, founder)).status, 200);
+    const deletedNew = await signIn(true, 'remember-delete');
+    assert.equal((await request('/accounts/remember-delete', 'DELETE', {}, founder)).status, 200);
+    assert.equal((await request('/auth/session', 'GET', undefined, deletedNew)).status, 401);
+    assert.equal((await request('/accounts/remember-web', 'DELETE', {}, founder)).status, 200);
+  });
   await t.test(
     'employee remembered sign-in uses a separate, WeChat-bound 30-day credential',
     async () => {

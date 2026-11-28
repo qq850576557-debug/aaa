@@ -11,15 +11,20 @@
     "pages/photo/index",
     "pages/me/index",
     "owner-login/pages/employee/index",
-    "owner-login/pages/home/index",
     "owner-login/pages/purchases/index",
     "owner-login/pages/purchase/index",
     "owner-login/pages/terms/index",
     "owner-login/pages/design/index"
   ],
   "subPackages": [
-    { "root": "owner-login/pages/profile", "pages": ["index"] }
+    { "root": "owner-login/pages/home", "pages": ["index"] }
   ],
+  "preloadRule": {
+    "owner-login/pages/welcome/index": {
+      "network": "wifi",
+      "packages": ["owner-login/pages/home"]
+    }
+  },
   "window": {
     "navigationBarTitleText": "春茉工地拍照",
     "navigationBarBackgroundColor": "#f7f8f4",

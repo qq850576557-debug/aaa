@@ -20,7 +20,6 @@ const routes = {
   home: '/owner-login/pages/home/index',
   purchases: '/owner-login/pages/purchases/index',
   purchase: '/owner-login/pages/purchase/index',
-  profile: '/owner-login/pages/profile/index',
 };
 
 function go(page, query = '') {

@@ -22,7 +22,9 @@ function avatarEditor(personKey, savePath) {
           this.setData({ cropOpen: true, cropReady: false }, () => render(undefined)),
         );
         if (epoch !== this.avatarEpoch) return;
-        const { canvas, frame } = await avatar.canvasForPreview();
+        const { canvas, frame } = await avatar.canvasForPreview(
+          this.avatarComponent ? this : undefined,
+        );
         if (epoch !== this.avatarEpoch) return;
         const image = await avatar.loadImage(canvas, path);
         if (epoch !== this.avatarEpoch) return;

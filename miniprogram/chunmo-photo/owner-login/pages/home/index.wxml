@@ -5,7 +5,11 @@
   <image class="{{iconClass}}" src="/owner-login/assets/home-v1/{{icon}}.svg" mode="aspectFit" aria-hidden="{{true}}" />
 </template>
 
-<view wx:if="{{ready}}" class="portal owner-home {{scrolled ? 'home-scrolled' : ''}}" style="--home-status: {{statusTop}}px; {{capsuleStyle}} {{uiStyle}}">
+<scroll-view wx:if="{{ready}}" class="owner-pane {{activeTab !== 'home' ? 'owner-pane-inactive' : ''}}"
+  aria-hidden="{{activeTab !== 'home'}}" scroll-y refresher-enabled
+  refresher-background="#F8F5F3" refresher-triggered="{{refreshingTab === 'home'}}"
+  scroll-top="{{homeScrollTarget}}" bindscroll="onHomeScroll" bindrefresherrefresh="refreshPane">
+<view class="portal owner-home {{scrolled ? 'home-scrolled' : ''}}" style="--home-status: {{statusTop}}px; {{capsuleStyle}} {{uiStyle}}">
   <view class="portal-wrap">
     <template is="load-state" data="{{error: error, loading: loading}}" />
     <block wx:if="{{project}}">
@@ -20,7 +24,7 @@
             </button>
           </view>
         </view>
-        <image class="home-mascot" src="/owner-login/assets/home-v1/xiaokui-peek.png" mode="aspectFit" aria-hidden="{{true}}" />
+        <image class="home-mascot" src="/owner-login/pages/home/assets/xiaokui-peek.png" mode="aspectFit" aria-hidden="{{true}}" />
       </view>
 
       <button class="home-pending" bindtap="pending" hover-class="home-pressed">
@@ -71,6 +75,14 @@
       </view>
     </block>
   </view>
-  <owner-nav active="home" />
   <template wx:if="{{uiDev}}" is="ui-tuning" data="{{fields: uiFields, open: uiOpen}}" />
 </view>
+</scroll-view>
+<scroll-view wx:if="{{profileMounted}}" class="owner-pane {{activeTab !== 'profile' ? 'owner-pane-inactive' : ''}}"
+  aria-hidden="{{activeTab !== 'profile'}}" scroll-y refresher-enabled
+  refresher-background="#F8F5F3" refresher-triggered="{{refreshingTab === 'profile'}}"
+  bindrefresherrefresh="refreshPane">
+  <owner-profile id="owner-profile" privacy-visible="{{privacyVisible}}" bindhome="showHome" bindresidence="residenceChanged"
+    bindexpired="expired" bindrevalidate="revalidate" />
+</scroll-view>
+<owner-nav wx:if="{{ready}}" active="{{activeTab}}" bindchange="changeTab" />

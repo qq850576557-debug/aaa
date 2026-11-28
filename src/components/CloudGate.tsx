@@ -15,6 +15,8 @@ export function CloudGate() {
   const [user, setUser] = useState<CloudUser | null>(null);
   const [login, setLogin] = useState(''),
     [password, setPassword] = useState('');
+  const [desktop, setDesktop] = useState(() => !mobileRequested());
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState(''),
     [busy, setBusy] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -22,6 +24,7 @@ export function CloudGate() {
     const media = matchMedia(MOBILE_QUERY);
     const title = () => {
       const mobile = mobileRequested();
+      setDesktop(!mobile);
       if (desktopV1Enabled()) document.documentElement.dataset.desktopUi = 'v1';
       else delete document.documentElement.dataset.desktopUi;
       if (mobile) document.title = '春茉后台管理（手机版）';
@@ -40,10 +43,12 @@ export function CloudGate() {
   const prior = useRef<CloudUser | null>(null);
   const authorized = useRef(false),
     generation = useRef(0);
+  const restoring = useRef<ReturnType<typeof cloudSession> | null>(null);
   useEffect(() => {
     if (localDevelopment) return;
     let active = true;
-    void cloudSession()
+    restoring.current ??= cloudSession();
+    void restoring.current
       .then((account) => {
         if (!active) return;
         if (sessionStorage.getItem('chunmo-space') !== 'local')
@@ -80,8 +85,16 @@ export function CloudGate() {
       }
     };
     window.addEventListener('chunmo-auth-expired', expired);
+    let verifying = false;
     const verify = () => {
-      if (!authorized.current || !prior.current || document.visibilityState !== 'visible') return;
+      if (
+        verifying ||
+        !authorized.current ||
+        !prior.current ||
+        document.visibilityState !== 'visible'
+      )
+        return;
+      verifying = true;
       const observed = generation.current;
       void cloudSession()
         .then((account) => {
@@ -104,6 +117,9 @@ export function CloudGate() {
             e.status === 401
           )
             expired();
+        })
+        .finally(() => {
+          verifying = false;
         });
     };
     const timer = setInterval(verify, 60000);
@@ -130,7 +146,11 @@ export function CloudGate() {
     }
     setBusy(true);
     try {
-      await cloudApi('/auth/login', 'POST', { login: identity.data, password });
+      await cloudApi('/auth/login', 'POST', {
+        login: identity.data,
+        password,
+        ...(desktop ? { remember } : {}),
+      });
       const account = await cloudSession();
       sessionStorage.setItem('chunmo-space', 'cloud');
       authorized.current = true;
@@ -153,6 +173,7 @@ export function CloudGate() {
     }
   }
   if (localDevelopment) return <App />;
+  if (checking && desktop) return <main className="brand-login" aria-busy="true" />;
   return (
     <>
       {mounted && (
@@ -210,6 +231,17 @@ export function CloudGate() {
                   disabled={checking || busy}
                 />
               </label>
+              {desktop && (
+                <label className="login-remember">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    disabled={busy}
+                    onChange={(e) => setRemember(e.target.checked)}
+                  />
+                  <span>7天免登录</span>
+                </label>
+              )}
               {error && (
                 <p role="alert" className="error">
                   {error}

@@ -1,8 +1,9 @@
 const avatar = require('../../owner-login/avatar');
 const { avatarEditor } = require('../../owner-login/profile-avatar');
 const unified = require('../../lib/unified-login');
-const { requireSession } = require('../../lib/session');
+const { requireSession, clearEmployeeViews } = require('../../lib/session');
 const { client } = require('../../lib/workbench-client');
+const { setChanged } = require('../../lib/page-data');
 const { call, message } = require('../../lib/platform');
 Page({
   ...avatarEditor('profile', async function (path) {
@@ -19,6 +20,7 @@ Page({
     await this.app.api.personalAvatar('data:image/jpeg;base64,' + image);
     if (epoch === this.avatarEpoch && key === this.avatarKey) {
       this.avatarFetch = (this.avatarFetch || 0) + 1;
+      this.avatarBytes = null;
       this.showEmployeeAvatar(path);
     }
   }),
@@ -31,56 +33,114 @@ Page({
     maxZoom: avatar.MAX_ZOOM,
   },
   onShow() {
-    this.app = requireSession();
-    if (!this.app) return;
+    const app = requireSession();
+    if (!app) return this.clearProfile();
+    this.app = app;
     try {
-      const c = client(this.app);
-      const api = this.app.api;
-      const identity = api.identity;
+      const c = client(app);
+      const identity = app.api.identity;
       const key = JSON.stringify([identity.workspaceId, identity.id]);
-      const previousAvatar = this.avatarKey === key ? this.data.profile?.avatar : '';
-      const fetch = (this.avatarFetch = (this.avatarFetch || 0) + 1);
-      this.avatarKey = key;
-      this.setData({
-        profile: { name: identity.name, avatar: previousAvatar || '' },
-        subtitle: '',
+      if (this.avatarKey !== key || this.profileApi !== app.api) {
+        this.clearProfile();
+        this.avatarKey = key;
+        this.profileApi = app.api;
+        this.setData({ profile: { name: identity.name, avatar: '' } });
+      }
+      setChanged(this, {
         canSwitch: unified.canSwitch(),
         pending: c.pending.length,
         archive: c.archive.length,
       });
-      void api
-        .personalAvatar()
-        .then(async (bytes) => {
-          if (fetch !== this.avatarFetch || key !== this.avatarKey) return;
-          if (!bytes) return this.showEmployeeAvatar('');
-          const path =
-            wx.env.USER_DATA_PATH +
-            '/employee-avatar-' +
-            Date.now() +
-            '-' +
-            Math.random().toString(36).slice(2);
-          const fs = wx.getFileSystemManager();
-          await new Promise((resolve, reject) => {
-            fs.writeFile({ filePath: path, data: bytes, success: resolve, fail: reject });
-          });
-          if (fetch === this.avatarFetch && key === this.avatarKey)
-            this.showEmployeeAvatar(path, path);
-          else fs.unlink({ filePath: path, fail() {} });
-        })
-        .catch(() => {});
-      void api
-        .personalProfile?.()
-        .then((value) => {
-          if (!value || key !== this.avatarKey || !this.data.profile) return;
-          this.setData({
-            'profile.name': value.name || identity.name,
-            subtitle: [value.department, value.jobTitle].filter(Boolean).join(' · '),
-          });
-        })
-        .catch(() => {});
+      if (
+        this.foreground !== app.foreground ||
+        !this.lastRead ||
+        Date.now() - this.lastRead >= 1500
+      )
+        return this.reloadProfile();
     } catch (e) {
       this.setData({ error: message(e) });
     }
+  },
+  async onPullDownRefresh() {
+    try {
+      await this.reloadProfile();
+    } finally {
+      wx.stopPullDownRefresh();
+    }
+  },
+  reloadProfile() {
+    const api = this.profileApi;
+    const key = this.avatarKey;
+    if (!api || !key) return;
+    if (this.reading?.key === key && this.reading.api === api) return this.reading.promise;
+    const identity = api.identity;
+    const foreground = this.app.foreground;
+    const fetch = (this.avatarFetch = (this.avatarFetch || 0) + 1);
+    const current = () =>
+      key === this.avatarKey &&
+      api === this.profileApi &&
+      api.identity?.id === identity?.id &&
+      api.identity?.workspaceId === identity?.workspaceId;
+    const promise = Promise.all([api.personalProfile(), api.personalAvatar()])
+      .then(async ([info, bytes]) => {
+        if (!current()) return;
+        if (info)
+          setChanged(this, {
+            profile: { ...this.data.profile, name: info.name || identity.name },
+            subtitle: [info.department, info.jobTitle].filter(Boolean).join(' · '),
+          });
+        if (fetch !== this.avatarFetch) return;
+        if (!bytes) {
+          this.avatarBytes = null;
+          if (this.data.profile.avatar) this.showEmployeeAvatar('');
+          return;
+        }
+        const data = new Uint8Array(bytes);
+        if (
+          this.avatarBytes?.length === data.length &&
+          data.every((byte, index) => byte === this.avatarBytes[index])
+        )
+          return;
+        const path =
+          wx.env.USER_DATA_PATH +
+          '/employee-avatar-' +
+          Date.now() +
+          '-' +
+          Math.random().toString(36).slice(2);
+        const fs = wx.getFileSystemManager();
+        await new Promise((resolve, reject) => {
+          fs.writeFile({ filePath: path, data: bytes, success: resolve, fail: reject });
+        });
+        if (current() && fetch === this.avatarFetch) {
+          this.avatarBytes = data;
+          this.showEmployeeAvatar(path, path);
+        } else fs.unlink({ filePath: path, fail() {} });
+      })
+      .catch((error) => {
+        if (key !== this.avatarKey || api !== this.profileApi) return;
+        if (error.status === 401 || error.status === 403 || !api.identity) {
+          clearEmployeeViews(this.app);
+          this.clearProfile();
+          if (getCurrentPages().at(-1) === this) wx.reLaunch({ url: unified.entry });
+        }
+      })
+      .finally(() => {
+        if (current()) {
+          this.foreground = foreground;
+          this.lastRead = Date.now();
+        }
+        if (this.reading?.promise === promise) this.reading = null;
+      });
+    this.reading = { key, api, promise };
+    return promise;
+  },
+  clearProfile() {
+    this.avatarKey = undefined;
+    this.profileApi = null;
+    this.lastRead = 0;
+    this.avatarBytes = null;
+    this.showEmployeeAvatar('');
+    this.setData({ profile: null, subtitle: '', pending: 0, archive: 0, canSwitch: false });
   },
   showEmployeeAvatar(path, downloaded) {
     const previous = this.downloadedAvatar;
@@ -92,11 +152,12 @@ Page({
     if (event.target.dataset.avatar === this.data.profile?.avatar) this.showEmployeeAvatar('');
   },
   onUnload() {
-    this.avatarKey = undefined;
-    this.showEmployeeAvatar('');
+    this.clearProfile();
     this.releaseAvatar();
   },
   switchIdentity() {
+    this.clearProfile();
+    clearEmployeeViews(this.app);
     wx.reLaunch({ url: unified.entry + '?choose=1' });
   },
   photos() {
@@ -121,8 +182,8 @@ Page({
     try {
       await this.app.api.logout();
     } catch {}
-    if (this.app.engine) this.app.engine.active = false;
-    this.app.workbench = null;
+    this.clearProfile();
+    clearEmployeeViews(this.app);
     wx.reLaunch({ url: unified.entry });
   },
 });

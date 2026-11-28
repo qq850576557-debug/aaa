@@ -1,5 +1,5 @@
-@import '../../profile-card.wxss';
-@import '../../ui-tuning.wxss';
+@import '../../../profile-card.wxss';
+@import '../../../ui-tuning.wxss';
 
 .owner-tab-page.profile-page {
   padding-top: var(--profile-header-height);

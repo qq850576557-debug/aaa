@@ -1,5 +1,6 @@
 const store = require('../../fixture-store');
 const { go, back } = require('../../preview');
+const { setChanged } = require('../../../lib/page-data');
 
 const statuses = [
   { id: 'pending', label: '待采购' },
@@ -28,12 +29,15 @@ Page({
   onShow() {
     if (!this.data.ready) return;
     if (store.isVerified()) {
-      this.setData({ loading: true, error: '', rows: [] });
+      if (!this.data.project) this.setData({ loading: true, error: '' });
       return store.refreshVerified().then(
         () => this.renderSnapshot(),
         (error) => {
-          this.setData({ loading: false, error: error.message });
-          if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+          if (!store.isVerified()) {
+            this.setData({ project: null, rows: [], loading: false, error: error.message });
+            wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+          } else if (!this.data.project) this.setData({ loading: false, error: error.message });
+          else if (store.snapshot().project.id !== this.data.project.id) this.renderSnapshot();
         },
       );
     }
@@ -45,7 +49,7 @@ Page({
   renderSnapshot() {
     try {
       const { project, groups } = store.snapshot();
-      this.setData({
+      setChanged(this, {
         project,
         statuses: statuses.map((status) => ({ ...status, count: groups[status.id].length })),
         rows: this.data.overdueOnly

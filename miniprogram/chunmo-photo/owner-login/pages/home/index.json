@@ -4,6 +4,8 @@
   "backgroundColor": "#F8F5F3",
   "enablePullDownRefresh": true,
   "usingComponents": {
-    "owner-nav": "/owner-login/components/owner-nav/index"
-  }
+    "owner-nav": "/owner-login/components/owner-nav/index",
+    "owner-profile": "./profile/index"
+  },
+  "disableScroll": true
 }

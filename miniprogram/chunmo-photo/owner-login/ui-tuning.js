@@ -1,5 +1,6 @@
 const defaults = require('./ui-dev-tokens');
 const { productionBuild } = require('./owner-session');
+const { setChanged } = require('../lib/page-data');
 
 const overrides = {};
 const limits = {
@@ -56,7 +57,7 @@ function style(tokens) {
 function apply(page, group) {
   const enabled = isDevelop();
   const tokens = { ...defaults[group], ...(enabled ? overrides[group] : {}) };
-  page.setData({
+  setChanged(page, {
     ui: tokens,
     uiStyle: style(tokens),
     uiDev: enabled,

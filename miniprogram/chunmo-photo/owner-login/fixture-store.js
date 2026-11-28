@@ -8,6 +8,14 @@ const labels = { pending: '待采购', bought: '已下单', complete: '已到货
 const blankFeedback = { brand: '', model: '', link: '', note: '' };
 const modes = ['review', 'single', 'empty', 'offline', 'denied'];
 let session = null;
+const scopeListeners = new Set();
+function watchScope(listener) {
+  scopeListeners.add(listener);
+  return () => scopeListeners.delete(listener);
+}
+function scopeChanged() {
+  for (const listener of scopeListeners) listener();
+}
 
 const copy = (value) => JSON.parse(JSON.stringify(value));
 
@@ -92,18 +100,27 @@ function begin(mode = 'review', now = Date.now()) {
   return true;
 }
 
-function beginVerified({ owner, projects, purchasesEnabled }) {
+function beginVerified({ owner, projects, purchasesEnabled }, preserve = false) {
   if (!owner?.id || !Array.isArray(projects) || !projects.length)
-    throw Error('暂无访问授权，请联系春茉');
+    throw Object.assign(Error('暂无访问授权，请联系春茉'), { statusCode: 403 });
   const sameOwner = session?.owner.id === owner.id;
   const active =
     sameOwner && projects.some(({ id }) => id === session.active) ? session.active : projects[0].id;
+  const records =
+    preserve && sameOwner && active === session.active && purchasesEnabled
+      ? session.records[active]
+      : [];
   const avatar = sameOwner ? session.owner.avatar : '';
+  const changed =
+    preserve &&
+    (!sameOwner ||
+      active !== session.active ||
+      session.purchasesEnabled !== (purchasesEnabled === true));
   session = {
     owner: { id: owner.id, name: owner.name, avatar },
     active,
     projects,
-    records: Object.fromEntries(projects.map(({ id }) => [id, []])),
+    records: Object.fromEntries(projects.map(({ id }) => [id, id === active ? records : []])),
     purchaseReads: new Map(),
     pendingFeedback: sameOwner ? session.pendingFeedback : new Map(),
     purchasesEnabled: purchasesEnabled === true,
@@ -111,6 +128,7 @@ function beginVerified({ owner, projects, purchasesEnabled }) {
     offline: false,
     verified: true,
   };
+  if (changed) scopeChanged();
 }
 
 function isVerified() {
@@ -135,11 +153,11 @@ function refreshVerified(fresh = false) {
       const result = await ownerSession.session();
       if (session !== previous) return;
       if (!result) throw Object.assign(Error('业主登录已失效，请重新进入'), { statusCode: 401 });
-      beginVerified(result);
+      beginVerified(result, true);
       if (refreshing?.promise === promise) refreshing.session = session;
       if (session.purchasesEnabled) await refreshPurchases();
     } catch (error) {
-      if ([401, 403].includes(error.statusCode) && session?.owner.id === previous.owner.id) end();
+      if (refreshing?.session === session && [401, 403, 404].includes(error.statusCode)) end();
       throw error;
     } finally {
       if (refreshing?.promise === promise) refreshing = undefined;
@@ -155,9 +173,24 @@ async function refreshPurchases() {
   const project = activeSession.active;
   const read = Symbol();
   activeSession.purchaseReads.set(project, read);
-  const { items } = await ownerSession.purchases(project);
-  if (session === activeSession && activeSession.purchaseReads.get(project) === read)
-    activeSession.records[project] = items;
+  try {
+    const { items } = await ownerSession.purchases(project);
+    if (
+      session === activeSession &&
+      activeSession.active === project &&
+      activeSession.purchaseReads.get(project) === read
+    )
+      activeSession.records[project] = items;
+  } catch (error) {
+    if (
+      session === activeSession &&
+      activeSession.active === project &&
+      activeSession.purchaseReads.get(project) === read &&
+      [401, 403, 404].includes(error.statusCode)
+    )
+      end();
+    throw error;
+  }
 }
 
 function feedbackRequest(project, id, version, action, fields) {
@@ -200,6 +233,15 @@ function current() {
   return session;
 }
 
+function projectContext() {
+  const s = current();
+  return copy({
+    owner: s.owner,
+    project: s.projects.find((project) => project.id === s.active),
+    projects: s.projects,
+  });
+}
+
 function snapshot() {
   const s = current();
   const all = [...s.records[s.active]]
@@ -213,9 +255,7 @@ function snapshot() {
     Object.keys(labels).map((state) => [state, all.filter((item) => item.state === state)]),
   );
   return copy({
-    owner: s.owner,
-    project: s.projects.find((project) => project.id === s.active),
-    projects: s.projects,
+    ...projectContext(),
     groups,
     today: s.today,
   });
@@ -233,6 +273,10 @@ function setAvatar(path) {
 function choose(id) {
   const s = current();
   if (!s.projects.some((project) => project.id === id)) throw Error('该住宅暂不可访问');
+  if (s.verified && s.active !== id) {
+    s.records[s.active] = [];
+    s.purchaseReads.clear();
+  }
   s.active = id;
 }
 
@@ -290,15 +334,18 @@ function retry() {
 
 function end() {
   session = null;
+  scopeChanged();
 }
 
 module.exports = {
   begin,
   beginVerified,
   isVerified,
+  watchScope,
   refreshVerified,
   refreshPurchases,
   snapshot,
+  projectContext,
   choose,
   ownerIdentity,
   setAvatar,

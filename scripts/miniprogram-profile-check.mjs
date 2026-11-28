@@ -13,15 +13,13 @@ const { wxmlToJs, wxssToJs } = createRequire(join(resolve(tools), 'package.json'
 const { chromium } = require(process.env.CHUNMO_PLAYWRIGHT || 'playwright');
 const root = resolve(process.env.CHUNMO_MINI_ROOT || 'miniprogram/chunmo-photo');
 const out = resolve(process.env.CHUNMO_MINI_EVIDENCE || '/tmp/chunmo-profile-check');
-const ownerPage = 'owner-login/pages/profile/index';
+const ownerPage = 'owner-login/pages/home/profile/index';
 const staffPage = 'pages/me/index';
 const navigation = 'owner-login/components/owner-nav/index';
 const notice = 'components/notice/index';
 const appConfig = require(join(root, 'app.json'));
 assert.equal(appConfig.pages.includes(ownerPage), false);
-assert.ok(
-  appConfig.subPackages.some(({ root, pages }) => pages.some((p) => root + '/' + p === ownerPage)),
-);
+assert.ok(appConfig.subPackages.some(({ root }) => ownerPage.startsWith(root + '/')));
 const wxml = wxmlToJs(root);
 const wxss = wxssToJs(root);
 
@@ -129,7 +127,25 @@ owners.logout = async () => events.push('业主退出');
 const pages = {};
 for (const route of [ownerPage, staffPage]) {
   require(join(root, route));
-  pages[route] = definitions;
+  if (route === ownerPage) {
+    const profile = component;
+    pages[route] = {
+      ...profile.methods,
+      data: profile.data,
+      createSelectorQuery: () => wx.createSelectorQuery(),
+      triggerEvent: () => {},
+      onLoad: profile.lifetimes.attached,
+      onUnload: profile.lifetimes.detached,
+      onShow() {
+        this.renderSnapshot();
+        return this.refreshDesign(true);
+      },
+      async onPullDownRefresh() {
+        await this.onShow();
+        wx.stopPullDownRefresh();
+      },
+    };
+  } else pages[route] = definitions;
 }
 require(join(root, navigation));
 
@@ -191,7 +207,11 @@ try {
       const owner = route === ownerPage;
       const multi = owner && width === 320;
       const instance = await open(route, { multi, dual: width === 390 });
-      const nav = { ...component.methods, data: { active: 'profile' } };
+      const nav = {
+        ...component.methods,
+        data: { active: 'profile' },
+        triggerEvent: () => events.push('返回'),
+      };
       const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 2 });
       try {
         await page.route(origin + '/**', async (request) => {
@@ -264,6 +284,7 @@ try {
             }
             window.renderMini = (data) => {
               frame.replaceChildren(mount(template(route + '.wxml')(data)));
+              if (owner) frame.append(mount(template(navigation + '.wxml')({ active: 'profile' })));
               if (!owner) {
                 frame.querySelector('.employee-profile').style.minHeight =
                   'calc(100vh - ' + (top + 44 + bottom + 47) + 'px)';
@@ -438,14 +459,12 @@ try {
             await tap(page.getByText('本机照片与恢复', { exact: true }));
             assert.deepEqual(events.slice(0, 2), [drafts, '/pages/results/index?recover=1']);
             staffAvatar = photo;
-            await instance.onShow();
+            await instance.onPullDownRefresh();
             await new Promise(setImmediate);
             assert.match(instance.data.profile.avatar, /^\/sandbox\/employee-avatar-/);
             await render();
             assert.equal(await page.locator('.profile-avatar-photo').count(), 1);
           }
-          await tap(page.getByText('切换身份', { exact: true }));
-          assert.equal(events.at(-1), unified.entry + '?choose=1');
           await tap(page.getByRole('button', { name: '更换头像' }));
           assert.equal(instance.data.cropReady, true);
           await render();

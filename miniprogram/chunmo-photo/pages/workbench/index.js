@@ -1,6 +1,7 @@
-const { requireSession } = require('../../lib/session');
+const { requireSession, clearEmployeeViews } = require('../../lib/session');
 const { client } = require('../../lib/workbench-client');
-const { workbenchView, shanghaiDay } = require('../../lib/shared-workbench');
+const { workbenchView } = require('../../lib/shared-workbench');
+const { setChanged } = require('../../lib/page-data');
 const { message, call } = require('../../lib/platform');
 Page({
   data: {
@@ -27,40 +28,114 @@ Page({
       this.setData({ error: message(e) });
     }
     this.network = (e) => {
-      if (e.isConnected) this.reload();
+      if (this.visible && e.isConnected) this.reload();
     };
     if (wx.onNetworkStatusChange) wx.onNetworkStatusChange(this.network);
   },
   onShow() {
-    if (this.client) this.reload();
-  },
-  onUnload() {
-    if (wx.offNetworkStatusChange && this.network) wx.offNetworkStatusChange(this.network);
-  },
-  async onPullDownRefresh() {
-    await this.reload();
-    wx.stopPullDownRefresh();
-  },
-  async reload() {
-    if (!this.client || this.data.busy) return;
-    this.setData({ busy: true, error: '' });
+    this.visible = true;
+    const app = requireSession();
+    if (!app) return this.clearWorkspace();
+    let current;
     try {
-      await this.client.flush();
-      await this.client.refresh();
+      current = client(app);
     } catch (e) {
       this.setData({ error: message(e) });
-      try {
-        await this.client.refresh();
-      } catch {}
-    } finally {
-      this.setData({ busy: false });
-      this.render();
+      return;
     }
+    if (this.client !== current) {
+      this.clearWorkspace();
+      this.client = current;
+    }
+    this.render();
+    if (
+      this.foreground !== app.foreground ||
+      !this.lastRead ||
+      Date.now() - this.lastRead >= 1500 ||
+      this.client.pending.length ||
+      this.client.statusChanged
+    )
+      return this.reload();
+  },
+  onHide() {
+    this.visible = false;
+  },
+  onUnload() {
+    this.visible = false;
+    this.client = null;
+    if (wx.offNetworkStatusChange && this.network) wx.offNetworkStatusChange(this.network);
+  },
+  clearWorkspace() {
+    if (this.client) {
+      this.client.state = null;
+      this.client.records = [];
+    }
+    this.client = null;
+    this.lastRead = 0;
+    this.setData({
+      items: [],
+      projects: [],
+      pending: [],
+      counts: {},
+      projectId: '',
+      projectIndex: 0,
+      busy: false,
+    });
+  },
+  async onPullDownRefresh() {
+    try {
+      await this.reload();
+    } finally {
+      wx.stopPullDownRefresh();
+    }
+  },
+  reload() {
+    const current = this.client;
+    if (!current) return;
+    if (this.reading?.client === current) return this.reading.promise;
+    const foreground = getApp().foreground;
+    const initial = !current.state;
+    if (initial) setChanged(this, { busy: true, error: '' });
+    const promise = (async () => {
+      let failure;
+      const changed = current.statusChanged || current.pending.length > 0;
+      try {
+        await current.flush();
+      } catch (error) {
+        failure = error;
+      }
+      try {
+        await current.refresh(changed);
+      } catch (error) {
+        failure = error;
+        if (
+          this.client === current &&
+          (error.status === 401 ||
+            error.status === 403 ||
+            error.code === 'OWNER_CHANGED' ||
+            !getApp().api.identity)
+        ) {
+          if (getApp().workbench === current) clearEmployeeViews(getApp());
+          this.clearWorkspace();
+          if (this.visible) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+        }
+      } finally {
+        if (this.client === current) {
+          this.foreground = foreground;
+          this.lastRead = Date.now();
+          setChanged(this, { busy: false, error: failure ? message(failure) : '' });
+          this.render();
+        }
+        if (this.reading?.client === current) this.reading = null;
+      }
+    })();
+    this.reading = { client: current, promise };
+    return promise;
   },
   render() {
     const c = this.client;
     if (!c) return;
-    this.setData({
+    setChanged(this, {
       pending: c.pending.map((p, index) => ({
         index,
         title: p.body.value?.title || p.body.changes?.[0]?.after?.name || '待同步记录',
@@ -112,7 +187,7 @@ Page({
                 ? '今日到期'
                 : '剩余 ' + i.remaining + ' 天',
       }));
-    this.setData({
+    setChanged(this, {
       items,
       projects,
       projectIndex,

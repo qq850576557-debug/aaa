@@ -63,13 +63,18 @@ export async function authenticate(req: AuthRequest, _res: Response, next: NextF
 export function owner(req: AuthRequest, _res: Response, next: NextFunction) {
   req.actor?.owner ? next() : next(new ApiError(403, '仅工作室负责人可执行'));
 }
-export function setCookie(res: Response, token: string, clear = false) {
+export const ordinarySessionMs = 8 * 60 * 60 * 1000;
+export const rememberedWebSessionMs = 7 * 24 * 60 * 60 * 1000;
+export function setCookie(res: Response, token: string, clear = false, maxAge = ordinarySessionMs) {
   res.cookie(cookieName, clear ? '' : token, {
     httpOnly: true,
-    secure: config.APP_ENV === 'production' || config.APP_ORIGIN.startsWith('https:'),
+    secure:
+      maxAge === rememberedWebSessionMs ||
+      config.APP_ENV === 'production' ||
+      config.APP_ORIGIN.startsWith('https:'),
     sameSite: 'strict',
     path: '/api',
-    maxAge: clear ? 0 : 8 * 60 * 60 * 1000,
+    maxAge: clear ? 0 : maxAge,
   });
 }
 export function seal(data: unknown) {

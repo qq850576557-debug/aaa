@@ -172,6 +172,7 @@ export function createMiniPhotoGateway(options: Options): RequestHandler {
     // Only after cryptographic verification, translate this exact allowlisted
     // transport request. The original Origin gate, employee login throttling,
     // session permissions and CSRF middleware below remain unchanged.
+    res.locals.miniTransport = true;
     if (req.method === 'PUT' && path === '/workbench/workspace') {
       // Only purchase record deltas, never snapshot writes or other collections.
       express.json({ limit: '256kb', strict: true })(req, res, (error) => {

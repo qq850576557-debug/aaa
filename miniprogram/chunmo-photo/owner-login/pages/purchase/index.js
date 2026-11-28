@@ -1,5 +1,6 @@
 const store = require('../../fixture-store');
 const { back } = require('../../preview');
+const { setChanged } = require('../../../lib/page-data');
 const maxPhoto = 512 * 1024;
 
 async function encodePhoto(path) {
@@ -44,12 +45,21 @@ Page({
   onShow(fresh) {
     if (!this.data.ready || this.data.saving || this.data.pickingPhoto) return;
     if (store.isVerified()) {
-      this.setData({ loading: true, error: '', item: null, unavailable: false, photoSrc: '' });
+      if (!this.data.item) this.setData({ loading: true, error: '', unavailable: false });
       return store.refreshVerified(fresh === true).then(
         () => this.renderSnapshot(),
         (error) => {
-          this.setData({ loading: false, error: error.message });
-          if (!store.isVerified()) wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+          if (!store.isVerified()) {
+            this.setData({
+              item: null,
+              project: null,
+              photoSrc: '',
+              loading: false,
+              error: error.message,
+            });
+            wx.reLaunch({ url: '/owner-login/pages/welcome/index' });
+          } else if (!this.data.item) this.setData({ loading: false, error: error.message });
+          else if (this.data.project?.id !== store.snapshot().project.id) this.renderSnapshot();
         },
       );
     }
@@ -64,14 +74,17 @@ Page({
       const item = Object.values(groups)
         .flat()
         .find((entry) => entry.id === this.data.id);
-      this.setData({
+      const samePhoto =
+        project.id === this.data.project?.id &&
+        item?.feedback?.imageId === this.data.item?.feedback?.imageId;
+      setChanged(this, {
         item: item || null,
         project,
         unavailable: !item,
         loading: false,
         error: '',
         verified: store.isVerified(),
-        photoSrc: '',
+        ...(samePhoto ? {} : { photoSrc: '' }),
       });
       if (!item) this.closeSheet();
     } catch (error) {

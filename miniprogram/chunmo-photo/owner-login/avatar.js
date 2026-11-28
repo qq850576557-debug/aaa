@@ -17,9 +17,9 @@ async function choosePhoto() {
   return result.tempFiles[0]?.tempFilePath;
 }
 
-function canvasForPreview() {
+function canvasForPreview(component) {
   return new Promise((resolve, reject) => {
-    wx.createSelectorQuery()
+    (component ? component.createSelectorQuery() : wx.createSelectorQuery())
       .select('#avatar-canvas')
       .fields({ node: true, size: true })
       .exec(([result]) => {

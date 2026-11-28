@@ -6,23 +6,31 @@ const { cropBox } = require('../owner-login/avatar');
 const { level, plan } = require('../owner-login/purchase-reminders');
 
 function preview(t) {
-  const saved = { Page: global.Page, wx: global.wx, getApp: global.getApp };
+  const saved = {
+    Page: global.Page,
+    Component: global.Component,
+    wx: global.wx,
+    getApp: global.getApp,
+  };
   let definition;
   const navigation = [];
   const modulePaths = [];
-  global.Page = (value) => (definition = value);
+  const cleanup = [];
+  global.Page = global.Component = (value) => (definition = value);
   global.wx = {
     getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
     getWindowInfo: () => ({ statusBarHeight: 24 }),
+    getStorageSync: () => undefined,
     navigateTo: ({ url }) => navigation.push(url),
     navigateBack() {},
     stopPullDownRefresh() {},
-    reLaunch() {},
+    reLaunch: ({ url }) => navigation.push(url),
     showToast() {},
     request: () => assert.fail('Unexpected network request from preview'),
     uploadFile: () => assert.fail('Avatar demo must remain on device'),
   };
   t.after(() => {
+    cleanup.forEach((release) => release());
     store.end();
     Object.assign(global, saved);
     for (const file of modulePaths) delete require.cache[file];
@@ -30,17 +38,32 @@ function preview(t) {
   return {
     navigation,
     load(name, options) {
-      const file = require.resolve(`../owner-login/pages/${name}/index.js`);
+      const file = require.resolve(
+        `../owner-login/pages/${name === 'profile' ? 'home/profile' : name}/index.js`,
+      );
       modulePaths.push(file);
       delete require.cache[file];
       require(file);
-      const page = { ...definition, data: structuredClone(definition.data) };
+      const page = {
+        ...(definition.methods || definition),
+        data: structuredClone(definition.data),
+      };
       page.setData = (values, done) => {
         Object.assign(page.data, values);
         done?.();
       };
-      page.onLoad(options);
-      page.onShow?.();
+      if (definition.lifetimes) {
+        const { attached, detached } = definition.lifetimes;
+        page.triggerEvent = () => {};
+        page.createSelectorQuery = () => wx.createSelectorQuery();
+        attached.call(page);
+        if (options?.switch === '1') page.showProjects();
+        cleanup.push(() => detached.call(page));
+      } else {
+        page.onLoad(options);
+        page.onShow?.();
+        cleanup.push(() => page.onUnload?.());
+      }
       return page;
     },
   };
@@ -86,6 +109,99 @@ test('owner status refresh after a write ignores older purchase reads', async (t
   assert.equal(groups.pending[0].overdue, true);
 });
 
+test('owner panes switch twenty times without remounting, clearing data or issuing duplicate reads', async (t) => {
+  const { load, navigation } = preview(t);
+  const config = require('../owner-login/owner-live-config');
+  const original = { ...config };
+  const methods = {
+    session: ownerSession.session,
+    purchases: ownerSession.purchases,
+    projectDesign: ownerSession.projectDesign,
+  };
+  t.after(() => {
+    if (!Object.hasOwn(original, 'unified')) delete config.unified;
+    Object.assign(config, original);
+    Object.assign(ownerSession, methods);
+  });
+  config.unified = true;
+  let auth = {
+    owner: { id: 'owner-tabs', name: '测试业主' },
+    projects: [
+      { id: 'a', title: '第一套' },
+      { id: 'b', title: '第二套' },
+    ],
+    purchasesEnabled: true,
+  };
+  let sessionReads = 0;
+  let purchaseReads = 0;
+  let designReads = 0;
+  let pause;
+  let fail = false;
+  ownerSession.session = async () => {
+    sessionReads++;
+    if (pause) await pause;
+    if (fail) throw Error('网络异常');
+    return auth;
+  };
+  ownerSession.purchases = async (id) => {
+    purchaseReads++;
+    return { items: [{ id, due: '2026-01-01', state: 'pending', title: id }] };
+  };
+  ownerSession.projectDesign = async () => {
+    designReads++;
+    return { rendering: 'https://8ec387dc.shinewonder.com/example' };
+  };
+  store.beginVerified(auth);
+  const home = load('home');
+  await home.reading;
+  assert.equal(home.data.pendingCount, 1);
+  const profile = load('profile');
+  home.selectComponent = () => profile;
+  home.onHomeScroll({ detail: { scrollTop: 163 } });
+  let release;
+  pause = new Promise((resolve) => {
+    release = resolve;
+  });
+  const foreground = home.onShow();
+  for (let i = 0; i < 20; i++) {
+    home.changeTab({ detail: { tab: i % 2 ? 'home' : 'profile' } });
+    assert.equal(home.data.project.id, 'a');
+    assert.equal(home.data.recent[0].id, 'a');
+    assert.equal(home.data.profileMounted, true);
+    assert.equal(home.data.scrolled, true);
+    assert.equal(home.data.loading, false);
+  }
+  assert.equal(sessionReads, 2);
+  assert.equal(purchaseReads, 1);
+  assert.equal(designReads, 1);
+  assert.deepEqual(navigation, []);
+  release();
+  await foreground;
+  pause = null;
+  fail = true;
+  await home.onShow();
+  assert.equal(home.data.recent[0].id, 'a');
+  fail = false;
+  auth = { ...auth, projects: [auth.projects[1]] };
+  let continueRead;
+  ownerSession.purchases = async () =>
+    new Promise((resolve) => {
+      continueRead = resolve;
+    });
+  const revoked = home.onPullDownRefresh();
+  await new Promise(setImmediate);
+  assert.equal(home.data.project.id, 'b');
+  assert.deepEqual(home.data.recent, []);
+  assert.equal(profile.data.project.id, 'b');
+  continueRead({ items: [] });
+  await revoked;
+  auth = { ...auth, projects: [] };
+  await home.onShow();
+  assert.equal(home.data.project, null);
+  assert.equal(home.data.profileMounted, false);
+  assert.equal(navigation.at(-1), '/owner-login/pages/welcome/index');
+});
+
 test('owner home counts, overdue filter and residence switching follow the active project', (t) => {
   const { load, navigation } = preview(t);
   store.begin('review', fixtureDate);
@@ -116,9 +232,10 @@ test('owner home counts, overdue filter and residence switching follow the activ
     arrived.data.rows.map(({ id, statusLabel }) => [id, statusLabel]),
     [['floor', '已到货']],
   );
+  const profile = load('profile');
+  home.selectComponent = () => profile;
   home.switchResidence();
-  assert.match(navigation.pop(), /profile\/index\?switch=1$/);
-  const profile = load('profile', { switch: '1' });
+  assert.equal(home.data.activeTab, 'profile');
   assert.equal(profile.data.switchOpen, true);
 
   const { project, groups } = store.snapshot();

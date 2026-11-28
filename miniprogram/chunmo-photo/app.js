@@ -19,7 +19,9 @@ App({
       });
   },
   onShow() {
-    if (this.engine && wx.getStorageSync('chunmo.mini.entry.v1') !== 'owner') this.engine.active = true;
+    this.foreground = (this.foreground || 0) + 1;
+    if (this.engine && wx.getStorageSync('chunmo.mini.entry.v1') !== 'owner')
+      this.engine.active = true;
   },
   onHide() {
     if (this.engine) this.engine.active = false;
