@@ -16,6 +16,8 @@ studio_duty=0
 owner_018=0
 mini_monthly=0
 v21=0
+v21_shine=0
+expected_args=2
 v21_pc=0
 v21_pc_label=0
 case $mode in
@@ -56,6 +58,16 @@ case $mode in
     previous=b696aab3e28299eb69fd134391dec8b5278d9e1c
     mode=${mode%-v21-pc-label}
     ;;
+  --deploy-v21-shinewonder|--rollback-v21-shinewonder)
+    v21=1
+    v21_pc=1
+    v21_pc_label=1
+    v21_shine=1
+    owner_018=1
+    expected_args=3
+    previous=${3:-}
+    mode=${mode%-v21-shinewonder}
+    ;;
 esac
 phase=host
 promoted=0
@@ -66,10 +78,15 @@ launch_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 units=(chunmo-staging-web chunmo-staging-api chunmo-mini-photo chunmo-mini-workbench)
 
 fail() { printf 'FAIL %s — %s\n' "$phase" "$*" >&2; exit 1; }
-[[ $# == 2 && ( $mode == --deploy || $mode == --rollback ) && $commit =~ ^[a-f0-9]{40}$ &&
+[[ $# == "$expected_args" && ( $mode == --deploy || $mode == --rollback ) && $commit =~ ^[a-f0-9]{40}$ &&
     $commit != "$previous" ]] || fail '请使用已审核的发布入口和完整提交。'
 [[ $EUID == 0 ]] || fail '请在 Workbench 的 root 终端执行。'
-if [[ $v21_pc_label == 1 ]]; then
+if [[ $v21_shine == 1 ]]; then
+  [[ $commit == d30b08ac143f15d88a35909ddb0111caf79e43bb &&
+    ( $previous == b50c1b676ae8605f1e196521f690cc0788030f57 ||
+      $previous == b696aab3e28299eb69fd134391dec8b5278d9e1c ) ]] ||
+    fail '炫云更新仅支持固定候选及已知正式基线。'
+elif [[ $v21_pc_label == 1 ]]; then
   [[ $commit == b50c1b676ae8605f1e196521f690cc0788030f57 ]] || fail '文案补丁仅允许固定候选 b50c1b6。'
 elif [[ $v21_pc == 1 ]]; then
   [[ $commit == b696aab3e28299eb69fd134391dec8b5278d9e1c ]] || fail '本次正式网页升级仅允许固定候选 b696aab。'
@@ -125,15 +142,18 @@ site() {
 }
 
 label_asset() {
-  python3 -I -B - "$new/dist" <<'PY'
+  python3 -I -B - "$new/dist" "$v21_shine" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 dist = Path(sys.argv[1])
 links = re.findall(r'\bsrc="(/assets/index-[A-Za-z0-9_-]+\.js)"', (dist / 'index.html').read_text(encoding='utf-8'))
-if len(links) != 1 or '"panorama","水电图"'.encode() not in (dist / links[0][1:]).read_bytes():
+asset = (dist / links[0][1:]).read_bytes() if len(links) == 1 else b''
+if '"panorama","水电图"'.encode() not in asset:
     raise SystemExit('找不到带水电图栏位的正式网页入口资源。')
+if sys.argv[2] == '1' and b'https://8ec387dc.shinewonder.com' not in asset:
+    raise SystemExit('正式网页入口资源缺少炫云专属域名。')
 print(links[0])
 PY
 }
@@ -281,7 +301,10 @@ git -C "$repo" merge-base --is-ancestor "$previous" "$commit" ||
   fail '发布版本并非当前正式基线的后继。'
 git -C "$repo" diff --quiet "$previous" "$commit" -- server/migrations package-lock.json ||
   fail '基础迁移或依赖锁定文件已变化。'
-if [[ $v21_pc_label == 1 ]]; then
+if [[ $v21_shine == 1 ]]; then
+  git -C "$repo" diff --quiet "$previous" "$commit" -- server/proposed ||
+    fail '炫云更新包含未授权的数据库迁移文件变更。'
+elif [[ $v21_pc_label == 1 ]]; then
   [[ $(git -C "$repo" rev-parse "$commit^") == "$previous" ]] &&
     git -C "$repo" diff --quiet "$previous" "$commit" -- . \
       ':(exclude)src/components/ProjectOwnerDesign.tsx' ':(exclude)server/owner-portal.test.ts' ||
@@ -577,7 +600,9 @@ elif [[ $owner_018 == 1 ]]; then
   [[ $db_state == ready ]] || fail '上线后 018 核查失败。'
 fi
 phase=complete
-if [[ $v21_pc_label == 1 ]]; then
+if [[ $v21_shine == 1 ]]; then
+  printf 'PASS 正式站已更新炫云域名及水电图链接 %s，升级前版本 %s。\n' "$commit" "$previous"
+elif [[ $v21_pc_label == 1 ]]; then
   printf 'PASS 正式站水电图链接补丁已发布 %s\n' "$commit"
 elif [[ $v21 == 1 ]]; then
   printf 'PASS 正式 V2.1 网页/API/数据库部署通过 %s，业主服务开关保持 %s。\n' "$commit" "$owner_enabled"
