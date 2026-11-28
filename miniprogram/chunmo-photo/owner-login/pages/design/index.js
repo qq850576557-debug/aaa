@@ -3,8 +3,22 @@ const owner = require('../../owner-session');
 const { routes } = require('../../preview');
 const domainMessage = '该链接的域名尚未配置为微信业务域名，请联系春茉核对。';
 const invalidMessage = '设计成果链接格式不正确，请联系春茉更换链接。';
+const previewMessage = '该链接是预览或编辑链接，请联系春茉更换为正式分享链接。';
 const expiredMessage = '设计成果链接已失效，请联系春茉获取新链接。';
 const loadMessage = '设计成果网页加载失败，请检查网络后重试。';
+const shinewonderHost = '8ec387dc.shinewonder.com';
+
+function viewerIssue(url) {
+  const authority = /^https:\/\/([a-z0-9.-]+)(?::443)?(?=[/?#]|$)/i.exec(url);
+  if (!authority || /[\s\\\u0000-\u001f\u007f]/u.test(url)) return invalidMessage;
+  const host = authority[1].toLowerCase().replace(/\.$/, '');
+  if (
+    (host === 'shinewonder.com' || host.endsWith('.shinewonder.com')) &&
+    authority[1].toLowerCase() !== shinewonderHost
+  )
+    return domainMessage;
+  return '';
+}
 
 Page({
   data: { src: '', loading: true, feedback: '' },
@@ -37,18 +51,17 @@ Page({
       const issue = result[this.kind + 'Issue'];
       if (issue === 'domain_unconfigured') this.setData({ feedback: domainMessage });
       else if (issue === 'invalid_link') this.setData({ feedback: invalidMessage });
+      else if (issue === 'preview_link') this.setData({ feedback: previewMessage });
       else if (!url)
         this.setData({
           feedback: result[this.kind + 'Unavailable']
             ? '此链接暂不能在微信内打开，请联系春茉'
             : '暂未发布',
         });
-      else if (
-        /^https:\/\/[a-z0-9.-]+(?::443)?(?=[/?#]|$)/i.test(url) &&
-        !/[\s\\\u0000-\u001f\u007f]/u.test(url)
-      )
-        this.setData({ src: url });
-      else this.setData({ feedback: invalidMessage });
+      else {
+        const feedback = viewerIssue(url);
+        this.setData(feedback ? { feedback } : { src: url });
+      }
     } catch (error) {
       if (epoch !== this.epoch) return;
       if (error.statusCode === 401) {
@@ -72,9 +85,14 @@ Page({
   failed({ detail = {} } = {}) {
     if (!this.data.src) return;
     let feedback = loadMessage;
-    if (/业务域名|not in (?:the )?domain list|domain.*not allowed/i.test(detail.errMsg || ''))
+    const message = detail.errMsg || '';
+    if (/业务域名|not in (?:the )?domain list|domain.*not allowed/i.test(message))
       feedback = domainMessage;
-    else if ([404, 410].includes(Number(detail.statusCode))) feedback = expiredMessage;
+    else if (
+      [404, 410].includes(Number(detail.statusCode)) ||
+      /链接(?:已)?过期|链接已失效|share link (?:is )?expired/i.test(message)
+    )
+      feedback = expiredMessage;
     this.setData({ src: '', loading: false, feedback });
   },
 });
