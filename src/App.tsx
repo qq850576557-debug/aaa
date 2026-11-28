@@ -268,6 +268,9 @@ export default function App({ initialUser }: { initialUser?: CloudUser }) {
         edit?.kind === 'purchase' ||
         ['overview', 'purchases', 'reminders', 'project-detail'].includes(view)),
   );
+  useEffect(() => {
+    refreshOwnerPurchases();
+  }, [data.purchases, refreshOwnerPurchases]);
   const { notices, notify, dismiss } = useNotices();
   useEffect(() => {
     const open = (event: Event) => {

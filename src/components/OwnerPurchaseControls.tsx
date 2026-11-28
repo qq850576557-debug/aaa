@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { cloudApi, CloudError } from '../lib/cloud';
-import type { Purchase, PurchaseStatus } from '../lib/model';
+import { purchaseComplete, type Purchase, type PurchaseStatus } from '../lib/model';
 import { Modal } from './Modal';
 import {
   ownerPurchasePath,
@@ -82,7 +82,7 @@ export function OwnerPurchaseStatusDialog({
   const [busy, setBusy] = useState(false);
   return (
     <Modal
-      title={`标为${status}`}
+      title={purchaseComplete(purchase) && status !== '已到货' ? '撤销到货' : `标为${status}`}
       subtitle={purchase.name}
       className="owner-purchase-status-dialog"
       blocking
@@ -130,15 +130,15 @@ export function OwnerPurchaseFeedback({
   const [item, setItem] = useState<OwnerPurchaseItem>();
   const [feedback, setFeedback] = useState<OwnerFeedback>({ brand: '', model: '', note: '' });
   const targetAction =
-    target === '已到货'
-      ? 'finish'
-      : target === '已下单'
-        ? 'order'
-        : target === '待采购'
-          ? wasArrived
-            ? 'reopen'
-            : 'reset'
-          : undefined;
+    wasArrived && target && target !== '已到货'
+      ? 'reopen'
+      : target === '已到货'
+        ? 'finish'
+        : target === '已下单'
+          ? 'order'
+          : target === '待采购'
+            ? 'reset'
+            : undefined;
   const [action, setAction] = useState<StaffAction['action'] | undefined>(targetAction);
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState('');

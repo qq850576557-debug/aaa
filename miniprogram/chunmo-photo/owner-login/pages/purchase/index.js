@@ -41,11 +41,11 @@ Page({
   onLoad(options = {}) {
     if (store.open(this)) this.setData({ id: String(options.id || '') });
   },
-  onShow() {
+  onShow(fresh) {
     if (!this.data.ready || this.data.saving || this.data.pickingPhoto) return;
     if (store.isVerified()) {
       this.setData({ loading: true, error: '', item: null, unavailable: false, photoSrc: '' });
-      return store.refreshVerified().then(
+      return store.refreshVerified(fresh === true).then(
         () => this.renderSnapshot(),
         (error) => {
           this.setData({ loading: false, error: error.message });
@@ -96,10 +96,7 @@ Page({
     if (item && item.state !== 'complete')
       this.setData({
         sheet: true,
-        draft:
-          item.state === 'bought'
-            ? { ...store.blankFeedback, ...item.feedback }
-            : { ...store.blankFeedback },
+        draft: { ...store.blankFeedback, ...item.feedback },
         photoState: item.feedback?.imageId ? 'existing' : '',
         draftError: '',
         focusedField: '',
@@ -226,7 +223,7 @@ Page({
     }
     this.setData({ saving: false });
     this.closeSheet();
-    this.onShow();
+    await this.onShow(true);
     wx.showToast({
       title: action === 'purchase' ? '购买信息已保存' : '已恢复待采购',
       icon: 'none',

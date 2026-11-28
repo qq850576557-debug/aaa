@@ -189,6 +189,7 @@ export function createMiniPhotoGateway(options: Options): RequestHandler {
         }
         req.url = target!;
         req.headers.origin = options.origin;
+        res.locals.miniPurchase = true;
         next();
       });
       return;

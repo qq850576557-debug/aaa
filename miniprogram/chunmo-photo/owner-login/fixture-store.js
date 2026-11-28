@@ -104,6 +104,7 @@ function beginVerified({ owner, projects, purchasesEnabled }) {
     active,
     projects,
     records: Object.fromEntries(projects.map(({ id }) => [id, []])),
+    purchaseReads: new Map(),
     pendingFeedback: sameOwner ? session.pendingFeedback : new Map(),
     purchasesEnabled: purchasesEnabled === true,
     today: dateAt(0, Date.now()),
@@ -117,9 +118,17 @@ function isVerified() {
 }
 
 let refreshing;
-function refreshVerified() {
+function refreshVerified(fresh = false) {
   if (!isVerified()) return Promise.resolve();
-  if (refreshing?.session === session) return refreshing.promise;
+  if (refreshing?.session === session) {
+    if (!fresh) return refreshing.promise;
+    const owner = session.owner.id;
+    return refreshing.promise
+      .catch(() => {})
+      .then(() => {
+        if (isVerified() && session.owner.id === owner) return refreshVerified();
+      });
+  }
   const previous = session;
   const promise = (async () => {
     try {
@@ -144,8 +153,11 @@ async function refreshPurchases() {
   const activeSession = current();
   if (!activeSession.purchasesEnabled) return;
   const project = activeSession.active;
+  const read = Symbol();
+  activeSession.purchaseReads.set(project, read);
   const { items } = await ownerSession.purchases(project);
-  if (session === activeSession) activeSession.records[project] = items;
+  if (session === activeSession && activeSession.purchaseReads.get(project) === read)
+    activeSession.records[project] = items;
 }
 
 function feedbackRequest(project, id, version, action, fields) {

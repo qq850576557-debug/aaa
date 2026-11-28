@@ -4,7 +4,16 @@ import sharp from 'sharp';
 import { z } from 'zod';
 import type { AuthRequest } from './auth';
 import { transaction } from './db';
-import { ApiError, commit, getState, hash, lockOwnerPurchases, type Actor } from './store';
+import {
+  ApiError,
+  commit,
+  getState,
+  hash,
+  lockOwnerPurchases,
+  orderedBeforeArrival,
+  statusBeforeArrival,
+  type Actor,
+} from './store';
 import { purchaseSchema } from '../src/lib/model';
 import { savePurchase } from '../src/lib/procurement';
 import { workspaceStateWithProof } from './workspace-save';
@@ -389,48 +398,63 @@ export function staffOwnerPurchaseRoutes(app: Express) {
             input.action === 'reopen' && !actor.owner ? 403 : 409,
             input.action === 'reopen' ? '仅负责人可重新开启已到货采购' : '采购已到货',
           );
-        if (input.action === 'purchase') {
+        if (!previousPurchase || previousPurchase.projectId !== project)
+          throw new ApiError(409, '采购已移除或所属项目已变更');
+        if (input.action === 'return' && !before.bought)
+          throw new ApiError(409, '采购已处于待采购');
+        if (input.action === 'finish' && !before.bought && previousPurchase.status !== '已下单')
+          throw new ApiError(409, '请先确认下单，再确认到货');
+        const status =
+          input.action === 'finish'
+            ? '已到货'
+            : input.action === 'order' || input.action === 'purchase'
+              ? '已下单'
+              : input.action === 'reopen'
+                ? statusBeforeArrival(
+                    before.bought || (await orderedBeforeArrival(c, workspace, purchase)),
+                  )
+                : '待采购';
+        if (!before.published) await ensureInternalFeedback(c, key, previousPurchase.name);
+        if (input.action === 'order' || input.action === 'purchase') {
           if (!orderFeedback.safeParse(input.feedback).success)
             throw new ApiError(400, '请填写品牌和型号');
-          await recordFeedback(c, key, actor, input.feedback);
-        } else {
-          if (!previousPurchase || previousPurchase.projectId !== project)
-            throw new ApiError(409, '采购已移除或所属项目已变更');
-          if (input.action === 'return' && !before.bought)
-            throw new ApiError(409, '采购已处于待采购');
-          if (input.action === 'finish' && !before.bought && previousPurchase.status !== '已下单')
-            throw new ApiError(409, '请先确认下单，再确认到货');
-          const status =
-            input.action === 'finish'
-              ? '已到货'
-              : input.action === 'order'
-                ? '已下单'
-                : input.action === 'reopen'
-                  ? (input.status ?? '待采购')
-                  : '待采购';
-          if (!before.published) await ensureInternalFeedback(c, key, previousPurchase.name);
-          if (input.action === 'order')
-            await recordFeedback(c, key, actor, input.feedback, input.reason);
-          if (previousPurchase.status !== status)
-            await commit(
-              c,
-              actor,
-              state.revision,
-              {
-                ...state.data,
-                purchases: state.data.purchases.map((row) =>
-                  row.id === purchase ? { ...row, status } : row,
-                ),
-              },
-              { prior: state, ownerPurchaseAction: purchase },
-            );
-          if (input.action === 'reopen' || input.action === 'reset' || input.action === 'return') {
-            await c.query(
-              `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=false,return_reason=$4
+          await recordFeedback(
+            c,
+            key,
+            actor,
+            input.feedback,
+            input.action === 'order' ? input.reason : '',
+          );
+        }
+        if (previousPurchase.status !== status)
+          await commit(
+            c,
+            actor,
+            state.revision,
+            {
+              ...state.data,
+              purchases: state.data.purchases.map((row) =>
+                row.id === purchase ? { ...row, status } : row,
+              ),
+            },
+            { prior: state, ownerPurchaseAction: purchase },
+          );
+        if (input.action === 'finish') {
+          await c.query(
+            `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=true
+               WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3 AND NOT bought`,
+            key,
+          );
+        } else if (
+          input.action === 'reopen' ||
+          input.action === 'reset' ||
+          input.action === 'return'
+        ) {
+          await c.query(
+            `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=$5,return_reason=$4
                WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3`,
-              [...key, input.action === 'reset' ? '' : input.reason],
-            );
-          }
+            [...key, input.action === 'reset' ? '' : input.reason, status === '已下单'],
+          );
         }
       }
 

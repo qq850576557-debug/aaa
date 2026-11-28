@@ -152,6 +152,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       },
     ]);
     await migrationClient.query('COMMIT');
+    await migrationClient.query(await readFile('server/proposed/022_owner_purchase_status.sql', 'utf8'));
   } catch (error) {
     await migrationClient.query('ROLLBACK');
     throw error;
@@ -816,7 +817,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           assert.equal((await phoneItem()).state, 'complete');
           assert.equal((await phoneItem()).feedback.brand, '测试品牌');
           await changedCard.selectOption('待采购');
-          const reopen = normal.getByRole('dialog', { name: '标为待采购' });
+          const reopen = normal.getByRole('dialog', { name: '撤销到货' });
           await expect(reopen.getByRole('button', { name: '确认', exact: true })).toBeDisabled();
           await reopen.getByLabel('对外说明').fill('测试重新采购');
           await normal.setViewportSize({ width: 390, height: 844 });
@@ -829,8 +830,8 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           await reopen.screenshot({ path: join(artifacts, '07-confirm-reopen.png') });
           await reopen.getByRole('button', { name: '确认', exact: true }).click();
           await expect(reopen).toBeHidden();
-          await expect(changedCard).toHaveValue('待采购');
-          assert.equal((await phoneItem()).state, 'pending');
+          await expect(changedCard).toHaveValue('已下单');
+          assert.equal((await phoneItem()).state, 'bought');
           assert.equal((await phoneItem()).feedback.model, '测试型号');
           assert.equal((await phoneItem()).returnReason, '测试重新采购');
           await normal.close();
@@ -988,6 +989,16 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       };
       const respond = (body: object, bearer = tokenA, route = postPhone) =>
         request(route, 'POST', body, '', bearer);
+      async function sharedStatus(status: string, state: string) {
+        const workspace = (await request('/workspace', 'GET', undefined, founder)).body;
+        assert.equal(workspace.data.purchases.find((p: { id: string }) => p.id === 'existing').status, status);
+        const db = await admin.query("SELECT payload->>'status' AS status FROM purchase WHERE id='existing'");
+        assert.equal(db.rows[0].status, status);
+        assert.equal((await feed()).body.items[0].state, state);
+        const staff = await read();
+        assert.equal(staff.complete ? 'complete' : staff.bought ? 'bought' : 'pending', state);
+        return workspace;
+      }
       assert.equal(
         (await respond({ ...confirm, feedback: { ...confirm.feedback, brand: '' } })).status,
         400,
@@ -1007,10 +1018,16 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       assert.equal((await read()).model, 'A-01');
       record = (await feed()).body.items[0];
       assert.equal(record.state, 'bought');
+      const orderedWorkspace = await sharedStatus('已下单', 'bought');
       const withdraw = { action: 'withdraw', requestId: randomUUID(), version: record.version };
       assert.equal((await respond(withdraw)).status, 200);
       assert.equal((await respond(withdraw)).status, 200);
-      assert.equal((await feed()).body.items[0].state, 'pending');
+      const withdrawnWorkspace = await sharedStatus('待采购', 'pending');
+      assert.equal(withdrawnWorkspace.revision, orderedWorkspace.revision + 1);
+      assert.equal((await request('/workspace', 'PUT', {
+        revision: orderedWorkspace.revision, data: orderedWorkspace.data,
+      }, founder)).status, 409);
+      assert.equal((await feed()).body.items[0].feedback.model, 'A-01');
       assert.equal((await write('purchase', { feedback: confirm.feedback }, employee)).status, 200);
       assert.equal((await read()).feedbackActor, 'employee');
       assert.equal((await write('return', { reason: '请重新核对尺寸' }, employee)).status, 200);
@@ -1078,7 +1095,10 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
       assert.equal((await write('reopen', { reason: '计划变更' }, employee)).status, 403);
       const reopened = await write('reopen', { reason: '计划变更' });
       assert.equal(reopened.status, 200, JSON.stringify(reopened.body));
-      assert.equal((await feed()).body.items[0].state, 'pending');
+      await sharedStatus('已下单', 'bought');
+      record = (await feed()).body.items[0];
+      assert.equal((await respond({ action: 'withdraw', requestId: randomUUID(), version: record.version })).status, 200);
+      await sharedStatus('待采购', 'pending');
 
       const canonical = (await request('/workspace', 'GET', undefined, founder)).body;
       const creation = {
@@ -1124,7 +1144,7 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
             "SELECT count(*)::int AS count FROM owner_portal.purchase_event WHERE workspace_id='w' AND purchase_id IN ('existing','new-purchase')",
           )
         ).rows[0].count,
-        artifacts ? 14 : 12,
+        artifacts ? 15 : 13,
       );
       const originalImage = await sharp({
         create: { width: 48, height: 32, channels: 3, background: '#728c62' },
@@ -1196,6 +1216,33 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
           }
           assert.equal((await read()).link, visible.feedback.link);
           assert.equal((await read()).imageId, imageId);
+          if (process.env.CHUNMO_V21_SCREENSHOTS) {
+            const { chromium, expect } = await import('@playwright/test');
+            const browser = await chromium.launch({
+              executablePath: '/usr/bin/chromium',
+              args: ['--no-sandbox'],
+            });
+            try {
+              const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+              await page.context().addCookies([
+                { name: 'chunmo_session', value: founder, url: base + '/api' },
+              ]);
+              await page.addInitScript(() => sessionStorage.setItem('chunmo-space', 'cloud'));
+              await page.goto(base);
+              await page.getByRole('button', { name: '采购管理', exact: true }).click();
+              const status = page.getByRole('combobox', { name: '采购状态内部采购' });
+              await expect(status).toHaveValue('已下单');
+              const release = { action: 'withdraw', requestId: randomUUID(), version: visible.version };
+              assert.equal((await respond(release)).status, 200);
+              await expect(status).toHaveValue('待采购', { timeout: 8000 });
+              await page.reload();
+              await expect(status).toHaveValue('待采购');
+              assert.deepEqual((await feed()).body.items[0].feedback, visible.feedback);
+              await page.screenshot({ path: join(process.env.CHUNMO_V21_SCREENSHOTS, '采购撤销实时同步.png') });
+            } finally {
+              await browser.close();
+            }
+          }
           const ownerPhoto = await request(evidencePhotoPath, 'GET', undefined, '', tokenA);
           assert.equal(ownerPhoto.status, 200);
           assert.equal((await request(evidencePhotoPath)).status, 401);
@@ -1447,6 +1494,49 @@ test('real PostgreSQL roles, employee CSRF, invitation, two households, revocati
         headers: { ...signed, Cookie: 'chunmo_session=' + staffResult.cookie },
       });
       assert.equal(records.status, 200);
+      async function saveMiniStatus(status: string, cookie = founder) {
+        const headers = {
+          ...signed,
+          Cookie: 'chunmo_session=' + cookie,
+          'X-CSRF-Token': hash('csrf:' + cookie),
+        };
+        const url = gateway + 'workbench/workspace';
+        const snapshot = await (await fetch(url, { headers })).json();
+        const item = snapshot.data.purchases.find((row: { id: string }) => row.id === 'existing');
+        return fetch(url, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            protocol: 3,
+            revision: snapshot.revision,
+            requestId: randomUUID(),
+            changes: [{
+              collection: 'purchases', kind: 'record', id: item.id,
+              before: item, after: { ...item, status },
+              proof: snapshot.resourceProofs[JSON.stringify(['purchases', 'record', item.id])],
+            }],
+          }),
+        });
+      }
+      const expectMiniStatus = async (status: string, ownerState: string) => {
+        const browser = (await request('/workspace', 'GET', undefined, founder)).body;
+        assert.equal(browser.data.purchases.find(({ id }: { id: string }) => id === 'existing').status, status);
+        const persisted = await admin.query("SELECT payload->>'status' AS status FROM purchase WHERE id='existing'");
+        assert.equal(persisted.rows[0].status, status);
+        const list = await request(projects + '/p1/purchases', 'GET', undefined, '', tokenA);
+        assert.equal(list.body.items.find(({ id }: { id: string }) => id === 'existing').state, ownerState);
+      };
+      assert.equal((await saveMiniStatus('待采购')).status, 200);
+      await expectMiniStatus('待采购', 'pending');
+      assert.equal((await saveMiniStatus('已下单')).status, 200);
+      await expectMiniStatus('已下单', 'bought');
+      assert.equal((await saveMiniStatus('已到货')).status, 200);
+      await expectMiniStatus('已到货', 'complete');
+      assert.equal((await saveMiniStatus('待采购', staffResult.cookie)).status, 403);
+      assert.equal((await saveMiniStatus('待采购')).status, 200);
+      await expectMiniStatus('已下单', 'bought');
+      assert.equal((await saveMiniStatus('待采购')).status, 200);
+      await expectMiniStatus('待采购', 'pending');
       assert.equal(
         (
           await fetch(gateway + 'workbench/workspace', {

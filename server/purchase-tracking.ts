@@ -34,7 +34,9 @@ export async function trackPurchases(
           : !purchaseComplete(old) && purchaseComplete(next)
             ? '完成'
             : purchaseComplete(old) && !purchaseComplete(next)
-              ? '恢复待采购'
+              ? next.status === '已下单'
+                ? '恢复已下单'
+                : '恢复待采购'
               : '修改';
     // Legacy records have unknown creation/completion provenance, never invent it.
     const created = !old && !prior && !imported,

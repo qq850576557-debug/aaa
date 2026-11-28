@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const store = require('../owner-login/fixture-store');
+const ownerSession = require('../owner-login/owner-session');
 const { cropBox } = require('../owner-login/avatar');
 const { level, plan } = require('../owner-login/purchase-reminders');
 
@@ -46,6 +47,44 @@ function preview(t) {
 }
 
 const fixtureDate = Date.parse('2026-11-21T00:00:00+08:00');
+
+test('owner status refresh after a write ignores older purchase reads', async (t) => {
+  const saved = { session: ownerSession.session, purchases: ownerSession.purchases };
+  t.after(() => {
+    Object.assign(ownerSession, saved);
+    store.end();
+  });
+  const identity = {
+    owner: { id: 'test-owner', name: '测试' },
+    projects: [{ id: 'test-project' }],
+    purchasesEnabled: true,
+  };
+  const reads = [];
+  const response = (state) => ({ items: [{ id: 'one', due: '2026-01-01', state }] });
+  ownerSession.session = async () => identity;
+  ownerSession.purchases = () => new Promise((resolve) => reads.push(resolve));
+  store.beginVerified(identity);
+  const old = store.refreshPurchases();
+  const newest = store.refreshPurchases();
+  reads[1](response('bought'));
+  await newest;
+  reads[0](response('pending'));
+  await old;
+  assert.equal(store.snapshot().groups.bought.length, 1);
+
+  const inFlight = store.refreshVerified();
+  await Promise.resolve();
+  const afterWrite = store.refreshVerified(true);
+  reads[2](response('bought'));
+  await inFlight;
+  await new Promise(setImmediate);
+  assert.equal(reads.length, 4);
+  reads[3](response('pending'));
+  await afterWrite;
+  const { groups } = store.snapshot();
+  assert.equal(groups.bought.length, 0);
+  assert.equal(groups.pending[0].overdue, true);
+});
 
 test('owner home counts, overdue filter and residence switching follow the active project', (t) => {
   const { load, navigation } = preview(t);

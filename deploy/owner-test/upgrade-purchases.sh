@@ -153,7 +153,7 @@ systemctl is-active --quiet chunmo-owner-test-pg.service
 systemctl is-active --quiet chunmo-owner-test-api.service
 [[ $(sql -Atc "SELECT current_database() || ':' || current_user || ':' || current_setting('port')") == chunmo_test:chunmo_ownerpg:5441 ]] ||
   fail '数据库身份未通过测试环境校验'
-[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT IN ('019_employee_wechat.sql','019_employee_wechat_grants.sql','020_owner_design.sql','020_owner_design_grants.sql','021_account_retirement.sql')") == 15 ]] ||
+[[ $(sql -Atc "SELECT count(*) FROM schema_migration WHERE name NOT IN ('019_employee_wechat.sql','019_employee_wechat_grants.sql','020_owner_design.sql','020_owner_design_grants.sql','021_account_retirement.sql','022_owner_purchase_status.sql')") == 15 ]] ||
   fail '隔离库基础迁移数量与预期不同'
 test_db_bytes=$(sql -Atc 'SELECT pg_database_size(current_database())')
 [[ $test_db_bytes =~ ^[0-9]+$ ]] || fail '无法核对测试备份大小'
@@ -381,6 +381,29 @@ SQL
       AND position('deleted_at IS NULL' in pg_get_viewdef('owner_portal.available_project'::regclass,true))>0
       AND NOT has_column_privilege('owner_runtime','owner_portal.member','deleted_at','UPDATE')") == t ]] ||
       fail '测试库 021 结构或权限隔离检查失败'
+  fi
+  status_sql="$job/server/proposed/022_owner_purchase_status.sql"
+  if [[ -f $status_sql ]]; then
+    status_sha=46e30049d32246456dce864fdc72174e19b08fd9b908691506ed9ee411b6fc23
+    [[ $(sha256sum "$status_sql" | awk '{print $1}') == "$status_sha" ]] ||
+      fail '测试库 022 迁移文件校验失败'
+    status_ledger() {
+      sql -Atc "SELECT checksum FROM schema_migration WHERE name='022_owner_purchase_status.sql'"
+    }
+    installed_status=$(status_ledger)
+    if [[ -z $installed_status ]]; then
+      {
+        printf "SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s'; SELECT pg_advisory_xact_lock(62109684);\n"
+        cat "$status_sql"
+        printf "INSERT INTO schema_migration(name,checksum) VALUES('022_owner_purchase_status.sql', :'status_sha');\n"
+      } | sql --single-transaction -v status_sha="$status_sha" -f -
+    fi
+    [[ $(status_ledger) == "$status_sha" ]] || fail '测试库 022 账本校验失败'
+    [[ $(sql -Atc "SELECT has_function_privilege('owner_runtime','owner_portal.owner_purchase_feedback(text,text,text,uuid,text,text,jsonb)','EXECUTE')
+      AND NOT has_table_privilege('owner_runtime','public.workspace_state','SELECT,UPDATE')
+      AND NOT has_table_privilege('owner_runtime','public.purchase','SELECT,UPDATE')
+      AND position('chunmo_updates' in pg_get_functiondef('owner_portal.owner_purchase_feedback(text,text,text,uuid,text,text,jsonb)'::regprocedure))>0") == t ]] ||
+      fail '测试库 022 状态写入或业主权限校验失败'
   fi
 fi
 cmp -s "$nginx" "$upgrade/nginx.before"

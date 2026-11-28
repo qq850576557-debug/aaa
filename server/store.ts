@@ -238,23 +238,62 @@ export async function lockOwnerPurchases(c: Db, workspace: string) {
   await c.query('SELECT pg_advisory_xact_lock(hashtextextended($1,16))', [workspace]);
 }
 
-async function guardCollaborativeCompletion(
+export const statusBeforeArrival = (wasOrdered: boolean) => (wasOrdered ? '已下单' : '待采购');
+
+export async function orderedBeforeArrival(c: Db, workspace: string, purchase: string) {
+  const { rows } = await c.query<{ ordered: boolean }>(
+    `SELECT before_value->>'status'='已下单' AS ordered FROM purchase_action
+     WHERE workspace_id=$1 AND purchase_id=$2 AND operation='完成'
+     ORDER BY at DESC,id DESC LIMIT 1`,
+    [workspace, purchase],
+  );
+  return rows[0]?.ordered === true;
+}
+
+async function syncCollaborativeStatus(
   c: Db,
   actor: Actor,
   old: Purchase,
   next: Purchase,
-  authorizedId?: string,
+  miniPurchase: boolean,
 ) {
-  if (authorizedId === old.id || purchaseComplete(old) === purchaseComplete(next)) return;
-  const result = await c.query(
-    `SELECT 1 FROM owner_portal.purchase_collaboration
-     WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3 AND published`,
-    [actor.workspaceId, old.projectId, old.id],
+  const {
+    rows: [collaboration],
+  } = await c.query<{ published: boolean; bought: boolean; can_write: boolean }>(
+    `SELECT p.published,p.bought,coalesce(g.can_write,false) AS can_write
+     FROM owner_portal.purchase_collaboration p
+     LEFT JOIN project_permission g ON g.workspace_id=p.workspace_id AND g.project_id=p.project_id
+       AND g.account_id=$4
+     WHERE p.workspace_id=$1 AND p.project_id=$2 AND p.purchase_id=$3`,
+    [actor.workspaceId, old.projectId, old.id, actor.id],
   );
-  if (result.rowCount)
-    throw new ApiError(
-      409,
-      '已设为业主可见的采购，请通过采购编辑窗口内的购买反馈操作确认完成或重新开启',
+  const wasComplete = purchaseComplete(old);
+  const completes = purchaseComplete(next);
+  const wasOrdered = old.status === '已下单' || collaboration?.bought === true;
+  if (miniPurchase && collaboration?.published && !actor.owner && !collaboration.can_write)
+    throw new ApiError(403, '无此项目采购协同权限');
+  if (collaboration?.published && wasComplete !== completes) {
+    if (!miniPurchase)
+      throw new ApiError(
+        409,
+        '已设为业主可见的采购，请通过采购编辑窗口内的购买反馈操作确认完成或重新开启',
+      );
+    if (completes && !wasOrdered) throw new ApiError(409, '请先确认下单，再确认到货');
+  }
+  if (miniPurchase && wasComplete && !completes)
+    next.status = statusBeforeArrival(
+      wasOrdered || (await orderedBeforeArrival(c, actor.workspaceId, old.id)),
+    );
+  if (collaboration && next.projectId === old.projectId)
+    await c.query(
+      `UPDATE owner_portal.purchase_collaboration SET version=version+1,bought=$4
+       WHERE workspace_id=$1 AND project_id=$2 AND purchase_id=$3 AND bought IS DISTINCT FROM $4`,
+      [
+        actor.workspaceId,
+        old.projectId,
+        old.id,
+        next.status === '已下单' || (completes && wasOrdered),
+      ],
     );
 }
 
@@ -271,6 +310,7 @@ export async function commit(
     importing?: boolean;
     deadlineChange?: { id: string; date: string; reason: string };
     ownerPurchaseAction?: string;
+    miniPurchase?: boolean;
   },
 ) {
   const prior = opts?.prior ?? (await getState(c, a.workspaceId, 'UPDATE'));
@@ -389,6 +429,17 @@ export async function commit(
         : p;
     }),
   };
+  if (ownerPurchasesEnabled()) {
+    await lockOwnerPurchases(c, a.workspaceId);
+    const previousPurchases = new Map(
+      prior.data.purchases.map((purchase) => [purchase.id, purchase]),
+    );
+    for (const next of d.purchases) {
+      const old = previousPurchases.get(next.id);
+      if (old && old.status !== next.status && old.id !== opts?.ownerPurchaseAction)
+        await syncCollaborativeStatus(c, a, old, next, opts?.miniPurchase === true);
+    }
+  }
   const result = recordChanges(
     prior.data,
     d,
@@ -412,16 +463,6 @@ export async function commit(
       'INSERT INTO workspace_history_revision VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
       [a.workspaceId, r.id, revision],
     );
-  if (ownerPurchasesEnabled()) {
-    await lockOwnerPurchases(c, a.workspaceId);
-    const previousPurchases = new Map(
-      prior.data.purchases.map((purchase) => [purchase.id, purchase]),
-    );
-    for (const next of result.data.purchases) {
-      const old = previousPurchases.get(next.id);
-      if (old) await guardCollaborativeCompletion(c, a, old, next, opts?.ownerPurchaseAction);
-    }
-  }
   await trackPurchases(c, a, prior.data, result.data, !!(opts?.importing || opts?.restoreId));
   if (!opts?.importing && !opts?.restoreId)
     for (const [index, p] of result.data.purchases.entries()) {
